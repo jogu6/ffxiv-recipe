@@ -135,6 +135,17 @@
 <header>
   <h1>FF14 レシピ素材ツリー</h1>
   <span id="loadStatus">データ読み込み中...</span>
+  <button id="popupBtn" onclick="openPopup()" style="
+    margin-left:auto;
+    background:#252525;
+    border:1px solid #c8a84b;
+    color:#c8a84b;
+    padding:4px 12px;
+    border-radius:4px;
+    font-size:12px;
+    cursor:pointer;
+    white-space:nowrap;
+  ">⧉ 小窓で開く</button>
 </header>
 
 <div class="main">
@@ -343,6 +354,19 @@ function methodBadgeClass(method) {
 }
 
 init();
+
+function openPopup() {
+  const w = 520, h = 700;
+  const left = Math.round((screen.width - w) / 2);
+  const top  = Math.round((screen.height - h) / 2);
+  const win = window.open(
+    location.href, 'ff14recipe',
+    `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=no,toolbar=no,menubar=no,location=no,status=no`
+  );
+  if (!win) {
+    alert('ポップアップがブロックされました。\nアドレスバーの通知からポップアップを許可してください。');
+  }
+}
 </script>
 </body>
 </html>
