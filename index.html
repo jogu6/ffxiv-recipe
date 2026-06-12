@@ -252,7 +252,13 @@ async function init() {
       } catch { /* レシピなし素材は無視 */ }
     }));
 
-    recipeNames = craftables.filter(name => recipes[name]).sort();
+    recipeNames = craftables
+      .filter(name => recipes[name])
+      .sort((a, b) => {
+        const ya = itemMaster[a]?.yomi || a;
+        const yb = itemMaster[b]?.yomi || b;
+        return ya.localeCompare(yb, 'ja');
+      });
 
     document.getElementById('loadStatus').textContent =
       `${recipeNames.length}レシピ 読み込み済み`;
@@ -279,8 +285,12 @@ function parseMaster(text) {
   text.split(/\r?\n/).forEach(line => {
     if (!line.trim()) return;
     const cols = line.split(',');
-    if (cols.length >= 3)
-      itemMaster[cols[0].trim()] = { type: cols[1].trim(), method: cols[2].trim() };
+    if (cols.length >= 4)
+      itemMaster[cols[0].trim()] = {
+        yomi:   cols[1].trim(),
+        type:   cols[2].trim(),
+        method: cols[3].trim()
+      };
   });
 }
 
@@ -421,7 +431,12 @@ function methodBadgeClass(method) {
 }
 
 function openPopup() {
-  const w = 520, h = 700;
+  const w = 520;
+  // 1行約34px、検索欄+ヘッダー約90px、最大12行分
+  const ROW_H = 34;
+  const HEADER_H = 90;
+  const rows = Math.min(recipeNames.length, 12);
+  const h = HEADER_H + rows * ROW_H;
   const left = Math.round((screen.width - w) / 2);
   const top  = Math.round((screen.height - h) / 2);
   const win = window.open(
