@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FF14 レシピ素材ツリー</title>
+<style>
+  :root {
+    --bg: #1a1a1a;
+    --surface: #252525;
+    --border: #3a3a3a;
+    --accent: #c8a84b;
+    --text: #e0e0e0;
+    --muted: #888;
+    --surplus: #6abf69;
+    --craft: #c8a84b;
+    --gather: #5b9bd5;
+    --hunt: #d57b5b;
+    --buy: #9b7fd5;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Yu Gothic", "Meiryo", sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+  }
+
+  /* ヘッダー */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 15px; color: var(--accent); font-weight: bold; white-space: nowrap; }
+  #loadStatus { font-size: 12px; color: var(--muted); }
+  #popupBtn {
+    margin-left: auto;
+    background: #252525;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  #popupBtn:hover { background: #2a2a1a; }
+
+  /* PC: 左右2カラム */
+  .main {
+    display: flex;
+    height: calc(100vh - 45px);
+  }
+  .panel-left {
+    width: 220px;
+    min-width: 160px;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+  }
+  .panel-left-header {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  #searchBox {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 5px 8px;
+    border-radius: 3px;
+    font-size: 13px;
+    width: 100%;
+  }
+  #searchBox:focus { outline: none; border-color: var(--accent); }
+  #recipeList { flex: 1; overflow-y: auto; list-style: none; }
+  #recipeList li {
+    padding: 9px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #recipeList li:hover { background: #2e2e2e; }
+  #recipeList li.selected { background: #2a2a1a; color: var(--accent); }
+
+  .panel-right { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .result-header {
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--surface);
+    flex-wrap: wrap;
+  }
+  .result-header label { font-size: 12px; color: var(--muted); }
+  #countInput {
+    width: 60px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 4px 7px;
+    border-radius: 3px;
+    font-size: 13px;
+    text-align: right;
+  }
+  #countInput:focus { outline: none; border-color: var(--accent); }
+  #resultTitle { font-size: 13px; color: var(--accent); }
+
+  /* スマホ用「戻るボタン」は初期非表示 */
+  #backBtn {
+    display: none;
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: 13px;
+    cursor: pointer;
+    padding: 0;
+    margin-right: 4px;
+  }
+
+  #treeContainer { flex: 1; overflow: auto; padding: 10px 14px; }
+
+  /* ツリー */
+  .tree-node { line-height: 1.8; }
+  .tree-node .node-row {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+  .tree-node .node-row:hover { background: #2e2e2e; }
+  .toggle { font-size: 11px; color: var(--muted); width: 12px; display: inline-block; text-align: center; }
+  .node-name { font-size: 14px; }
+  .node-qty { font-size: 13px; color: var(--accent); }
+  .node-surplus { font-size: 12px; color: var(--surplus); }
+  .badge { font-size: 10px; padding: 1px 5px; border-radius: 3px; font-weight: bold; }
+  .badge-craft  { background: #3a2e10; color: var(--craft); }
+  .badge-gather { background: #102030; color: var(--gather); }
+  .badge-hunt   { background: #301010; color: var(--hunt); }
+  .badge-buy    { background: #201030; color: var(--buy); }
+  .node-children { padding-left: 20px; }
+  .node-children.collapsed { display: none; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #555; }
+  .empty-msg { color: var(--muted); font-size: 13px; padding: 20px; }
+  .error-msg { color: #d57b5b; font-size: 13px; padding: 20px; }
+
+  /* ===== スマホ対応 (600px以下) ===== */
+  @media (max-width: 600px) {
+    header { padding: 8px 12px; }
+    header h1 { font-size: 14px; }
+    /* 小窓ボタンはスマホでは非表示 */
+    #popupBtn { display: none; }
+
+    .main {
+      flex-direction: column;
+      height: calc(100vh - 45px);
+    }
+
+    /* 左パネル：全幅・スクロールなし（リスト表示時のみ表示） */
+    .panel-left {
+      width: 100%;
+      min-width: unset;
+      border-right: none;
+      border-bottom: 1px solid var(--border);
+      /* 高さはJS側で切り替え */
+    }
+
+    /* 右パネル：選択後に全画面 */
+    .panel-right {
+      flex: 1;
+    }
+
+    /* スマホ時は戻るボタン表示 */
+    #backBtn { display: inline; }
+
+    #recipeList li { padding: 12px 14px; font-size: 14px; }
+    #searchBox { padding: 7px 10px; font-size: 14px; }
+    .node-name { font-size: 15px; }
+    .node-qty  { font-size: 14px; }
+    .tree-node { line-height: 2; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>FF14 レシピ素材ツリー</h1>
+  <span id="loadStatus">データ読み込み中...</span>
+  <button id="popupBtn" onclick="openPopup()">⧉ 小窓で開く</button>
+</header>
+
+<div class="main">
+  <div class="panel-left" id="panelLeft">
+    <div class="panel-left-header">
+      <input type="text" id="searchBox" placeholder="絞り込み..." oninput="filterList()">
+    </div>
+    <ul id="recipeList"></ul>
+  </div>
+  <div class="panel-right" id="panelRight">
+    <div class="result-header">
+      <button id="backBtn" onclick="showList()">◀ 戻る</button>
+      <label>個数:</label>
+      <input type="number" id="countInput" value="1" min="1" oninput="renderTree()">
+      <span id="resultTitle"></span>
+    </div>
+    <div id="treeContainer">
+      <div class="empty-msg">レシピを選択してください</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const DATA_FILE = 'data.json';
+const isPopup = new URLSearchParams(location.search).has('popup');
+const isMobile = () => !isPopup && window.innerWidth <= 600;
+
+let itemMaster = {};
+let recipes = {};
+let recipeNames = [];
+let selectedRecipe = null;
+
+// ---- 起動時データ読み込み ----
+async function init() {
+  try {
+    const data = await fetch(DATA_FILE).then(r => {
+      if (!r.ok) throw new Error(`data.json が見つかりません (${r.status})`);
+      return r.json();
+    });
+
+    itemMaster = data.itemMaster || {};
+    recipes = data.recipes || {};
+
+    const craftables = Object.keys(recipes);
+
+    recipeNames = craftables
+      .sort((a, b) => {
+        const ya = itemMaster[a]?.yomi || a;
+        const yb = itemMaster[b]?.yomi || b;
+        return ya.localeCompare(yb, 'ja');
+      });
+
+    document.getElementById('loadStatus').textContent =
+      `${recipeNames.length}レシピ 読み込み済み`;
+
+    renderList(recipeNames);
+
+    // スマホ初期状態：左パネル全画面、右パネル非表示
+    if (isMobile()) showList();
+
+  } catch (e) {
+    document.getElementById('loadStatus').textContent = '読み込みエラー';
+    document.getElementById('treeContainer').innerHTML =
+      `<div class="error-msg">データの読み込みに失敗しました。<br>data/ フォルダにCSVが正しく配置されているか確認してください。<br>${e.message}</div>`;
+  }
+}
+
+
+
+
+
+
+
+// ---- リスト ----
+function renderList(names) {
+  const ul = document.getElementById('recipeList');
+  ul.innerHTML = '';
+  names.forEach(name => {
+    const li = document.createElement('li');
+    li.textContent = name;
+    li.title = name;
+    li.onclick = () => selectRecipe(name, li);
+    ul.appendChild(li);
+  });
+}
+
+function filterList() {
+  const q = document.getElementById('searchBox').value.trim();
+  renderList(q ? recipeNames.filter(n => n.includes(q)) : recipeNames);
+}
+
+function selectRecipe(name, li) {
+  document.querySelectorAll('#recipeList li').forEach(el => el.classList.remove('selected'));
+  li.classList.add('selected');
+  selectedRecipe = name;
+  renderTree();
+  // スマホ：ツリー画面に切り替え
+  if (isMobile()) showTree();
+}
+
+// ---- スマホ画面切り替え ----
+function showList() {
+  if (!isMobile()) return;
+  document.getElementById('panelLeft').style.display = 'flex';
+  document.getElementById('panelRight').style.display = 'none';
+}
+
+function showTree() {
+  if (!isMobile()) return;
+  document.getElementById('panelLeft').style.display = 'none';
+  document.getElementById('panelRight').style.display = 'flex';
+}
+
+// ---- ツリー描画 ----
+function renderTree() {
+  const container = document.getElementById('treeContainer');
+  const count = parseInt(document.getElementById('countInput').value, 10) || 1;
+  if (!selectedRecipe) return;
+
+  document.getElementById('resultTitle').textContent = `【${selectedRecipe} × ${count}個分】`;
+
+  const producedQty = calcProduced(selectedRecipe, count);
+  container.innerHTML = '';
+  container.appendChild(buildNode(selectedRecipe, count, producedQty, 0));
+}
+
+function calcProduced(name, needed) {
+  const r = recipes[name];
+  if (!r) return needed;
+  return r.yield * Math.ceil(needed / r.yield);
+}
+
+function buildNode(name, neededQty, producedQty, depth) {
+  const master = itemMaster[name] || { type: '素材', method: '' };
+  const surplus = producedQty - neededQty;
+  const hasChildren = !!recipes[name];
+
+  const div = document.createElement('div');
+  div.className = 'tree-node';
+
+  const row = document.createElement('div');
+  row.className = 'node-row';
+
+  const toggle = document.createElement('span');
+  toggle.className = 'toggle';
+  toggle.textContent = hasChildren ? '▼' : '　';
+
+  const badge = document.createElement('span');
+  badge.className = 'badge ' + methodBadgeClass(master.method);
+  badge.textContent = master.method || master.type;
+
+  const nameEl = document.createElement('span');
+  nameEl.className = 'node-name';
+  nameEl.textContent = name;
+
+  const qtyEl = document.createElement('span');
+  qtyEl.className = 'node-qty';
+  qtyEl.textContent = `× ${producedQty}`;
+
+  const surplusEl = document.createElement('span');
+  surplusEl.className = 'node-surplus';
+  if (surplus > 0) surplusEl.textContent = `(${surplus}個余剰)`;
+
+  row.append(toggle, badge, nameEl, qtyEl, surplusEl);
+  div.appendChild(row);
+
+  if (hasChildren) {
+    const children = document.createElement('div');
+    children.className = 'node-children';
+
+    const r = recipes[name];
+    r.ingredients.forEach(ing => {
+      const subNeeded = ing.qty * Math.ceil(producedQty / r.yield);
+      const subProduced = calcProduced(ing.name, subNeeded);
+      children.appendChild(buildNode(ing.name, subNeeded, subProduced, depth + 1));
+    });
+
+    div.appendChild(children);
+
+    row.onclick = () => {
+      const collapsed = children.classList.toggle('collapsed');
+      toggle.textContent = collapsed ? '▶' : '▼';
+    };
+  }
+
+  return div;
+}
+
+function methodBadgeClass(method) {
+  if (!method) return 'badge-gather';
+  if (method.includes('クラフト')) return 'badge-craft';
+  if (method.includes('ギャザ')) return 'badge-gather';
+  if (method.includes('狩猟') || method.includes('討伐')) return 'badge-hunt';
+  return 'badge-buy';
+}
+
+function openPopup() {
+  const w = 520;
+  // 1行約34px、検索欄+ヘッダー約90px、最大12行分
+  const ROW_H = 34;
+  const HEADER_H = 90;
+  const rows = Math.min(recipeNames.length, 12);
+  const h = HEADER_H + rows * ROW_H;
+  const left = Math.round((screen.width - w) / 2);
+  const top  = Math.round((screen.height - h) / 2);
+  const win = window.open(
+    location.pathname + '?popup=1', 'ff14recipe',
+    `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=no,toolbar=no,menubar=no,location=no,status=no`
+  );
+  if (!win) alert('ポップアップがブロックされました。\nアドレスバーの通知から許可してください。');
+}
+
+init();
+</script>
+</body>
+</html>
