@@ -506,6 +506,23 @@ function openPopup() {
 }
 
 init();
+
+// ===== Service Worker 登録 =====
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js')
+    .then(reg => {
+      // 新しいSWが待機中になったら自動的に更新を適用
+      reg.addEventListener('updatefound', () => {
+        const newWorker = reg.installing;
+        newWorker.addEventListener('statechange', () => {
+          if (newWorker.state === 'activated') {
+            console.log('[SW] 新しいバージョンに更新されました');
+          }
+        });
+      });
+    })
+    .catch(err => console.warn('[SW] 登録失敗:', err));
+}
 </script>
 </body>
 </html>
