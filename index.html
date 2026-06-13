@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FF14 レシピ素材ツリー</title>
+<link rel="icon" href="./favicon.png" type="image/png">
+<link rel="apple-touch-icon" href="./favicon.png">
 <style>
   :root {
     --bg: #1a1a1a;
@@ -62,10 +64,12 @@
     display: flex;
     flex-direction: column;
     background: var(--surface);
+    overflow: hidden;
   }
   .panel-left-header {
-    padding: 8px 10px;
+    padding: 8px 10px 4px;
     border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
   }
   #searchBox {
     background: var(--bg);
@@ -77,12 +81,88 @@
     width: 100%;
   }
   #searchBox:focus { outline: none; border-color: var(--accent); }
+
+  .kana-index {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 2px;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .kana-btn {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 11px;
+    padding: 3px 0;
+    border-radius: 3px;
+    cursor: pointer;
+    text-align: center;
+    line-height: 1;
+  }
+  .kana-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .kana-btn:disabled { color: #444; border-color: #2a2a2a; cursor: default; }
+
+  /* お気に入りボタン */
+  #favToggleBtn {
+    margin: 4px 6px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  #favToggleBtn:hover { border-color: var(--accent); color: var(--accent); }
+  #favToggleBtn.active { border-color: var(--accent); color: var(--accent); background: #2a2a1a; }
+
+  /* お気に入りパネル */
+  #favPanel {
+    display: none;
+    flex-direction: column;
+    border-bottom: 1px solid var(--border);
+    max-height: 200px;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+  #favPanel.open { display: flex; }
+  .fav-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .fav-item:hover { background: #2e2e2e; }
+  .fav-item:last-child { border-bottom: none; }
+  .fav-icon {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    flex-shrink: 0;
+    image-rendering: pixelated;
+    border-radius: 5px;
+    box-shadow: inset 0 0 5px 2px rgba(0,0,0,0.6);
+  }
+  .fav-name { flex: 1; overflow-wrap: break-word; word-break: break-all; white-space: normal; font-size: 13px; }
+  #favEmpty { color: var(--muted); font-size: 12px; padding: 8px 10px; }
+
   #recipeList { flex: 1; overflow-y: auto; list-style: none; }
   #recipeList li {
     padding: 9px 12px;
     cursor: pointer;
     border-bottom: 1px solid var(--border);
     font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
   #recipeList li:hover { background: #2e2e2e; }
   #recipeList li.selected { background: #2a2a1a; color: var(--accent); }
@@ -93,13 +173,28 @@
     border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 6px;
     background: var(--surface);
     flex-wrap: wrap;
   }
   .result-header label { font-size: 12px; color: var(--muted); }
+
+  .count-control { display: flex; align-items: center; gap: 4px; }
+  .count-btn {
+    width: 26px; height: 26px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 16px;
+    border-radius: 3px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    line-height: 1;
+    padding: 0;
+  }
+  .count-btn:hover { border-color: var(--accent); color: var(--accent); }
   #countInput {
-    width: 60px;
+    width: 52px;
     background: var(--bg);
     border: 1px solid var(--border);
     color: var(--text);
@@ -114,20 +209,23 @@
   #backBtn {
     display: none;
     background: none;
-    border: none;
+    border: 1px solid var(--accent);
     color: var(--accent);
     font-size: 13px;
     cursor: pointer;
-    padding: 0;
+    padding: 4px 10px;
+    border-radius: 4px;
     margin-right: 4px;
+    white-space: nowrap;
   }
+  #backBtn:hover { background: #2a2a1a; }
 
   #treeContainer { flex: 1; overflow: auto; padding: 10px 14px; }
 
   .tree-node { line-height: 1.8; }
   .tree-node .node-row {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 6px;
     cursor: pointer;
     padding: 2px 4px;
@@ -135,11 +233,12 @@
     white-space: nowrap;
   }
   .tree-node .node-row:hover { background: #2e2e2e; }
-  .toggle { font-size: 11px; color: var(--muted); width: 12px; display: inline-block; text-align: center; }
+  .toggle { font-size: 11px; color: var(--muted); width: 12px; display: inline-block; text-align: center; flex-shrink: 0; }
   .node-name { font-size: 14px; }
   .node-qty { font-size: 13px; color: var(--accent); }
   .node-surplus { font-size: 12px; color: var(--surplus); }
-  .badge { font-size: 10px; padding: 1px 5px; border-radius: 3px; font-weight: bold; }
+  .node-craft-count { font-size: 12px; color: var(--muted); }
+  .badge { font-size: 10px; padding: 1px 5px; border-radius: 3px; font-weight: bold; flex-shrink: 0; }
   .badge-craft  { background: #3a2e10; color: var(--craft); }
   .badge-gather { background: #102030; color: var(--gather); }
   .badge-hunt   { background: #301010; color: var(--hunt); }
@@ -147,22 +246,45 @@
   .node-children { padding-left: 20px; }
   .node-children.collapsed { display: none; }
 
+  /* ピン絵文字 */
+  .pin-btn {
+    font-size: 16px;
+    cursor: pointer;
+    flex-shrink: 0;
+    line-height: 1;
+    user-select: none;
+    background: none;
+    border: none;
+    padding: 0 2px;
+  }
+  .pin-btn:hover { transform: scale(1.2); }
+
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: var(--bg); }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
   ::-webkit-scrollbar-thumb:hover { background: #555; }
   .empty-msg { color: var(--muted); font-size: 13px; padding: 20px; }
   .error-msg { color: #d57b5b; font-size: 13px; padding: 20px; }
-  .node-icon { width: 20px; height: 20px; vertical-align: middle; image-rendering: pixelated; flex-shrink: 0; }
-  #recipeList li { display: flex; align-items: center; gap: 6px; }
-  .list-icon { width: 18px; height: 18px; flex-shrink: 0; image-rendering: pixelated; }
+  .node-icon {
+    width: 32px; height: 32px;
+    vertical-align: middle;
+    image-rendering: pixelated;
+    flex-shrink: 0;
+    border-radius: 5px;
+    box-shadow: inset 0 0 5px 2px rgba(0,0,0,0.6);
+  }
+  .list-icon {
+    width: 32px; height: 32px;
+    flex-shrink: 0;
+    image-rendering: pixelated;
+    border-radius: 5px;
+    box-shadow: inset 0 0 5px 2px rgba(0,0,0,0.6);
+  }
   .list-name { overflow-wrap: break-word; word-break: break-all; white-space: normal; }
 
   .footer {
     position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
+    bottom: 0; left: 0; right: 0;
     text-align: center;
     font-size: 11px;
     color: var(--muted);
@@ -170,40 +292,58 @@
     pointer-events: none;
     z-index: 100;
   }
-  .footer a {
-    color: var(--muted);
-    text-decoration: none;
-    pointer-events: all;
-  }
+  .footer a { color: var(--muted); text-decoration: none; pointer-events: all; }
   .footer a:hover { color: var(--accent); }
+
+  /* 確認フローティングウィンドウ */
+  #confirmOverlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+  }
+  #confirmOverlay.open { display: flex; }
+  #confirmDialog {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 20px 24px;
+    max-width: 300px;
+    width: 90%;
+    text-align: center;
+  }
+  #confirmMsg { font-size: 14px; margin-bottom: 16px; line-height: 1.6; }
+  .confirm-btns { display: flex; gap: 10px; justify-content: center; }
+  .confirm-btn {
+    padding: 6px 20px;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+  }
+  .confirm-btn.yes { border-color: var(--accent); color: var(--accent); }
+  .confirm-btn.yes:hover { background: #2a2a1a; }
+  .confirm-btn.no:hover { background: #2e2e2e; }
 
   @media (max-width: 600px) {
     header { padding: 8px 12px; }
     header h1 { font-size: 14px; }
-
-    .main {
-      flex-direction: column;
-      height: calc(100vh - 45px);
-    }
-
-    .panel-left {
-      width: 100%;
-      min-width: unset;
-      border-right: none;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .panel-right {
-      flex: 1;
-    }
-
+    #popupBtn { display: none; }
+    .main { flex-direction: column; height: calc(100vh - 45px); }
+    .panel-left { width: 100%; min-width: unset; border-right: none; border-bottom: 1px solid var(--border); }
+    .panel-right { flex: 1; }
     #backBtn { display: inline; }
-
     #recipeList li { padding: 12px 14px; font-size: 14px; }
     #searchBox { padding: 7px 10px; font-size: 14px; }
     .node-name { font-size: 15px; }
     .node-qty  { font-size: 14px; }
     .tree-node { line-height: 2; }
+    .count-btn { width: 32px; height: 32px; font-size: 18px; }
   }
 </style>
 </head>
@@ -219,6 +359,11 @@
   <div class="panel-left" id="panelLeft">
     <div class="panel-left-header">
       <input type="text" id="searchBox" placeholder="絞り込み..." oninput="filterList()">
+      <div class="kana-index" id="kanaIndex"></div>
+    </div>
+    <button id="favToggleBtn" onclick="toggleFavPanel()">★ お気に入り</button>
+    <div id="favPanel">
+      <div id="favEmpty">お気に入りはありません</div>
     </div>
     <ul id="recipeList"></ul>
   </div>
@@ -226,7 +371,11 @@
     <div class="result-header">
       <button id="backBtn" onclick="showList()">◀ 戻る</button>
       <label>個数:</label>
-      <input type="number" id="countInput" value="1" min="1" oninput="renderTree()">
+      <div class="count-control">
+        <button class="count-btn" onclick="changeCount(-1)">－</button>
+        <input type="number" id="countInput" value="1" min="1" inputmode="numeric" oninput="renderTree()">
+        <button class="count-btn" onclick="changeCount(1)">＋</button>
+      </div>
       <span id="resultTitle"></span>
     </div>
     <div id="treeContainer">
@@ -236,21 +385,46 @@
 </div>
 <div class="footer">© SQUARE ENIX / Data by XIVAPI / X : <a href="https://x.com/og_ff14" target="_blank" rel="noopener">@og_ff14</a></div>
 
+<!-- 確認ダイアログ -->
+<div id="confirmOverlay">
+  <div id="confirmDialog">
+    <div id="confirmMsg"></div>
+    <div class="confirm-btns">
+      <button class="confirm-btn yes" id="confirmYes">はい</button>
+      <button class="confirm-btn no" id="confirmNo">いいえ</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const DATA_FILE = './data/Item.json';
-// ポップアップ判定を排除し、常に画面幅のみでモバイル判定を行う
 const isMobile = () => window.innerWidth <= 600;
+const LS_FAV = 'ff14_favorites';
 
-// CraftType番号 → ジョブ名
 const CRAFT_TYPE_NAME = {
   '0': '木工師', '1': '鍛冶師', '2': '甲冑師', '3': '彫金師',
   '4': '革細工師', '5': '裁縫師', '6': '錬金術師', '7': '調理師'
 };
 
-let itemMaster = {};  // name -> { method, icon }
-let recipes = {};     // name -> { yield, ingredients: [{name, qty}] }
+const KANA_GROUPS = [
+  { label: 'あ', chars: ['あ','い','う','え','お'] },
+  { label: 'か', chars: ['か','き','く','け','こ','が','ぎ','ぐ','げ','ご'] },
+  { label: 'さ', chars: ['さ','し','す','せ','そ','ざ','じ','ず','ぜ','ぞ'] },
+  { label: 'た', chars: ['た','ち','つ','て','と','だ','ぢ','づ','で','ど'] },
+  { label: 'な', chars: ['な','に','ぬ','ね','の'] },
+  { label: 'は', chars: ['は','ひ','ふ','へ','ほ','ば','び','ぶ','べ','ぼ','ぱ','ぴ','ぷ','ぺ','ぽ'] },
+  { label: 'ま', chars: ['ま','み','む','め','も'] },
+  { label: 'や', chars: ['や','ゆ','よ'] },
+  { label: 'ら', chars: ['ら','り','る','れ','ろ'] },
+  { label: 'わ', chars: ['わ','を','ん'] },
+  { label: '英', chars: null },
+];
+
+let itemMaster = {};
+let recipes = {};
 let recipeNames = [];
 let selectedRecipe = null;
+let favorites = new Set(); // お気に入りアイテム名のSet
 
 function iconPath(iconUrl) {
   if (!iconUrl) return '';
@@ -258,29 +432,158 @@ function iconPath(iconUrl) {
   return './picture/' + parts[parts.length - 1];
 }
 
+function isEnglishFirst(name) {
+  return /^[A-Za-z]/.test(name);
+}
+
+function sortRecipeNames(names) {
+  const ja = names.filter(n => !isEnglishFirst(n));
+  const en = names.filter(n => isEnglishFirst(n));
+  ja.sort((a, b) => a.localeCompare(b, 'ja'));
+  en.sort((a, b) => a.localeCompare(b, 'en'));
+  return [...ja, ...en];
+}
+
+// localStorage
+function loadFavorites() {
+  try {
+    const raw = localStorage.getItem(LS_FAV);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      favorites = new Set(arr);
+    }
+  } catch(e) { favorites = new Set(); }
+}
+
+function saveFavorites() {
+  localStorage.setItem(LS_FAV, JSON.stringify([...favorites]));
+}
+
+// 確認ダイアログ
+function showConfirm(msg, onYes) {
+  document.getElementById('confirmMsg').textContent = msg;
+  document.getElementById('confirmOverlay').classList.add('open');
+  const yesBtn = document.getElementById('confirmYes');
+  const noBtn = document.getElementById('confirmNo');
+  const close = () => document.getElementById('confirmOverlay').classList.remove('open');
+  yesBtn.onclick = () => { close(); onYes(); };
+  noBtn.onclick = () => close();
+}
+
+// ピンのOn/Off処理
+function pinOn(name) {
+  favorites.add(name);
+  saveFavorites();
+  renderFavPanel();
+  refreshPins(name);
+}
+
+function pinOff(name) {
+  showConfirm(`「${name}」をお気に入りから削除しますか？`, () => {
+    favorites.delete(name);
+    saveFavorites();
+    renderFavPanel();
+    refreshPins(name);
+  });
+}
+
+// ツリー内の同名アイテムのピン表示を一括更新
+function refreshPins(name) {
+  document.querySelectorAll(`.pin-btn[data-name="${CSS.escape(name)}"]`).forEach(btn => {
+    btn.textContent = favorites.has(name) ? '📌' : '📍';
+    btn.style.filter = favorites.has(name) ? 'none' : 'grayscale(1) opacity(0.4)';
+  });
+}
+
+// お気に入りパネルトグル
+function toggleFavPanel() {
+  const panel = document.getElementById('favPanel');
+  const btn = document.getElementById('favToggleBtn');
+  const isOpen = panel.classList.toggle('open');
+  btn.classList.toggle('active', isOpen);
+}
+
+// お気に入りパネル描画
+function renderFavPanel() {
+  const panel = document.getElementById('favPanel');
+  panel.innerHTML = '';
+
+  if (favorites.size === 0) {
+    const empty = document.createElement('div');
+    empty.id = 'favEmpty';
+    empty.textContent = 'お気に入りはありません';
+    panel.appendChild(empty);
+    return;
+  }
+
+  [...favorites].forEach(name => {
+    const master = itemMaster[name] || {};
+    const row = document.createElement('div');
+    row.className = 'fav-item';
+
+    // アイコン
+    if (master.icon) {
+      const img = document.createElement('img');
+      img.src = master.icon;
+      img.className = 'fav-icon';
+      img.alt = '';
+      img.onerror = () => { img.style.display = 'none'; };
+      row.appendChild(img);
+    }
+
+    // ピン
+    const pin = document.createElement('button');
+    pin.className = 'pin-btn';
+    pin.dataset.name = name;
+    pin.textContent = '📌';
+    pin.style.filter = 'none';
+    pin.onclick = (e) => {
+      e.stopPropagation();
+      pinOff(name);
+    };
+    row.appendChild(pin);
+
+    // アイテム名（クリックでレシピ選択）
+    const nameEl = document.createElement('span');
+    nameEl.className = 'fav-name';
+    nameEl.textContent = name;
+    nameEl.onclick = () => {
+      // リスト側の選択状態も更新する
+      document.querySelectorAll('#recipeList li').forEach(li => {
+        const n = li.querySelector('.list-name')?.textContent;
+        li.classList.toggle('selected', n === name);
+      });
+      selectedRecipe = name;
+      renderTree();
+      if (isMobile()) {
+        showTree();
+        document.getElementById('treeContainer').scrollTop = 0;
+      }
+    };
+    row.appendChild(nameEl);
+
+    panel.appendChild(row);
+  });
+}
+
 async function init() {
+  loadFavorites();
+
   try {
     const rawList = await fetch(DATA_FILE).then(r => {
       if (!r.ok) throw new Error(`Item.json が見つかりません (${r.status})`);
       return r.json();
     });
 
-    // ID -> item の全件マップ（Recipeあり・なし両方）
     const idToItem = {};
     rawList.forEach(item => { idToItem[item.ID] = item; });
 
-    // まず全アイテムを itemMaster に登録
     rawList.forEach(item => {
       const r = item.Recipe;
       const name = item.Name;
-
       if (r && r.CraftType !== undefined) {
-        // クラフトアイテム
         const jobName = CRAFT_TYPE_NAME[r.CraftType] || 'クラフト';
-        itemMaster[name] = {
-          method: jobName,
-          icon: iconPath(item.IconUrl)
-        };
+        itemMaster[name] = { method: jobName, icon: iconPath(item.IconUrl) };
         recipes[name] = {
           yield: parseInt(r.AmountResult, 10) || 1,
           ingredients: r.Ingredients.map(ing => ({
@@ -290,33 +593,24 @@ async function init() {
           }))
         };
       } else {
-        // 採集・購入等（Recipeなし）
         if (!itemMaster[name]) {
-          itemMaster[name] = {
-            method: '',
-            icon: iconPath(item.IconUrl)
-          };
+          itemMaster[name] = { method: '', icon: iconPath(item.IconUrl) };
         }
       }
     });
 
-    // Ingredientsに登場するがまだ itemMaster に未登録の素材を補完
     rawList.forEach(item => {
       if (!item.Recipe || !item.Recipe.Ingredients) return;
       item.Recipe.Ingredients.forEach(ing => {
         if (!itemMaster[ing.Name]) {
           const ref = idToItem[ing.ItemID];
-          itemMaster[ing.Name] = {
-            method: '',
-            icon: ref ? iconPath(ref.IconUrl) : ''
-          };
+          itemMaster[ing.Name] = { method: '', icon: ref ? iconPath(ref.IconUrl) : '' };
         }
       });
     });
 
-    recipeNames = Object.keys(recipes).sort((a, b) => a.localeCompare(b, 'ja'));
+    recipeNames = sortRecipeNames(Object.keys(recipes));
 
-    // 最大PatchNumberを取得してパッチバージョンを表示
     let maxPatch = 0;
     rawList.forEach(item => {
       if (item.Recipe && item.Recipe.PatchNumber) {
@@ -331,7 +625,9 @@ async function init() {
     document.getElementById('loadStatus').textContent =
       `${recipeNames.length}レシピ 読み込み済み${patchStr}`;
 
+    buildKanaIndex();
     renderList(recipeNames);
+    renderFavPanel();
 
     const treeMsg = document.getElementById('treeMsg');
     if (treeMsg) treeMsg.textContent = 'レシピを選択してください';
@@ -341,8 +637,45 @@ async function init() {
   } catch (e) {
     document.getElementById('loadStatus').textContent = '読み込みエラー';
     document.getElementById('treeContainer').innerHTML =
-      `<div class="error-msg">データの読み込みに失敗しました。<br>data/Item.json が正しく配置されているか確認してください。<br>${e.message}</div>`;
+      `<div class="error-msg">データの読み込みに失敗しました。<br>${e.message}</div>`;
   }
+}
+
+function buildKanaIndex() {
+  const container = document.getElementById('kanaIndex');
+  container.innerHTML = '';
+  KANA_GROUPS.forEach(group => {
+    const btn = document.createElement('button');
+    btn.className = 'kana-btn';
+    btn.textContent = group.label;
+    const hasItem = recipeNames.some(name => matchKanaGroup(name, group));
+    if (!hasItem) {
+      btn.disabled = true;
+    } else {
+      btn.onclick = () => jumpToKana(group);
+    }
+    container.appendChild(btn);
+  });
+}
+
+function matchKanaGroup(name, group) {
+  if (!name) return false;
+  const first = name[0];
+  if (group.chars === null) return isEnglishFirst(name);
+  return group.chars.some(c => {
+    const kata = String.fromCharCode(c.charCodeAt(0) + 0x60);
+    return first === c || first === kata;
+  });
+}
+
+function jumpToKana(group) {
+  const q = document.getElementById('searchBox').value.trim();
+  const currentList = q ? recipeNames.filter(n => n.includes(q)) : recipeNames;
+  const idx = currentList.findIndex(name => matchKanaGroup(name, group));
+  if (idx === -1) return;
+  const ul = document.getElementById('recipeList');
+  const items = ul.querySelectorAll('li');
+  if (items[idx]) items[idx].scrollIntoView({ block: 'start' });
 }
 
 function renderList(names) {
@@ -352,7 +685,6 @@ function renderList(names) {
     const li = document.createElement('li');
     li.title = name;
     li.onclick = () => selectRecipe(name, li);
-
     const master = itemMaster[name];
     if (master?.icon) {
       const img = document.createElement('img');
@@ -362,12 +694,10 @@ function renderList(names) {
       img.onerror = () => { img.style.display = 'none'; };
       li.appendChild(img);
     }
-
     const span = document.createElement('span');
     span.className = 'list-name';
     span.textContent = name;
     li.appendChild(span);
-
     ul.appendChild(li);
   });
 }
@@ -382,7 +712,10 @@ function selectRecipe(name, li) {
   li.classList.add('selected');
   selectedRecipe = name;
   renderTree();
-  if (isMobile()) showTree();
+  if (isMobile()) {
+    showTree();
+    document.getElementById('treeContainer').scrollTop = 0;
+  }
 }
 
 function showList() {
@@ -397,13 +730,18 @@ function showTree() {
   document.getElementById('panelRight').style.display = 'flex';
 }
 
+function changeCount(delta) {
+  const input = document.getElementById('countInput');
+  const current = parseInt(input.value, 10) || 1;
+  input.value = Math.max(1, current + delta);
+  renderTree();
+}
+
 function renderTree() {
   const container = document.getElementById('treeContainer');
   const count = parseInt(document.getElementById('countInput').value, 10) || 1;
   if (!selectedRecipe) return;
-
   document.getElementById('resultTitle').textContent = `【${selectedRecipe} × ${count}個分】`;
-
   const producedQty = calcProduced(selectedRecipe, count);
   container.innerHTML = '';
   container.appendChild(buildNode(selectedRecipe, count, producedQty, 0));
@@ -416,9 +754,10 @@ function calcProduced(name, needed) {
 }
 
 function buildNode(name, neededQty, producedQty, depth) {
-  const master = itemMaster[name] || { type: '素材', method: '' };
+  const master = itemMaster[name] || { method: '', icon: '' };
   const surplus = producedQty - neededQty;
   const hasChildren = !!recipes[name];
+  const isCraft = hasChildren;
 
   const div = document.createElement('div');
   div.className = 'tree-node';
@@ -445,6 +784,27 @@ function buildNode(name, neededQty, producedQty, depth) {
     iconEl.style.display = 'none';
   }
 
+  // ピンボタン（クラフトアイテムのみ）
+  if (isCraft) {
+    const pin = document.createElement('button');
+    pin.className = 'pin-btn';
+    pin.dataset.name = name;
+    const isOn = favorites.has(name);
+    pin.textContent = isOn ? '📌' : '📍';
+    pin.style.filter = isOn ? 'none' : 'grayscale(1) opacity(0.4)';
+    pin.onclick = (e) => {
+      e.stopPropagation();
+      if (favorites.has(name)) {
+        pinOff(name);
+      } else {
+        pinOn(name);
+      }
+    };
+    row.append(toggle, badge, iconEl, pin);
+  } else {
+    row.append(toggle, badge, iconEl);
+  }
+
   const nameEl = document.createElement('span');
   nameEl.className = 'node-name';
   nameEl.textContent = name;
@@ -457,22 +817,27 @@ function buildNode(name, neededQty, producedQty, depth) {
   surplusEl.className = 'node-surplus';
   if (surplus > 0) surplusEl.textContent = `(${surplus}個余剰)`;
 
-  row.append(toggle, badge, iconEl, nameEl, qtyEl, surplusEl);
+  const craftCountEl = document.createElement('span');
+  craftCountEl.className = 'node-craft-count';
+  if (hasChildren) {
+    const r = recipes[name];
+    const times = Math.ceil(neededQty / r.yield);
+    if (times >= 2) craftCountEl.textContent = `(${times}回制作)`;
+  }
+
+  row.append(nameEl, qtyEl, surplusEl, craftCountEl);
   div.appendChild(row);
 
   if (hasChildren) {
     const children = document.createElement('div');
     children.className = 'node-children';
-
     const r = recipes[name];
     r.ingredients.forEach(ing => {
       const subNeeded = ing.qty * Math.ceil(producedQty / r.yield);
       const subProduced = calcProduced(ing.name, subNeeded);
       children.appendChild(buildNode(ing.name, subNeeded, subProduced, depth + 1));
     });
-
     div.appendChild(children);
-
     row.onclick = () => {
       const collapsed = children.classList.toggle('collapsed');
       toggle.textContent = collapsed ? '▶' : '▼';
@@ -484,7 +849,6 @@ function buildNode(name, neededQty, producedQty, depth) {
 
 function methodBadgeClass(method) {
   if (!method) return 'badge-gather';
-  // CRAFT_TYPE_NAME のいずれかなら craft
   const craftJobs = ['木工師','鍛冶師','甲冑師','彫金師','革細工師','裁縫師','錬金術師','調理師'];
   if (craftJobs.includes(method)) return 'badge-craft';
   return 'badge-gather';
@@ -507,11 +871,9 @@ function openPopup() {
 
 init();
 
-// ===== Service Worker 登録 =====
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js')
     .then(reg => {
-      // 新しいSWが待機中になったら自動的に更新を適用
       reg.addEventListener('updatefound', () => {
         const newWorker = reg.installing;
         newWorker.addEventListener('statechange', () => {
