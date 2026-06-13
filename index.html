@@ -156,6 +156,10 @@
   ::-webkit-scrollbar-thumb:hover { background: #555; }
   .empty-msg { color: var(--muted); font-size: 13px; padding: 20px; }
   .error-msg { color: #d57b5b; font-size: 13px; padding: 20px; }
+  .node-icon { width: 20px; height: 20px; vertical-align: middle; image-rendering: pixelated; flex-shrink: 0; }
+  #recipeList li { display: flex; align-items: center; gap: 6px; }
+  .list-icon { width: 18px; height: 18px; flex-shrink: 0; image-rendering: pixelated; }
+  .list-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   @media (max-width: 600px) {
     header { padding: 8px 12px; }
@@ -216,33 +220,84 @@
 </div>
 
 <script>
-const DATA_FILE = 'data.json';
+const DATA_FILE = './data/Item.json';
 // ポップアップ判定を排除し、常に画面幅のみでモバイル判定を行う
 const isMobile = () => window.innerWidth <= 600;
 
-let itemMaster = {};
-let recipes = {};
+// CraftType番号 → ジョブ名
+const CRAFT_TYPE_NAME = {
+  '0': '木工師', '1': '鍛冶師', '2': '甲冑師', '3': '彫金師',
+  '4': '革細工師', '5': '裁縫師', '6': '錬金術師', '7': '調理師'
+};
+
+let itemMaster = {};  // name -> { method, icon }
+let recipes = {};     // name -> { yield, ingredients: [{name, qty}] }
 let recipeNames = [];
 let selectedRecipe = null;
 
+function iconPath(iconUrl) {
+  if (!iconUrl) return '';
+  const parts = iconUrl.split('/');
+  return './picture/' + parts[parts.length - 1];
+}
+
 async function init() {
   try {
-    const data = await fetch(DATA_FILE).then(r => {
-      if (!r.ok) throw new Error(`data.json が見つかりません (${r.status})`);
+    const rawList = await fetch(DATA_FILE).then(r => {
+      if (!r.ok) throw new Error(`Item.json が見つかりません (${r.status})`);
       return r.json();
     });
 
-    itemMaster = data.itemMaster || {};
-    recipes = data.recipes || {};
+    // ID -> item の全件マップ（Recipeあり・なし両方）
+    const idToItem = {};
+    rawList.forEach(item => { idToItem[item.ID] = item; });
 
-    const craftables = Object.keys(recipes);
+    // まず全アイテムを itemMaster に登録
+    rawList.forEach(item => {
+      const r = item.Recipe;
+      const name = item.Name;
 
-    recipeNames = craftables
-      .sort((a, b) => {
-        const ya = itemMaster[a]?.yomi || a;
-        const yb = itemMaster[b]?.yomi || b;
-        return ya.localeCompare(yb, 'ja');
+      if (r && r.CraftType !== undefined) {
+        // クラフトアイテム
+        const jobName = CRAFT_TYPE_NAME[r.CraftType] || 'クラフト';
+        itemMaster[name] = {
+          method: jobName,
+          icon: iconPath(item.IconUrl)
+        };
+        recipes[name] = {
+          yield: parseInt(r.AmountResult, 10) || 1,
+          ingredients: r.Ingredients.map(ing => ({
+            name: ing.Name,
+            qty: parseInt(ing.Amount, 10) || 1,
+            itemId: ing.ItemID
+          }))
+        };
+      } else {
+        // 採集・購入等（Recipeなし）
+        if (!itemMaster[name]) {
+          itemMaster[name] = {
+            method: '',
+            icon: iconPath(item.IconUrl)
+          };
+        }
+      }
+    });
+
+    // Ingredientsに登場するがまだ itemMaster に未登録の素材を補完
+    rawList.forEach(item => {
+      if (!item.Recipe || !item.Recipe.Ingredients) return;
+      item.Recipe.Ingredients.forEach(ing => {
+        if (!itemMaster[ing.Name]) {
+          const ref = idToItem[ing.ItemID];
+          itemMaster[ing.Name] = {
+            method: '',
+            icon: ref ? iconPath(ref.IconUrl) : ''
+          };
+        }
       });
+    });
+
+    recipeNames = Object.keys(recipes).sort((a, b) => a.localeCompare(b, 'ja'));
 
     document.getElementById('loadStatus').textContent =
       `${recipeNames.length}レシピ 読み込み済み`;
@@ -254,7 +309,7 @@ async function init() {
   } catch (e) {
     document.getElementById('loadStatus').textContent = '読み込みエラー';
     document.getElementById('treeContainer').innerHTML =
-      `<div class="error-msg">データの読み込みに失敗しました。<br>data/ フォルダにCSVが正しく配置されているか確認してください。<br>${e.message}</div>`;
+      `<div class="error-msg">データの読み込みに失敗しました。<br>data/Item.json が正しく配置されているか確認してください。<br>${e.message}</div>`;
   }
 }
 
@@ -263,9 +318,24 @@ function renderList(names) {
   ul.innerHTML = '';
   names.forEach(name => {
     const li = document.createElement('li');
-    li.textContent = name;
     li.title = name;
     li.onclick = () => selectRecipe(name, li);
+
+    const master = itemMaster[name];
+    if (master?.icon) {
+      const img = document.createElement('img');
+      img.src = master.icon;
+      img.className = 'list-icon';
+      img.alt = '';
+      img.onerror = () => { img.style.display = 'none'; };
+      li.appendChild(img);
+    }
+
+    const span = document.createElement('span');
+    span.className = 'list-name';
+    span.textContent = name;
+    li.appendChild(span);
+
     ul.appendChild(li);
   });
 }
@@ -330,7 +400,18 @@ function buildNode(name, neededQty, producedQty, depth) {
 
   const badge = document.createElement('span');
   badge.className = 'badge ' + methodBadgeClass(master.method);
-  badge.textContent = master.method || master.type;
+  badge.textContent = master.method;
+  if (!master.method) badge.style.display = 'none';
+
+  const iconEl = document.createElement('img');
+  iconEl.className = 'node-icon';
+  iconEl.alt = '';
+  if (master.icon) {
+    iconEl.src = master.icon;
+    iconEl.onerror = () => { iconEl.style.display = 'none'; };
+  } else {
+    iconEl.style.display = 'none';
+  }
 
   const nameEl = document.createElement('span');
   nameEl.className = 'node-name';
@@ -344,7 +425,7 @@ function buildNode(name, neededQty, producedQty, depth) {
   surplusEl.className = 'node-surplus';
   if (surplus > 0) surplusEl.textContent = `(${surplus}個余剰)`;
 
-  row.append(toggle, badge, nameEl, qtyEl, surplusEl);
+  row.append(toggle, badge, iconEl, nameEl, qtyEl, surplusEl);
   div.appendChild(row);
 
   if (hasChildren) {
@@ -371,10 +452,10 @@ function buildNode(name, neededQty, producedQty, depth) {
 
 function methodBadgeClass(method) {
   if (!method) return 'badge-gather';
-  if (method.includes('クラフト')) return 'badge-craft';
-  if (method.includes('ギャザ')) return 'badge-gather';
-  if (method.includes('狩猟') || method.includes('討伐')) return 'badge-hunt';
-  return 'badge-buy';
+  // CRAFT_TYPE_NAME のいずれかなら craft
+  const craftJobs = ['木工師','鍛冶師','甲冑師','彫金師','革細工師','裁縫師','錬金術師','調理師'];
+  if (craftJobs.includes(method)) return 'badge-craft';
+  return 'badge-gather';
 }
 
 function openPopup() {
