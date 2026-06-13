@@ -230,7 +230,7 @@
       <span id="resultTitle"></span>
     </div>
     <div id="treeContainer">
-      <div class="empty-msg">レシピを選択してください</div>
+      <div class="empty-msg" id="treeMsg">データ読み込み中...</div>
     </div>
   </div>
 </div>
@@ -332,6 +332,9 @@ async function init() {
       `${recipeNames.length}レシピ 読み込み済み${patchStr}`;
 
     renderList(recipeNames);
+
+    const treeMsg = document.getElementById('treeMsg');
+    if (treeMsg) treeMsg.textContent = 'レシピを選択してください';
 
     if (isMobile()) showList();
 
