@@ -161,6 +161,25 @@
   .list-icon { width: 18px; height: 18px; flex-shrink: 0; image-rendering: pixelated; }
   .list-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+  .footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 11px;
+    color: var(--muted);
+    padding: 4px;
+    pointer-events: none;
+    z-index: 100;
+  }
+  .footer a {
+    color: var(--muted);
+    text-decoration: none;
+    pointer-events: all;
+  }
+  .footer a:hover { color: var(--accent); }
+
   @media (max-width: 600px) {
     header { padding: 8px 12px; }
     header h1 { font-size: 14px; }
@@ -218,6 +237,7 @@
     </div>
   </div>
 </div>
+<div class="footer">© SQUARE ENIX / Data by XIVAPI / X : <a href="https://x.com/og_ff14" target="_blank" rel="noopener">@og_ff14</a></div>
 
 <script>
 const DATA_FILE = './data/Item.json';
@@ -299,8 +319,20 @@ async function init() {
 
     recipeNames = Object.keys(recipes).sort((a, b) => a.localeCompare(b, 'ja'));
 
+    // 最大PatchNumberを取得してパッチバージョンを表示
+    let maxPatch = 0;
+    rawList.forEach(item => {
+      if (item.Recipe && item.Recipe.PatchNumber) {
+        const p = parseInt(item.Recipe.PatchNumber, 10);
+        if (p > maxPatch) maxPatch = p;
+      }
+    });
+    const patchStr = maxPatch > 0
+      ? ` / patch ${String(maxPatch).slice(0, -2)}.${String(maxPatch).slice(-2)} 対応`
+      : '';
+
     document.getElementById('loadStatus').textContent =
-      `${recipeNames.length}レシピ 読み込み済み`;
+      `${recipeNames.length}レシピ 読み込み済み${patchStr}`;
 
     renderList(recipeNames);
 
