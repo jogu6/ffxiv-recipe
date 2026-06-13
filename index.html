@@ -83,9 +83,6 @@
     cursor: pointer;
     border-bottom: 1px solid var(--border);
     font-size: 13px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
   #recipeList li:hover { background: #2e2e2e; }
   #recipeList li.selected { background: #2a2a1a; color: var(--accent); }
@@ -159,7 +156,7 @@
   .node-icon { width: 20px; height: 20px; vertical-align: middle; image-rendering: pixelated; flex-shrink: 0; }
   #recipeList li { display: flex; align-items: center; gap: 6px; }
   .list-icon { width: 18px; height: 18px; flex-shrink: 0; image-rendering: pixelated; }
-  .list-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .list-name { overflow-wrap: break-word; word-break: break-all; white-space: normal; }
 
   .footer {
     position: fixed;
