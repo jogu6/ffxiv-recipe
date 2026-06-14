@@ -3123,6 +3123,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022674.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -262124,6 +262135,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022674.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -292618,6 +292640,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022652.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "48",
+          "Name": "アラガントームストーン:数理",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
