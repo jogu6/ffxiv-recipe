@@ -734,6 +734,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025303.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -1887,6 +1898,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022802.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "5"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -7102,6 +7124,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025151.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "30"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -7362,6 +7395,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025310.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -7884,6 +7928,17 @@
     "ItemUICategory": "51",
     "ItemSearchCategory": "50",
     "IconUrl": "https://xivapi.com/i/021000/021909.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "200"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "布材"
   },
   {
@@ -8480,6 +8535,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025919.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -15407,6 +15473,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022614.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -19638,6 +19715,17 @@
     "ItemUICategory": "51",
     "ItemSearchCategory": "50",
     "IconUrl": "https://xivapi.com/i/021000/021605.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "布材"
   },
   {
@@ -21389,6 +21477,17 @@
     "ItemUICategory": "48",
     "ItemSearchCategory": "47",
     "IconUrl": "https://xivapi.com/i/021000/021206.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "石材"
   },
   {
@@ -23774,6 +23873,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/021000/021462.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "50"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -25053,6 +25163,16 @@
     "ItemSearchCategoryName": "首飾り"
   },
   {
+    "ID": "33913",
+    "Name": "クラフタースクリップ:紫貨",
+    "Description": "",
+    "LevelEquip": "1",
+    "ItemUICategory": "100",
+    "ItemSearchCategory": "0",
+    "IconUrl": "https://xivapi.com/i/065000/065088.png",
+    "ItemSearchCategoryName": ""
+  },
+  {
     "ID": "13655",
     "Name": "スカイパイレーツ・ストライカートラウザー",
     "Description": "",
@@ -25579,6 +25699,17 @@
     "ItemUICategory": "51",
     "ItemSearchCategory": "50",
     "IconUrl": "https://xivapi.com/i/021000/021616.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "48",
+          "Name": "アラガントームストーン:数理",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "布材"
   },
   {
@@ -25631,6 +25762,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022649.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -26012,6 +26154,17 @@
     "ItemUICategory": "48",
     "ItemSearchCategory": "47",
     "IconUrl": "https://xivapi.com/i/021000/021472.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "石材"
   },
   {
@@ -26366,6 +26519,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025020.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "41784",
+          "Name": "クラフタースクリップ:橙貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -27230,6 +27394,16 @@
         }
       ]
     },
+    "ItemSearchCategoryName": ""
+  },
+  {
+    "ID": "41785",
+    "Name": "ギャザラースクリップ:橙貨",
+    "Description": "",
+    "LevelEquip": "1",
+    "ItemUICategory": "100",
+    "ItemSearchCategory": "0",
+    "IconUrl": "https://xivapi.com/i/065000/065109.png",
     "ItemSearchCategoryName": ""
   },
   {
@@ -31820,6 +31994,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025240.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "41784",
+          "Name": "クラフタースクリップ:橙貨",
+          "Amount": "15"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -32844,6 +33029,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/025000/025318.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -34045,6 +34241,27 @@
     "ItemSearchCategoryName": "手防具"
   },
   {
+    "ID": "30273",
+    "Name": "サベネアの霊鱗粉",
+    "Description": "近東の都市ラザハンで精製されたエーテル伝導率の高い粉末",
+    "LevelEquip": "1",
+    "ItemUICategory": "61",
+    "ItemSearchCategory": "0",
+    "IconUrl": "https://xivapi.com/i/022000/022650.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "250"
+        }
+      ]
+    },
+    "ItemSearchCategoryName": ""
+  },
+  {
     "ID": "23161",
     "Name": "スイ特産品部材の材料",
     "Description": "スイ特産品部材の材料",
@@ -34171,6 +34388,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/021000/021206.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "250"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -34520,6 +34748,17 @@
     "ItemUICategory": "51",
     "ItemSearchCategory": "50",
     "IconUrl": "https://xivapi.com/i/021000/021601.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "5"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "布材"
   },
   {
@@ -37432,6 +37671,17 @@
     "ItemUICategory": "52",
     "ItemSearchCategory": "51",
     "IconUrl": "https://xivapi.com/i/021000/021828.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "皮革材"
   },
   {
@@ -38352,6 +38602,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/020000/020661.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "48",
+          "Name": "アラガントームストーン:数理",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -40444,6 +40705,17 @@
     "ItemUICategory": "51",
     "ItemSearchCategory": "50",
     "IconUrl": "https://xivapi.com/i/020000/020905.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "7000"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "布材"
   },
   {
@@ -42682,6 +42954,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "0",
     "IconUrl": "https://xivapi.com/i/027000/027605.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "600"
+        }
+      ]
+    },
     "ItemSearchCategoryName": ""
   },
   {
@@ -44831,6 +45114,17 @@
     "ItemUICategory": "47",
     "ItemSearchCategory": "46",
     "IconUrl": "https://xivapi.com/i/029000/029203.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "水産物"
   },
   {
@@ -45810,6 +46104,22 @@
     "ItemUICategory": "51",
     "ItemSearchCategory": "50",
     "IconUrl": "https://xivapi.com/i/021000/021614.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "200"
+        },
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "200"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "布材"
   },
   {
@@ -46606,6 +46916,17 @@
     "ItemUICategory": "48",
     "ItemSearchCategory": "47",
     "IconUrl": "https://xivapi.com/i/021000/021202.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "2250"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "石材"
   },
   {
@@ -50473,6 +50794,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022691.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "125"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -53921,6 +54253,17 @@
     "ItemUICategory": "51",
     "ItemSearchCategory": "50",
     "IconUrl": "https://xivapi.com/i/021000/021652.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "布材"
   },
   {
@@ -55735,6 +56078,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/021000/021229.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -56915,6 +57269,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025158.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "41784",
+          "Name": "クラフタースクリップ:橙貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -59726,6 +60091,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/021000/021233.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -60888,6 +61264,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025252.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -62023,6 +62410,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/026000/026592.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -62656,6 +63054,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "0",
     "IconUrl": "https://xivapi.com/i/022000/022802.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "600"
+        }
+      ]
+    },
     "ItemSearchCategoryName": ""
   },
   {
@@ -64304,6 +64713,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022608.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -64403,6 +64823,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022614.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "2500"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -65204,6 +65635,17 @@
     "ItemUICategory": "51",
     "ItemSearchCategory": "50",
     "IconUrl": "https://xivapi.com/i/021000/021669.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "布材"
   },
   {
@@ -65382,6 +65824,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022643.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "450"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -67040,6 +67493,17 @@
     "ItemUICategory": "52",
     "ItemSearchCategory": "51",
     "IconUrl": "https://xivapi.com/i/021000/021830.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "皮革材"
   },
   {
@@ -67346,6 +67810,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/025000/025001.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -69944,6 +70419,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/025000/025452.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -73960,6 +74446,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022601.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -77384,6 +77881,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/027000/027605.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "15"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -77879,6 +78387,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025324.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -79877,6 +80396,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/021000/021462.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "48",
+          "Name": "アラガントームストーン:数理",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -81468,6 +81998,17 @@
     "ItemUICategory": "48",
     "ItemSearchCategory": "47",
     "IconUrl": "https://xivapi.com/i/021000/021241.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "石材"
   },
   {
@@ -81807,6 +82348,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/020000/020675.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -84481,6 +85033,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022210.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "48",
+          "Name": "アラガントームストーン:数理",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -87891,6 +88454,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025024.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "30"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -87990,6 +88564,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/021000/021233.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -88052,6 +88637,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022852.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -90824,6 +91420,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025159.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -93017,6 +93624,17 @@
     "ItemUICategory": "48",
     "ItemSearchCategory": "47",
     "IconUrl": "https://xivapi.com/i/021000/021460.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "石材"
   },
   {
@@ -95452,6 +96070,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/021000/021219.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -97272,6 +97901,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/024000/024452.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -98640,6 +99280,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/024000/024362.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "250"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -103532,6 +104183,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025205.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -103889,6 +104551,27 @@
       ]
     },
     "ItemSearchCategoryName": "胴防具"
+  },
+  {
+    "ID": "15840",
+    "Name": "硬霊性岩",
+    "Description": "霊極性を多分に含有する極めて硬い岩石",
+    "LevelEquip": "1",
+    "ItemUICategory": "48",
+    "ItemSearchCategory": "0",
+    "IconUrl": "https://xivapi.com/i/021000/021228.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "75"
+        }
+      ]
+    },
+    "ItemSearchCategoryName": ""
   },
   {
     "ID": "15527",
@@ -105531,6 +106214,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022654.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "48",
+          "Name": "アラガントームストーン:数理",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -105579,6 +106273,27 @@
       ]
     },
     "ItemSearchCategoryName": "手防具"
+  },
+  {
+    "ID": "16064",
+    "Name": "活性化クラスター",
+    "Description": "魔法により活性化した樹状結晶",
+    "LevelEquip": "1",
+    "ItemUICategory": "54",
+    "ItemSearchCategory": "0",
+    "IconUrl": "https://xivapi.com/i/020000/020027.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "40"
+        }
+      ]
+    },
+    "ItemSearchCategoryName": ""
   },
   {
     "ID": "10646",
@@ -105999,6 +106714,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025327.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -106813,6 +107539,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025320.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "5"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -109165,6 +109902,17 @@
     "ItemUICategory": "48",
     "ItemSearchCategory": "47",
     "IconUrl": "https://xivapi.com/i/021000/021485.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "48",
+          "Name": "アラガントームストーン:数理",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "石材"
   },
   {
@@ -109526,6 +110274,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022613.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -119102,6 +119861,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022638.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "200"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -120981,6 +121751,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/024000/024458.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -121097,6 +121878,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022638.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -121201,6 +121993,17 @@
     "ItemUICategory": "48",
     "ItemSearchCategory": "47",
     "IconUrl": "https://xivapi.com/i/021000/021479.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "48",
+          "Name": "アラガントームストーン:数理",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "石材"
   },
   {
@@ -121211,6 +122014,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/027000/027607.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "250"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -122445,6 +123259,17 @@
     "ItemUICategory": "47",
     "ItemSearchCategory": "46",
     "IconUrl": "https://xivapi.com/i/029000/029013.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "41784",
+          "Name": "クラフタースクリップ:橙貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "水産物"
   },
   {
@@ -123469,6 +124294,17 @@
     "ItemUICategory": "51",
     "ItemSearchCategory": "50",
     "IconUrl": "https://xivapi.com/i/021000/021655.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "1500"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "布材"
   },
   {
@@ -125521,6 +126357,17 @@
     "ItemUICategory": "52",
     "ItemSearchCategory": "51",
     "IconUrl": "https://xivapi.com/i/022000/022004.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "75"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "皮革材"
   },
   {
@@ -125761,6 +126608,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025152.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "41784",
+          "Name": "クラフタースクリップ:橙貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -132902,6 +133760,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/024000/024453.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "8"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -137814,6 +138683,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/021000/021236.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "41785",
+          "Name": "ギャザラースクリップ:橙貨",
+          "Amount": "200"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -143854,6 +144734,17 @@
     "ItemUICategory": "47",
     "ItemSearchCategory": "46",
     "IconUrl": "https://xivapi.com/i/029000/029804.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "水産物"
   },
   {
@@ -144653,6 +145544,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025311.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "41784",
+          "Name": "クラフタースクリップ:橙貨",
+          "Amount": "15"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -145736,6 +146638,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025154.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -147335,6 +148248,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025451.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "5"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -150375,6 +151299,27 @@
       ]
     },
     "ItemSearchCategoryName": "双剣"
+  },
+  {
+    "ID": "13586",
+    "Name": "謎めいた原石",
+    "Description": "正体不明の原石。珍品として好事家の間で取引されている",
+    "LevelEquip": "1",
+    "ItemUICategory": "61",
+    "ItemSearchCategory": "0",
+    "IconUrl": "https://xivapi.com/i/021000/021478.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "150"
+        }
+      ]
+    },
+    "ItemSearchCategoryName": ""
   },
   {
     "ID": "3499",
@@ -155881,6 +156826,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/021000/021235.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -156109,6 +157065,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025054.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "4"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -157325,6 +158292,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022650.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -159513,6 +160491,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/024000/024453.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "41784",
+          "Name": "クラフタースクリップ:橙貨",
+          "Amount": "15"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -161719,6 +162708,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/026000/026592.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -161828,6 +162828,17 @@
     "ItemUICategory": "49",
     "ItemSearchCategory": "48",
     "IconUrl": "https://xivapi.com/i/021000/021001.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "金属材"
   },
   {
@@ -163007,6 +164018,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022638.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "50"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -167433,6 +168455,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/021000/021006.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "1500"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -167539,6 +168572,17 @@
     "ItemUICategory": "83",
     "ItemSearchCategory": "57",
     "IconUrl": "https://xivapi.com/i/020000/020243.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "200"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "マテリア"
   },
   {
@@ -168744,6 +169788,17 @@
     "ItemUICategory": "51",
     "ItemSearchCategory": "50",
     "IconUrl": "https://xivapi.com/i/021000/021664.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "2250"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "布材"
   },
   {
@@ -171086,6 +172141,16 @@
     "ItemSearchCategoryName": ""
   },
   {
+    "ID": "33914",
+    "Name": "ギャザラースクリップ:紫貨",
+    "Description": "",
+    "LevelEquip": "1",
+    "ItemUICategory": "100",
+    "ItemSearchCategory": "0",
+    "IconUrl": "https://xivapi.com/i/065000/065087.png",
+    "ItemSearchCategoryName": ""
+  },
+  {
     "ID": "25031",
     "Name": "ポール・オブ・ゴッデス",
     "Description": "",
@@ -171254,6 +172319,22 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022649.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "200"
+        },
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "200"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -174932,6 +176013,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022677.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -175303,6 +176395,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/021000/021236.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -177143,6 +178246,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "0",
     "IconUrl": "https://xivapi.com/i/022000/022629.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "600"
+        }
+      ]
+    },
     "ItemSearchCategoryName": ""
   },
   {
@@ -179472,6 +180586,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/021000/021006.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -186713,6 +187838,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/021000/021229.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -190165,6 +191301,17 @@
     "ItemUICategory": "52",
     "ItemSearchCategory": "51",
     "IconUrl": "https://xivapi.com/i/021000/021815.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "皮革材"
   },
   {
@@ -196060,6 +197207,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "0",
     "IconUrl": "https://xivapi.com/i/022000/022201.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "600"
+        }
+      ]
+    },
     "ItemSearchCategoryName": ""
   },
   {
@@ -201103,6 +202261,17 @@
     "ItemUICategory": "48",
     "ItemSearchCategory": "47",
     "IconUrl": "https://xivapi.com/i/021000/021204.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "石材"
   },
   {
@@ -202978,6 +204147,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025977.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -204273,6 +205453,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025019.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -205410,6 +206601,17 @@
     "ItemUICategory": "48",
     "ItemSearchCategory": "47",
     "IconUrl": "https://xivapi.com/i/021000/021205.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "石材"
   },
   {
@@ -206138,6 +207340,17 @@
     "ItemUICategory": "49",
     "ItemSearchCategory": "48",
     "IconUrl": "https://xivapi.com/i/021000/021001.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "5"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "金属材"
   },
   {
@@ -206170,6 +207383,17 @@
     "ItemUICategory": "51",
     "ItemSearchCategory": "50",
     "IconUrl": "https://xivapi.com/i/021000/021668.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "48",
+          "Name": "アラガントームストーン:数理",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "布材"
   },
   {
@@ -207911,6 +209135,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/021000/021236.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -208331,6 +209566,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/024000/024458.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "41784",
+          "Name": "クラフタースクリップ:橙貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -210057,6 +211303,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025021.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "41784",
+          "Name": "クラフタースクリップ:橙貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -222774,6 +224031,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022670.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "48",
+          "Name": "アラガントームストーン:数理",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -224052,6 +225320,17 @@
     "ItemUICategory": "48",
     "ItemSearchCategory": "47",
     "IconUrl": "https://xivapi.com/i/022000/022648.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "1500"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "石材"
   },
   {
@@ -225674,6 +226953,17 @@
     "ItemUICategory": "51",
     "ItemSearchCategory": "50",
     "IconUrl": "https://xivapi.com/i/023000/023153.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "布材"
   },
   {
@@ -226027,6 +227317,17 @@
     "ItemUICategory": "51",
     "ItemSearchCategory": "0",
     "IconUrl": "https://xivapi.com/i/021000/021827.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "600"
+        }
+      ]
+    },
     "ItemSearchCategoryName": ""
   },
   {
@@ -227023,6 +228324,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025238.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "41784",
+          "Name": "クラフタースクリップ:橙貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -230036,6 +231348,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/025000/025354.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -230600,6 +231923,17 @@
     "ItemUICategory": "51",
     "ItemSearchCategory": "50",
     "IconUrl": "https://xivapi.com/i/021000/021663.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": ""
+        }
+      ]
+    },
     "ItemSearchCategoryName": "布材"
   },
   {
@@ -231901,6 +233235,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025055.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -233827,6 +235172,17 @@
     "ItemUICategory": "51",
     "ItemSearchCategory": "50",
     "IconUrl": "https://xivapi.com/i/021000/021669.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "50"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "布材"
   },
   {
@@ -234529,6 +235885,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025351.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -238450,6 +239817,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/021000/021246.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "41785",
+          "Name": "ギャザラースクリップ:橙貨",
+          "Amount": "100"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -243649,6 +245027,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025306.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -244993,6 +246382,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025208.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -245490,6 +246890,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025326.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -249861,6 +251272,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022653.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "50"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -252129,6 +253551,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/021000/021246.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "30"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -253187,6 +254620,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/027000/027612.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "200"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -254730,6 +256174,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025320.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -256348,6 +257803,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025006.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "5"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -256617,6 +258083,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025210.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -256716,6 +258193,17 @@
     "ItemUICategory": "52",
     "ItemSearchCategory": "51",
     "IconUrl": "https://xivapi.com/i/021000/021825.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "1500"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "皮革材"
   },
   {
@@ -257235,6 +258723,17 @@
     "ItemUICategory": "48",
     "ItemSearchCategory": "47",
     "IconUrl": "https://xivapi.com/i/022000/022648.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "200"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "石材"
   },
   {
@@ -257909,6 +259408,16 @@
       ]
     },
     "ItemSearchCategoryName": "足防具"
+  },
+  {
+    "ID": "48",
+    "Name": "アラガントームストーン:数理",
+    "Description": "古代アラグ帝国文明の記録媒体と思しき石。数理について記されているらしい",
+    "LevelEquip": "1",
+    "ItemUICategory": "63",
+    "ItemSearchCategory": "0",
+    "IconUrl": "https://xivapi.com/i/065000/065122.png",
+    "ItemSearchCategoryName": ""
   },
   {
     "ID": "23178",
@@ -260198,6 +261707,17 @@
     "ItemUICategory": "48",
     "ItemSearchCategory": "47",
     "IconUrl": "https://xivapi.com/i/021000/021208.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "石材"
   },
   {
@@ -260958,6 +262478,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025312.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "41784",
+          "Name": "クラフタースクリップ:橙貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -262977,6 +264508,27 @@
     "ItemSearchCategoryName": "食材"
   },
   {
+    "ID": "6267",
+    "Name": "ラザハン焼入油",
+    "Description": "近東の都市「ラザハン」で作られた焼入油",
+    "LevelEquip": "1",
+    "ItemUICategory": "54",
+    "ItemSearchCategory": "0",
+    "IconUrl": "https://xivapi.com/i/022000/022636.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "15"
+        }
+      ]
+    },
+    "ItemSearchCategoryName": ""
+  },
+  {
     "ID": "34402",
     "Name": "サイガ・ディフェンダーアームガード",
     "Description": "",
@@ -263691,6 +265243,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/025000/025001.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -266185,6 +267748,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022668.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "5"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -266539,6 +268113,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022802.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -270691,6 +272276,17 @@
     "ItemUICategory": "83",
     "ItemSearchCategory": "57",
     "IconUrl": "https://xivapi.com/i/021000/021262.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "25"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "マテリア"
   },
   {
@@ -273062,6 +274658,17 @@
     "ItemUICategory": "50",
     "ItemSearchCategory": "49",
     "IconUrl": "https://xivapi.com/i/022000/022413.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "木材"
   },
   {
@@ -273885,6 +275492,17 @@
     "ItemUICategory": "48",
     "ItemSearchCategory": "0",
     "IconUrl": "https://xivapi.com/i/021000/021275.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "600"
+        }
+      ]
+    },
     "ItemSearchCategoryName": ""
   },
   {
@@ -284498,6 +286116,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025358.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -285241,6 +286870,27 @@
       ]
     },
     "ItemSearchCategoryName": "調度品(椅子・寝台)"
+  },
+  {
+    "ID": "6268",
+    "Name": "サベネアの霊薬",
+    "Description": "近東のサベネア島で作られた疑似魂を凝縮した霊薬",
+    "LevelEquip": "1",
+    "ItemUICategory": "54",
+    "ItemSearchCategory": "0",
+    "IconUrl": "https://xivapi.com/i/020000/020661.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "20"
+        }
+      ]
+    },
+    "ItemSearchCategoryName": ""
   },
   {
     "ID": "38846",
@@ -294041,6 +295691,17 @@
     "ItemUICategory": "48",
     "ItemSearchCategory": "47",
     "IconUrl": "https://xivapi.com/i/021000/021223.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "石材"
   },
   {
@@ -294296,6 +295957,22 @@
     "ItemUICategory": "51",
     "ItemSearchCategory": "50",
     "IconUrl": "https://xivapi.com/i/021000/021667.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "200"
+        },
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "200"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "布材"
   },
   {
@@ -303676,6 +305353,17 @@
     "ItemUICategory": "47",
     "ItemSearchCategory": "46",
     "IconUrl": "https://xivapi.com/i/029000/029729.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "40"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "水産物"
   },
   {
@@ -308618,6 +310306,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022638.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "50"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -308737,6 +310436,17 @@
     "ItemUICategory": "47",
     "ItemSearchCategory": "46",
     "IconUrl": "https://xivapi.com/i/029000/029316.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "水産物"
   },
   {
@@ -311157,6 +312867,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/025000/025156.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "200"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -312359,6 +314080,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025207.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -312411,6 +314143,17 @@
     "ItemUICategory": "52",
     "ItemSearchCategory": "51",
     "IconUrl": "https://xivapi.com/i/021000/021810.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "皮革材"
   },
   {
@@ -312641,6 +314384,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022673.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -316307,6 +318061,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/021000/021234.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "41785",
+          "Name": "ギャザラースクリップ:橙貨",
+          "Amount": "200"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -320202,6 +321967,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025159.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -320588,6 +322364,17 @@
     "ItemUICategory": "47",
     "ItemSearchCategory": "46",
     "IconUrl": "https://xivapi.com/i/029000/029225.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "水産物"
   },
   {
@@ -321416,6 +323203,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025209.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -322878,6 +324676,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022852.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -324030,6 +325839,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025221.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "30"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -325397,6 +327217,17 @@
     "ItemUICategory": "48",
     "ItemSearchCategory": "47",
     "IconUrl": "https://xivapi.com/i/021000/021470.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "200"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "石材"
   },
   {
@@ -325842,6 +327673,17 @@
     "ItemUICategory": "51",
     "ItemSearchCategory": "50",
     "IconUrl": "https://xivapi.com/i/021000/021652.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "布材"
   },
   {
@@ -328013,6 +329855,17 @@
     "ItemUICategory": "47",
     "ItemSearchCategory": "46",
     "IconUrl": "https://xivapi.com/i/029000/029307.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "41784",
+          "Name": "クラフタースクリップ:橙貨",
+          "Amount": "15"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "水産物"
   },
   {
@@ -337130,6 +338983,17 @@
     "ItemUICategory": "48",
     "ItemSearchCategory": "47",
     "IconUrl": "https://xivapi.com/i/021000/021204.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "石材"
   },
   {
@@ -337291,6 +339155,17 @@
     "ItemUICategory": "51",
     "ItemSearchCategory": "50",
     "IconUrl": "https://xivapi.com/i/021000/021801.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "布材"
   },
   {
@@ -339188,6 +341063,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022643.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "2250"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -340610,6 +342496,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025919.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "250"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -345528,6 +347425,27 @@
     "ItemSearchCategoryName": "頭防具"
   },
   {
+    "ID": "13740",
+    "Name": "ゴールドスミスクラブ",
+    "Description": "ディアデム諸島の水辺に棲息する淡水性の甲殻類",
+    "LevelEquip": "1",
+    "ItemUICategory": "47",
+    "ItemSearchCategory": "46",
+    "IconUrl": "https://xivapi.com/i/029000/029420.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "5"
+        }
+      ]
+    },
+    "ItemSearchCategoryName": "水産物"
+  },
+  {
     "ID": "5580",
     "Name": "絹布靴下(ヴァンヤ)",
     "Description": "山繭絹布の靴下生地",
@@ -348314,6 +350232,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022638.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "200"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -354607,6 +356536,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022666.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "100"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -355119,6 +357059,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022669.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "125"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -356130,6 +358081,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025057.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -358560,6 +360522,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/021000/021238.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -362307,6 +364280,17 @@
     "ItemUICategory": "51",
     "ItemSearchCategory": "50",
     "IconUrl": "https://xivapi.com/i/021000/021908.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "200"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "布材"
   },
   {
@@ -363717,6 +365701,17 @@
     "ItemUICategory": "52",
     "ItemSearchCategory": "51",
     "IconUrl": "https://xivapi.com/i/021000/021825.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "48",
+          "Name": "アラガントームストーン:数理",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "皮革材"
   },
   {
@@ -370428,6 +372423,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022648.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "6"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -373573,6 +375579,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/021000/021462.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "200"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -378158,6 +380175,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025152.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -379591,6 +381619,32 @@
       ]
     },
     "ItemSearchCategoryName": "調度品(椅子・寝台)"
+  },
+  {
+    "ID": "16933",
+    "Name": "謎めいた結晶",
+    "Description": "正体不明の結晶。どうやら半結晶物質のようだ",
+    "LevelEquip": "1",
+    "ItemUICategory": "54",
+    "ItemSearchCategory": "0",
+    "IconUrl": "https://xivapi.com/i/021000/021230.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "4000"
+        },
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "100"
+        }
+      ]
+    },
+    "ItemSearchCategoryName": ""
   },
   {
     "ID": "26496",
@@ -381047,6 +383101,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025102.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -381834,6 +383899,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025947.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "8"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -385910,6 +387986,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/020000/020674.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "48",
+          "Name": "アラガントームストーン:数理",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -389335,6 +391422,17 @@
     "ItemUICategory": "52",
     "ItemSearchCategory": "51",
     "IconUrl": "https://xivapi.com/i/021000/021820.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "48",
+          "Name": "アラガントームストーン:数理",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "皮革材"
   },
   {
@@ -390413,6 +392511,17 @@
     "ItemUICategory": "52",
     "ItemSearchCategory": "51",
     "IconUrl": "https://xivapi.com/i/021000/021814.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "48",
+          "Name": "アラガントームストーン:数理",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "皮革材"
   },
   {
@@ -390423,6 +392532,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025219.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -392787,6 +394907,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025227.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "41784",
+          "Name": "クラフタースクリップ:橙貨",
+          "Amount": "15"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -394639,6 +396770,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025021.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -394738,6 +396880,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/021000/021248.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "41785",
+          "Name": "ギャザラースクリップ:橙貨",
+          "Amount": "300"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -395015,6 +397168,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022636.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "48",
+          "Name": "アラガントームストーン:数理",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -397888,6 +400052,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022687.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -398425,6 +400600,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022695.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "250"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -400682,6 +402868,17 @@
     "ItemUICategory": "52",
     "ItemSearchCategory": "51",
     "IconUrl": "https://xivapi.com/i/021000/021814.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "皮革材"
   },
   {
@@ -402522,6 +404719,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022802.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "48",
+          "Name": "アラガントームストーン:数理",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -408589,6 +410797,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025356.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -408928,6 +411147,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/024000/024362.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -411059,6 +413289,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/021000/021229.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "41785",
+          "Name": "ギャザラースクリップ:橙貨",
+          "Amount": "200"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -414653,6 +416894,17 @@
     "ItemUICategory": "48",
     "ItemSearchCategory": "47",
     "IconUrl": "https://xivapi.com/i/021000/021001.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "石材"
   },
   {
@@ -414873,6 +417125,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/021000/021462.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -417427,6 +419690,17 @@
     "ItemUICategory": "51",
     "ItemSearchCategory": "50",
     "IconUrl": "https://xivapi.com/i/021000/021608.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "75"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "布材"
   },
   {
@@ -418199,6 +420473,17 @@
     "ItemUICategory": "52",
     "ItemSearchCategory": "51",
     "IconUrl": "https://xivapi.com/i/021000/021821.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "皮革材"
   },
   {
@@ -425276,6 +427561,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/020000/020661.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "200"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -429486,6 +431782,17 @@
     "ItemUICategory": "50",
     "ItemSearchCategory": "49",
     "IconUrl": "https://xivapi.com/i/022000/022402.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "1500"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "木材"
   },
   {
@@ -430592,6 +432899,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025152.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -431359,6 +433677,17 @@
     "ItemUICategory": "51",
     "ItemSearchCategory": "50",
     "IconUrl": "https://xivapi.com/i/021000/021601.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "布材"
   },
   {
@@ -433301,6 +435630,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022210.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -435964,6 +438304,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025235.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -440014,6 +442365,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/026000/026109.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -440657,6 +443019,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025046.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "41784",
+          "Name": "クラフタースクリップ:橙貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -442749,6 +445122,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022689.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -442823,6 +445207,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/024000/024458.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "8"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -443890,6 +446285,17 @@
     "ItemUICategory": "47",
     "ItemSearchCategory": "46",
     "IconUrl": "https://xivapi.com/i/029000/029302.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "水産物"
   },
   {
@@ -445262,6 +447668,17 @@
     "ItemUICategory": "83",
     "ItemSearchCategory": "57",
     "IconUrl": "https://xivapi.com/i/021000/021285.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "800"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "マテリア"
   },
   {
@@ -445776,6 +448193,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/021000/021234.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -447888,6 +450316,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022603.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "500"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -448497,6 +450936,17 @@
     "ItemUICategory": "51",
     "ItemSearchCategory": "50",
     "IconUrl": "https://xivapi.com/i/021000/021607.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "布材"
   },
   {
@@ -449970,6 +452420,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/021000/021462.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -450793,6 +453254,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022667.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "125"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -451968,6 +454440,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/021000/021220.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -454631,6 +457114,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "0",
     "IconUrl": "https://xivapi.com/i/022000/022637.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "600"
+        }
+      ]
+    },
     "ItemSearchCategoryName": ""
   },
   {
@@ -455150,6 +457644,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/021000/021234.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -457060,7 +459565,28 @@
     "ItemUICategory": "52",
     "ItemSearchCategory": "51",
     "IconUrl": "https://xivapi.com/i/021000/021811.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "皮革材"
+  },
+  {
+    "ID": "28",
+    "Name": "アラガントームストーン:詩学",
+    "Description": "古代アラグ帝国文明の記録媒体と思しき石。詩学について記されているらしい",
+    "LevelEquip": "1",
+    "ItemUICategory": "63",
+    "ItemSearchCategory": "0",
+    "IconUrl": "https://xivapi.com/i/065000/065023.png",
+    "ItemSearchCategoryName": ""
   },
   {
     "ID": "27858",
@@ -463701,6 +466227,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022648.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "50"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -467154,6 +469691,17 @@
     "ItemUICategory": "51",
     "ItemSearchCategory": "50",
     "IconUrl": "https://xivapi.com/i/021000/021656.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "布材"
   },
   {
@@ -467495,6 +470043,17 @@
     "ItemUICategory": "52",
     "ItemSearchCategory": "51",
     "IconUrl": "https://xivapi.com/i/021000/021808.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "5"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "皮革材"
   },
   {
@@ -470130,6 +472689,22 @@
     "ItemUICategory": "51",
     "ItemSearchCategory": "50",
     "IconUrl": "https://xivapi.com/i/021000/021606.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "200"
+        },
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "200"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "布材"
   },
   {
@@ -472542,6 +475117,27 @@
       ]
     },
     "ItemSearchCategoryName": "調理道具"
+  },
+  {
+    "ID": "13584",
+    "Name": "謎めいた貝殻",
+    "Description": "正体不明の貝殻。珍品として好事家の間で取引されている",
+    "LevelEquip": "1",
+    "ItemUICategory": "61",
+    "ItemSearchCategory": "0",
+    "IconUrl": "https://xivapi.com/i/022000/022263.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "150"
+        }
+      ]
+    },
+    "ItemSearchCategoryName": ""
   },
   {
     "ID": "8667",
@@ -475877,6 +478473,27 @@
     "ItemSearchCategoryName": "調度品(一般)"
   },
   {
+    "ID": "13582",
+    "Name": "謎めいた骨片",
+    "Description": "正体不明の骨片。珍品として好事家の間で取引されている",
+    "LevelEquip": "1",
+    "ItemUICategory": "61",
+    "ItemSearchCategory": "0",
+    "IconUrl": "https://xivapi.com/i/022000/022216.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "150"
+        }
+      ]
+    },
+    "ItemSearchCategoryName": ""
+  },
+  {
     "ID": "3666",
     "Name": "ボアリングバンド(ウォーター)",
     "Description": "",
@@ -476895,6 +479512,17 @@
     "ItemUICategory": "47",
     "ItemSearchCategory": "46",
     "IconUrl": "https://xivapi.com/i/029000/029044.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "水産物"
   },
   {
@@ -479364,6 +481992,27 @@
       ]
     },
     "ItemSearchCategoryName": "頭防具"
+  },
+  {
+    "ID": "14899",
+    "Name": "アラグの絶霊油",
+    "Description": "古代アラグ帝国が編み出した魔科学の産物。塗布することでエーテル伝導率を下げる効果がある",
+    "LevelEquip": "1",
+    "ItemUICategory": "61",
+    "ItemSearchCategory": "0",
+    "IconUrl": "https://xivapi.com/i/027000/027617.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "350"
+        }
+      ]
+    },
+    "ItemSearchCategoryName": ""
   },
   {
     "ID": "22737",
@@ -487064,6 +489713,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022607.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "2300"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -487351,6 +490011,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022701.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "41784",
+          "Name": "クラフタースクリップ:橙貨",
+          "Amount": "125"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -488296,6 +490967,27 @@
       ]
     },
     "ItemSearchCategoryName": "庭具"
+  },
+  {
+    "ID": "7885",
+    "Name": "ハイエンチャントインク",
+    "Description": "近東から輸入されたエーテル伝導率が極めて高いインク",
+    "LevelEquip": "1",
+    "ItemUICategory": "54",
+    "ItemSearchCategory": "0",
+    "IconUrl": "https://xivapi.com/i/025000/025923.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "25"
+        }
+      ]
+    },
+    "ItemSearchCategoryName": ""
   },
   {
     "ID": "5360",
@@ -490566,6 +493258,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025919.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "41784",
+          "Name": "クラフタースクリップ:橙貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -490828,6 +493531,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022663.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "48",
+          "Name": "アラガントームストーン:数理",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -492864,6 +495578,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/027000/027602.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "15"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -494253,6 +496978,17 @@
     "ItemUICategory": "47",
     "ItemSearchCategory": "46",
     "IconUrl": "https://xivapi.com/i/022000/022253.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "水産物"
   },
   {
@@ -494923,6 +497659,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022652.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "5"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -495324,6 +498071,17 @@
     "ItemUICategory": "47",
     "ItemSearchCategory": "46",
     "IconUrl": "https://xivapi.com/i/029000/029724.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33914",
+          "Name": "ギャザラースクリップ:紫貨",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "水産物"
   },
   {
@@ -495777,6 +498535,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022656.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "5"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -497337,6 +500106,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022654.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -497389,6 +500169,17 @@
     "ItemUICategory": "48",
     "ItemSearchCategory": "0",
     "IconUrl": "https://xivapi.com/i/021000/021470.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "600"
+        }
+      ]
+    },
     "ItemSearchCategoryName": ""
   },
   {
@@ -502434,6 +505225,17 @@
     "ItemUICategory": "52",
     "ItemSearchCategory": "51",
     "IconUrl": "https://xivapi.com/i/021000/021815.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "皮革材"
   },
   {
@@ -504496,6 +507298,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025159.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "33913",
+          "Name": "クラフタースクリップ:紫貨",
+          "Amount": "5"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -504747,6 +507560,16 @@
       ]
     },
     "ItemSearchCategoryName": "槍"
+  },
+  {
+    "ID": "41784",
+    "Name": "クラフタースクリップ:橙貨",
+    "Description": "",
+    "LevelEquip": "1",
+    "ItemUICategory": "100",
+    "ItemSearchCategory": "0",
+    "IconUrl": "https://xivapi.com/i/065000/065110.png",
+    "ItemSearchCategoryName": ""
   },
   {
     "ID": "31858",
@@ -505511,6 +508334,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022648.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "48",
+          "Name": "アラガントームストーン:数理",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -505956,6 +508790,17 @@
     "ItemUICategory": "54",
     "ItemSearchCategory": "53",
     "IconUrl": "https://xivapi.com/i/022000/022606.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "20"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "錬金術材"
   },
   {
@@ -506574,6 +509419,17 @@
     "ItemUICategory": "51",
     "ItemSearchCategory": "50",
     "IconUrl": "https://xivapi.com/i/021000/021655.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "布材"
   },
   {
@@ -506987,6 +509843,17 @@
     "ItemUICategory": "45",
     "ItemSearchCategory": "44",
     "IconUrl": "https://xivapi.com/i/025000/025314.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "0",
+          "Name": "軍票",
+          "Amount": "30"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "食材"
   },
   {
@@ -508223,6 +511090,17 @@
     "ItemUICategory": "48",
     "ItemSearchCategory": "47",
     "IconUrl": "https://xivapi.com/i/021000/021245.png",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "28",
+          "Name": "アラガントームストーン:詩学",
+          "Amount": "10"
+        }
+      ]
+    },
     "ItemSearchCategoryName": "石材"
   },
   {
