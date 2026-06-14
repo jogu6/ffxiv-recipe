@@ -1,6 +1,6 @@
 // ===== キャッシュバージョン =====
 // データを更新したときはここの番号を上げてください
-const CACHE_VERSION = 'ff14recipe-v1.15';
+const CACHE_VERSION = 'ff14recipe-v1.2';
 
 // ===== キャッシュ対象のリソース種別 =====
 const CACHE_FIRST_PATTERNS = [

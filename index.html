@@ -1,3 +1,6 @@
+了解です。
+
+```html
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -130,6 +133,18 @@
     cursor: default;
     border-bottom: 1px solid rgba(58,58,58,0.4);
   }
+  li.tips-li {
+    display: block;
+    cursor: default;
+    padding: 10px 14px;
+    background: none;
+  }
+  li.tips-li:hover { background: none; }
+  .tips-row-mobile {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 2;
+  }
 
   .panel-right { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
   .result-header {
@@ -186,7 +201,6 @@
 
   #treeContainer { flex: 1; overflow: auto; padding: 10px 14px; }
 
-  /* Tips */
   .tips-msg {
     padding: 16px 20px;
     display: flex;
@@ -214,19 +228,21 @@
   .node-name { font-size: 14px; }
   .node-qty { font-size: 13px; color: var(--accent); }
 
-  /* 余剰・制作回数 2行グリッド */
   .node-sub-info {
-    display: inline-grid;
-    grid-template-columns: auto 1fr;
-    gap: 0 4px;
-    font-size: 12px;
+    display: flex;
+    flex-direction: column;
+    font-size: 11px;
     line-height: 1.5;
-    vertical-align: middle;
     flex-shrink: 0;
   }
+  .node-sub-row {
+    display: flex;
+    align-items: baseline;
+    gap: 2px;
+  }
   .node-sub-num {
-    color: var(--text);
-    text-align: right;
+    color: var(--surplus);
+    font-size: 11px;
     white-space: nowrap;
   }
   .node-sub-label {
@@ -235,12 +251,29 @@
   }
 
   .badge { font-size: 10px; padding: 1px 5px; border-radius: 3px; font-weight: bold; flex-shrink: 0; }
-  .badge-craft  { background: #3a2e10; color: var(--craft); }
-  .badge-gather { background: #102030; color: var(--gather); }
-  .badge-hunt   { background: #301010; color: var(--hunt); }
-  .badge-buy    { background: #201030; color: var(--buy); }
+  .badge-craft    { background: #3a2e10; color: var(--craft); }
+  .badge-gather   { background: #102030; color: var(--gather); }
+  .badge-hunt     { background: #301010; color: var(--hunt); }
+  .badge-buy      { background: #201030; color: var(--buy); }
+  .badge-exchange { background: #102020; color: #5bd5c8; }
   .node-children { padding-left: 20px; }
   .node-children.collapsed { display: none; }
+
+  .or-divider {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 4px;
+    color: var(--muted);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .or-divider::before,
+  .or-divider::after {
+    content: '';
+    flex: 1;
+    border-top: 1px solid var(--border);
+  }
 
   .pin-btn {
     font-size: 16px;
@@ -309,7 +342,12 @@
     width: 90%;
     text-align: center;
   }
-  #confirmMsg { font-size: 14px; margin-bottom: 16px; line-height: 1.6; }
+  #confirmMsg {
+    font-size: 14px;
+    margin-bottom: 16px;
+    line-height: 1.8;
+    white-space: pre-line;
+  }
   .confirm-btns { display: flex; gap: 10px; justify-content: center; }
   .confirm-btn {
     padding: 6px 20px;
@@ -369,11 +407,7 @@
       <span id="resultTitle"></span>
     </div>
     <div id="treeContainer">
-      <div class="tips-msg" id="tipsMsg">
-        <div class="tips-row">📌 ピンでお気に入り登録</div>
-        <div class="tips-row">あ〜英 で行絞り込み</div>
-        <div class="tips-row">検索欄でアイテム名検索</div>
-      </div>
+      <div class="tips-msg" id="tipsMsg"></div>
     </div>
   </div>
 </div>
@@ -391,12 +425,14 @@
 
 <script>
 const DATA_FILE = './data/Item.json';
+const TIPS_FILE = './data/tips.json';
 const isMobile = () => window.innerWidth <= 600;
 const LS_FAV = 'ff14_favorites';
 
 const CRAFT_TYPE_NAME = {
   '0': '木工師', '1': '鍛冶師', '2': '甲冑師', '3': '彫金師',
-  '4': '革細工師', '5': '裁縫師', '6': '錬金術師', '7': '調理師'
+  '4': '革細工師', '5': '裁縫師', '6': '錬金術師', '7': '調理師',
+  '8': '交換'
 };
 const CRAFT_JOBS_SET = new Set(['木工師','鍛冶師','甲冑師','彫金師','革細工師','裁縫師','錬金術師','調理師']);
 
@@ -406,12 +442,12 @@ const KANA_GROUPS = [
   { label: 'さ', chars: ['さ','し','す','せ','そ','ざ','じ','ず','ぜ','ぞ'] },
   { label: 'た', chars: ['た','ち','つ','て','と','だ','ぢ','づ','で','ど'] },
   { label: 'な', chars: ['な','に','ぬ','ね','の'] },
+  { label: '英', chars: null },
   { label: 'は', chars: ['は','ひ','ふ','へ','ほ','ば','び','ぶ','べ','ぼ','ぱ','ぴ','ぷ','ぺ','ぽ'] },
   { label: 'ま', chars: ['ま','み','む','め','も'] },
   { label: 'や', chars: ['や','ゆ','よ'] },
   { label: 'ら', chars: ['ら','り','る','れ','ろ'] },
   { label: 'わ', chars: ['わ','を','ん'] },
-  { label: '英', chars: null },
 ];
 
 let itemMaster = {};
@@ -419,9 +455,9 @@ let recipes = {};
 let recipeNames = [];
 let selectedRecipe = null;
 let favorites = new Set();
+let tipsData = [];
 
-// モード管理
-let listMode = 'none'; // 'none' | 'kana' | 'search' | 'fav'
+let listMode = 'none';
 let activeKanaGroup = null;
 let activeKanaBtn = null;
 
@@ -472,7 +508,7 @@ function pinOn(name) {
 }
 
 function pinOff(name) {
-  showConfirm(`「${name}」をお気に入りから削除しますか？`, () => {
+  showConfirm(`「${name}」を\nお気に入りから削除しますか？`, () => {
     favorites.delete(name);
     saveFavorites();
     refreshPins(name);
@@ -504,7 +540,6 @@ function clearKanaActive() {
   activeKanaGroup = null;
 }
 
-// 五十音ボタン押下（Off処理なし、常に切り替え）
 function onKana(group, btn) {
   clearKanaActive();
   document.getElementById('searchBox').value = '';
@@ -524,7 +559,6 @@ function onSearch() {
   renderList();
 }
 
-// お気に入りトグル（Off処理なし、常にfavモードへ）
 function toggleFav() {
   const btn = document.getElementById('favKanaBtn');
   clearKanaActive();
@@ -551,10 +585,37 @@ function getDisplayList() {
   }
 }
 
+function renderTips() {
+  const msg = document.getElementById('tipsMsg');
+  if (!msg) return;
+  msg.innerHTML = '';
+  tipsData.forEach(text => {
+    const row = document.createElement('div');
+    row.className = 'tips-row';
+    row.textContent = text;
+    msg.appendChild(row);
+  });
+}
+
 function renderList() {
   const ul = document.getElementById('recipeList');
   const frag = document.createDocumentFragment();
   const names = getDisplayList();
+
+  if (isMobile() && listMode === 'none') {
+    const li = document.createElement('li');
+    li.className = 'tips-li';
+    tipsData.forEach(text => {
+      const row = document.createElement('div');
+      row.className = 'tips-row-mobile';
+      row.textContent = text;
+      li.appendChild(row);
+    });
+    frag.appendChild(li);
+    ul.innerHTML = '';
+    ul.appendChild(frag);
+    return;
+  }
 
   if (listMode === 'fav' && favorites.size === 0) {
     const li = document.createElement('li');
@@ -657,6 +718,14 @@ async function init() {
   loadFavorites();
 
   try {
+    tipsData = await fetch(TIPS_FILE).then(r => r.ok ? r.json() : []);
+  } catch(e) {
+    tipsData = ['📌 ピンでお気に入り登録', 'あ〜英 で行絞り込み', '検索欄でアイテム名検索'];
+  }
+
+  if (!isMobile()) renderTips();
+
+  try {
     const rawList = await fetch(DATA_FILE).then(r => {
       if (!r.ok) throw new Error(`Item.json が見つかりません (${r.status})`);
       return r.json();
@@ -678,9 +747,10 @@ async function init() {
 
       if (r && r.CraftType !== undefined) {
         const jobName = CRAFT_TYPE_NAME[r.CraftType] || 'クラフト';
-        itemMaster[name] = { method: jobName, icon: iconPath(item.IconUrl) };
+        itemMaster[name] = { method: jobName, icon: iconPath(item.IconUrl), craftType: String(r.CraftType) };
         recipes[name] = {
           yield: parseInt(r.AmountResult, 10) || 1,
+          craftType: String(r.CraftType),
           ingredients: r.Ingredients.map(ing => ({
             name: ing.Name,
             qty: parseInt(ing.Amount, 10) || 1,
@@ -689,7 +759,7 @@ async function init() {
         };
       } else {
         if (!itemMaster[name]) {
-          itemMaster[name] = { method: '', icon: iconPath(item.IconUrl) };
+          itemMaster[name] = { method: '', icon: iconPath(item.IconUrl), craftType: '' };
         }
       }
     });
@@ -699,7 +769,7 @@ async function init() {
       item.Recipe.Ingredients.forEach(ing => {
         if (!itemMaster[ing.Name]) {
           const ref = idToItem[ing.ItemID];
-          itemMaster[ing.Name] = { method: '', icon: ref ? iconPath(ref.IconUrl) : '' };
+          itemMaster[ing.Name] = { method: '', icon: ref ? iconPath(ref.IconUrl) : '', craftType: '' };
         }
       });
     });
@@ -791,7 +861,6 @@ function changeCount(delta) {
 
 function renderTree() {
   const container = document.getElementById('treeContainer');
-  // Tips消去（初回のみ）
   const tips = document.getElementById('tipsMsg');
   if (tips) tips.remove();
 
@@ -811,9 +880,10 @@ function calcProduced(name, needed) {
 }
 
 function buildNode(name, neededQty, producedQty, depth) {
-  const master = itemMaster[name] || { method: '', icon: '' };
+  const master = itemMaster[name] || { method: '', icon: '', craftType: '' };
   const surplus = producedQty - neededQty;
   const hasChildren = !!recipes[name];
+  const isExchange = hasChildren && recipes[name].craftType === '8';
 
   const div = document.createElement('div');
   div.className = 'tree-node';
@@ -865,34 +935,47 @@ function buildNode(name, neededQty, producedQty, depth) {
   qtyEl.className = 'node-qty';
   qtyEl.textContent = `× ${producedQty}`;
 
-  // 余剰・制作回数 2行グリッド
+  row.append(nameEl, qtyEl);
+
+  // 余剰・制作回数
   const hasSurplus = surplus > 0;
   const times = hasChildren ? Math.ceil(neededQty / recipes[name].yield) : 0;
   const hasCraft = times >= 2;
-
-  row.append(nameEl, qtyEl);
 
   if (hasSurplus || hasCraft) {
     const subInfo = document.createElement('span');
     subInfo.className = 'node-sub-info';
 
     if (hasSurplus) {
+      const subRow = document.createElement('span');
+      subRow.className = 'node-sub-row';
+      const pre = document.createElement('span');
+      pre.className = 'node-sub-label';
+      pre.textContent = '(↩';
       const num = document.createElement('span');
       num.className = 'node-sub-num';
       num.textContent = ` ${surplus} `;
-      const label = document.createElement('span');
-      label.className = 'node-sub-label';
-      label.textContent = '個余り';
-      subInfo.append(num, label);
+      const suf = document.createElement('span');
+      suf.className = 'node-sub-label';
+      suf.textContent = '個余り)';
+      subRow.append(pre, num, suf);
+      subInfo.appendChild(subRow);
     }
+
     if (hasCraft) {
+      const subRow = document.createElement('span');
+      subRow.className = 'node-sub-row';
+      const pre = document.createElement('span');
+      pre.className = 'node-sub-label';
+      pre.textContent = '(🔨';
       const num = document.createElement('span');
       num.className = 'node-sub-num';
       num.textContent = ` ${times} `;
-      const label = document.createElement('span');
-      label.className = 'node-sub-label';
-      label.textContent = '回制作';
-      subInfo.append(num, label);
+      const suf = document.createElement('span');
+      suf.className = 'node-sub-label';
+      suf.textContent = '回制作)';
+      subRow.append(pre, num, suf);
+      subInfo.appendChild(subRow);
     }
 
     row.appendChild(subInfo);
@@ -904,11 +987,27 @@ function buildNode(name, neededQty, producedQty, depth) {
     const children = document.createElement('div');
     children.className = 'node-children';
     const r = recipes[name];
-    r.ingredients.forEach(ing => {
-      const subNeeded = ing.qty * Math.ceil(producedQty / r.yield);
-      const subProduced = calcProduced(ing.name, subNeeded);
-      children.appendChild(buildNode(ing.name, subNeeded, subProduced, depth + 1));
-    });
+
+    if (isExchange) {
+      r.ingredients.forEach((ing, idx) => {
+        if (idx > 0) {
+          const orDiv = document.createElement('div');
+          orDiv.className = 'or-divider';
+          orDiv.textContent = 'もしくは';
+          children.appendChild(orDiv);
+        }
+        const subNeeded = ing.qty * Math.ceil(producedQty / r.yield);
+        const subProduced = calcProduced(ing.name, subNeeded);
+        children.appendChild(buildNode(ing.name, subNeeded, subProduced, depth + 1));
+      });
+    } else {
+      r.ingredients.forEach(ing => {
+        const subNeeded = ing.qty * Math.ceil(producedQty / r.yield);
+        const subProduced = calcProduced(ing.name, subNeeded);
+        children.appendChild(buildNode(ing.name, subNeeded, subProduced, depth + 1));
+      });
+    }
+
     div.appendChild(children);
     row.onclick = () => {
       const collapsed = children.classList.toggle('collapsed');
@@ -921,7 +1020,9 @@ function buildNode(name, neededQty, producedQty, depth) {
 
 function methodBadgeClass(method) {
   if (!method) return 'badge-gather';
-  return CRAFT_JOBS_SET.has(method) ? 'badge-craft' : 'badge-gather';
+  if (CRAFT_JOBS_SET.has(method)) return 'badge-craft';
+  if (method === '交換') return 'badge-exchange';
+  return 'badge-gather';
 }
 
 function openPopup() {
@@ -958,3 +1059,4 @@ if ('serviceWorker' in navigator) {
 </script>
 </body>
 </html>
+```
