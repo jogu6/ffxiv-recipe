@@ -75,16 +75,34 @@
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
   }
+  .search-wrap { position: relative; }
   #searchBox {
     background: var(--bg);
     border: 1px solid var(--border);
     color: var(--text);
-    padding: 5px 8px;
+    padding: 5px 30px 5px 8px;
     border-radius: 3px;
     font-size: 13px;
     width: 100%;
   }
   #searchBox:focus { outline: none; border-color: var(--accent); }
+  #searchClearBtn {
+    display: none;
+    position: absolute;
+    top: 50%;
+    right: 3px;
+    transform: translateY(-50%);
+    width: 26px;
+    height: 26px;
+    border: none;
+    background: none;
+    color: var(--muted);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  #searchClearBtn.visible { display: block; }
+  #searchClearBtn:hover { color: var(--text); }
 
   #searchHistory {
     display: none;
@@ -602,12 +620,12 @@
     #settingsBtn { margin-left: auto; }
     .main { flex-direction: column; height: calc(100vh - 45px); }
     .panel-left { width: 100%; min-width: unset; border-right: none; border-bottom: 1px solid var(--border); }
-    .panel-middle { width: 100%; min-width: unset; border-right: none; border-bottom: 1px solid var(--border); }
+    .panel-middle { display: none; width: 100%; min-width: unset; border-right: none; border-bottom: 1px solid var(--border); }
     #usesBackBtn { display: block; }
-    .panel-right { flex: 1; }
+    .panel-right { display: none; flex: 1; }
     #backBtn { display: inline; }
     #recipeList li, #usesList li { padding: 12px 14px; font-size: 14px; border-bottom: 1px solid rgba(58, 58, 58, 0.4); }
-    #searchBox { padding: 7px 10px; font-size: 14px; }
+    #searchBox { padding: 7px 34px 7px 10px; font-size: 14px; }
     .node-name { font-size: 15px; }
     .node-qty  { font-size: 14px; }
     .tree-node { line-height: 2; }
@@ -628,7 +646,10 @@
 <div class="main">
   <div class="panel-left" id="panelLeft">
     <div class="panel-left-header">
-      <input type="text" id="searchBox" placeholder="絞り込み..." oninput="onSearch()" onclick="openSearchHistory()" onfocus="openSearchHistory()" onkeydown="if(event.key==='Escape')closeSearchHistory()">
+      <div class="search-wrap">
+        <input type="text" id="searchBox" placeholder="絞り込み..." oninput="onSearch()" onclick="openSearchHistory()" onfocus="openSearchHistory()" onkeydown="if(event.key==='Escape')closeSearchHistory()">
+        <button id="searchClearBtn" type="button" title="検索をクリア" aria-label="検索をクリア" onclick="clearSearch()">×</button>
+      </div>
       <ul id="searchHistory"></ul>
       <button id="favBtn" title="お気に入り" onclick="toggleFav()">📌 お気に入り</button>
     </div>
@@ -889,14 +910,23 @@ function refreshPins(name) {
 
 function onSearch() {
   const q = document.getElementById('searchBox').value.trim();
+  document.getElementById('searchClearBtn').classList.toggle('visible', q !== '');
   document.getElementById('favBtn').classList.remove('active');
   listMode = q === '' ? 'none' : 'search';
   renderList();
   renderSearchHistory();
 }
 
+function clearSearch() {
+  const searchBox = document.getElementById('searchBox');
+  searchBox.value = '';
+  onSearch();
+  searchBox.focus();
+}
+
 function toggleFav() {
   document.getElementById('searchBox').value = '';
+  document.getElementById('searchClearBtn').classList.remove('visible');
   closeSearchHistory();
   listMode = 'fav';
   document.getElementById('favBtn').classList.add('active');
