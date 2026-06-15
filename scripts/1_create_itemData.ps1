@@ -69,8 +69,7 @@ $itemMapping = {
     
     $iconId = 0
     [int]::TryParse($data[68], [ref]$iconId) | Out-Null
-    $folderId = [int]([Math]::Floor($iconId / 1000) * 1000)
-    $iconUrl = "https://xivapi.com/i/" + $folderId.ToString("D6") + "/" + $iconId.ToString("D6") + ".png"
+    $iconFile = $iconId.ToString("D6") + ".png"
 
     [PSCustomObject]@{
         ID                  = $data[0]
@@ -79,7 +78,7 @@ $itemMapping = {
         LevelEquip          = $data[32]
         ItemUICategory      = $data[77]
         ItemSearchCategory  = $data[78]
-        IconUrl             = $iconUrl
+        IconFile            = $iconFile
     }
 }
 

@@ -25,10 +25,18 @@
 
     foreach ($item in $items) {
         $i++
-        $url = $item.IconUrl
-        if ([string]::IsNullOrWhiteSpace($url)) { continue }
+        $fileName = [string]$item.IconFile
+        if ([string]::IsNullOrWhiteSpace($fileName)) { continue }
 
-        $fileName = Split-Path $url -Leaf
+        $iconId = 0
+        if (![int]::TryParse([System.IO.Path]::GetFileNameWithoutExtension($fileName), [ref]$iconId)) {
+            $fileName | Out-File -FilePath $errLog -Append -Encoding utf8
+            $errorCount++
+            continue
+        }
+
+        $folderId = [int]([Math]::Floor($iconId / 1000) * 1000)
+        $url = "https://xivapi.com/i/" + $folderId.ToString("D6") + "/" + $fileName
         $outputPath = Join-Path $outputFolder $fileName
 
         if (Test-Path $outputPath) {

@@ -80,7 +80,7 @@
 }
 
 # --- 実行処理 ---
-$inputJson = "..\data\itemAndrecipe_updated.json"
+$inputJson = "..\data\itemAndrecipe_addCat.json"
 $outputJson = "..\data\itemAndRecipeFiltered.json"
 
 Filter-Items -inputJsonPath $inputJson -outputPath $outputJson

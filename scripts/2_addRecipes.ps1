@@ -69,7 +69,7 @@ function Merge-ItemAndRecipe {
     
     Write-Progress -Activity "Merging Recipe Data" -Completed
     
-    $itemDict.Values | ConvertTo-Json -Depth 10 | Out-File -FilePath $outputPath -Encoding utf8
+    $itemData | ConvertTo-Json -Depth 10 | Out-File -FilePath $outputPath -Encoding utf8
     
     Write-Host "作成完了: $outputPath" -ForegroundColor Green
     Write-Host "レシピ紐付け数: $matchCount 件" -ForegroundColor Green

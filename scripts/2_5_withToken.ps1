@@ -21,7 +21,7 @@
         $nameToIdDict[[string]$item.Name] = [string]$item.ID
     }
 
-    # 2. CSVを解析 (ヘッダーなし、1列目:アイテム名, 2列目:トークン名, 3列目:必要数)
+    # 2. CSVを解析 (ヘッダーなし、1列目:アイテム名, 2列目:トークン名, 3列目:必要数, 4列目:CraftType)
     if (!(Test-Path $tokenCsvPath)) {
         Write-Error "CSVファイルが見つかりません: $tokenCsvPath"
         return
@@ -50,6 +50,11 @@
         $targetItemName = [string]$data[0]
         $tokenItemName  = [string]$data[1]
         $amount         = [string]$data[2]
+        $craftType      = [string]$data[3]
+
+        if ($data.Count -ne 4 -or $craftType -notin @("8", "9")) {
+            throw "CSVの形式が不正です ($i 行目): CraftTypeには8または9を指定してください。"
+        }
 
         # 対象アイテム名が元のJSONに存在するかチェック
         if ($itemDict.ContainsKey($targetItemName)) {
@@ -86,7 +91,7 @@
             } else {
                 # Recipeキーが存在しないため、指定された固定値と構造で新規作成
                 $recipeObj = [PSCustomObject]@{
-                    CraftType    = "8"
+                    CraftType    = $craftType
                     AmountResult = "1"
                     Ingredients  = @($newIngredient)
                 }

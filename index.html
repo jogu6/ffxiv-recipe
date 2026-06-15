@@ -284,9 +284,22 @@
   .node-name { font-size: 14px; }
   .node-qty { font-size: 13px; color: var(--accent); }
 
-  .node-sub-info {
+  .node-main {
     display: flex;
     flex-direction: column;
+    min-width: 0;
+  }
+  .node-title {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    line-height: 1.5;
+  }
+
+  .node-sub-info {
+    display: flex;
+    flex-direction: row;
+    gap: 6px;
     font-size: 11px;
     line-height: 1.5;
     flex-shrink: 0;
@@ -369,7 +382,7 @@
   .node-icon {
     width: 40px; height: 40px;
     vertical-align: middle;
-    image-rendering: pixelated;
+    image-rendering: auto;
     flex-shrink: 0;
     border-radius: 5px;
     box-shadow: inset 0 0 5px 2px rgba(0,0,0,0.6);
@@ -377,7 +390,7 @@
   .list-icon {
     width: 40px; height: 40px;
     flex-shrink: 0;
-    image-rendering: pixelated;
+    image-rendering: auto;
     border-radius: 5px;
     box-shadow: inset 0 0 5px 2px rgba(0,0,0,0.6);
   }
@@ -741,9 +754,10 @@ const SEARCH_HISTORY_LIMIT = 30;
 const CRAFT_TYPE_NAME = {
   '0': '木工師', '1': '鍛冶師', '2': '甲冑師', '3': '彫金師',
   '4': '革細工師', '5': '裁縫師', '6': '錬金術師', '7': '調理師',
-  '8': '交換'
+  '8': '交換', '9': '交換/精選'
 };
 const CRAFT_JOBS_SET = new Set(['木工師','鍛冶師','甲冑師','彫金師','革細工師','裁縫師','錬金術師','調理師']);
+const EXCHANGE_CRAFT_TYPES = new Set(['8', '9']);
 
 const CRYSTAL_EXCLUDE = new Set(
   ['ファイア','アイス','ウィンド','アース','ライトニング','ウォーター']
@@ -764,16 +778,6 @@ let ingredientNames = [];
 let prevPanel = 'left';
 
 let listMode = 'none';
-
-const iconCache = new Map();
-function iconPath(iconUrl) {
-  if (!iconUrl) return '';
-  if (iconCache.has(iconUrl)) return iconCache.get(iconUrl);
-  const parts = iconUrl.split('/');
-  const result = './picture/' + parts[parts.length - 1];
-  iconCache.set(iconUrl, result);
-  return result;
-}
 
 function isEnglishFirst(name) { return /^[A-Za-z]/.test(name); }
 
@@ -1217,7 +1221,7 @@ async function init() {
 
       if (r && r.CraftType !== undefined) {
         const jobName = CRAFT_TYPE_NAME[r.CraftType] || 'クラフト';
-        itemMaster[name] = { method: jobName, icon: iconPath(item.IconUrl), craftType: String(r.CraftType), id: item.ID };
+        itemMaster[name] = { method: jobName, icon: item.IconFile ? './picture/' + item.IconFile : '', craftType: String(r.CraftType), id: item.ID };
         recipes[name] = {
           yield: parseInt(r.AmountResult, 10) || 1,
           craftType: String(r.CraftType),
@@ -1231,7 +1235,7 @@ async function init() {
         if (!isNaN(numId)) idToRecipeName[numId] = name;
       } else {
         if (!itemMaster[name]) {
-          itemMaster[name] = { method: '', icon: iconPath(item.IconUrl), craftType: '', id: item.ID };
+          itemMaster[name] = { method: '', icon: item.IconFile ? './picture/' + item.IconFile : '', craftType: '', id: item.ID };
         }
       }
     });
@@ -1241,7 +1245,7 @@ async function init() {
       item.Recipe.Ingredients.forEach(ing => {
         if (!itemMaster[ing.Name]) {
           const ref = idToItem[ing.ItemID];
-          itemMaster[ing.Name] = { method: '', icon: ref ? iconPath(ref.IconUrl) : '', craftType: '' };
+          itemMaster[ing.Name] = { method: '', icon: ref?.IconFile ? './picture/' + ref.IconFile : '', craftType: '' };
         }
       });
     });
@@ -1323,7 +1327,14 @@ function renderTree() {
   Array.from(container.children).forEach(el => {
     if (el.id !== 'tipsMsg') el.remove();
   });
-  container.appendChild(buildNode(selectedRecipe, count, producedQty, 0));
+  const rootCraftType = recipes[selectedRecipe]?.craftType;
+  const treeCraftTypes = collectTreeCraftTypes(selectedRecipe);
+  const showCraftBadgeOnlyAtRoot =
+    rootCraftType !== undefined &&
+    !EXCHANGE_CRAFT_TYPES.has(rootCraftType) &&
+    treeCraftTypes.size === 1 &&
+    treeCraftTypes.has(rootCraftType);
+  container.appendChild(buildNode(selectedRecipe, count, producedQty, 0, null, null, showCraftBadgeOnlyAtRoot));
 }
 
 function calcProduced(name, needed) {
@@ -1332,11 +1343,31 @@ function calcProduced(name, needed) {
   return r.yield * Math.ceil(needed / r.yield);
 }
 
-function buildNode(name, neededQty, producedQty, depth, unitCost = null, unitTimes = null) {
+function collectTreeCraftTypes(rootName) {
+  const craftTypes = new Set();
+  const visited = new Set();
+  const stack = [rootName];
+
+  while (stack.length > 0) {
+    const name = stack.pop();
+    if (visited.has(name)) continue;
+    visited.add(name);
+
+    const recipe = recipes[name];
+    if (!recipe) continue;
+    if (!EXCHANGE_CRAFT_TYPES.has(recipe.craftType)) craftTypes.add(recipe.craftType);
+    recipe.ingredients.forEach(ing => stack.push(ing.name));
+  }
+
+  return craftTypes;
+}
+
+function buildNode(name, neededQty, producedQty, depth, unitCost = null, unitTimes = null, showCraftBadgeOnlyAtRoot = false) {
   const master = itemMaster[name] || { method: '', icon: '', craftType: '' };
   const surplus = producedQty - neededQty;
   const hasChildren = !!recipes[name];
-  const isExchange = hasChildren && recipes[name].craftType === '8';
+  const isExchange = hasChildren && EXCHANGE_CRAFT_TYPES.has(recipes[name].craftType);
+  const isRefinableExchange = hasChildren && recipes[name].craftType === '9';
 
   const div = document.createElement('div');
   div.className = 'tree-node';
@@ -1351,7 +1382,9 @@ function buildNode(name, neededQty, producedQty, depth, unitCost = null, unitTim
   const badge = document.createElement('span');
   badge.className = 'badge ' + methodBadgeClass(master.method);
   badge.textContent = master.method;
-  if (!master.method) badge.style.display = 'none';
+  if (!master.method || (showCraftBadgeOnlyAtRoot && depth > 0 && CRAFT_JOBS_SET.has(master.method))) {
+    badge.style.display = 'none';
+  }
 
   const iconEl = document.createElement('img');
   iconEl.className = 'node-icon';
@@ -1388,7 +1421,13 @@ function buildNode(name, neededQty, producedQty, depth, unitCost = null, unitTim
   qtyEl.className = 'node-qty';
   qtyEl.textContent = `× ${producedQty}`;
 
-  row.append(nameEl, qtyEl);
+  const title = document.createElement('span');
+  title.className = 'node-title';
+  title.append(nameEl, qtyEl);
+
+  const main = document.createElement('span');
+  main.className = 'node-main';
+  main.appendChild(title);
 
   // 余剰・制作回数・単価
   const hasSurplus = surplus > 0;
@@ -1403,10 +1442,16 @@ function buildNode(name, neededQty, producedQty, depth, unitCost = null, unitTim
     if (hasUnit) {
       const subRow = document.createElement('span');
       subRow.className = 'node-sub-row';
-      const lbl = document.createElement('span');
-      lbl.className = 'node-sub-label';
-      lbl.textContent = `(@${unitCost} × ${unitTimes})`;
-      subRow.appendChild(lbl);
+      const pre = document.createElement('span');
+      pre.className = 'node-sub-label';
+      pre.textContent = `(@${unitCost} × `;
+      const num = document.createElement('span');
+      num.className = 'node-sub-num';
+      num.textContent = unitTimes;
+      const suf = document.createElement('span');
+      suf.className = 'node-sub-label';
+      suf.textContent = ')';
+      subRow.append(pre, num, suf);
       subInfo.appendChild(subRow);
     }
 
@@ -1442,13 +1487,14 @@ function buildNode(name, neededQty, producedQty, depth, unitCost = null, unitTim
       subInfo.appendChild(subRow);
     }
 
-    row.appendChild(subInfo);
+    main.appendChild(subInfo);
   }
+
+  row.appendChild(main);
 
   div.appendChild(row);
 
   if (!hasChildren && usedIn[name]?.length > 0) {
-    toggle.textContent = '→';
     toggle.className = 'toggle toggle-uses';
     row.classList.add('leaf-link');
     row.onclick = () => showUsesPanel(name);
@@ -1470,14 +1516,19 @@ function buildNode(name, neededQty, producedQty, depth, unitCost = null, unitTim
         }
         const subNeeded = ing.qty * exchangeTimes;
         const subProduced = calcProduced(ing.name, subNeeded);
-        children.appendChild(buildNode(ing.name, subNeeded, subProduced, depth + 1, ing.qty, exchangeTimes));
+        children.appendChild(buildNode(ing.name, subNeeded, subProduced, depth + 1, ing.qty, exchangeTimes, showCraftBadgeOnlyAtRoot));
       });
     } else {
       r.ingredients.forEach(ing => {
         const subNeeded = ing.qty * Math.ceil(producedQty / r.yield);
         const subProduced = calcProduced(ing.name, subNeeded);
-        children.appendChild(buildNode(ing.name, subNeeded, subProduced, depth + 1));
+        children.appendChild(buildNode(ing.name, subNeeded, subProduced, depth + 1, null, null, showCraftBadgeOnlyAtRoot));
       });
+    }
+
+    if (isRefinableExchange) {
+      children.classList.add('collapsed');
+      toggle.textContent = '▶';
     }
 
     div.appendChild(children);
@@ -1493,7 +1544,7 @@ function buildNode(name, neededQty, producedQty, depth, unitCost = null, unitTim
 function methodBadgeClass(method) {
   if (!method) return 'badge-gather';
   if (CRAFT_JOBS_SET.has(method)) return 'badge-craft';
-  if (method === '交換') return 'badge-exchange';
+  if (method === '交換' || method === '交換/精選') return 'badge-exchange';
   return 'badge-gather';
 }
 
