@@ -622,9 +622,6 @@
   li.ingredient-row.selected { background: #2a2a1a; color: var(--accent); }
   .uses-arrow { margin-left: auto; color: var(--muted); font-size: 11px; flex-shrink: 0; }
 
-  .leaf-link { cursor: pointer; }
-  .leaf-link:hover { background: #2e2e2e; }
-  .toggle-uses { color: var(--gather); }
 
   @media (max-width: 600px) {
     header { padding: 8px 12px; }
@@ -1493,12 +1490,6 @@ function buildNode(name, neededQty, producedQty, depth, unitCost = null, unitTim
   row.appendChild(main);
 
   div.appendChild(row);
-
-  if (!hasChildren && usedIn[name]?.length > 0) {
-    toggle.className = 'toggle toggle-uses';
-    row.classList.add('leaf-link');
-    row.onclick = () => showUsesPanel(name);
-  }
 
   if (hasChildren) {
     const children = document.createElement('div');
