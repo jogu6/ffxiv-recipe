@@ -40,6 +40,8 @@
     gap: 10px;
     flex-wrap: wrap;
   }
+  .app-title { display: flex; align-items: center; gap: 6px; }
+  .app-title-icon { width: 22.5px; height: 22.5px; flex-shrink: 0; }
   header h1 { font-size: 15px; color: var(--accent); font-weight: bold; white-space: nowrap; }
   #appVersion { font-size: 11px; color: var(--muted); white-space: nowrap; }
   #loadStatus { font-size: 12px; color: var(--muted); }
@@ -625,6 +627,7 @@
 
   @media (max-width: 600px) {
     header { padding: 8px 12px; }
+    .app-title-icon { width: 21px; height: 21px; }
     header h1 { font-size: 14px; }
     #popupBtn { display: none; }
     #settingsBtn { margin-left: auto; }
@@ -646,7 +649,10 @@
 <body>
 
 <header>
-  <h1>FF14 レシピ素材ツリー</h1>
+  <div class="app-title">
+    <img class="app-title-icon" src="./favicon.png" alt="">
+    <h1>FF14 レシピ素材ツリー</h1>
+  </div>
   <span id="appVersion"></span>
   <span id="loadStatus">データ読み込み中...</span>
   <button id="popupBtn" onclick="openPopup()">⧉ 小窓で開く</button>
