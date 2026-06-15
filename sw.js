@@ -1,61 +1,73 @@
-// ===== キャッシュバージョン =====
-// データを更新したときはここの番号を上げてください
-const CACHE_VERSION = 'ff14recipe-v1.21';
+// データを更新したときは、このバージョンを手動で上げる
+const CACHE_VERSION = 'ff14recipe-v1.3';
+const CACHE_PREFIX = 'ff14recipe-';
 
-// ===== キャッシュ対象のリソース種別 =====
-const CACHE_FIRST_PATTERNS = [
-  /\/data\/Item\.json$/,   // レシピデータ（重いのでキャッシュ優先）
-  /\/picture\//,           // アイコン画像
+const PRECACHE_FILES = [
+  './index.html',
+  './favicon.png',
+  './icon-192.png',
+  './icon-512.png',
+  './manifest.webmanifest',
 ];
 
-// ===== インストール =====
-// SW登録直後に発火。index.html だけ事前キャッシュする
+const CACHE_FIRST_PATTERNS = [
+  /\/data\/Item\.json$/,
+  /\/picture\//,
+];
+
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_VERSION).then(cache => cache.add('./index.html'))
+    caches.open(CACHE_VERSION).then(cache => cache.addAll(PRECACHE_FILES))
   );
-  // 旧SWを待たずに即座に有効化
   self.skipWaiting();
 });
 
-// ===== アクティベート =====
-// 古いバージョンのキャッシュを削除する
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(
         keys
-          .filter(key => key !== CACHE_VERSION)
+          .filter(key => key.startsWith(CACHE_PREFIX) && key !== CACHE_VERSION)
           .map(key => caches.delete(key))
       )
     ).then(() => self.clients.claim())
   );
 });
 
-// ===== フェッチ =====
 self.addEventListener('fetch', event => {
-  const url = event.request.url;
+  const request = event.request;
+  const url = new URL(request.url);
 
-  // Cache First: Item.json・画像
-  if (CACHE_FIRST_PATTERNS.some(p => p.test(url))) {
-    event.respondWith(cacheFirst(event.request));
+  if (request.method !== 'GET' || url.origin !== self.location.origin) return;
+
+  // 緊急メッセージを常に最新にするため、tips.jsonは一切キャッシュしない
+  if (/\/data\/tips\.json$/.test(url.pathname)) {
+    event.respondWith(fetch(request, { cache: 'no-store' }));
     return;
   }
 
-  // Network First: index.html その他
-  event.respondWith(networkFirst(event.request));
+  if (request.mode === 'navigate') {
+    event.respondWith(networkFirstNavigation(request));
+    return;
+  }
+
+  if (CACHE_FIRST_PATTERNS.some(pattern => pattern.test(url.pathname))) {
+    event.respondWith(cacheFirst(request));
+    return;
+  }
+
+  event.respondWith(networkFirst(request));
 });
 
-// --- Cache First 戦略 ---
-// キャッシュにあればそれを返す。なければfetchしてキャッシュに保存
 async function cacheFirst(request) {
   const cached = await caches.match(request);
   if (cached) return cached;
+
   try {
     const response = await fetch(request);
     if (response.ok) {
       const cache = await caches.open(CACHE_VERSION);
-      cache.put(request, response.clone());
+      await cache.put(request, response.clone());
     }
     return response;
   } catch {
@@ -63,18 +75,31 @@ async function cacheFirst(request) {
   }
 }
 
-// --- Network First 戦略 ---
-// まずネットワークを試みる。失敗したらキャッシュを返す
 async function networkFirst(request) {
   try {
     const response = await fetch(request);
     if (response.ok) {
       const cache = await caches.open(CACHE_VERSION);
-      cache.put(request, response.clone());
+      await cache.put(request, response.clone());
     }
     return response;
   } catch {
     const cached = await caches.match(request);
     return cached || new Response('Offline', { status: 503 });
+  }
+}
+
+async function networkFirstNavigation(request) {
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      const cache = await caches.open(CACHE_VERSION);
+      await cache.put('./index.html', response.clone());
+    }
+    return response;
+  } catch {
+    return (await caches.match(request))
+      || (await caches.match('./index.html'))
+      || new Response('Offline', { status: 503 });
   }
 }

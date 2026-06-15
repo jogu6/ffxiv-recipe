@@ -3,9 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#252525">
 <title>FF14 レシピ素材ツリー</title>
 <link rel="icon" href="./favicon.png" type="image/png">
 <link rel="apple-touch-icon" href="./favicon.png">
+<link rel="manifest" href="./manifest.webmanifest">
 <style>
   :root {
     --bg: #1a1a1a;
@@ -39,6 +41,7 @@
     flex-wrap: wrap;
   }
   header h1 { font-size: 15px; color: var(--accent); font-weight: bold; white-space: nowrap; }
+  #appVersion { font-size: 11px; color: var(--muted); white-space: nowrap; }
   #loadStatus { font-size: 12px; color: var(--muted); }
   #popupBtn {
     margin-left: auto;
@@ -67,6 +70,7 @@
     overflow: hidden;
   }
   .panel-left-header {
+    position: relative;
     padding: 8px 10px 4px;
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
@@ -82,31 +86,66 @@
   }
   #searchBox:focus { outline: none; border-color: var(--accent); }
 
-  .kana-index {
-    display: grid;
-    grid-template-columns: repeat(6, 1fr);
-    gap: 2px;
-    padding: 4px 6px;
-    flex-shrink: 0;
-  }
-  .kana-btn {
-    background: var(--bg);
+  #searchHistory {
+    display: none;
+    position: absolute;
+    top: 37px;
+    left: 10px;
+    right: 10px;
+    z-index: 20;
+    max-height: 240px;
+    overflow-y: auto;
+    list-style: none;
+    background: var(--surface);
     border: 1px solid var(--border);
-    color: var(--text);
-    font-size: 11px;
     border-radius: 3px;
-    cursor: pointer;
-    text-align: center;
-    line-height: 1;
-    aspect-ratio: 1 / 1;
-    padding: 0;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.45);
+  }
+  #searchHistory.open { display: block; }
+  #searchHistory li {
     display: flex;
     align-items: center;
-    justify-content: center;
+    gap: 6px;
+    min-height: 34px;
+    padding: 5px 6px 5px 10px;
+    border-bottom: 1px solid rgba(58, 58, 58, 0.4);
+    cursor: pointer;
   }
-  .kana-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-  .kana-btn:disabled { color: #444; border-color: #2a2a2a; cursor: default; }
-  .kana-btn.active { border-color: var(--accent); color: var(--accent); background: #2a2a1a; }
+  #searchHistory li:last-child { border-bottom: none; }
+  #searchHistory li:hover { background: #2e2e2e; }
+  .history-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .history-delete {
+    margin-left: auto;
+    flex-shrink: 0;
+    border: none;
+    background: none;
+    padding: 5px 6px;
+    cursor: pointer;
+    filter: grayscale(1);
+    opacity: 0.65;
+  }
+  .history-delete:hover { filter: none; opacity: 1; }
+
+  #favBtn {
+    width: 100%;
+    margin-top: 4px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 5px 8px;
+    border-radius: 3px;
+    font-size: 13px;
+    cursor: pointer;
+    text-align: center;
+  }
+  #favBtn:hover { border-color: var(--accent); color: var(--accent); }
+  #favBtn.active { border-color: var(--accent); color: var(--accent); background: #2a2a1a; }
 
   #recipeList { flex: 1; overflow-y: auto; list-style: none; }
   #recipeList li {
@@ -129,19 +168,6 @@
     padding: 8px 12px;
     cursor: default;
     border-bottom: 1px solid rgba(58,58,58,0.4);
-  }
-  li.tips-li {
-    display: block;
-    cursor: default;
-    padding: 10px 14px;
-    background: none;
-  }
-  li.tips-li:hover { background: none; }
-  .tips-row-mobile {
-    display: block;
-    font-size: 13px;
-    color: var(--muted);
-    line-height: 2;
   }
 
   .panel-right { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
@@ -183,6 +209,20 @@
   #countInput:focus { outline: none; border-color: var(--accent); }
   #resultTitle { font-size: 13px; color: var(--accent); }
 
+  #usesBtn {
+    display: none;
+    background: var(--accent);
+    color: #1a1a1a;
+    border: none;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  #usesBtn:hover { background: #d4b458; }
+
   #backBtn {
     display: none;
     background: none;
@@ -203,7 +243,7 @@
     padding: 16px 20px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 5px;
   }
   .tips-row {
     font-size: 13px;
@@ -246,6 +286,23 @@
   .node-sub-label {
     color: var(--muted);
     white-space: nowrap;
+  }
+
+  #recipeList li.tips-li {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    cursor: default;
+    padding: 10px 14px;
+    background: none;
+    gap: 5px;
+  }
+  #recipeList li.tips-li:hover { background: none; }
+  .tips-row-list {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.5;
+    text-align: left;
   }
 
   .badge { font-size: 10px; padding: 1px 5px; border-radius: 3px; font-weight: bold; flex-shrink: 0; }
@@ -292,7 +349,7 @@
   .empty-msg { color: var(--muted); font-size: 13px; padding: 20px; }
   .error-msg { color: #d57b5b; font-size: 13px; padding: 20px; }
   .node-icon {
-    width: 32px; height: 32px;
+    width: 40px; height: 40px;
     vertical-align: middle;
     image-rendering: pixelated;
     flex-shrink: 0;
@@ -300,7 +357,7 @@
     box-shadow: inset 0 0 5px 2px rgba(0,0,0,0.6);
   }
   .list-icon {
-    width: 32px; height: 32px;
+    width: 40px; height: 40px;
     flex-shrink: 0;
     image-rendering: pixelated;
     border-radius: 5px;
@@ -321,12 +378,42 @@
   .footer a { color: var(--muted); text-decoration: none; pointer-events: all; }
   .footer a:hover { color: var(--accent); }
 
+  #updateNotice {
+    display: none;
+    position: fixed;
+    left: 50%;
+    bottom: 28px;
+    transform: translateX(-50%);
+    z-index: 500;
+    align-items: center;
+    gap: 12px;
+    width: max-content;
+    max-width: calc(100% - 24px);
+    padding: 8px 10px 8px 14px;
+    background: var(--surface);
+    border: 1px solid var(--accent);
+    border-radius: 5px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.55);
+    font-size: 13px;
+  }
+  #updateNotice.open { display: flex; }
+  #updateReloadBtn {
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    background: #2a2a1a;
+    color: var(--accent);
+    padding: 5px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  #updateReloadBtn:hover { background: #34341f; }
+
   #confirmOverlay {
     display: none;
     position: fixed;
     inset: 0;
     background: rgba(0,0,0,0.6);
-    z-index: 200;
+    z-index: 400;
     align-items: center;
     justify-content: center;
   }
@@ -346,6 +433,100 @@
     line-height: 1.8;
     white-space: pre-line;
   }
+  #settingsBtn {
+    background: #252525;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  #settingsBtn:hover { border-color: var(--accent); color: var(--accent); }
+
+  #settingsOverlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+  }
+  #settingsOverlay.open { display: flex; }
+  #settingsDialog {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 20px 24px;
+    max-width: 360px;
+    width: 90%;
+  }
+  #settingsDialog h2 { font-size: 14px; color: var(--accent); margin-bottom: 16px; }
+  .settings-section { margin-bottom: 16px; }
+  .settings-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .settings-row { display: flex; gap: 6px; }
+  .settings-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 5px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-family: monospace;
+    min-width: 0;
+  }
+  .settings-input:focus { outline: none; border-color: var(--accent); }
+  .settings-btn {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 5px 10px;
+    border-radius: 3px;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .settings-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .settings-err { font-size: 11px; color: var(--hunt); margin-top: 4px; display: none; }
+  .settings-close { text-align: center; margin-top: 4px; }
+
+  #importChoiceOverlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 300;
+    align-items: center;
+    justify-content: center;
+  }
+  #importChoiceOverlay.open { display: flex; }
+  #importChoiceDialog {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 20px 24px;
+    max-width: 300px;
+    width: 90%;
+    text-align: center;
+  }
+  #importChoiceMsg { font-size: 14px; margin-bottom: 16px; line-height: 1.8; }
+  .choice-btns { display: flex; flex-direction: column; gap: 8px; }
+  .choice-btn {
+    padding: 6px 16px;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+  }
+  .choice-btn:hover { border-color: var(--accent); color: var(--accent); background: #2a2a1a; }
+  .choice-btn.danger { border-color: var(--hunt); color: var(--hunt); }
+  .choice-btn.danger:hover { background: #301010; border-color: var(--hunt); }
+
   .confirm-btns { display: flex; gap: 10px; justify-content: center; }
   .confirm-btn {
     padding: 6px 20px;
@@ -360,15 +541,72 @@
   .confirm-btn.yes:hover { background: #2a2a1a; }
   .confirm-btn.no:hover { background: #2e2e2e; }
 
+  .panel-middle {
+    width: 220px;
+    min-width: 160px;
+    border-right: 1px solid var(--border);
+    display: none;
+    flex-direction: column;
+    background: var(--surface);
+    overflow: hidden;
+  }
+  .panel-middle.open { display: flex; }
+  .panel-middle-header {
+    padding: 8px 10px 6px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  #usesBackBtn {
+    display: none;
+    background: none;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-size: 13px;
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: 4px;
+    white-space: nowrap;
+    align-self: flex-start;
+  }
+  #usesBackBtn:hover { background: #2a2a1a; }
+  #usesTitle { font-size: 12px; color: var(--accent); }
+  #usesList { flex: 1; overflow-y: auto; list-style: none; }
+  #usesList li {
+    padding: 9px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(58, 58, 58, 0.4);
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  #usesList li:hover { background: #2e2e2e; }
+  #usesList li.selected { background: #2a2a1a; color: var(--accent); }
+
+  li.ingredient-row { background: #1a1a1a; }
+  li.ingredient-row:hover { background: #2e2e2e; }
+  li.ingredient-row.selected { background: #2a2a1a; color: var(--accent); }
+  .uses-arrow { margin-left: auto; color: var(--muted); font-size: 11px; flex-shrink: 0; }
+
+  .leaf-link { cursor: pointer; }
+  .leaf-link:hover { background: #2e2e2e; }
+  .toggle-uses { color: var(--gather); }
+
   @media (max-width: 600px) {
     header { padding: 8px 12px; }
     header h1 { font-size: 14px; }
     #popupBtn { display: none; }
+    #settingsBtn { margin-left: auto; }
     .main { flex-direction: column; height: calc(100vh - 45px); }
     .panel-left { width: 100%; min-width: unset; border-right: none; border-bottom: 1px solid var(--border); }
+    .panel-middle { width: 100%; min-width: unset; border-right: none; border-bottom: 1px solid var(--border); }
+    #usesBackBtn { display: block; }
     .panel-right { flex: 1; }
     #backBtn { display: inline; }
-    #recipeList li { padding: 12px 14px; font-size: 14px; border-bottom: 1px solid rgba(58, 58, 58, 0.4); }
+    #recipeList li, #usesList li { padding: 12px 14px; font-size: 14px; border-bottom: 1px solid rgba(58, 58, 58, 0.4); }
     #searchBox { padding: 7px 10px; font-size: 14px; }
     .node-name { font-size: 15px; }
     .node-qty  { font-size: 14px; }
@@ -381,21 +619,31 @@
 
 <header>
   <h1>FF14 レシピ素材ツリー</h1>
+  <span id="appVersion"></span>
   <span id="loadStatus">データ読み込み中...</span>
   <button id="popupBtn" onclick="openPopup()">⧉ 小窓で開く</button>
+  <button id="settingsBtn" onclick="openSettings()">⚙ 設定</button>
 </header>
 
 <div class="main">
   <div class="panel-left" id="panelLeft">
     <div class="panel-left-header">
-      <input type="text" id="searchBox" placeholder="絞り込み..." oninput="onSearch()">
-      <div class="kana-index" id="kanaIndex"></div>
+      <input type="text" id="searchBox" placeholder="絞り込み..." oninput="onSearch()" onclick="openSearchHistory()" onfocus="openSearchHistory()" onkeydown="if(event.key==='Escape')closeSearchHistory()">
+      <ul id="searchHistory"></ul>
+      <button id="favBtn" title="お気に入り" onclick="toggleFav()">📌 お気に入り</button>
     </div>
     <ul id="recipeList"></ul>
   </div>
+  <div class="panel-middle" id="panelMiddle">
+    <div class="panel-middle-header">
+      <button id="usesBackBtn" onclick="showList()">◀ 戻る</button>
+      <span id="usesTitle"></span>
+    </div>
+    <ul id="usesList"></ul>
+  </div>
   <div class="panel-right" id="panelRight">
     <div class="result-header">
-      <button id="backBtn" onclick="showList()">◀ 戻る</button>
+      <button id="backBtn" onclick="goBack()">◀ 戻る</button>
       <label>個数:</label>
       <div class="count-control">
         <button class="count-btn" onclick="changeCount(-1)">－</button>
@@ -403,6 +651,7 @@
         <button class="count-btn" onclick="changeCount(1)">＋</button>
       </div>
       <span id="resultTitle"></span>
+      <button id="usesBtn" onclick="showUsesPanel(selectedRecipe)">→ 使用先</button>
     </div>
     <div id="treeContainer">
       <div class="tips-msg" id="tipsMsg"></div>
@@ -410,6 +659,10 @@
   </div>
 </div>
 <div class="footer">© SQUARE ENIX / Data by XIVAPI / X : <a href="https://x.com/og_ff14" target="_blank" rel="noopener">@og_ff14</a></div>
+<div id="updateNotice" role="status">
+  <span>アプリが更新されました</span>
+  <button id="updateReloadBtn" type="button" onclick="location.reload()">再読み込み</button>
+</div>
 
 <div id="confirmOverlay">
   <div id="confirmDialog">
@@ -421,11 +674,48 @@
   </div>
 </div>
 
+<div id="settingsOverlay" onclick="if(event.target===this)closeSettings()">
+  <div id="settingsDialog">
+    <h2>⚙ 設定</h2>
+    <div class="settings-section">
+      <div class="settings-label">お気に入りをシェアする</div>
+      <div class="settings-row">
+        <input id="exportCode" class="settings-input" type="text" readonly>
+        <button class="settings-btn" onclick="copyExportCode(this)">コピー</button>
+      </div>
+    </div>
+    <div class="settings-section">
+      <div class="settings-label">シェアされたお気に入りを取り込む</div>
+      <div class="settings-row">
+        <input id="importCode" class="settings-input" type="text" placeholder="コードを貼り付け...">
+        <button class="settings-btn" onclick="startImport()">取り込む</button>
+      </div>
+      <div id="importErr" class="settings-err"></div>
+    </div>
+    <div class="settings-close">
+      <button class="confirm-btn no" onclick="closeSettings()">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<div id="importChoiceOverlay">
+  <div id="importChoiceDialog">
+    <div id="importChoiceMsg"></div>
+    <div class="choice-btns">
+      <button class="choice-btn danger" id="importReplaceBtn">全て削除して取り込む</button>
+      <button class="choice-btn" id="importMergeBtn">残したまま追加</button>
+      <button class="choice-btn" onclick="closeImportChoice()">キャンセル</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const DATA_FILE = './data/Item.json';
 const TIPS_FILE = './data/tips.json';
 const isMobile = () => window.innerWidth <= 600;
 const LS_FAV = 'ff14_favorites';
+const LS_SEARCH_HISTORY = 'ff14_search_history';
+const SEARCH_HISTORY_LIMIT = 30;
 
 const CRAFT_TYPE_NAME = {
   '0': '木工師', '1': '鍛冶師', '2': '甲冑師', '3': '彫金師',
@@ -434,30 +724,25 @@ const CRAFT_TYPE_NAME = {
 };
 const CRAFT_JOBS_SET = new Set(['木工師','鍛冶師','甲冑師','彫金師','革細工師','裁縫師','錬金術師','調理師']);
 
-const KANA_GROUPS = [
-  { label: 'あ', chars: ['あ','い','う','え','お'] },
-  { label: 'か', chars: ['か','き','く','け','こ','が','ぎ','ぐ','げ','ご'] },
-  { label: 'さ', chars: ['さ','し','す','せ','そ','ざ','じ','ず','ぜ','ぞ'] },
-  { label: 'た', chars: ['た','ち','つ','て','と','だ','ぢ','づ','で','ど'] },
-  { label: 'な', chars: ['な','に','ぬ','ね','の'] },
-  { label: '英', chars: null },
-  { label: 'は', chars: ['は','ひ','ふ','へ','ほ','ば','び','ぶ','べ','ぼ','ぱ','ぴ','ぷ','ぺ','ぽ'] },
-  { label: 'ま', chars: ['ま','み','む','め','も'] },
-  { label: 'や', chars: ['や','ゆ','よ'] },
-  { label: 'ら', chars: ['ら','り','る','れ','ろ'] },
-  { label: 'わ', chars: ['わ','を','ん'] },
-];
+const CRYSTAL_EXCLUDE = new Set(
+  ['ファイア','アイス','ウィンド','アース','ライトニング','ウォーター']
+    .flatMap(e => ['シャード','クリスタル','クラスター'].map(t => e + t))
+);
+
 
 let itemMaster = {};
 let recipes = {};
 let recipeNames = [];
 let selectedRecipe = null;
 let favorites = new Set();
+let searchHistory = [];
 let tipsData = [];
+let idToRecipeName = {};
+let usedIn = {};
+let ingredientNames = [];
+let prevPanel = 'left';
 
 let listMode = 'none';
-let activeKanaGroup = null;
-let activeKanaBtn = null;
 
 const iconCache = new Map();
 function iconPath(iconUrl) {
@@ -488,6 +773,78 @@ function loadFavorites() {
 
 function saveFavorites() {
   localStorage.setItem(LS_FAV, JSON.stringify([...favorites]));
+}
+
+function loadSearchHistory() {
+  try {
+    const raw = localStorage.getItem(LS_SEARCH_HISTORY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    searchHistory = Array.isArray(parsed)
+      ? parsed.filter(value => typeof value === 'string' && value.trim()).slice(0, SEARCH_HISTORY_LIMIT)
+      : [];
+  } catch(e) {
+    searchHistory = [];
+  }
+}
+
+function saveSearchHistory() {
+  localStorage.setItem(LS_SEARCH_HISTORY, JSON.stringify(searchHistory));
+}
+
+function rememberCurrentSearch() {
+  if (listMode !== 'search') return;
+  const query = document.getElementById('searchBox').value.trim();
+  if (!query) return;
+  searchHistory = [query, ...searchHistory.filter(value => value !== query)].slice(0, SEARCH_HISTORY_LIMIT);
+  saveSearchHistory();
+  closeSearchHistory();
+}
+
+function renderSearchHistory() {
+  const list = document.getElementById('searchHistory');
+  const query = document.getElementById('searchBox').value.trim();
+  const entries = searchHistory.filter(value => !query || value.includes(query));
+  const frag = document.createDocumentFragment();
+
+  entries.forEach(value => {
+    const li = document.createElement('li');
+    const textEl = document.createElement('span');
+    textEl.className = 'history-text';
+    textEl.textContent = value;
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'history-delete';
+    deleteBtn.type = 'button';
+    deleteBtn.textContent = '🗑️';
+    deleteBtn.title = '検索履歴から削除';
+    deleteBtn.setAttribute('aria-label', `「${value}」を検索履歴から削除`);
+    deleteBtn.onclick = event => {
+      event.stopPropagation();
+      searchHistory = searchHistory.filter(entry => entry !== value);
+      saveSearchHistory();
+      renderSearchHistory();
+    };
+
+    li.append(textEl, deleteBtn);
+    li.onclick = () => {
+      document.getElementById('searchBox').value = value;
+      onSearch();
+      closeSearchHistory();
+    };
+    frag.appendChild(li);
+  });
+
+  list.innerHTML = '';
+  list.appendChild(frag);
+  list.classList.toggle('open', entries.length > 0);
+}
+
+function openSearchHistory() {
+  renderSearchHistory();
+}
+
+function closeSearchHistory() {
+  document.getElementById('searchHistory').classList.remove('open');
 }
 
 function showConfirm(msg, onYes) {
@@ -530,51 +887,30 @@ function refreshPins(name) {
   });
 }
 
-function clearKanaActive() {
-  if (activeKanaBtn) {
-    activeKanaBtn.classList.remove('active');
-    activeKanaBtn = null;
-  }
-  activeKanaGroup = null;
-}
-
-function onKana(group, btn) {
-  clearKanaActive();
-  document.getElementById('searchBox').value = '';
-  document.getElementById('favKanaBtn')?.classList.remove('active');
-  activeKanaGroup = group;
-  activeKanaBtn = btn;
-  btn.classList.add('active');
-  listMode = 'kana';
-  renderList();
-}
-
 function onSearch() {
   const q = document.getElementById('searchBox').value.trim();
-  clearKanaActive();
-  document.getElementById('favKanaBtn')?.classList.remove('active');
+  document.getElementById('favBtn').classList.remove('active');
   listMode = q === '' ? 'none' : 'search';
   renderList();
+  renderSearchHistory();
 }
 
 function toggleFav() {
-  const btn = document.getElementById('favKanaBtn');
-  clearKanaActive();
   document.getElementById('searchBox').value = '';
+  closeSearchHistory();
   listMode = 'fav';
-  btn.classList.add('active');
+  document.getElementById('favBtn').classList.add('active');
   renderList();
 }
 
 function getDisplayList() {
   switch (listMode) {
-    case 'kana':
-      return activeKanaGroup
-        ? recipeNames.filter(n => matchKanaGroup(n, activeKanaGroup))
-        : [];
     case 'search': {
       const q = document.getElementById('searchBox').value.trim();
-      return q ? recipeNames.filter(n => n.includes(q)) : [];
+      if (!q) return [];
+      const rMatches = recipeNames.filter(n => n.includes(q));
+      const iMatches = ingredientNames.filter(n => n.includes(q));
+      return sortRecipeNames([...rMatches, ...iMatches]);
     }
     case 'fav':
       return [...favorites].filter(n => recipes[n]);
@@ -600,34 +936,32 @@ function renderList() {
   const frag = document.createDocumentFragment();
   const names = getDisplayList();
 
-  if (isMobile() && listMode === 'none') {
+
+  if (listMode === 'none' && isMobile()) {
     const li = document.createElement('li');
     li.className = 'tips-li';
     tipsData.forEach(text => {
       const row = document.createElement('div');
-      row.className = 'tips-row-mobile';
+      row.className = 'tips-row-list';
       row.textContent = text;
       li.appendChild(row);
     });
     frag.appendChild(li);
-    ul.innerHTML = '';
-    ul.appendChild(frag);
-    return;
-  }
-
-  if (listMode === 'fav' && favorites.size === 0) {
+  } else if (listMode === 'fav' && favorites.size === 0) {
     const li = document.createElement('li');
     li.className = 'list-empty';
     li.textContent = 'お気に入りはありません';
     frag.appendChild(li);
-  } else if (names.length === 0 && listMode !== 'none') {
+  } else if (names.length === 0) {
     const li = document.createElement('li');
     li.className = 'list-empty';
     li.textContent = '該当するレシピがありません';
     frag.appendChild(li);
   } else {
     names.forEach(name => {
-      frag.appendChild(listMode === 'fav' ? makeFavLi(name) : makeRecipeLi(name));
+      if (listMode === 'fav') frag.appendChild(makeFavLi(name));
+      else if (recipes[name]) frag.appendChild(makeRecipeLi(name));
+      else frag.appendChild(makeIngredientLi(name));
     });
   }
 
@@ -687,8 +1021,100 @@ function makeRecipeLi(name) {
   span.textContent = name;
   li.appendChild(span);
 
-  li.onclick = () => selectRecipe(name, li);
+  li.onclick = () => {
+    rememberCurrentSearch();
+    selectRecipe(name, li);
+  };
   return li;
+}
+
+function makeIngredientLi(name) {
+  const master = itemMaster[name] || {};
+  const li = document.createElement('li');
+  li.className = 'ingredient-row';
+  li.title = name;
+  if (master.icon) {
+    const img = document.createElement('img');
+    img.src = master.icon;
+    img.className = 'list-icon';
+    img.alt = '';
+    img.onerror = () => { img.style.display = 'none'; };
+    li.appendChild(img);
+  }
+  const span = document.createElement('span');
+  span.className = 'list-name';
+  span.textContent = name;
+  li.appendChild(span);
+  const arrow = document.createElement('span');
+  arrow.className = 'uses-arrow';
+  arrow.textContent = '→';
+  li.appendChild(arrow);
+  li.onclick = () => {
+    rememberCurrentSearch();
+    showUsesPanel(name);
+  };
+  return li;
+}
+
+function closeUsesPanel() {
+  const panel = document.getElementById('panelMiddle');
+  panel.classList.remove('open');
+  panel.style.display = '';
+}
+
+function showUsesPanel(ingredientName) {
+  const uses = usedIn[ingredientName] || [];
+  document.getElementById('usesTitle').textContent = `${ingredientName}（${uses.length}件）`;
+  const ul = document.getElementById('usesList');
+  const frag = document.createDocumentFragment();
+  uses.forEach(recipeName => {
+    const master = itemMaster[recipeName] || {};
+    const li = document.createElement('li');
+    li.title = recipeName;
+    if (master.icon) {
+      const img = document.createElement('img');
+      img.src = master.icon;
+      img.className = 'list-icon';
+      img.alt = '';
+      img.onerror = () => { img.style.display = 'none'; };
+      li.appendChild(img);
+    }
+    const span = document.createElement('span');
+    span.className = 'list-name';
+    span.textContent = recipeName;
+    li.appendChild(span);
+    li.onclick = () => {
+      selectedRecipe = recipeName;
+      document.querySelectorAll('#usesList li').forEach(el => el.classList.remove('selected'));
+      li.classList.add('selected');
+      renderTree();
+      if (isMobile()) {
+        prevPanel = 'middle';
+        showTree();
+        document.getElementById('treeContainer').scrollTop = 0;
+      }
+    };
+    frag.appendChild(li);
+  });
+  ul.innerHTML = '';
+  ul.appendChild(frag);
+  document.getElementById('panelMiddle').classList.add('open');
+  if (isMobile()) showUses();
+}
+
+const panelLeft = document.getElementById('panelLeft');
+['pointerdown', 'input', 'wheel'].forEach(eventName => {
+  panelLeft.addEventListener(eventName, closeUsesPanel);
+});
+document.addEventListener('pointerdown', event => {
+  const searchBox = document.getElementById('searchBox');
+  const historyList = document.getElementById('searchHistory');
+  if (event.target !== searchBox && !historyList.contains(event.target)) closeSearchHistory();
+});
+
+function goBack() {
+  if (prevPanel === 'middle') showUses();
+  else showList();
 }
 
 function selectRecipe(name, li) {
@@ -697,6 +1123,7 @@ function selectRecipe(name, li) {
   li.classList.add('selected');
   renderTree();
   if (isMobile()) {
+    prevPanel = 'left';
     showTree();
     document.getElementById('treeContainer').scrollTop = 0;
   }
@@ -707,13 +1134,28 @@ function selectRecipeByName(name) {
   renderList();
   renderTree();
   if (isMobile()) {
+    prevPanel = 'left';
     showTree();
     document.getElementById('treeContainer').scrollTop = 0;
   }
 }
 
+async function loadAppVersion() {
+  try {
+    const source = await fetch('./sw.js', { cache: 'no-store' }).then(response => {
+      if (!response.ok) throw new Error(`sw.js (${response.status})`);
+      return response.text();
+    });
+    const match = source.match(/const\s+CACHE_VERSION\s*=\s*['"][^'"]*?(v\d+(?:\.\d+)*)['"]/i);
+    document.getElementById('appVersion').textContent = match ? match[1] : '';
+  } catch(e) {
+    document.getElementById('appVersion').textContent = '';
+  }
+}
+
 async function init() {
   loadFavorites();
+  loadSearchHistory();
 
   try {
     tipsData = await fetch(TIPS_FILE).then(r => r.ok ? r.json() : []);
@@ -721,6 +1163,7 @@ async function init() {
     tipsData = ['📌 ピンでお気に入り登録', 'あ〜英 で行絞り込み', '検索欄でアイテム名検索'];
   }
 
+  renderList();
   if (!isMobile()) renderTips();
 
   try {
@@ -731,7 +1174,6 @@ async function init() {
 
     const idToItem = {};
     let maxPatch = 0;
-
     rawList.forEach(item => { idToItem[item.ID] = item; });
 
     rawList.forEach(item => {
@@ -739,13 +1181,13 @@ async function init() {
       const name = item.Name;
 
       if (r?.PatchNumber) {
-        const p = parseInt(r.PatchNumber, 10);
-        if (p > maxPatch) maxPatch = p;
+        const patch = parseInt(r.PatchNumber, 10);
+        if (patch > maxPatch) maxPatch = patch;
       }
 
       if (r && r.CraftType !== undefined) {
         const jobName = CRAFT_TYPE_NAME[r.CraftType] || 'クラフト';
-        itemMaster[name] = { method: jobName, icon: iconPath(item.IconUrl), craftType: String(r.CraftType) };
+        itemMaster[name] = { method: jobName, icon: iconPath(item.IconUrl), craftType: String(r.CraftType), id: item.ID };
         recipes[name] = {
           yield: parseInt(r.AmountResult, 10) || 1,
           craftType: String(r.CraftType),
@@ -755,9 +1197,11 @@ async function init() {
             itemId: ing.ItemID
           }))
         };
+        const numId = parseInt(item.ID, 10);
+        if (!isNaN(numId)) idToRecipeName[numId] = name;
       } else {
         if (!itemMaster[name]) {
-          itemMaster[name] = { method: '', icon: iconPath(item.IconUrl), craftType: '' };
+          itemMaster[name] = { method: '', icon: iconPath(item.IconUrl), craftType: '', id: item.ID };
         }
       }
     });
@@ -774,22 +1218,18 @@ async function init() {
 
     recipeNames = sortRecipeNames(Object.keys(recipes));
 
-    const kanaGroupSet = new Set();
-    recipeNames.forEach(name => {
-      KANA_GROUPS.forEach(group => {
-        if (!kanaGroupSet.has(group.label) && matchKanaGroup(name, group)) {
-          kanaGroupSet.add(group.label);
-        }
+    Object.entries(recipes).forEach(([recipeName, r]) => {
+      r.ingredients.forEach(ing => {
+        if (!usedIn[ing.name]) usedIn[ing.name] = [];
+        if (!usedIn[ing.name].includes(recipeName)) usedIn[ing.name].push(recipeName);
       });
     });
+    ingredientNames = sortRecipeNames(Object.keys(usedIn).filter(n => !recipes[n] && !CRYSTAL_EXCLUDE.has(n)));
 
-    const patchStr = maxPatch > 0
-      ? ` / patch ${String(maxPatch).slice(0, -2)}.${String(maxPatch).slice(-2)} 対応`
+    document.getElementById('loadStatus').textContent = maxPatch > 0
+      ? `patch ${String(maxPatch).slice(0, -2)}.${String(maxPatch).slice(-2)} 対応`
       : '';
-    document.getElementById('loadStatus').textContent =
-      `${recipeNames.length}レシピ 読み込み済み${patchStr}`;
 
-    buildKanaIndex(kanaGroupSet);
     renderList();
 
     if (isMobile()) showList();
@@ -801,53 +1241,25 @@ async function init() {
   }
 }
 
-function buildKanaIndex(kanaGroupSet) {
-  const container = document.getElementById('kanaIndex');
-  const frag = document.createDocumentFragment();
-
-  KANA_GROUPS.forEach(group => {
-    const btn = document.createElement('button');
-    btn.className = 'kana-btn';
-    btn.textContent = group.label;
-    if (!kanaGroupSet.has(group.label)) {
-      btn.disabled = true;
-    } else {
-      btn.onclick = () => onKana(group, btn);
-    }
-    frag.appendChild(btn);
-  });
-
-  const favBtn = document.createElement('button');
-  favBtn.className = 'kana-btn';
-  favBtn.id = 'favKanaBtn';
-  favBtn.textContent = '📌';
-  favBtn.title = 'お気に入り';
-  favBtn.onclick = toggleFav;
-  frag.appendChild(favBtn);
-
-  container.innerHTML = '';
-  container.appendChild(frag);
-}
-
-function matchKanaGroup(name, group) {
-  if (!name) return false;
-  const first = name[0];
-  if (group.chars === null) return isEnglishFirst(name);
-  return group.chars.some(c => {
-    const kata = String.fromCharCode(c.charCodeAt(0) + 0x60);
-    return first === c || first === kata;
-  });
-}
 
 function showList() {
   if (!isMobile()) return;
   document.getElementById('panelLeft').style.display = 'flex';
+  document.getElementById('panelMiddle').style.display = 'none';
+  document.getElementById('panelRight').style.display = 'none';
+}
+
+function showUses() {
+  if (!isMobile()) return;
+  document.getElementById('panelLeft').style.display = 'none';
+  document.getElementById('panelMiddle').style.display = 'flex';
   document.getElementById('panelRight').style.display = 'none';
 }
 
 function showTree() {
   if (!isMobile()) return;
   document.getElementById('panelLeft').style.display = 'none';
+  document.getElementById('panelMiddle').style.display = 'none';
   document.getElementById('panelRight').style.display = 'flex';
 }
 
@@ -860,14 +1272,27 @@ function changeCount(delta) {
 function renderTree() {
   const container = document.getElementById('treeContainer');
   const tips = document.getElementById('tipsMsg');
-  if (tips) tips.remove();
-
   const count = parseInt(document.getElementById('countInput').value, 10) || 1;
-  if (!selectedRecipe) return;
+  if (!selectedRecipe) {
+    if (tips) tips.style.display = '';
+    // 既存のツリーノードだけ削除、tipsは残す
+    Array.from(container.children).forEach(el => {
+      if (el.id !== 'tipsMsg') el.remove();
+    });
+    return;
+  }
+  if (tips) tips.style.display = 'none';
   document.getElementById('resultTitle').textContent = `【${selectedRecipe} × ${count}個分】`;
+  const usesCount = usedIn[selectedRecipe]?.length || 0;
+  const usesBtn = document.getElementById('usesBtn');
+  usesBtn.textContent = `→ 使用先 (${usesCount})`;
+  usesBtn.style.display = usesCount > 0 ? 'inline-block' : 'none';
   treePinMap.clear();
   const producedQty = calcProduced(selectedRecipe, count);
-  container.innerHTML = '';
+  // tipsMsg以外を削除してからツリーを挿入
+  Array.from(container.children).forEach(el => {
+    if (el.id !== 'tipsMsg') el.remove();
+  });
   container.appendChild(buildNode(selectedRecipe, count, producedQty, 0));
 }
 
@@ -877,7 +1302,7 @@ function calcProduced(name, needed) {
   return r.yield * Math.ceil(needed / r.yield);
 }
 
-function buildNode(name, neededQty, producedQty, depth) {
+function buildNode(name, neededQty, producedQty, depth, unitCost = null, unitTimes = null) {
   const master = itemMaster[name] || { method: '', icon: '', craftType: '' };
   const surplus = producedQty - neededQty;
   const hasChildren = !!recipes[name];
@@ -935,14 +1360,25 @@ function buildNode(name, neededQty, producedQty, depth) {
 
   row.append(nameEl, qtyEl);
 
-  // 余剰・制作回数
+  // 余剰・制作回数・単価
   const hasSurplus = surplus > 0;
   const times = hasChildren ? Math.ceil(neededQty / recipes[name].yield) : 0;
   const hasCraft = times >= 2;
+  const hasUnit = unitCost !== null && unitTimes !== null;
 
-  if (hasSurplus || hasCraft) {
+  if (hasSurplus || hasCraft || hasUnit) {
     const subInfo = document.createElement('span');
     subInfo.className = 'node-sub-info';
+
+    if (hasUnit) {
+      const subRow = document.createElement('span');
+      subRow.className = 'node-sub-row';
+      const lbl = document.createElement('span');
+      lbl.className = 'node-sub-label';
+      lbl.textContent = `(@${unitCost} × ${unitTimes})`;
+      subRow.appendChild(lbl);
+      subInfo.appendChild(subRow);
+    }
 
     if (hasSurplus) {
       const subRow = document.createElement('span');
@@ -981,12 +1417,20 @@ function buildNode(name, neededQty, producedQty, depth) {
 
   div.appendChild(row);
 
+  if (!hasChildren && usedIn[name]?.length > 0) {
+    toggle.textContent = '→';
+    toggle.className = 'toggle toggle-uses';
+    row.classList.add('leaf-link');
+    row.onclick = () => showUsesPanel(name);
+  }
+
   if (hasChildren) {
     const children = document.createElement('div');
     children.className = 'node-children';
     const r = recipes[name];
 
     if (isExchange) {
+      const exchangeTimes = Math.ceil(producedQty / r.yield);
       r.ingredients.forEach((ing, idx) => {
         if (idx > 0) {
           const orDiv = document.createElement('div');
@@ -994,9 +1438,9 @@ function buildNode(name, neededQty, producedQty, depth) {
           orDiv.textContent = 'もしくは';
           children.appendChild(orDiv);
         }
-        const subNeeded = ing.qty * Math.ceil(producedQty / r.yield);
+        const subNeeded = ing.qty * exchangeTimes;
         const subProduced = calcProduced(ing.name, subNeeded);
-        children.appendChild(buildNode(ing.name, subNeeded, subProduced, depth + 1));
+        children.appendChild(buildNode(ing.name, subNeeded, subProduced, depth + 1, ing.qty, exchangeTimes));
       });
     } else {
       r.ingredients.forEach(ing => {
@@ -1023,6 +1467,97 @@ function methodBadgeClass(method) {
   return 'badge-gather';
 }
 
+function encodeFavorites() {
+  const ids = [...favorites]
+    .filter(n => recipes[n] && itemMaster[n]?.id)
+    .map(n => parseInt(itemMaster[n].id, 10))
+    .filter(n => !isNaN(n))
+    .sort((a, b) => a - b);
+  return ids.map(id => id.toString(36).toUpperCase().padStart(4, '0')).join('');
+}
+
+function decodeFavorites(str) {
+  if (!str || !/^[A-Z0-9]+$/.test(str) || str.length % 4 !== 0) return null;
+  const names = [];
+  for (let i = 0; i < str.length; i += 4) {
+    const name = idToRecipeName[parseInt(str.slice(i, i + 4), 36)];
+    if (name) names.push(name);
+  }
+  return names;
+}
+
+function openSettings() {
+  document.getElementById('exportCode').value = encodeFavorites();
+  document.getElementById('importCode').value = '';
+  document.getElementById('importErr').style.display = 'none';
+  document.getElementById('settingsOverlay').classList.add('open');
+}
+
+function closeSettings() {
+  document.getElementById('settingsOverlay').classList.remove('open');
+}
+
+function copyExportCode(btn) {
+  const code = document.getElementById('exportCode').value;
+  if (!code) return;
+  navigator.clipboard.writeText(code).then(() => {
+    btn.textContent = 'コピー済み';
+    setTimeout(() => { btn.textContent = 'コピー'; }, 1500);
+  });
+}
+
+let pendingImportNames = null;
+
+function startImport() {
+  const code = document.getElementById('importCode').value.trim().toUpperCase();
+  const errEl = document.getElementById('importErr');
+  const names = decodeFavorites(code);
+  if (!names) {
+    errEl.textContent = '無効なコードです';
+    errEl.style.display = '';
+    return;
+  }
+  if (names.length === 0) {
+    errEl.textContent = '有効なレシピが見つかりませんでした';
+    errEl.style.display = '';
+    return;
+  }
+  errEl.style.display = 'none';
+  pendingImportNames = names;
+  document.getElementById('importChoiceMsg').textContent = `${names.length}件のお気に入りを取り込みます`;
+  const overlay = document.getElementById('importChoiceOverlay');
+  document.getElementById('importReplaceBtn').onclick = importReplace;
+  document.getElementById('importMergeBtn').onclick = importMerge;
+  overlay.classList.add('open');
+}
+
+function closeImportChoice() {
+  document.getElementById('importChoiceOverlay').classList.remove('open');
+}
+
+function importMerge() {
+  if (!pendingImportNames) return;
+  pendingImportNames.forEach(n => favorites.add(n));
+  saveFavorites();
+  pendingImportNames = null;
+  closeImportChoice();
+  closeSettings();
+  if (listMode === 'fav') renderList();
+}
+
+function importReplace() {
+  if (!pendingImportNames) return;
+  closeImportChoice();
+  showConfirm('お気に入りを全て削除してから\n取り込みますか？', () => {
+    favorites.clear();
+    pendingImportNames.forEach(n => favorites.add(n));
+    saveFavorites();
+    pendingImportNames = null;
+    closeSettings();
+    if (listMode === 'fav') renderList();
+  });
+}
+
 function openPopup() {
   const w = 601;
   const ROW_H = 34;
@@ -1038,16 +1573,18 @@ function openPopup() {
   if (!win) alert('ポップアップがブロックされました。\nアドレスバーの通知から許可してください。');
 }
 
+loadAppVersion();
 init();
 
 if ('serviceWorker' in navigator) {
+  const hadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('./sw.js')
     .then(reg => {
       reg.addEventListener('updatefound', () => {
         const newWorker = reg.installing;
         newWorker.addEventListener('statechange', () => {
-          if (newWorker.state === 'activated') {
-            console.log('[SW] 新しいバージョンに更新されました');
+          if (newWorker.state === 'activated' && hadController) {
+            document.getElementById('updateNotice').classList.add('open');
           }
         });
       });

@@ -5,6 +5,10 @@
     )
 
     # 1. JSON読み込み
+    if (!(Test-Path $inputJsonPath)) {
+        Write-Error "JSONファイルが見つかりません: $inputJsonPath"
+        return
+    }
     $items = Get-Content $inputJsonPath -Raw | ConvertFrom-Json
     $totalCount = $items.Count
     
@@ -18,9 +22,13 @@
     
     foreach ($item in $items) {
         $i++
-        if ($item.Recipe -and $item.Recipe.Ingredients) {
+        if (($null -ne $item.Recipe) -and ($null -ne $item.Recipe.Ingredients)) {
             foreach ($ing in $item.Recipe.Ingredients) {
-                [void]$usedInRecipeIds.Add([string]$ing.ItemID)
+                $ingId = [string]$ing.ItemID
+                # 軍票（ID: "0"）などの特殊素材はハッシュセットへの登録をスキップする
+                if ($ingId -ne "0" -and $ingId -ne "") {
+                    [void]$usedInRecipeIds.Add($ingId)
+                }
             }
         }
         
@@ -42,8 +50,11 @@
         $i++
         $itemId = [string]$item.ID
         
-        # 条件チェック: レシピがある OR 材料として使用されている
-        if ($item.Recipe -or $usedInRecipeIds.Contains($itemId)) {
+        # 条件チェック: 
+        # ・RecipeプロパティがNullではない（軍票を消費して作るアイテム自体を残す）
+        # ・または、IDが "0"（軍票そのもののレコードがあれば残す）
+        # ・または、通常の材料として他で消費されている
+        if (($null -ne $item.Recipe) -or $itemId -eq "0" -or $usedInRecipeIds.Contains($itemId)) {
             $filteredItems.Add($item)
         }
 
