@@ -1393,7 +1393,7 @@ function buildNode(name, neededQty, producedQty, depth, unitCost = null, unitTim
   // 余剰・制作回数・単価
   const hasSurplus = surplus > 0;
   const times = hasChildren ? Math.ceil(neededQty / recipes[name].yield) : 0;
-  const hasCraft = times >= 2;
+  const hasCraft = !isExchange && times >= 1;
   const hasUnit = unitCost !== null && unitTimes !== null;
 
   if (hasSurplus || hasCraft || hasUnit) {
