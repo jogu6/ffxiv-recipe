@@ -1,5 +1,5 @@
 // データを更新したときは、このバージョンを手動で上げる
-const CACHE_VERSION = 'ff14recipe-v1.38';
+const CACHE_VERSION = 'ff14recipe-v1.381';
 const CACHE_PREFIX = 'ff14recipe-';
 
 const PRECACHE_FILES = [

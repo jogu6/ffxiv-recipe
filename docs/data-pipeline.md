@@ -9,6 +9,7 @@
 ## Inputs
 
 `pipeline/input/` contains the source CSV files and manually maintained token exchange data.
+These files are local-only and are not tracked in Git.
 
 ```text
 Item.csv
@@ -59,4 +60,6 @@ site/assets/item-icons/020/020001.png
 - `pipeline/logs/`: download errors and pipeline logs retained for investigation
 - `pipeline/intermediate/items-truncated.json`: retained historical/manual intermediate output; it is not part of the automated build chain
 
-Missing icons listed in `pipeline/logs/icon-download-errors.txt` are treated as known upstream download failures. Validation fails only when an unlogged icon is missing.
+Files under `pipeline/intermediate/`, `pipeline/reference/csv-headers/`, and `pipeline/logs/` are local-only and are not tracked in Git.
+
+Missing item icon files under `site/assets/item-icons/` are allowed. The app hides broken icon images and continues to work.

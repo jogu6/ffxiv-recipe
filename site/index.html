@@ -47,12 +47,14 @@
       <button id="backBtn">◀ 戻る</button>
       <label>個数:</label>
       <div class="count-control">
+        <button class="count-btn count-step-wide" id="countDecrease5Btn">-5</button>
         <button class="count-btn" id="countDecreaseBtn">－</button>
         <input type="number" id="countInput" value="1" min="1" inputmode="numeric">
         <button class="count-btn" id="countIncreaseBtn">＋</button>
+        <button class="count-btn count-step-wide" id="countIncrease5Btn">+5</button>
       </div>
       <span id="resultTitle"></span>
-      <button id="usesBtn">→ 使用先</button>
+      <button id="usesBtn">使用先</button>
     </div>
     <div id="treeContainer">
       <div class="tips-msg" id="tipsMsg"></div>
@@ -77,6 +79,7 @@
 
 <div id="settingsOverlay">
   <div id="settingsDialog">
+    <button class="settings-corner-btn" id="licenseBtn">LICENSE</button>
     <h2>⚙ 設定</h2>
     <div class="settings-section">
       <div class="settings-label">お気に入りをシェアする</div>
@@ -94,7 +97,6 @@
       <div id="importErr" class="settings-err"></div>
     </div>
     <div class="settings-close">
-      <button class="confirm-btn no" id="licenseBtn">LICENSE</button>
       <button class="confirm-btn no" id="settingsCloseBtn">閉じる</button>
     </div>
   </div>

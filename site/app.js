@@ -54,9 +54,11 @@ const elements = {
   usesTitle: document.getElementById('usesTitle'),
   usesList: document.getElementById('usesList'),
   backBtn: document.getElementById('backBtn'),
+  countDecrease5Btn: document.getElementById('countDecrease5Btn'),
   countDecreaseBtn: document.getElementById('countDecreaseBtn'),
   countInput: document.getElementById('countInput'),
   countIncreaseBtn: document.getElementById('countIncreaseBtn'),
+  countIncrease5Btn: document.getElementById('countIncrease5Btn'),
   resultTitle: document.getElementById('resultTitle'),
   usesBtn: document.getElementById('usesBtn'),
   treeContainer: document.getElementById('treeContainer'),
@@ -388,7 +390,16 @@ function makeRecipeLi(name) {
 
 function makeIngredientLi(name) {
   const li = createItemListRow(name, 'ingredient-row');
-  li.appendChild(createTextElement('span', 'uses-arrow', '→'));
+  const usesButton = document.createElement('button');
+  usesButton.className = 'uses-list-btn';
+  usesButton.type = 'button';
+  usesButton.textContent = '使用先';
+  usesButton.addEventListener('click', event => {
+    event.stopPropagation();
+    rememberCurrentSearch();
+    showUsesPanel(name);
+  });
+  li.appendChild(usesButton);
   li.addEventListener('click', () => {
     rememberCurrentSearch();
     showUsesPanel(name);
@@ -646,7 +657,7 @@ function renderTree() {
   elements.tipsMsg.classList.add('hidden');
   elements.resultTitle.textContent = `【${selectedRecipe} × ${count}個分】`;
   const usesCount = usedIn[selectedRecipe]?.length || 0;
-  elements.usesBtn.textContent = `→ 使用先 (${usesCount})`;
+  elements.usesBtn.textContent = `使用先 (${usesCount})`;
   elements.usesBtn.classList.toggle('visible', usesCount > 0);
   treePinMap.clear();
 
@@ -968,9 +979,11 @@ function bindEvents() {
   elements.favBtn.addEventListener('click', toggleFav);
   elements.usesBackBtn.addEventListener('click', returnToList);
   elements.backBtn.addEventListener('click', goBack);
+  elements.countDecrease5Btn.addEventListener('click', () => changeCount(-5));
   elements.countDecreaseBtn.addEventListener('click', () => changeCount(-1));
   elements.countInput.addEventListener('input', renderTree);
   elements.countIncreaseBtn.addEventListener('click', () => changeCount(1));
+  elements.countIncrease5Btn.addEventListener('click', () => changeCount(5));
   elements.usesBtn.addEventListener('click', () => showUsesPanel(selectedRecipe));
   elements.updateReloadBtn.addEventListener('click', () => location.reload());
   elements.confirmYes.addEventListener('click', confirmPendingAction);

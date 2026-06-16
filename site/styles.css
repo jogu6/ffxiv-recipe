@@ -226,7 +226,19 @@
   li.ingredient-row { background: #1a1a1a; }
   li.ingredient-row:hover { background: var(--hover-bg); }
   li.ingredient-row.selected { background: var(--active-bg); color: var(--accent); }
-  .uses-arrow { margin-left: auto; color: var(--muted); font-size: 11px; flex-shrink: 0; }
+  .uses-list-btn {
+    margin-left: auto;
+    flex-shrink: 0;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .uses-list-btn:hover { border-color: var(--accent); color: var(--accent); }
 
   /* Recipe tree */
   .panel-right { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
@@ -253,6 +265,11 @@
     display: flex; align-items: center; justify-content: center;
     line-height: 1;
     padding: 0;
+  }
+  .count-step-wide {
+    width: 34px;
+    font-size: 12px;
+    font-weight: bold;
   }
   .count-btn:hover { border-color: var(--accent); color: var(--accent); }
   #countInput {
@@ -528,8 +545,23 @@
   #settingsOverlay.open { display: flex; }
   #settingsDialog {
     max-width: 360px;
+    position: relative;
   }
   #settingsDialog h2 { font-size: 14px; color: var(--accent); margin-bottom: 16px; }
+  .settings-corner-btn {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 3px 7px;
+    border-radius: 3px;
+    font-size: 10px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .settings-corner-btn:hover { border-color: var(--accent); color: var(--accent); }
   .settings-section { margin-bottom: 16px; }
   .settings-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
   .settings-row { display: flex; gap: 6px; }
@@ -655,6 +687,8 @@
     #searchBox { padding: 7px 34px 7px 10px; font-size: 14px; }
     .node-name { font-size: 15px; }
     .node-qty  { font-size: 14px; }
+    #usesBtn.visible { margin-left: auto; }
     .tree-node { line-height: 2; }
     .count-btn { width: 32px; height: 32px; font-size: 18px; }
+    .count-step-wide { width: 40px; font-size: 13px; }
   }

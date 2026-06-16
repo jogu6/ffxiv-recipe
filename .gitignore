@@ -10,3 +10,9 @@ Thumbs.db
 *.tmp
 *.temp
 pipeline/logs/*.tmp
+
+# Local data pipeline files
+pipeline/input/*.csv
+pipeline/intermediate/*.json
+pipeline/reference/csv-headers/*.txt
+pipeline/logs/*.txt
