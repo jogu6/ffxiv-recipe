@@ -1,15 +1,12 @@
-﻿# --- データファイル関連 ---
-# 巨大なCSVや、生成されたJSONを除外
-data/*.csv
-data/*.json
-data/*.txt
-
-# --- 出力・一時ファイル ---
-# スクリプト実行結果や作業用ファイルを除外
-log/
-
-# --- システム・エディタ関連 ---
+# Operating system files
 .DS_Store
 Thumbs.db
+
+# Editor-local settings
 .vscode/
+
+# Temporary files
 *.bak
+*.tmp
+*.temp
+pipeline/logs/*.tmp

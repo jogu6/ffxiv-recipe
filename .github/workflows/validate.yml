@@ -1,0 +1,33 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check JavaScript syntax
+        shell: pwsh
+        run: |
+          node --check site/app.js
+          node --check site/sw.js
+      - name: Validate site assets and PowerShell encoding
+        shell: pwsh
+        run: node tools/validate-site.mjs
+      - name: Parse PowerShell scripts
+        shell: pwsh
+        run: |
+          $errors = @()
+          Get-ChildItem pipeline/scripts, tools/repository, tools/setup -Filter *.ps1 -Recurse | ForEach-Object {
+            $tokens = $null
+            $parseErrors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$parseErrors)
+            if ($parseErrors) { $errors += $parseErrors }
+          }
+          if ($errors.Count -gt 0) { $errors | Format-List; exit 1 }

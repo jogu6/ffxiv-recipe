@@ -1,0 +1,5 @@
+﻿index.html 更新時は、sw.js の一行目のバージョンも上げること
+(キャッシュが新たに作られる)
+
+// 例: v1 → v2 に変えてデプロイ
+const CACHE_VERSION = 'ff14recipe-v2';
