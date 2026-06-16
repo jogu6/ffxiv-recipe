@@ -41,6 +41,28 @@ pwsh -File .\pipeline\scripts\08-build-all.ps1
 
 ## Validation
 
+Install Node.js dependencies:
+
+```powershell
+npm install
+```
+
+Run the standard checks:
+
+```powershell
+npm run check
+```
+
+Run Playwright UI regression tests:
+
+```powershell
+npm run test:e2e
+```
+
+Development tool details are documented in [docs/development.md](docs/development.md).
+
+Legacy direct validation command:
+
 ```powershell
 node .\tools\validate-site.mjs
 ```
