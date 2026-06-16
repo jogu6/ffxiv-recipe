@@ -102,6 +102,7 @@ let prevPanel = 'left';
 let listMode = 'none';
 let pendingImportNames = null;
 let pendingConfirmAction = null;
+let wasMobile = isMobile();
 
 const treePinMap = new Map();
 
@@ -626,6 +627,30 @@ function showMobilePanel(panelName) {
   elements.panelRight.classList.toggle('mobile-visible', panelName === 'right');
 }
 
+function clearMobilePanels() {
+  elements.panelLeft.classList.remove('mobile-visible');
+  elements.panelMiddle.classList.remove('mobile-visible');
+  elements.panelRight.classList.remove('mobile-visible');
+}
+
+function handleResize() {
+  const mobile = isMobile();
+  if (mobile === wasMobile) return;
+  wasMobile = mobile;
+
+  if (mobile) {
+    if (elements.panelMiddle.classList.contains('open')) showMobilePanel('middle');
+    else if (selectedRecipe) showMobilePanel('right');
+    else showMobilePanel('left');
+    renderList();
+    return;
+  }
+
+  clearMobilePanels();
+  renderList();
+  if (!selectedRecipe) renderTips();
+}
+
 function changeCount(delta) {
   elements.countInput.value = Math.max(1, (parseInt(elements.countInput.value, 10) || 1) + delta);
   renderTree();
@@ -1007,6 +1032,7 @@ function bindEvents() {
     elements.panelLeft.addEventListener(eventName, closeUsesPanel);
   });
   document.addEventListener('pointerdown', handleDocumentPointerDown);
+  window.addEventListener('resize', handleResize);
 }
 
 function registerServiceWorker() {

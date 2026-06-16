@@ -231,7 +231,7 @@
     flex-shrink: 0;
     background: var(--accent);
     border: 1px solid var(--accent);
-    color: #fff;
+    color: #1a1a1a;
     padding: 3px 8px;
     border-radius: 3px;
     font-size: 11px;
