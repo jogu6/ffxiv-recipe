@@ -8,6 +8,10 @@ Thumbs.db
 # Node.js dependencies
 node_modules/
 
+# Playwright outputs
+test-results/
+playwright-report/
+
 # Temporary files
 *.bak
 *.tmp
