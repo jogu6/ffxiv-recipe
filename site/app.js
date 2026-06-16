@@ -633,24 +633,6 @@ function clearMobilePanels() {
   elements.panelRight.classList.remove('mobile-visible');
 }
 
-function handleResize() {
-  const mobile = isMobile();
-  if (mobile === wasMobile) return;
-  wasMobile = mobile;
-
-  if (mobile) {
-    if (elements.panelMiddle.classList.contains('open')) showMobilePanel('middle');
-    else if (selectedRecipe) showMobilePanel('right');
-    else showMobilePanel('left');
-    renderList();
-    return;
-  }
-
-  clearMobilePanels();
-  renderList();
-  if (!selectedRecipe) renderTips();
-}
-
 function changeCount(delta) {
   elements.countInput.value = Math.max(1, (parseInt(elements.countInput.value, 10) || 1) + delta);
   renderTree();
@@ -660,6 +642,42 @@ function clearRenderedTree() {
   Array.from(elements.treeContainer.children).forEach(child => {
     if (child !== elements.tipsMsg) child.remove();
   });
+}
+
+function resetToStartupView() {
+  selectedRecipe = null;
+  prevPanel = 'left';
+  listMode = 'none';
+  treePinMap.clear();
+
+  elements.searchBox.value = '';
+  elements.searchClearBtn.classList.remove('visible');
+  elements.favBtn.classList.remove('active');
+  closeSearchHistory();
+  closeUsesPanel();
+
+  elements.usesTitle.textContent = '';
+  elements.usesList.replaceChildren();
+  elements.resultTitle.textContent = '';
+  elements.usesBtn.classList.remove('visible');
+  elements.countInput.value = '1';
+
+  clearRenderedTree();
+  elements.tipsMsg.classList.remove('hidden');
+  renderList();
+
+  if (isMobile()) showMobilePanel('left');
+  else {
+    clearMobilePanels();
+    renderTips();
+  }
+}
+
+function handleResize() {
+  const mobile = isMobile();
+  if (mobile === wasMobile) return;
+  wasMobile = mobile;
+  resetToStartupView();
 }
 
 // Recipe tree calculation and rendering
