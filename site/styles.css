@@ -229,16 +229,16 @@
   .uses-list-btn {
     margin-left: auto;
     flex-shrink: 0;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    color: var(--muted);
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    color: #fff;
     padding: 3px 8px;
     border-radius: 3px;
     font-size: 11px;
     cursor: pointer;
     white-space: nowrap;
   }
-  .uses-list-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .uses-list-btn:hover { background: #d4b458; border-color: #d4b458; }
 
   /* Recipe tree */
   .panel-right { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
