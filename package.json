@@ -1,0 +1,36 @@
+{
+  "name": "ffxiv-recipe",
+  "version": "1.0.0",
+  "description": "FFXIVのレシピと必要素材をツリー表示する静的Webアプリです。",
+  "private": true,
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "check": "npm-run-all check:js check:site",
+    "check:js": "node --check site/app.js && node --check site/sw.js && node --check tools/validate-site.mjs",
+    "check:site": "node tools/validate-site.mjs",
+    "format:check": "prettier --check \"**/*.{html,css,js,mjs,json,md,yml,yaml,webmanifest}\"",
+    "format": "prettier --write \"**/*.{html,css,js,mjs,json,md,yml,yaml,webmanifest}\"",
+    "lint:md": "markdownlint-cli2",
+    "test:e2e": "playwright test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jogu6/ffxiv-recipe.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/jogu6/ffxiv-recipe/issues"
+  },
+  "homepage": "https://github.com/jogu6/ffxiv-recipe#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.61.0",
+    "markdownlint-cli2": "^0.22.1",
+    "npm-run-all": "^4.1.5",
+    "prettier": "^3.8.4"
+  }
+}

@@ -1,0 +1,12 @@
+node_modules/
+
+# Large or generated data
+site/data/Item.json
+pipeline/input/
+pipeline/intermediate/
+pipeline/reference/csv-headers/
+pipeline/logs/
+
+# Binary assets
+site/assets/
+design/
