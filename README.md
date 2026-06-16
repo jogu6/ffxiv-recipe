@@ -2,7 +2,7 @@
 
 FFXIVのレシピと必要素材をツリー表示する静的Webアプリです。
 
-- 公開サイト: https://jogu6.github.io/ff14-recipe/
+- 公開サイト: https://jogu6.github.io/ffxiv-recipe/
 - GitHub Pagesで配信
 - PWA対応
 - データ生成処理はWindows 11上のPowerShellで実行
@@ -47,4 +47,10 @@ node .\tools\validate-site.mjs
 
 ## Rights and license
 
-アプリケーションコードはMIT Licenseです。ゲーム画像、ゲーム由来データ、商標などにはMIT Licenseを適用しません。詳細は [NOTICE.md](NOTICE.md) を参照してください。
+アプリケーションコードとプロジェクト用ツールには MIT License を適用します。
+
+FINAL FANTASY XIV の画像、名称、アイテム/レシピデータ、商標、その他ゲーム由来素材の権利は SQUARE ENIX に帰属します。本プロジェクトは非公式であり、SQUARE ENIX の承認、提携、後援を示すものではありません。
+
+SQUARE ENIX から修正、削除、公開停止、提供停止などの指示があった場合は迅速に従います。必要に応じて、アプリの提供停止や対象素材/データの削除を実施します。
+
+詳細は [NOTICE.md](NOTICE.md) を参照してください。

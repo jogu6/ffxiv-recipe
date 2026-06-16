@@ -5,6 +5,7 @@
     --accent: #c8a84b;
     --text: #e0e0e0;
     --muted: #888;
+    --soft-text: #b8b8b8;
     --surplus: #6abf69;
     --craft: #c8a84b;
     --gather: #5b9bd5;
@@ -306,7 +307,7 @@
   }
   .tips-row {
     font-size: 13px;
-    color: var(--muted);
+    color: var(--soft-text);
     line-height: 1.6;
   }
 
@@ -372,7 +373,7 @@
   #recipeList li.tips-li:hover { background: none; }
   .tips-row-list {
     font-size: 13px;
-    color: var(--muted);
+    color: var(--soft-text);
     line-height: 1.5;
     text-align: left;
   }
@@ -478,6 +479,7 @@
   /* Dialogs and overlays */
   #confirmOverlay,
   #settingsOverlay,
+  #licenseOverlay,
   #importChoiceOverlay {
     display: none;
     position: fixed;
@@ -490,6 +492,7 @@
   #confirmOverlay.open { display: flex; }
   #confirmDialog,
   #settingsDialog,
+  #licenseDialog,
   #importChoiceDialog {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -555,7 +558,41 @@
   .settings-btn:hover { border-color: var(--accent); color: var(--accent); }
   .settings-err { font-size: 11px; color: var(--hunt); margin-top: 4px; display: none; }
   .settings-err.visible { display: block; }
-  .settings-close { text-align: center; margin-top: 4px; }
+  .settings-close {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 4px;
+  }
+
+  #licenseOverlay {
+    z-index: 350;
+  }
+  #licenseOverlay.open { display: flex; }
+  #licenseDialog {
+    max-width: 640px;
+    max-height: min(80vh, 720px);
+    display: flex;
+    flex-direction: column;
+  }
+  #licenseDialog h2 {
+    font-size: 14px;
+    color: var(--accent);
+    margin-bottom: 12px;
+  }
+  #licenseText {
+    overflow-y: auto;
+    white-space: pre-wrap;
+    color: var(--soft-text);
+    font-family: "Yu Gothic", "Meiryo", sans-serif;
+    font-size: 12px;
+    line-height: 1.65;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px;
+    margin-bottom: 14px;
+  }
 
   #importChoiceOverlay {
     z-index: 300;
