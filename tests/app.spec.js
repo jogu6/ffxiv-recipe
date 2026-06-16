@@ -53,6 +53,17 @@ test('uses buttons share the accent style', async ({ page }) => {
   await expect(treeButton).toHaveCSS('color', 'rgb(26, 26, 26)');
 });
 
+test('selects ingredient-only search results when opening used-in recipes', async ({ page }) => {
+  await openApp(page);
+  await searchFor(page, '山羊乳');
+
+  const row = page.locator('#recipeList li').filter({ hasText: '山羊乳' }).first();
+  await row.click();
+
+  await expect(row).toHaveClass(/selected/);
+  await expect(page.locator('#usesTitle')).toContainText('山羊乳');
+});
+
 test('toggles between recipe tree and materials list, and resets to tree on new selection', async ({ page }) => {
   await openApp(page);
   await searchFor(page, 'アリペブレ');
@@ -117,11 +128,34 @@ test('creates a named favorite list from a tree pin and exports a base36 share c
   await page.locator('#favoriteLists').getByText('剣リスト').click();
   await expect(page.locator('#recipeList')).toContainText('バスタードソード');
 
+  await page.locator('#recipeList .pin-btn').first().click();
+  await expect(page.locator('#confirmMsg')).toContainText('「剣リスト」から削除しますか？');
+  await page.locator('#confirmNo').click();
+
   await page.locator('#settingsBtn').click();
   await page.locator('#exportListToggle').click();
   await page.locator('#exportListChoices').getByText('剣リスト').click();
   await expect(page.locator('#exportListToggle')).toContainText('剣リスト');
   await expect(page.locator('#exportCode')).toHaveValue(/^[0-9A-Z]+$/);
+});
+
+test('favorite list selection clears the recipe view switch', async ({ page }) => {
+  await openApp(page);
+  await searchFor(page, 'バスタードソード');
+  await page.getByText('バスタードソード', { exact: true }).first().click();
+  await page.locator('.tree-node .pin-btn').first().click();
+  await page.locator('#favoriteTargetCreate').getByText('新規作成').click();
+  await page.locator('#textInputField').fill('切替確認');
+  await page.locator('#textInputOkBtn').click();
+
+  await searchFor(page, 'アリペブレ');
+  await page.getByText('アリペブレ', { exact: true }).first().click();
+  await expect(page.locator('#resultViewSwitch')).toBeVisible();
+
+  await page.locator('#favBtn').click();
+  await page.locator('#favoriteLists').getByText('切替確認').click();
+  await expect(page.locator('#resultViewSwitch')).toBeHidden();
+  await expect(page.locator('#resultTitle')).toHaveText('');
 });
 
 test('shows favorite list materials mode with set count and ring toggles', async ({ page }) => {
@@ -147,6 +181,7 @@ test('shows favorite list materials mode with set count and ring toggles', async
   await expect(page.locator('#materialsViewBtn')).toBeVisible();
   await expect(page.locator('#treeViewBtn')).toBeHidden();
   await expect(page.locator('.favorite-ring-controls')).toContainText('カッパーリング');
+  await expect(page.locator('.favorite-ring-separator')).toBeVisible();
   await expect(page.locator('.favorite-ring-toggle')).toContainText('1つ');
   await expect(page.locator('.materials-list')).toContainText('ゴールデンイール');
 
@@ -154,6 +189,21 @@ test('shows favorite list materials mode with set count and ring toggles', async
   await expect(page.locator('#countLabel')).toHaveText('個数:');
   await expect(page.locator('#treeViewBtn')).toBeVisible();
   await expect(page.locator('.favorite-ring-controls')).toHaveCount(0);
+});
+
+test('mobile pin turns active after adding to a favorite list', async ({ page }) => {
+  await openApp(page, 600, 700);
+  await searchFor(page, 'バスタードソード');
+  await page.getByText('バスタードソード', { exact: true }).first().click();
+
+  const pin = page.locator('.tree-node .pin-btn').first();
+  await expect(pin).toHaveClass(/inactive/);
+  await pin.click();
+  await page.locator('#favoriteTargetCreate').getByText('新規作成').click();
+  await page.locator('#textInputField').fill('スマホ確認');
+  await page.locator('#textInputOkBtn').click();
+
+  await expect(pin).not.toHaveClass(/inactive/);
 });
 
 test('crossing the responsive breakpoint resets to startup view', async ({ page }) => {

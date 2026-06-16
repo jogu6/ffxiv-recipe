@@ -373,10 +373,15 @@ function submitTextInput() {
   action?.(value);
 }
 
-function isFavorite(name) {
-  const list = getDisplayedFavoriteList();
+function isFavorite(name, listId = getDisplayedFavoriteList()?.id || favoriteStore.selectedListId) {
+  const list = findFavoriteList(listId);
   const id = recipeIdForName(name);
   return Boolean(list && id && list.itemIds.includes(id));
+}
+
+function markRecipeListSelection(li) {
+  elements.recipeList.querySelectorAll('li').forEach(el => el.classList.remove('selected'));
+  li.classList.add('selected');
 }
 
 function resetTreeSelection() {
@@ -390,6 +395,7 @@ function resetTreeSelection() {
   elements.usesBtn.classList.remove('visible');
   clearRenderedTree();
   elements.tipsMsg.classList.remove('hidden');
+  updateResultHeader();
   if (!isMobile()) renderTips();
   else showMobilePanel('left');
 }
@@ -411,7 +417,11 @@ function pinOn(name) {
 }
 
 function pinOff(name) {
-  showConfirm(`「${name}」を\nお気に入りから削除しますか？`, () => {
+  const listName = findFavoriteList(getDisplayedFavoriteList()?.id || favoriteStore.selectedListId)?.name;
+  const message = listName
+    ? `「${name}」を\n「${listName}」から削除しますか？`
+    : `「${name}」を\nお気に入りから削除しますか？`;
+  showConfirm(message, () => {
     applyFavoriteChange(name, false);
   });
 }
@@ -774,6 +784,7 @@ function makeRecipeLi(name) {
 
   li.addEventListener('click', () => {
     rememberCurrentSearch();
+    markRecipeListSelection(li);
     selectRecipe(name, li);
   });
   return li;
@@ -788,11 +799,13 @@ function makeIngredientLi(name) {
   usesButton.addEventListener('click', event => {
     event.stopPropagation();
     rememberCurrentSearch();
+    markRecipeListSelection(li);
     showUsesPanel(name);
   });
   li.appendChild(usesButton);
   li.addEventListener('click', () => {
     rememberCurrentSearch();
+    markRecipeListSelection(li);
     showUsesPanel(name);
   });
   return li;
@@ -846,8 +859,7 @@ function selectRecipe(name, li) {
   leaveFavoriteMaterialsMode();
   exchangeTreeState.clear();
   setResultViewMode('tree');
-  elements.recipeList.querySelectorAll('li').forEach(el => el.classList.remove('selected'));
-  li.classList.add('selected');
+  markRecipeListSelection(li);
   renderResultView();
   if (isMobile()) {
     prevPanel = 'left';
@@ -1392,6 +1404,9 @@ function renderFavoriteRingControls(container) {
   });
 
   container.appendChild(section);
+  const separator = document.createElement('div');
+  separator.className = 'favorite-ring-separator';
+  container.appendChild(separator);
 }
 
 function collectMaterialRows(name, neededQty, pathKey = name) {
