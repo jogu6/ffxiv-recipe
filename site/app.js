@@ -1,8 +1,10 @@
 const DATA_FILE = './data/Item.json';
 const TIPS_FILE = './data/tips.json';
 const LS_FAV = 'ff14_favorites';
+const LS_FAV_LISTS = 'ff14_favorite_lists_v2';
 const LS_SEARCH_HISTORY = 'ff14_search_history';
 const SEARCH_HISTORY_LIMIT = 30;
+const FAVORITE_NAME_MAX = 50;
 const MOBILE_BREAKPOINT = 600;
 
 const CRAFT_TYPE_NAME = {
@@ -49,17 +51,22 @@ const elements = {
   searchClearBtn: document.getElementById('searchClearBtn'),
   searchHistory: document.getElementById('searchHistory'),
   favBtn: document.getElementById('favBtn'),
+  favoriteLists: document.getElementById('favoriteLists'),
   recipeList: document.getElementById('recipeList'),
   usesBackBtn: document.getElementById('usesBackBtn'),
   usesTitle: document.getElementById('usesTitle'),
   usesList: document.getElementById('usesList'),
   backBtn: document.getElementById('backBtn'),
+  countLabel: document.getElementById('countLabel'),
   countDecrease5Btn: document.getElementById('countDecrease5Btn'),
   countDecreaseBtn: document.getElementById('countDecreaseBtn'),
   countInput: document.getElementById('countInput'),
   countIncreaseBtn: document.getElementById('countIncreaseBtn'),
   countIncrease5Btn: document.getElementById('countIncrease5Btn'),
   resultTitle: document.getElementById('resultTitle'),
+  resultViewSwitch: document.getElementById('resultViewSwitch'),
+  treeViewBtn: document.getElementById('treeViewBtn'),
+  materialsViewBtn: document.getElementById('materialsViewBtn'),
   usesBtn: document.getElementById('usesBtn'),
   treeContainer: document.getElementById('treeContainer'),
   tipsMsg: document.getElementById('tipsMsg'),
@@ -70,6 +77,8 @@ const elements = {
   confirmYes: document.getElementById('confirmYes'),
   confirmNo: document.getElementById('confirmNo'),
   settingsOverlay: document.getElementById('settingsOverlay'),
+  exportListToggle: document.getElementById('exportListToggle'),
+  exportListChoices: document.getElementById('exportListChoices'),
   exportCode: document.getElementById('exportCode'),
   copyExportBtn: document.getElementById('copyExportBtn'),
   importCode: document.getElementById('importCode'),
@@ -80,11 +89,16 @@ const elements = {
   licenseText: document.getElementById('licenseText'),
   licenseCloseBtn: document.getElementById('licenseCloseBtn'),
   settingsCloseBtn: document.getElementById('settingsCloseBtn'),
-  importChoiceOverlay: document.getElementById('importChoiceOverlay'),
-  importChoiceMsg: document.getElementById('importChoiceMsg'),
-  importReplaceBtn: document.getElementById('importReplaceBtn'),
-  importMergeBtn: document.getElementById('importMergeBtn'),
-  importCancelBtn: document.getElementById('importCancelBtn')
+  textInputOverlay: document.getElementById('textInputOverlay'),
+  textInputMsg: document.getElementById('textInputMsg'),
+  textInputField: document.getElementById('textInputField'),
+  textInputOkBtn: document.getElementById('textInputOkBtn'),
+  textInputCancelBtn: document.getElementById('textInputCancelBtn'),
+  favoriteTargetOverlay: document.getElementById('favoriteTargetOverlay'),
+  favoriteTargetMsg: document.getElementById('favoriteTargetMsg'),
+  favoriteTargetCreate: document.getElementById('favoriteTargetCreate'),
+  favoriteTargetChoices: document.getElementById('favoriteTargetChoices'),
+  favoriteTargetCancelBtn: document.getElementById('favoriteTargetCancelBtn')
 };
 
 // Application state and indexes
@@ -92,7 +106,7 @@ let itemMaster = {};
 let recipes = {};
 let recipeNames = [];
 let selectedRecipe = null;
-let favorites = new Set();
+let favoriteStore = { version: 2, selectedListId: null, lists: [] };
 let searchHistory = [];
 let tipsData = [];
 let idToRecipeName = {};
@@ -100,11 +114,16 @@ let usedIn = {};
 let ingredientNames = [];
 let prevPanel = 'left';
 let listMode = 'none';
-let pendingImportNames = null;
+let resultViewMode = 'tree';
+let resultSourceMode = 'recipe';
+let favoriteMaterialsRingCounts = {};
 let pendingConfirmAction = null;
+let pendingTextInputAction = null;
+let selectedExportListId = null;
 let wasMobile = isMobile();
 
 const treePinMap = new Map();
+const exchangeTreeState = new Map();
 
 function isMobile() {
   return window.innerWidth <= MOBILE_BREAKPOINT;
@@ -134,13 +153,119 @@ function writeStoredJson(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+function formatDefaultListName() {
+  const now = new Date();
+  const pad = value => String(value).padStart(2, '0');
+  return [
+    now.getFullYear(),
+    pad(now.getMonth() + 1),
+    pad(now.getDate())
+  ].join('-') + ' ' + [
+    pad(now.getHours()),
+    pad(now.getMinutes()),
+    pad(now.getSeconds())
+  ].join(':');
+}
+
+function normalizeFavoriteListName(name) {
+  const trimmed = typeof name === 'string' ? name.trim() : '';
+  return (trimmed || formatDefaultListName()).slice(0, FAVORITE_NAME_MAX);
+}
+
+function createFavoriteListId() {
+  return `L${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeItemIds(itemIds) {
+  if (!Array.isArray(itemIds)) return [];
+  return [...new Set(
+    itemIds.map(id => parseInt(id, 10)).filter(id => Number.isInteger(id) && id > 0)
+  )];
+}
+
+function withDuplicateSuffix(baseName, suffixNumber) {
+  if (suffixNumber === 0) return baseName.slice(0, FAVORITE_NAME_MAX);
+  const suffix = `（${suffixNumber}）`;
+  return `${baseName.slice(0, FAVORITE_NAME_MAX - suffix.length)}${suffix}`;
+}
+
+function uniqueFavoriteListName(name, excludeId = null) {
+  const baseName = normalizeFavoriteListName(name);
+  const exists = candidate => favoriteStore.lists.some(list =>
+    list.id !== excludeId && list.name === candidate
+  );
+
+  for (let i = 0; i < 1000; i += 1) {
+    const candidate = withDuplicateSuffix(baseName, i);
+    if (!exists(candidate)) return candidate;
+  }
+  return withDuplicateSuffix(baseName, Date.now() % 1000);
+}
+
+function getSelectedFavoriteList() {
+  return favoriteStore.lists.find(list => list.id === favoriteStore.selectedListId) || null;
+}
+
+function getDisplayedFavoriteList() {
+  return listMode === 'fav' ? getSelectedFavoriteList() : null;
+}
+
+function getFavoriteListRecipeNames(list = getDisplayedFavoriteList()) {
+  return list ? list.itemIds.map(recipeNameForId).filter(name => name && recipes[name]) : [];
+}
+
+function isRingRecipe(name) {
+  return itemMaster[name]?.uiCategoryName === '指輪';
+}
+
+function findFavoriteList(id) {
+  return favoriteStore.lists.find(list => list.id === id) || null;
+}
+
+function recipeIdForName(name) {
+  const id = parseInt(itemMaster[name]?.id, 10);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function recipeNameForId(id) {
+  return idToRecipeName[parseInt(id, 10)] || null;
+}
+
+function createFavoriteList(name, itemIds = []) {
+  const list = {
+    id: createFavoriteListId(),
+    name: uniqueFavoriteListName(name),
+    itemIds: normalizeItemIds(itemIds)
+  };
+  favoriteStore.lists.push(list);
+  favoriteStore.selectedListId = list.id;
+  saveFavorites();
+  return list;
+}
+
 function loadFavorites() {
-  const storedFavorites = readStoredJson(LS_FAV, []);
-  favorites = new Set(Array.isArray(storedFavorites) ? storedFavorites : []);
+  localStorage.removeItem(LS_FAV);
+  const stored = readStoredJson(LS_FAV_LISTS, null);
+  const lists = Array.isArray(stored?.lists)
+    ? stored.lists.map(list => ({
+        id: typeof list.id === 'string' ? list.id : createFavoriteListId(),
+        name: normalizeFavoriteListName(list.name),
+        itemIds: normalizeItemIds(list.itemIds)
+      }))
+    : [];
+
+  favoriteStore = {
+    version: 2,
+    selectedListId: lists.some(list => list.id === stored?.selectedListId)
+      ? stored.selectedListId
+      : null,
+    lists
+  };
+  saveFavorites();
 }
 
 function saveFavorites() {
-  writeStoredJson(LS_FAV, [...favorites]);
+  writeStoredJson(LS_FAV_LISTS, favoriteStore);
 }
 
 function loadSearchHistory() {
@@ -227,16 +352,62 @@ function confirmPendingAction() {
   action?.();
 }
 
-function applyFavoriteChange(name, shouldAdd) {
-  if (shouldAdd) favorites.add(name);
-  else favorites.delete(name);
+function closeTextInput() {
+  elements.textInputOverlay.classList.remove('open');
+  pendingTextInputAction = null;
+}
+
+function showTextInput(message, defaultValue, onSubmit) {
+  elements.textInputMsg.textContent = message;
+  elements.textInputField.value = defaultValue || '';
+  pendingTextInputAction = onSubmit;
+  elements.textInputOverlay.classList.add('open');
+  elements.textInputField.focus();
+  elements.textInputField.select();
+}
+
+function submitTextInput() {
+  const action = pendingTextInputAction;
+  const value = elements.textInputField.value;
+  closeTextInput();
+  action?.(value);
+}
+
+function isFavorite(name) {
+  const list = getDisplayedFavoriteList();
+  const id = recipeIdForName(name);
+  return Boolean(list && id && list.itemIds.includes(id));
+}
+
+function resetTreeSelection() {
+  selectedRecipe = null;
+  prevPanel = 'left';
+  treePinMap.clear();
+  closeUsesPanel();
+  elements.usesTitle.textContent = '';
+  elements.usesList.replaceChildren();
+  elements.resultTitle.textContent = '';
+  elements.usesBtn.classList.remove('visible');
+  clearRenderedTree();
+  elements.tipsMsg.classList.remove('hidden');
+  if (!isMobile()) renderTips();
+  else showMobilePanel('left');
+}
+
+function applyFavoriteChange(name, shouldAdd, listId = getDisplayedFavoriteList()?.id) {
+  const list = findFavoriteList(listId);
+  const id = recipeIdForName(name);
+  if (!list || !id) return;
+
+  if (shouldAdd && !list.itemIds.includes(id)) list.itemIds.push(id);
+  if (!shouldAdd) list.itemIds = list.itemIds.filter(itemId => itemId !== id);
   saveFavorites();
   refreshPins(name);
   if (listMode === 'fav') renderList();
 }
 
 function pinOn(name) {
-  applyFavoriteChange(name, true);
+  openFavoriteTarget(name);
 }
 
 function pinOff(name) {
@@ -251,7 +422,7 @@ function registerTreePin(name, btn) {
 }
 
 function refreshPins(name) {
-  const isOn = favorites.has(name);
+  const isOn = isFavorite(name);
   treePinMap.get(name)?.forEach(btn => {
     btn.textContent = isOn ? '📌' : '📍';
     btn.classList.toggle('inactive', !isOn);
@@ -261,10 +432,13 @@ function refreshPins(name) {
 
 function onSearch() {
   const q = elements.searchBox.value.trim();
+  leaveFavoriteMaterialsMode();
   elements.searchClearBtn.classList.toggle('visible', q !== '');
   elements.favBtn.classList.remove('active');
+  closeFavoriteLists();
   listMode = q === '' ? 'none' : 'search';
   renderList();
+  renderResultView();
   renderSearchHistory();
 }
 
@@ -278,9 +452,214 @@ function toggleFav() {
   elements.searchBox.value = '';
   elements.searchClearBtn.classList.remove('visible');
   closeSearchHistory();
+  renderFavoriteLists();
+  elements.favoriteLists.classList.toggle('open');
+}
+
+function closeFavoriteLists() {
+  elements.favoriteLists.classList.remove('open');
+}
+
+function selectFavoriteList(listId) {
+  leaveFavoriteMaterialsMode();
+  favoriteStore.selectedListId = listId;
+  saveFavorites();
   listMode = 'fav';
   elements.favBtn.classList.add('active');
+  closeFavoriteLists();
+  resetTreeSelection();
   renderList();
+}
+
+function renameFavoriteList(listId) {
+  const list = findFavoriteList(listId);
+  if (!list) return;
+  showTextInput('お気に入りリスト名を変更', list.name, value => {
+    list.name = uniqueFavoriteListName(value, list.id);
+    saveFavorites();
+    renderFavoriteLists();
+    renderExportListChoices();
+  });
+}
+
+function deleteFavoriteList(listId) {
+  const list = findFavoriteList(listId);
+  if (!list) return;
+  showConfirm(`「${list.name}」を\n削除しますか？`, () => {
+    const wasDisplayed = getDisplayedFavoriteList()?.id === listId;
+    favoriteStore.lists = favoriteStore.lists.filter(entry => entry.id !== listId);
+    if (favoriteStore.selectedListId === listId) {
+      favoriteStore.selectedListId = null;
+    }
+    if (wasDisplayed) {
+      listMode = 'none';
+      elements.favBtn.classList.remove('active');
+      resetTreeSelection();
+    }
+    saveFavorites();
+    renderFavoriteLists();
+    renderExportListChoices();
+    renderList();
+  });
+}
+
+function createFavoriteActionRow(text, onClick) {
+  const li = document.createElement('li');
+  li.className = 'favorite-list-action-row';
+  const button = document.createElement('button');
+  button.className = 'favorite-list-action';
+  button.type = 'button';
+  button.textContent = text;
+  button.addEventListener('click', onClick);
+  li.appendChild(button);
+  return li;
+}
+
+function createFavoriteSaveRow() {
+  const li = document.createElement('li');
+  li.className = 'favorite-save-row';
+  const button = document.createElement('button');
+  button.className = 'favorite-list-action';
+  button.type = 'button';
+  button.textContent = '新規リストとして保存';
+  button.addEventListener('click', event => {
+    event.stopPropagation();
+    saveSelectedFavoriteListAs();
+  });
+  li.appendChild(button);
+  return li;
+}
+
+function createFavoriteMaterialsRow() {
+  const li = document.createElement('li');
+  li.className = 'favorite-materials-row';
+  const button = document.createElement('button');
+  button.className = 'favorite-list-action';
+  button.type = 'button';
+  button.textContent = '素材リスト';
+  button.addEventListener('click', event => {
+    event.stopPropagation();
+    openFavoriteMaterialsMode();
+  });
+  li.appendChild(button);
+  return li;
+}
+
+function addNewFavoriteList() {
+  showTextInput('新しいお気に入りリスト名', formatDefaultListName(), value => {
+    const list = createFavoriteList(value);
+    selectFavoriteList(list.id);
+  });
+}
+
+function saveSelectedFavoriteListAs() {
+  const source = getDisplayedFavoriteList();
+  if (!source) return;
+  showTextInput('新規リストとして保存', source.name, value => {
+    const list = createFavoriteList(value, source.itemIds);
+    selectFavoriteList(list.id);
+  });
+}
+
+function renderFavoriteLists() {
+  const frag = document.createDocumentFragment();
+
+  if (favoriteStore.lists.length === 0) {
+    frag.appendChild(createEmptyListItem('お気に入りリストがありません'));
+  } else {
+    favoriteStore.lists.forEach(list => {
+      const li = document.createElement('li');
+      li.classList.toggle('active', list.id === getDisplayedFavoriteList()?.id);
+
+      const name = createTextElement('span', 'favorite-list-name', list.name);
+      const renameBtn = document.createElement('button');
+      renameBtn.className = 'favorite-list-icon';
+      renameBtn.type = 'button';
+      renameBtn.textContent = '✏️';
+      renameBtn.title = '名前変更';
+      renameBtn.setAttribute('aria-label', `「${list.name}」の名前を変更`);
+      renameBtn.addEventListener('click', event => {
+        event.stopPropagation();
+        renameFavoriteList(list.id);
+      });
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'favorite-list-icon';
+      deleteBtn.type = 'button';
+      deleteBtn.textContent = '🗑️';
+      deleteBtn.title = '削除';
+      deleteBtn.setAttribute('aria-label', `「${list.name}」を削除`);
+      deleteBtn.addEventListener('click', event => {
+        event.stopPropagation();
+        deleteFavoriteList(list.id);
+      });
+
+      li.append(name, renameBtn, deleteBtn);
+      li.addEventListener('click', () => selectFavoriteList(list.id));
+      frag.appendChild(li);
+    });
+  }
+
+  elements.favoriteLists.replaceChildren(frag);
+}
+
+function closeFavoriteTarget() {
+  elements.favoriteTargetOverlay.classList.remove('open');
+  elements.favoriteTargetCreate.replaceChildren();
+  elements.favoriteTargetChoices.replaceChildren();
+}
+
+function addFavoriteToList(name, listId) {
+  if (!getDisplayedFavoriteList()) {
+    favoriteStore.selectedListId = listId;
+    saveFavorites();
+  }
+  applyFavoriteChange(name, true, listId);
+  closeFavoriteTarget();
+  if (listMode === 'fav') renderList();
+}
+
+function addFavoriteToNewList(name) {
+  closeFavoriteTarget();
+  showTextInput('新しいお気に入りリスト名', formatDefaultListName(), value => {
+    const id = recipeIdForName(name);
+    const list = createFavoriteList(value, id ? [id] : []);
+    favoriteStore.selectedListId = list.id;
+    saveFavorites();
+    listMode = 'fav';
+    elements.favBtn.classList.add('active');
+    refreshPins(name);
+    renderList();
+  });
+}
+
+function createFavoriteTargetButton(text, active, onClick) {
+  const btn = document.createElement('button');
+  btn.className = 'choice-list-btn';
+  btn.classList.toggle('active', active);
+  btn.type = 'button';
+  btn.textContent = text;
+  btn.title = text;
+  btn.addEventListener('click', onClick);
+  return btn;
+}
+
+function openFavoriteTarget(name) {
+  elements.favoriteTargetMsg.textContent = `「${name}」を登録するお気に入りリスト`;
+  const frag = document.createDocumentFragment();
+  const selectedList = getDisplayedFavoriteList();
+
+  elements.favoriteTargetCreate.replaceChildren(
+    createFavoriteTargetButton('新規作成', !selectedList, () => addFavoriteToNewList(name))
+  );
+  favoriteStore.lists.forEach(list => {
+    frag.appendChild(createFavoriteTargetButton(list.name, list.id === selectedList?.id, () => {
+      addFavoriteToList(name, list.id);
+    }));
+  });
+
+  elements.favoriteTargetChoices.replaceChildren(frag);
+  elements.favoriteTargetOverlay.classList.add('open');
 }
 
 function getDisplayList() {
@@ -292,8 +671,10 @@ function getDisplayList() {
       const iMatches = ingredientNames.filter(n => n.includes(q));
       return sortRecipeNames([...rMatches, ...iMatches]);
     }
-    case 'fav':
-      return [...favorites].filter(n => recipes[n]);
+    case 'fav': {
+      const list = getSelectedFavoriteList();
+      return list ? list.itemIds.map(recipeNameForId).filter(name => name && recipes[name]) : [];
+    }
     default:
       return [];
   }
@@ -345,16 +726,25 @@ function renderList() {
     li.className = 'tips-li';
     tipsData.forEach(text => li.appendChild(createTextElement('div', 'tips-row-list', text)));
     frag.appendChild(li);
-  } else if (listMode === 'fav' && favorites.size === 0) {
+  } else if (listMode === 'fav' && !getDisplayedFavoriteList()) {
+    frag.appendChild(createEmptyListItem('お気に入りリストを選択してください'));
+  } else if (listMode === 'fav' && names.length === 0) {
     frag.appendChild(createEmptyListItem('お気に入りはありません'));
   } else if (names.length === 0) {
     frag.appendChild(createEmptyListItem('該当するレシピがありません'));
   } else {
+    if (listMode === 'fav' && getDisplayedFavoriteList()) {
+      frag.appendChild(createFavoriteMaterialsRow());
+    }
     names.forEach(name => {
       if (listMode === 'fav') frag.appendChild(makeFavLi(name));
       else if (recipes[name]) frag.appendChild(makeRecipeLi(name));
       else frag.appendChild(makeIngredientLi(name));
     });
+  }
+
+  if (listMode === 'fav' && getDisplayedFavoriteList()) {
+    frag.appendChild(createFavoriteSaveRow());
   }
 
   elements.recipeList.replaceChildren(frag);
@@ -423,9 +813,11 @@ function showUsesPanel(ingredientName) {
     const li = createItemListRow(recipeName);
     li.addEventListener('click', () => {
       selectedRecipe = recipeName;
+      leaveFavoriteMaterialsMode();
+      setResultViewMode('tree');
       elements.usesList.querySelectorAll('li').forEach(el => el.classList.remove('selected'));
       li.classList.add('selected');
-      renderTree();
+      renderResultView();
       if (isMobile()) {
         prevPanel = 'middle';
         showMobilePanel('right');
@@ -451,9 +843,12 @@ function returnToList() {
 
 function selectRecipe(name, li) {
   selectedRecipe = name;
+  leaveFavoriteMaterialsMode();
+  exchangeTreeState.clear();
+  setResultViewMode('tree');
   elements.recipeList.querySelectorAll('li').forEach(el => el.classList.remove('selected'));
   li.classList.add('selected');
-  renderTree();
+  renderResultView();
   if (isMobile()) {
     prevPanel = 'left';
     showMobilePanel('right');
@@ -463,8 +858,11 @@ function selectRecipe(name, li) {
 
 function selectRecipeByName(name) {
   selectedRecipe = name;
+  leaveFavoriteMaterialsMode();
+  exchangeTreeState.clear();
+  setResultViewMode('tree');
   renderList();
-  renderTree();
+  renderResultView();
   if (isMobile()) {
     prevPanel = 'left';
     showMobilePanel('right');
@@ -525,7 +923,8 @@ function buildItemAndRecipeMasters(rawList, idToItem) {
         method: CRAFT_TYPE_NAME[recipe.CraftType] || 'クラフト',
         icon: iconPath(item),
         craftType,
-        id: item.ID
+        id: item.ID,
+        uiCategoryName: item.ItemUICategoryName || ''
       };
       recipes[name] = {
         yield: parseInt(recipe.AmountResult, 10) || 1,
@@ -540,7 +939,13 @@ function buildItemAndRecipeMasters(rawList, idToItem) {
       const numericId = parseInt(item.ID, 10);
       if (!Number.isNaN(numericId)) idToRecipeName[numericId] = name;
     } else if (!itemMaster[name]) {
-      itemMaster[name] = { method: '', icon: iconPath(item), craftType: '', id: item.ID };
+      itemMaster[name] = {
+        method: '',
+        icon: iconPath(item),
+        craftType: '',
+        id: item.ID,
+        uiCategoryName: item.ItemUICategoryName || ''
+      };
     }
   });
 
@@ -550,7 +955,8 @@ function buildItemAndRecipeMasters(rawList, idToItem) {
       itemMaster[ingredient.Name] = {
         method: '',
         icon: iconPath(idToItem[ingredient.ItemID]),
-        craftType: ''
+        craftType: '',
+        uiCategoryName: idToItem[ingredient.ItemID]?.ItemUICategoryName || ''
       };
     });
   });
@@ -635,7 +1041,7 @@ function clearMobilePanels() {
 
 function changeCount(delta) {
   elements.countInput.value = Math.max(1, (parseInt(elements.countInput.value, 10) || 1) + delta);
-  renderTree();
+  renderResultView();
 }
 
 function clearRenderedTree() {
@@ -644,26 +1050,122 @@ function clearRenderedTree() {
   });
 }
 
+function setResultViewMode(mode) {
+  resultViewMode = mode === 'materials' ? 'materials' : 'tree';
+  elements.treeViewBtn.classList.toggle('active', resultViewMode === 'tree');
+  elements.materialsViewBtn.classList.toggle('active', resultViewMode === 'materials');
+}
+
+function setResultSourceMode(mode) {
+  resultSourceMode = mode === 'favorite-materials' ? 'favorite-materials' : 'recipe';
+}
+
+function getFavoriteMaterialRingNames(list = getDisplayedFavoriteList()) {
+  return getFavoriteListRecipeNames(list).filter(isRingRecipe);
+}
+
+function ensureFavoriteMaterialsRingCounts() {
+  const ringNames = getFavoriteMaterialRingNames();
+  favoriteMaterialsRingCounts = Object.fromEntries(
+    ringNames.map(name => [name, favoriteMaterialsRingCounts[name] === 2 ? 2 : 1])
+  );
+}
+
+function openFavoriteMaterialsMode() {
+  if (!getDisplayedFavoriteList()) return;
+  selectedRecipe = null;
+  setResultSourceMode('favorite-materials');
+  setResultViewMode('materials');
+  ensureFavoriteMaterialsRingCounts();
+  renderList();
+  renderResultView();
+  if (isMobile()) {
+    prevPanel = 'left';
+    showMobilePanel('right');
+    elements.treeContainer.scrollTop = 0;
+  }
+}
+
+function leaveFavoriteMaterialsMode() {
+  if (resultSourceMode !== 'favorite-materials') return;
+  setResultSourceMode('recipe');
+  favoriteMaterialsRingCounts = {};
+}
+
+function updateResultHeader() {
+  const count = parseInt(elements.countInput.value, 10) || 1;
+  if (resultSourceMode === 'favorite-materials') {
+    const listName = getDisplayedFavoriteList()?.name || '';
+    elements.countLabel.textContent = 'セット数:';
+    elements.resultTitle.textContent = listName ? `【${listName} × ${count}セット分】` : '';
+    elements.usesBtn.classList.remove('visible');
+    elements.treeViewBtn.classList.add('hidden');
+    elements.materialsViewBtn.classList.remove('hidden');
+    elements.materialsViewBtn.classList.add('active');
+    elements.materialsViewBtn.disabled = true;
+    elements.resultViewSwitch.classList.toggle('hidden', !listName);
+    elements.resultViewSwitch.classList.add('favorite-materials-only');
+    return;
+  }
+
+  elements.countLabel.textContent = '個数:';
+  elements.resultTitle.textContent = selectedRecipe ? `【${selectedRecipe} × ${count}個分】` : '';
+  const usesCount = selectedRecipe ? (usedIn[selectedRecipe]?.length || 0) : 0;
+  elements.usesBtn.textContent = `使用先 (${usesCount})`;
+  elements.usesBtn.classList.toggle('visible', usesCount > 0);
+  elements.treeViewBtn.classList.remove('hidden');
+  elements.materialsViewBtn.disabled = false;
+  elements.resultViewSwitch.classList.remove('favorite-materials-only');
+  const showSwitch = Boolean(selectedRecipe);
+  elements.resultViewSwitch.classList.toggle('hidden', !showSwitch);
+}
+
+function renderResultView() {
+  clearRenderedTree();
+  updateResultHeader();
+
+  if (resultSourceMode === 'favorite-materials' && !getDisplayedFavoriteList()) {
+    elements.tipsMsg.classList.remove('hidden');
+    setResultSourceMode('recipe');
+    updateResultHeader();
+    return;
+  }
+
+  if (!selectedRecipe && resultSourceMode !== 'favorite-materials') {
+    elements.tipsMsg.classList.remove('hidden');
+    return;
+  }
+
+  elements.tipsMsg.classList.add('hidden');
+  if (resultViewMode === 'materials') renderMaterialsList();
+  else renderTree();
+}
+
 function resetToStartupView() {
+  leaveFavoriteMaterialsMode();
   selectedRecipe = null;
   prevPanel = 'left';
   listMode = 'none';
+  setResultViewMode('tree');
+  favoriteStore.selectedListId = null;
+  saveFavorites();
   treePinMap.clear();
+  exchangeTreeState.clear();
 
   elements.searchBox.value = '';
   elements.searchClearBtn.classList.remove('visible');
   elements.favBtn.classList.remove('active');
   closeSearchHistory();
+  closeFavoriteLists();
   closeUsesPanel();
 
   elements.usesTitle.textContent = '';
   elements.usesList.replaceChildren();
-  elements.resultTitle.textContent = '';
-  elements.usesBtn.classList.remove('visible');
   elements.countInput.value = '1';
 
   clearRenderedTree();
   elements.tipsMsg.classList.remove('hidden');
+  updateResultHeader();
   renderList();
 
   if (isMobile()) showMobilePanel('left');
@@ -688,20 +1190,363 @@ function shouldShowCraftBadgeOnlyAtRoot(recipeName) {
   return treeCraftTypes.size === 1 && treeCraftTypes.has(rootCraftType);
 }
 
-function renderTree() {
-  const count = parseInt(elements.countInput.value, 10) || 1;
-  clearRenderedTree();
+function createMaterialLabel(name, qty) {
+  return qty === null ? name : `${name} × ${qty}`;
+}
 
-  if (!selectedRecipe) {
-    elements.tipsMsg.classList.remove('hidden');
+function childTreePath(pathKey, childName, index) {
+  return `${pathKey}>${index}:${childName}`;
+}
+
+function cloneMaterialOption(option) {
+  return option.map(item => ({ ...item }));
+}
+
+function cloneSupplementEntry(entry) {
+  return { ...entry };
+}
+
+function mergeSupplementEntries(targetEntries = [], incomingEntries = []) {
+  const merged = targetEntries.map(cloneSupplementEntry);
+  const entryMap = new Map(merged.map(entry => [entry.name, entry]));
+
+  incomingEntries.forEach(entry => {
+    if (entryMap.has(entry.name)) entryMap.get(entry.name).qty += entry.qty;
+    else {
+      const nextEntry = cloneSupplementEntry(entry);
+      entryMap.set(nextEntry.name, nextEntry);
+      merged.push(nextEntry);
+    }
+  });
+
+  return merged;
+}
+
+function createExchangeSupplementEntries(recipe, craftTimes) {
+  return recipe.ingredients.map(ingredient => ({
+    name: ingredient.name,
+    qty: ingredient.qty * craftTimes
+  }));
+}
+
+function supplementGroupKey(entries = []) {
+  return entries
+    .map(entry => `${entry.name}:${entry.qty}`)
+    .join('|');
+}
+
+function createSupplementSummaryState() {
+  return {
+    fixed: new Map(),
+    choices: new Map()
+  };
+}
+
+function accumulateSupplementSummary(summary, entries = []) {
+  if (!entries.length) return;
+
+  if (entries.length === 1) {
+    const entry = entries[0];
+    summary.fixed.set(entry.name, (summary.fixed.get(entry.name) || 0) + entry.qty);
     return;
   }
 
-  elements.tipsMsg.classList.add('hidden');
-  elements.resultTitle.textContent = `【${selectedRecipe} × ${count}個分】`;
-  const usesCount = usedIn[selectedRecipe]?.length || 0;
-  elements.usesBtn.textContent = `使用先 (${usesCount})`;
-  elements.usesBtn.classList.toggle('visible', usesCount > 0);
+  const key = supplementGroupKey(entries);
+  if (!summary.choices.has(key)) {
+    summary.choices.set(key, entries.map(cloneSupplementEntry));
+    return;
+  }
+
+  const current = summary.choices.get(key);
+  entries.forEach((entry, index) => {
+    current[index].qty += entry.qty;
+  });
+}
+
+function summarizeMaterialRows(rows) {
+  return rows.map(row => {
+    if (row.type === 'item') return createMaterialLabel(row.name, row.qty);
+    return row.options.map(option =>
+      option.map(item => createMaterialLabel(item.name, item.qty)).join(' / ')
+    ).join(' もしくは ');
+  }).join(' / ');
+}
+
+function createMaterialChoiceContent(row) {
+  const wrapper = document.createElement('span');
+  wrapper.className = 'material-choice';
+
+  row.options.forEach((option, optionIndex) => {
+    if (optionIndex > 0) {
+      wrapper.appendChild(createTextElement('span', 'material-choice-sep', 'もしくは'));
+    }
+
+    const optionEl = document.createElement('span');
+    optionEl.className = 'material-choice-option';
+
+    option.forEach((item, itemIndex) => {
+      if (itemIndex > 0) {
+        optionEl.appendChild(createTextElement('span', 'material-choice-join', '/'));
+      }
+
+      const itemEl = document.createElement('span');
+      itemEl.className = 'material-choice-item';
+      const icon = createItemIcon(itemMaster[item.name]?.icon, 'list-icon');
+      if (icon) itemEl.appendChild(icon);
+      itemEl.appendChild(createTextElement('span', 'material-choice-name', item.name));
+      if (item.qty !== null) {
+        itemEl.appendChild(createTextElement('span', 'material-choice-qty', `× ${item.qty}`));
+      }
+      optionEl.appendChild(itemEl);
+    });
+
+    wrapper.appendChild(optionEl);
+  });
+
+  return wrapper;
+}
+
+function mergeMaterialRows(targetRows, incomingRows) {
+  const materialMap = new Map(
+    targetRows
+      .filter(row => row.type === 'item')
+      .map(row => [row.name, row])
+  );
+
+  incomingRows.forEach(row => {
+    if (row.type === 'item') {
+      if (materialMap.has(row.name)) {
+        const current = materialMap.get(row.name);
+        current.qty += row.qty;
+        current.supplements = mergeSupplementEntries(current.supplements, row.supplements);
+      } else {
+        const nextRow = { ...row };
+        if (row.supplements) nextRow.supplements = row.supplements.map(cloneSupplementEntry);
+        materialMap.set(nextRow.name, nextRow);
+        targetRows.push(nextRow);
+      }
+      return;
+    }
+
+    targetRows.push({
+      type: 'choice',
+      options: row.options.map(cloneMaterialOption)
+    });
+  });
+}
+
+function mergeMaterialItems(items) {
+  const merged = [];
+  const itemMap = new Map();
+
+  items.forEach(item => {
+    const key = `${item.name}::${item.qty === null ? 'null' : item.qty}`;
+    if (item.qty === null) {
+      merged.push({ ...item });
+      return;
+    }
+
+    if (itemMap.has(item.name)) itemMap.get(item.name).qty += item.qty;
+    else {
+      const nextItem = { ...item };
+      itemMap.set(nextItem.name, nextItem);
+      merged.push(nextItem);
+    }
+  });
+
+  return merged;
+}
+
+function renderFavoriteRingControls(container) {
+  const ringNames = getFavoriteMaterialRingNames();
+  if (ringNames.length === 0) return;
+
+  const section = document.createElement('div');
+  section.className = 'favorite-ring-controls';
+
+  ringNames.forEach(name => {
+    const row = document.createElement('div');
+    row.className = 'favorite-ring-row';
+
+    const icon = createItemIcon(itemMaster[name]?.icon);
+    if (icon) row.appendChild(icon);
+    row.appendChild(createTextElement('span', 'favorite-ring-name', name));
+
+    const toggle = document.createElement('div');
+    toggle.className = 'favorite-ring-toggle';
+
+    [1, 2].forEach(value => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = `${value}つ`;
+      button.classList.toggle('active', favoriteMaterialsRingCounts[name] === value);
+      button.addEventListener('click', () => {
+        favoriteMaterialsRingCounts[name] = value;
+        renderResultView();
+      });
+      toggle.appendChild(button);
+    });
+
+    row.appendChild(toggle);
+    section.appendChild(row);
+  });
+
+  container.appendChild(section);
+}
+
+function collectMaterialRows(name, neededQty, pathKey = name) {
+  const recipe = recipes[name];
+  if (!recipe) return [{ type: 'item', name, qty: neededQty }];
+
+  const craftTimes = Math.ceil(neededQty / recipe.yield);
+  if (EXCHANGE_CRAFT_TYPES.has(recipe.craftType)) {
+    return [{
+      type: 'item',
+      name,
+      qty: neededQty,
+      supplements: createExchangeSupplementEntries(recipe, craftTimes)
+    }];
+  }
+
+  const rows = [];
+  recipe.ingredients.forEach((ingredient, index) => {
+    mergeMaterialRows(
+      rows,
+      collectMaterialRows(
+        ingredient.name,
+        ingredient.qty * craftTimes,
+        childTreePath(pathKey, ingredient.name, index)
+      )
+    );
+  });
+  return rows;
+}
+
+function collectFavoriteMaterialsRows() {
+  ensureFavoriteMaterialsRingCounts();
+  const setCount = parseInt(elements.countInput.value, 10) || 1;
+  const rows = [];
+
+  getFavoriteListRecipeNames().forEach(name => {
+    const multiplier = isRingRecipe(name) ? (favoriteMaterialsRingCounts[name] || 1) : 1;
+    mergeMaterialRows(rows, collectMaterialRows(name, setCount * multiplier));
+  });
+
+  return rows;
+}
+
+function renderMaterialsList() {
+  const rows = resultSourceMode === 'favorite-materials'
+    ? collectFavoriteMaterialsRows()
+    : collectMaterialRows(selectedRecipe, parseInt(elements.countInput.value, 10) || 1);
+  const list = document.createElement('ul');
+  list.className = 'materials-list';
+  const exchangeSummary = createSupplementSummaryState();
+
+  if (resultSourceMode === 'favorite-materials') {
+    renderFavoriteRingControls(elements.treeContainer);
+  }
+
+  rows.forEach(row => {
+    const li = document.createElement('li');
+    if (row.type === 'item') {
+      const icon = createItemIcon(itemMaster[row.name]?.icon);
+      if (icon) li.appendChild(icon);
+      const content = document.createElement('div');
+      content.className = 'material-content';
+      const primary = document.createElement('div');
+      primary.className = 'material-primary';
+      primary.append(
+        createTextElement('span', 'material-name', row.name),
+        createTextElement('span', 'material-qty', `× ${row.qty}`)
+      );
+      content.appendChild(primary);
+
+      if (row.supplements?.length) {
+        const supplement = document.createElement('div');
+        supplement.className = 'material-supplement';
+        row.supplements.forEach((entry, index) => {
+          if (index > 0) {
+            supplement.appendChild(createTextElement('div', 'material-supplement-sep', 'もしくは'));
+          }
+
+          const entryRow = document.createElement('div');
+          entryRow.className = 'material-supplement-row';
+          entryRow.append(
+            createTextElement('span', 'material-supplement-name', entry.name),
+            createTextElement('span', 'material-supplement-qty', `× ${entry.qty}`)
+          );
+          supplement.appendChild(entryRow);
+        });
+        accumulateSupplementSummary(exchangeSummary, row.supplements);
+        content.appendChild(supplement);
+      }
+
+      li.appendChild(content);
+    } else {
+      li.appendChild(createMaterialChoiceContent(row));
+    }
+    list.appendChild(li);
+  });
+
+  if (exchangeSummary.fixed.size > 0 || exchangeSummary.choices.size > 0) {
+    const separator = document.createElement('li');
+    separator.className = 'materials-summary-separator';
+    list.appendChild(separator);
+
+    [...exchangeSummary.fixed.entries()].forEach(([name, qty]) => {
+      const li = document.createElement('li');
+      li.className = 'materials-summary-row';
+      const icon = createItemIcon(itemMaster[name]?.icon);
+      if (icon) li.appendChild(icon);
+      const content = document.createElement('div');
+      content.className = 'material-content';
+      const primary = document.createElement('div');
+      primary.className = 'material-primary';
+      primary.append(
+        createTextElement('span', 'material-name', name),
+        createTextElement('span', 'material-qty', `× ${qty}`)
+      );
+      content.appendChild(primary);
+      li.appendChild(content);
+      list.appendChild(li);
+    });
+
+    [...exchangeSummary.choices.values()].forEach(entries => {
+      const li = document.createElement('li');
+      li.className = 'materials-summary-row';
+      const content = document.createElement('div');
+      content.className = 'material-content';
+      const supplement = document.createElement('div');
+      supplement.className = 'material-supplement material-supplement-summary';
+
+      entries.forEach((entry, index) => {
+        if (index > 0) {
+          supplement.appendChild(createTextElement('div', 'material-supplement-sep', 'もしくは'));
+        }
+
+        const entryRow = document.createElement('div');
+        entryRow.className = 'material-supplement-row materials-summary-choice-row';
+        const icon = createItemIcon(itemMaster[entry.name]?.icon);
+        if (icon) entryRow.appendChild(icon);
+        entryRow.append(
+          createTextElement('span', 'material-name', entry.name),
+          createTextElement('span', 'material-qty', `× ${entry.qty}`)
+        );
+        supplement.appendChild(entryRow);
+      });
+
+      content.appendChild(supplement);
+      li.appendChild(content);
+      list.appendChild(li);
+    });
+  }
+
+  elements.treeContainer.appendChild(list);
+}
+
+function renderTree() {
+  const count = parseInt(elements.countInput.value, 10) || 1;
   treePinMap.clear();
 
   const producedQty = calcProduced(selectedRecipe, count);
@@ -711,6 +1556,7 @@ function renderTree() {
       count,
       producedQty,
       0,
+      selectedRecipe,
       null,
       null,
       shouldShowCraftBadgeOnlyAtRoot(selectedRecipe)
@@ -751,14 +1597,14 @@ function createTreeBadge(method, hideCraftBadge) {
 
 function createTreePin(name) {
   const pin = document.createElement('button');
-  const isFavorite = favorites.has(name);
+  const favorite = isFavorite(name);
   pin.className = 'pin-btn';
-  pin.classList.toggle('inactive', !isFavorite);
-  pin.textContent = isFavorite ? '📌' : '📍';
-  pin.title = isFavorite ? 'お気に入りから削除' : 'お気に入りに追加';
+  pin.classList.toggle('inactive', !favorite);
+  pin.textContent = favorite ? '📌' : '📍';
+  pin.title = favorite ? 'お気に入りから削除' : 'お気に入りに追加';
   pin.addEventListener('click', event => {
     event.stopPropagation();
-    favorites.has(name) ? pinOff(name) : pinOn(name);
+    isFavorite(name) ? pinOff(name) : pinOn(name);
   });
   registerTreePin(name, pin);
   return pin;
@@ -813,7 +1659,7 @@ function createTreeSubInfo(recipe, neededQty, producedQty, unitCost, unitTimes) 
   return subInfo;
 }
 
-function appendRecipeChildren(container, recipe, producedQty, depth, showCraftBadgeOnlyAtRoot) {
+function appendRecipeChildren(container, recipe, producedQty, depth, pathKey, showCraftBadgeOnlyAtRoot) {
   const isExchange = EXCHANGE_CRAFT_TYPES.has(recipe.craftType);
   const craftTimes = Math.ceil(producedQty / recipe.yield);
 
@@ -830,6 +1676,7 @@ function appendRecipeChildren(container, recipe, producedQty, depth, showCraftBa
         neededQty,
         producedIngredientQty,
         depth + 1,
+        childTreePath(pathKey, ingredient.name, index),
         isExchange ? ingredient.qty : null,
         isExchange ? craftTimes : null,
         showCraftBadgeOnlyAtRoot
@@ -838,7 +1685,7 @@ function appendRecipeChildren(container, recipe, producedQty, depth, showCraftBa
   });
 }
 
-function buildNode(name, neededQty, producedQty, depth, unitCost = null, unitTimes = null, showCraftBadgeOnlyAtRoot = false) {
+function buildNode(name, neededQty, producedQty, depth, pathKey, unitCost = null, unitTimes = null, showCraftBadgeOnlyAtRoot = false) {
   const master = itemMaster[name] || { method: '', icon: '', craftType: '' };
   const recipe = recipes[name];
   const hasChildren = Boolean(recipe);
@@ -867,16 +1714,21 @@ function buildNode(name, neededQty, producedQty, depth, unitCost = null, unitTim
 
   const children = document.createElement('div');
   children.className = 'node-children';
-  appendRecipeChildren(children, recipe, producedQty, depth, showCraftBadgeOnlyAtRoot);
+  appendRecipeChildren(children, recipe, producedQty, depth, pathKey, showCraftBadgeOnlyAtRoot);
 
   if (recipe.craftType === '9') {
-    children.classList.add('collapsed');
-    toggle.textContent = '▶';
+    const expanded = exchangeTreeState.get(pathKey) === true;
+    children.classList.toggle('collapsed', !expanded);
+    toggle.textContent = expanded ? '▼' : '▶';
   }
 
   row.addEventListener('click', () => {
     const collapsed = children.classList.toggle('collapsed');
     toggle.textContent = collapsed ? '▶' : '▼';
+    if (recipe.craftType === '9') {
+      exchangeTreeState.set(pathKey, !collapsed);
+      if (resultSourceMode === 'recipe' && resultViewMode === 'materials') renderResultView();
+    }
   });
   node.appendChild(children);
   return node;
@@ -889,35 +1741,79 @@ function methodBadgeClass(method) {
   return 'badge-gather';
 }
 
-function encodeFavorites() {
-  const ids = [...favorites]
-    .filter(n => recipes[n] && itemMaster[n]?.id)
-    .map(n => parseInt(itemMaster[n].id, 10))
-    .filter(n => !Number.isNaN(n))
-    .sort((a, b) => a - b);
-  return ids.map(id => id.toString(36).toUpperCase().padStart(4, '0')).join('');
+function encodeBytesBase36(bytes) {
+  return [...bytes].map(byte => byte.toString(36).toUpperCase().padStart(2, '0')).join('');
+}
+
+function decodeBytesBase36(str) {
+  if (str.length % 2 !== 0 || !/^[0-9A-Z]+$/.test(str)) return null;
+  const bytes = [];
+  for (let i = 0; i < str.length; i += 2) {
+    const byte = parseInt(str.slice(i, i + 2), 36);
+    if (!Number.isInteger(byte) || byte < 0 || byte > 255) return null;
+    bytes.push(byte);
+  }
+  return new Uint8Array(bytes);
+}
+
+function encodeFavoriteList(list) {
+  if (!list) return '';
+  const payload = JSON.stringify({ n: list.name, i: normalizeItemIds(list.itemIds) });
+  const bytes = new TextEncoder().encode(payload);
+  return `Z${bytes.length.toString(36).toUpperCase().padStart(4, '0')}${encodeBytesBase36(bytes)}`;
 }
 
 // Settings and favorite sharing
-function decodeFavorites(str) {
+function decodeOldFavorites(str) {
   if (!str || !/^[A-Z0-9]+$/.test(str) || str.length % 4 !== 0) return null;
   const names = [];
   for (let i = 0; i < str.length; i += 4) {
     const name = idToRecipeName[parseInt(str.slice(i, i + 4), 36)];
     if (name) names.push(name);
   }
-  return names;
+  return { name: '', itemIds: names.map(recipeIdForName).filter(Boolean), needsName: true };
+}
+
+function decodeNewFavoriteList(str) {
+  if (!/^Z[0-9A-Z]+$/.test(str) || str.length < 5) return null;
+  const length = parseInt(str.slice(1, 5), 36);
+  if (!Number.isInteger(length) || length < 0) return null;
+  const bytes = decodeBytesBase36(str.slice(5));
+  if (!bytes || bytes.length !== length) return null;
+
+  try {
+    const payload = JSON.parse(new TextDecoder().decode(bytes));
+    return {
+      name: normalizeFavoriteListName(payload.n),
+      itemIds: normalizeItemIds(payload.i).filter(id => recipeNameForId(id)),
+      needsName: false
+    };
+  } catch {
+    return null;
+  }
+}
+
+function decodeFavoriteShareCode(str) {
+  if (!str || !/^[A-Z0-9]+$/.test(str)) return null;
+  if (str.startsWith('Z')) return decodeNewFavoriteList(str);
+  return decodeOldFavorites(str);
 }
 
 function openSettings() {
-  elements.exportCode.value = encodeFavorites();
+  selectedExportListId = null;
+  elements.exportCode.value = '';
+  elements.exportListToggle.textContent = 'リストを選択...';
+  elements.copyExportBtn.textContent = 'コピー';
   elements.importCode.value = '';
   setImportError();
+  closeExportListDropdown();
+  renderExportListChoices();
   elements.settingsOverlay.classList.add('open');
 }
 
 function closeSettings() {
   elements.settingsOverlay.classList.remove('open');
+  closeExportListDropdown();
 }
 
 function openLicenseNotice() {
@@ -938,6 +1834,42 @@ function copyExportCode() {
   });
 }
 
+function closeExportListDropdown() {
+  elements.exportListChoices.classList.remove('open');
+}
+
+function toggleExportListDropdown() {
+  renderExportListChoices();
+  elements.exportListChoices.classList.toggle('open');
+}
+
+function selectExportList(listId) {
+  selectedExportListId = listId;
+  const list = findFavoriteList(listId);
+  elements.exportCode.value = encodeFavoriteList(list);
+  elements.exportListToggle.textContent = list ? list.name : 'リストを選択...';
+  closeExportListDropdown();
+  renderExportListChoices();
+}
+
+function renderExportListChoices() {
+  if (!elements.exportListChoices) return;
+  const frag = document.createDocumentFragment();
+  if (favoriteStore.lists.length === 0) {
+    frag.appendChild(createTextElement('li', 'list-empty', 'お気に入りリストがありません'));
+  } else {
+    favoriteStore.lists.forEach(list => {
+      const li = document.createElement('li');
+      li.classList.toggle('active', list.id === selectedExportListId);
+      li.textContent = list.name;
+      li.title = list.name;
+      li.addEventListener('click', () => selectExportList(list.id));
+      frag.appendChild(li);
+    });
+  }
+  elements.exportListChoices.replaceChildren(frag);
+}
+
 function setImportError(message = '') {
   elements.importErr.textContent = message;
   elements.importErr.classList.toggle('visible', Boolean(message));
@@ -945,46 +1877,26 @@ function setImportError(message = '') {
 
 function startImport() {
   const code = elements.importCode.value.trim().toUpperCase();
-  const names = decodeFavorites(code);
-  if (!names) {
+  const decoded = decodeFavoriteShareCode(code);
+  if (!decoded) {
     setImportError('無効なコードです');
     return;
   }
-  if (names.length === 0) {
+  if (decoded.itemIds.length === 0) {
     setImportError('有効なレシピが見つかりませんでした');
     return;
   }
   setImportError();
-  pendingImportNames = names;
-  elements.importChoiceMsg.textContent = `${names.length}件のお気に入りを取り込みます`;
-  elements.importChoiceOverlay.classList.add('open');
-}
-
-function closeImportChoice() {
-  elements.importChoiceOverlay.classList.remove('open');
-}
-
-function importMerge() {
-  if (!pendingImportNames) return;
-  pendingImportNames.forEach(n => favorites.add(n));
-  saveFavorites();
-  pendingImportNames = null;
-  closeImportChoice();
-  closeSettings();
-  if (listMode === 'fav') renderList();
-}
-
-function importReplace() {
-  if (!pendingImportNames) return;
-  closeImportChoice();
-  showConfirm('お気に入りを全て削除してから\n取り込みますか？', () => {
-    favorites.clear();
-    pendingImportNames.forEach(n => favorites.add(n));
-    saveFavorites();
-    pendingImportNames = null;
+  const importAsNewList = name => {
+    const list = createFavoriteList(name, decoded.itemIds);
     closeSettings();
-    if (listMode === 'fav') renderList();
-  });
+    selectFavoriteList(list.id);
+  };
+  if (decoded.needsName) {
+    showTextInput('取り込むお気に入りリスト名', formatDefaultListName(), importAsNewList);
+  } else {
+    importAsNewList(decoded.name);
+  }
 }
 
 function openPopup() {
@@ -1007,6 +1919,15 @@ function handleDocumentPointerDown(event) {
   if (event.target !== elements.searchBox && !elements.searchHistory.contains(event.target)) {
     closeSearchHistory();
   }
+  if (event.target !== elements.favBtn && !elements.favoriteLists.contains(event.target)) {
+    closeFavoriteLists();
+  }
+  if (
+    event.target !== elements.exportListToggle
+    && !elements.exportListChoices.contains(event.target)
+  ) {
+    closeExportListDropdown();
+  }
 }
 
 function bindEvents() {
@@ -1024,9 +1945,17 @@ function bindEvents() {
   elements.backBtn.addEventListener('click', goBack);
   elements.countDecrease5Btn.addEventListener('click', () => changeCount(-5));
   elements.countDecreaseBtn.addEventListener('click', () => changeCount(-1));
-  elements.countInput.addEventListener('input', renderTree);
+  elements.countInput.addEventListener('input', renderResultView);
   elements.countIncreaseBtn.addEventListener('click', () => changeCount(1));
   elements.countIncrease5Btn.addEventListener('click', () => changeCount(5));
+  elements.treeViewBtn.addEventListener('click', () => {
+    setResultViewMode('tree');
+    renderResultView();
+  });
+  elements.materialsViewBtn.addEventListener('click', () => {
+    setResultViewMode('materials');
+    renderResultView();
+  });
   elements.usesBtn.addEventListener('click', () => showUsesPanel(selectedRecipe));
   elements.updateReloadBtn.addEventListener('click', () => location.reload());
   elements.confirmYes.addEventListener('click', confirmPendingAction);
@@ -1042,9 +1971,20 @@ function bindEvents() {
   });
   elements.licenseCloseBtn.addEventListener('click', closeLicenseNotice);
   elements.settingsCloseBtn.addEventListener('click', closeSettings);
-  elements.importReplaceBtn.addEventListener('click', importReplace);
-  elements.importMergeBtn.addEventListener('click', importMerge);
-  elements.importCancelBtn.addEventListener('click', closeImportChoice);
+  elements.exportListToggle.addEventListener('click', toggleExportListDropdown);
+  elements.textInputOkBtn.addEventListener('click', submitTextInput);
+  elements.textInputCancelBtn.addEventListener('click', closeTextInput);
+  elements.textInputField.addEventListener('keydown', event => {
+    if (event.key === 'Enter') submitTextInput();
+    if (event.key === 'Escape') closeTextInput();
+  });
+  elements.textInputOverlay.addEventListener('click', event => {
+    if (event.target === elements.textInputOverlay) closeTextInput();
+  });
+  elements.favoriteTargetCancelBtn.addEventListener('click', closeFavoriteTarget);
+  elements.favoriteTargetOverlay.addEventListener('click', event => {
+    if (event.target === elements.favoriteTargetOverlay) closeFavoriteTarget();
+  });
 
   ['pointerdown', 'input', 'wheel'].forEach(eventName => {
     elements.panelLeft.addEventListener(eventName, closeUsesPanel);

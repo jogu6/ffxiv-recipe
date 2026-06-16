@@ -32,6 +32,7 @@
       </div>
       <ul id="searchHistory"></ul>
       <button id="favBtn" title="お気に入り">📌 お気に入り</button>
+      <ul id="favoriteLists"></ul>
     </div>
     <ul id="recipeList"></ul>
   </div>
@@ -44,17 +45,25 @@
   </div>
   <div class="panel-right" id="panelRight">
     <div class="result-header">
-      <button id="backBtn">◀ 戻る</button>
-      <label>個数:</label>
-      <div class="count-control">
-        <button class="count-btn count-step-wide" id="countDecrease5Btn">-5</button>
-        <button class="count-btn" id="countDecreaseBtn">－</button>
-        <input type="number" id="countInput" value="1" min="1" inputmode="numeric">
-        <button class="count-btn" id="countIncreaseBtn">＋</button>
-        <button class="count-btn count-step-wide" id="countIncrease5Btn">+5</button>
+      <div class="result-main-row">
+        <button id="backBtn">◀ 戻る</button>
+        <label id="countLabel">個数:</label>
+        <div class="count-control">
+          <button class="count-btn count-step-wide" id="countDecrease5Btn">-5</button>
+          <button class="count-btn" id="countDecreaseBtn">－</button>
+          <input type="number" id="countInput" value="1" min="1" inputmode="numeric">
+          <button class="count-btn" id="countIncreaseBtn">＋</button>
+          <button class="count-btn count-step-wide" id="countIncrease5Btn">+5</button>
+        </div>
+        <span id="resultTitle"></span>
       </div>
-      <span id="resultTitle"></span>
-      <button id="usesBtn">使用先</button>
+      <div class="result-view-row">
+        <div id="resultViewSwitch" class="result-view-switch hidden" role="group" aria-label="表示切替">
+          <button id="treeViewBtn" class="active" type="button">レシピツリー</button>
+          <button id="materialsViewBtn" type="button">素材リスト</button>
+        </div>
+        <button id="usesBtn">使用先</button>
+      </div>
     </div>
     <div id="treeContainer">
       <div class="tips-msg" id="tipsMsg"></div>
@@ -82,7 +91,11 @@
     <button class="settings-corner-btn" id="licenseBtn">LICENSE</button>
     <h2>⚙ 設定</h2>
     <div class="settings-section">
-      <div class="settings-label">お気に入りをシェアする</div>
+      <div class="settings-label">シェアするお気に入りリストを選ぶ</div>
+      <div class="settings-dropdown">
+        <button id="exportListToggle" class="settings-dropdown-toggle" type="button">リストを選択...</button>
+        <ul id="exportListChoices" class="settings-dropdown-list"></ul>
+      </div>
       <div class="settings-row">
         <input id="exportCode" class="settings-input" type="text" readonly>
         <button class="settings-btn" id="copyExportBtn">コピー</button>
@@ -112,13 +125,24 @@
   </div>
 </div>
 
-<div id="importChoiceOverlay">
-  <div id="importChoiceDialog">
-    <div id="importChoiceMsg"></div>
+<div id="textInputOverlay">
+  <div id="textInputDialog">
+    <div id="textInputMsg"></div>
+    <input id="textInputField" class="settings-input" type="text" maxlength="50">
     <div class="choice-btns">
-      <button class="choice-btn danger" id="importReplaceBtn">全て削除して取り込む</button>
-      <button class="choice-btn" id="importMergeBtn">残したまま追加</button>
-      <button class="choice-btn" id="importCancelBtn">キャンセル</button>
+      <button class="choice-btn" id="textInputOkBtn">OK</button>
+      <button class="choice-btn" id="textInputCancelBtn">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<div id="favoriteTargetOverlay">
+  <div id="favoriteTargetDialog">
+    <div id="favoriteTargetMsg"></div>
+    <div id="favoriteTargetCreate"></div>
+    <div id="favoriteTargetChoices" class="choice-list"></div>
+    <div class="choice-btns">
+      <button class="choice-btn" id="favoriteTargetCancelBtn">キャンセル</button>
     </div>
   </div>
 </div>
