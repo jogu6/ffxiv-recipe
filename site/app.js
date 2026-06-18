@@ -1,5 +1,5 @@
 const DATA_FILE = './data/Item.json';
-const TIPS_FILE = './data/tips.json';
+const TIPS_FILE = './data/tips.md';
 const LS_FAV = 'ff14_favorites';
 const LS_FAV_LISTS = 'ff14_favorite_lists_v2';
 const LS_SEARCH_HISTORY = 'ff14_search_history';
@@ -219,6 +219,13 @@ function getSelectedFavoriteList() {
 
 function getDisplayedFavoriteList() {
   return listMode === 'fav' ? getSelectedFavoriteList() : null;
+}
+
+function updateFavoriteButtonState() {
+  const list = getDisplayedFavoriteList();
+  elements.favBtn.classList.toggle('active', Boolean(list));
+  elements.favBtn.textContent = list ? `📌 ${list.name}` : '📌 お気に入り';
+  elements.favBtn.title = list ? list.name : 'お気に入り';
 }
 
 function getFavoriteListRecipeNames(list = getDisplayedFavoriteList()) {
@@ -555,9 +562,9 @@ function onSearch() {
   const q = elements.searchBox.value.trim();
   leaveFavoriteMaterialsMode();
   elements.searchClearBtn.classList.toggle('visible', q !== '');
-  elements.favBtn.classList.remove('active');
   closeFavoriteLists();
   listMode = q === '' ? 'none' : 'search';
+  updateFavoriteButtonState();
   renderList();
   renderResultView();
   renderSearchHistory();
@@ -587,7 +594,7 @@ function selectFavoriteList(listId) {
   favoriteStore.selectedListId = listId;
   saveFavorites();
   listMode = 'fav';
-  elements.favBtn.classList.add('active');
+  updateFavoriteButtonState();
   closeFavoriteLists();
   resetTreeSelection();
   renderList();
@@ -601,6 +608,7 @@ function renameFavoriteList(listId) {
     saveFavorites();
     renderFavoriteLists();
     renderExportListChoices();
+    updateFavoriteButtonState();
   });
 }
 
@@ -615,7 +623,7 @@ function deleteFavoriteList(listId) {
     }
     if (wasDisplayed) {
       listMode = 'none';
-      elements.favBtn.classList.remove('active');
+      updateFavoriteButtonState();
       resetTreeSelection();
     }
     saveFavorites();
@@ -672,6 +680,7 @@ function createFavoriteMaterialsRow() {
   li.className = 'favorite-materials-row';
   const materialButton = document.createElement('button');
   materialButton.className = 'favorite-list-action favorite-list-action-compact';
+  materialButton.classList.toggle('active', resultSourceMode === 'favorite-materials');
   materialButton.type = 'button';
   materialButton.textContent = '素材リスト';
   materialButton.addEventListener('click', event => {
@@ -777,6 +786,15 @@ function addFavoriteToList(name, listId) {
   if (listMode === 'fav') renderList();
 }
 
+function confirmFavoriteTargetOnMobile(name, list, onConfirm) {
+  if (!isMobile()) {
+    onConfirm();
+    return;
+  }
+
+  showConfirm(`「${name}」を\n「${list.name}」に登録しますか？`, onConfirm);
+}
+
 function addFavoriteToNewList(name) {
   closeFavoriteTarget();
   showTextInput('新しいお気に入りリスト名', formatDefaultListName(), value => {
@@ -785,7 +803,7 @@ function addFavoriteToNewList(name) {
     favoriteStore.selectedListId = list.id;
     saveFavorites();
     listMode = 'fav';
-    elements.favBtn.classList.add('active');
+    updateFavoriteButtonState();
     refreshPins(name);
     renderList();
   });
@@ -812,7 +830,9 @@ function openFavoriteTarget(name) {
   );
   favoriteStore.lists.forEach(list => {
     frag.appendChild(createFavoriteTargetButton(list.name, list.id === selectedList?.id, () => {
-      addFavoriteToList(name, list.id);
+      confirmFavoriteTargetOnMobile(name, list, () => {
+        addFavoriteToList(name, list.id);
+      });
     }));
   });
 
@@ -870,8 +890,17 @@ function createEmptyListItem(message) {
   return createTextElement('li', 'list-empty', message);
 }
 
+function createMarkdownElement(tagName, className, html) {
+  const element = document.createElement(tagName);
+  element.className = className;
+  element.innerHTML = html;
+  return element;
+}
+
 function renderTips() {
-  const rows = tipsData.map(text => createTextElement('div', 'tips-row', text));
+  const rows = tipsData.map(tip =>
+    createMarkdownElement('div', 'tips-row markdown-content', tip.html)
+  );
   elements.tipsMsg.replaceChildren(...rows);
 }
 
@@ -882,7 +911,9 @@ function renderList() {
   if (listMode === 'none' && isMobile()) {
     const li = document.createElement('li');
     li.className = 'tips-li';
-    tipsData.forEach(text => li.appendChild(createTextElement('div', 'tips-row-list', text)));
+    tipsData.forEach(tip => li.appendChild(
+      createMarkdownElement('div', 'tips-row-list markdown-content', tip.html)
+    ));
     frag.appendChild(li);
   } else if (listMode === 'fav' && !getDisplayedFavoriteList()) {
     frag.appendChild(createEmptyListItem('お気に入りリストを選択してください'));
@@ -1063,10 +1094,13 @@ async function fetchJson(path, errorMessage) {
 
 async function loadTips() {
   try {
-    const response = await fetch(TIPS_FILE);
-    tipsData = response.ok ? await response.json() : [];
+    const response = await fetch(TIPS_FILE, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`tips (${response.status})`);
+    tipsData = [{ html: renderMarkdown(await response.text()) }];
   } catch {
-    tipsData = ['📌 ピンでお気に入り登録', 'あ〜英 で行絞り込み', '検索欄でアイテム名検索'];
+    tipsData = [
+      { html: renderMarkdown('📌 ピンでお気に入り登録\n\n検索欄でアイテム名検索') }
+    ];
   }
 }
 
@@ -1334,7 +1368,7 @@ function resetToStartupView() {
 
   elements.searchBox.value = '';
   elements.searchClearBtn.classList.remove('visible');
-  elements.favBtn.classList.remove('active');
+  updateFavoriteButtonState();
   closeSearchHistory();
   closeFavoriteLists();
   closeUsesPanel();
@@ -1504,6 +1538,30 @@ function createExchangeSupplementEntries(recipe, craftTimes) {
   }));
 }
 
+function createCraftInfo(name, neededQty) {
+  const recipe = recipes[name];
+  if (!recipe) return null;
+  const craftTimes = Math.ceil(neededQty / recipe.yield);
+  const producedQty = recipe.yield * craftTimes;
+  return {
+    craftTimes,
+    surplus: producedQty - neededQty
+  };
+}
+
+function createCraftSupplementEntries(name, neededQty) {
+  const recipe = recipes[name];
+  if (!recipe) return [];
+  const info = createCraftInfo(name, neededQty);
+  if (!info) return [];
+  const entries = [];
+  if (info.surplus > 0) entries.push({ label: '↩', qty: info.surplus, suffix: '個余り', kind: 'surplus' });
+  if (!EXCHANGE_CRAFT_TYPES.has(recipe.craftType) && info.craftTimes >= 1) {
+    entries.push({ label: '🔨', qty: info.craftTimes, suffix: '回製作', kind: 'craft' });
+  }
+  return entries;
+}
+
 function supplementGroupKey(entries = []) {
   return sortSupplementEntries(entries)
     .map(entry => `${entry.name}:${entry.qty}`)
@@ -1611,6 +1669,18 @@ function mergeMaterialRows(targetRows, incomingRows) {
   });
 }
 
+function mergeIntermediateRows(targetRows, incomingRows) {
+  const rowMap = new Map(targetRows.map(row => [row.name, row]));
+  incomingRows.forEach(row => {
+    if (rowMap.has(row.name)) rowMap.get(row.name).qty += row.qty;
+    else {
+      const nextRow = { ...row };
+      rowMap.set(nextRow.name, nextRow);
+      targetRows.push(nextRow);
+    }
+  });
+}
+
 function mergeMaterialItems(items) {
   const merged = [];
   const itemMap = new Map();
@@ -1701,6 +1771,36 @@ function collectMaterialRows(name, neededQty, pathKey = name) {
   return rows;
 }
 
+function collectIntermediateRows(name, neededQty, includeCurrent = false, pathKey = name) {
+  const recipe = recipes[name];
+  if (!recipe) return [];
+  const craftTimes = Math.ceil(neededQty / recipe.yield);
+  const rows = [];
+
+  if (
+    includeCurrent
+    && !EXCHANGE_CRAFT_TYPES.has(recipe.craftType)
+    && !crystalKind(name)
+  ) {
+    rows.push({ type: 'item', name, qty: neededQty });
+  }
+
+  if (EXCHANGE_CRAFT_TYPES.has(recipe.craftType)) return rows;
+
+  recipe.ingredients.forEach((ingredient, index) => {
+    mergeIntermediateRows(
+      rows,
+      collectIntermediateRows(
+        ingredient.name,
+        ingredient.qty * craftTimes,
+        true,
+        childTreePath(pathKey, ingredient.name, index)
+      )
+    );
+  });
+  return rows;
+}
+
 function collectFavoriteMaterialsRows() {
   ensureFavoriteMaterialsRingCounts();
   const setCount = parseInt(elements.countInput.value, 10) || 1;
@@ -1714,14 +1814,35 @@ function collectFavoriteMaterialsRows() {
   return rows;
 }
 
+function collectFavoriteIntermediateRows() {
+  ensureFavoriteMaterialsRingCounts();
+  const setCount = parseInt(elements.countInput.value, 10) || 1;
+  const rows = [];
+
+  getFavoriteListRecipeNames().forEach(name => {
+    const multiplier = isRingRecipe(name) ? (favoriteMaterialsRingCounts[name] || 1) : 1;
+    mergeIntermediateRows(rows, collectIntermediateRows(name, setCount * multiplier));
+  });
+
+  return rows;
+}
+
 function renderMaterialsList() {
   const rows = resultSourceMode === 'favorite-materials'
     ? collectFavoriteMaterialsRows()
     : collectMaterialRows(selectedRecipe, parseInt(elements.countInput.value, 10) || 1);
+  const intermediateRows = resultSourceMode === 'favorite-materials'
+    ? collectFavoriteIntermediateRows()
+    : collectIntermediateRows(selectedRecipe, parseInt(elements.countInput.value, 10) || 1);
   const categorizedRows = categorizeMaterialRows(rows);
   const list = document.createElement('ul');
   list.className = 'materials-list';
   const exchangeSummary = createSupplementSummaryState();
+  rows.forEach(row => {
+    if (row.type === 'item' && row.supplements?.length) {
+      accumulateSupplementSummary(exchangeSummary, row.supplements);
+    }
+  });
 
   if (resultSourceMode === 'favorite-materials') {
     renderFavoriteRingControls(elements.treeContainer);
@@ -1734,7 +1855,25 @@ function renderMaterialsList() {
     list.appendChild(separator);
   };
 
-  const appendMaterialRow = row => {
+  const appendSectionHeader = (title, initiallyCollapsed, bodyRows) => {
+    if (bodyRows.length === 0) return;
+    const header = document.createElement('li');
+    header.className = 'materials-section-header';
+    const toggle = createTextElement('span', 'materials-section-toggle', initiallyCollapsed ? '▶' : '▼');
+    header.append(toggle, createTextElement('span', 'materials-section-title', title));
+    list.appendChild(header);
+    bodyRows.forEach(row => {
+      row.classList.toggle('collapsed', initiallyCollapsed);
+      list.appendChild(row);
+    });
+    header.addEventListener('click', () => {
+      const collapsed = toggle.textContent === '▼';
+      toggle.textContent = collapsed ? '▶' : '▼';
+      bodyRows.forEach(row => row.classList.toggle('collapsed', collapsed));
+    });
+  };
+
+  const createMaterialRow = row => {
     const li = document.createElement('li');
     if (row.type === 'item') {
       const icon = createItemIcon(itemMaster[row.name]?.icon);
@@ -1759,15 +1898,18 @@ function renderMaterialsList() {
 
           const entryRow = document.createElement('div');
           entryRow.className = 'material-supplement-row';
-          const supplementIcon = createItemIcon(itemMaster[entry.name]?.icon, 'material-supplement-icon');
-          if (supplementIcon) entryRow.appendChild(supplementIcon);
-          entryRow.append(
-            createTextElement('span', 'material-supplement-name', entry.name),
-            createTextElement('span', 'material-supplement-qty', `× ${formatNumber(entry.qty)}`)
-          );
+          if (entry.isTextOnly) {
+            entryRow.appendChild(createTextElement('span', 'material-supplement-name', entry.name));
+          } else {
+            const supplementIcon = createItemIcon(itemMaster[entry.name]?.icon, 'material-supplement-icon');
+            if (supplementIcon) entryRow.appendChild(supplementIcon);
+            entryRow.append(
+              createTextElement('span', 'material-supplement-name', entry.name),
+              createTextElement('span', 'material-supplement-qty', `× ${formatNumber(entry.qty)}`)
+            );
+          }
           supplement.appendChild(entryRow);
         });
-        accumulateSupplementSummary(exchangeSummary, row.supplements);
         content.appendChild(supplement);
       }
 
@@ -1775,15 +1917,60 @@ function renderMaterialsList() {
     } else {
       li.appendChild(createMaterialChoiceContent(row));
     }
-    list.appendChild(li);
+    return li;
   };
 
-  [...categorizedRows.normal, ...categorizedRows.exchange].forEach(appendMaterialRow);
-  if (
-    (categorizedRows.normal.length > 0 || categorizedRows.exchange.length > 0)
-    && categorizedRows.crystals.length > 0
-  ) appendListSeparator();
-  categorizedRows.crystals.forEach(appendMaterialRow);
+  const createIntermediateRow = row => {
+    const li = document.createElement('li');
+    const icon = createItemIcon(itemMaster[row.name]?.icon);
+    if (icon) li.appendChild(icon);
+    const content = document.createElement('div');
+    content.className = 'material-content';
+    const primary = document.createElement('div');
+    primary.className = 'material-primary';
+    primary.append(
+      createTextElement('span', 'material-name', row.name),
+      createTextElement('span', 'material-qty', `× ${formatNumber(row.qty)}`)
+    );
+    content.appendChild(primary);
+
+    const supplementEntries = createCraftSupplementEntries(row.name, row.qty);
+    if (supplementEntries.length) {
+      const supplement = document.createElement('div');
+      supplement.className = 'material-supplement';
+      const entryRow = document.createElement('div');
+      entryRow.className = 'material-supplement-row';
+      supplementEntries.forEach(entry => {
+        const subRow = document.createElement('span');
+        subRow.className = 'material-sub-row';
+        subRow.append(
+          createTextElement('span', 'material-sub-label', `${entry.label} `),
+          createTextElement(
+            'span',
+            `material-sub-num ${entry.kind === 'surplus' ? 'material-sub-surplus' : ''}`,
+            formatNumber(entry.qty)
+          ),
+          createTextElement('span', 'material-sub-label', ` ${entry.suffix}`)
+        );
+        entryRow.appendChild(subRow);
+      });
+      supplement.appendChild(entryRow);
+      content.appendChild(supplement);
+    }
+
+    li.appendChild(content);
+    return li;
+  };
+
+  const intermediateSectionRows = intermediateRows
+    .sort((a, b) => compareMaterialRows(a, b))
+    .map(createIntermediateRow);
+  const materialSectionRows = [...categorizedRows.normal, ...categorizedRows.exchange].map(createMaterialRow);
+  const crystalSectionRows = categorizedRows.crystals.map(createMaterialRow);
+
+  appendSectionHeader('製作する中間素材', false, intermediateSectionRows);
+  appendSectionHeader('必要素材', false, materialSectionRows);
+  appendSectionHeader('必要なシャード/クリスタル/クラスター', true, crystalSectionRows);
 
   if (exchangeSummary.fixed.size > 0 || exchangeSummary.choices.size > 0) {
     appendListSeparator();
@@ -2123,51 +2310,100 @@ function escapeHtml(text) {
 }
 
 function renderMarkdownInline(text) {
-  return escapeHtml(text).replace(
-    /(https?:\/\/[^\s<]+)/g,
-    '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
-  );
+  const codeSegments = [];
+  let html = escapeHtml(text).replace(/`([^`]+)`/g, (_, code) => {
+    const token = `\u0000CODE${codeSegments.length}\u0000`;
+    codeSegments.push(`<code>${code}</code>`);
+    return token;
+  });
+
+  html = html
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+
+  codeSegments.forEach((segment, index) => {
+    html = html.replace(`\u0000CODE${index}\u0000`, segment);
+  });
+  return html;
 }
 
 function renderMarkdown(markdown) {
   const lines = markdown.replace(/\r\n/g, '\n').split('\n');
   const html = [];
   let listOpen = false;
+  let listItemOpen = false;
+  let paragraph = [];
+
+  const closeListItem = () => {
+    if (!listItemOpen) return;
+    html.push('</li>');
+    listItemOpen = false;
+  };
 
   const closeList = () => {
     if (!listOpen) return;
+    closeListItem();
     html.push('</ul>');
     listOpen = false;
+  };
+
+  const closeParagraph = () => {
+    if (paragraph.length === 0) return;
+    html.push(`<p>${paragraph.map(renderMarkdownInline).join('<br>')}</p>`);
+    paragraph = [];
   };
 
   lines.forEach(line => {
     const trimmed = line.trim();
     if (!trimmed) {
+      closeParagraph();
       closeList();
       return;
     }
+    if (listItemOpen && /^\s+/.test(line) && !trimmed.startsWith('- ')) {
+      html.push(`<br>${renderMarkdownInline(trimmed)}`);
+      return;
+    }
+    if (trimmed === '---') {
+      closeParagraph();
+      closeList();
+      html.push('<hr>');
+      return;
+    }
+    if (trimmed.startsWith('### ')) {
+      closeParagraph();
+      closeList();
+      html.push(`<h4>${renderMarkdownInline(trimmed.slice(4))}</h4>`);
+      return;
+    }
     if (trimmed.startsWith('## ')) {
+      closeParagraph();
       closeList();
       html.push(`<h3>${renderMarkdownInline(trimmed.slice(3))}</h3>`);
       return;
     }
     if (trimmed.startsWith('# ')) {
+      closeParagraph();
       closeList();
       html.push(`<h2>${renderMarkdownInline(trimmed.slice(2))}</h2>`);
       return;
     }
     if (trimmed.startsWith('- ')) {
+      closeParagraph();
       if (!listOpen) {
         html.push('<ul>');
         listOpen = true;
       }
-      html.push(`<li>${renderMarkdownInline(trimmed.slice(2))}</li>`);
+      closeListItem();
+      html.push(`<li>${renderMarkdownInline(trimmed.slice(2))}`);
+      listItemOpen = true;
       return;
     }
     closeList();
-    html.push(`<p>${renderMarkdownInline(trimmed)}</p>`);
+    paragraph.push(trimmed);
   });
 
+  closeParagraph();
   closeList();
   return html.join('');
 }

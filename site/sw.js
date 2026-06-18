@@ -1,5 +1,5 @@
 // データを更新したときは、このバージョンを手動で上げる
-const CACHE_VERSION = 'ff14recipe-v2.1';
+const CACHE_VERSION = 'ff14recipe-v2.11';
 const CACHE_PREFIX = 'ff14recipe-';
 
 const PRECACHE_FILES = [
@@ -44,8 +44,8 @@ self.addEventListener('fetch', event => {
 
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
 
-  // 緊急メッセージを常に最新にするため、tips.jsonは一切キャッシュしない
-  if (/\/data\/tips\.json$/.test(url.pathname)) {
+  // 緊急メッセージを常に最新にするため、tips.mdは一切キャッシュしない
+  if (/\/data\/tips\.md$/.test(url.pathname)) {
     event.respondWith(fetch(request, { cache: 'no-store' }));
     return;
   }

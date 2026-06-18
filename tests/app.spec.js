@@ -138,14 +138,24 @@ test('materials list sorts normal items before crystals and shows supplement ico
   await page.getByText('アリペブレ', { exact: true }).first().click();
 
   await page.locator('#materialsViewBtn').click();
+  await expect(page.locator('.materials-section-header')).toContainText([
+    '製作する中間素材',
+    '必要素材',
+    '必要なシャード/クリスタル/クラスター'
+  ]);
   const text = await page.locator('.materials-list').innerText();
   const summaryText = await page.locator('.materials-summary-row').innerText();
   expect(text.indexOf('ゴールデンイール')).toBeGreaterThanOrEqual(0);
   expect(text.indexOf('紫電の霊砂')).toBeGreaterThan(text.indexOf('ゴールデンイール'));
-  expect(text.indexOf('ファイアクラスター')).toBeGreaterThan(text.indexOf('紫電の霊砂'));
+  expect(text).not.toContain('ファイアクラスター');
+  await page.locator('.materials-section-header').filter({ hasText: '必要なシャード/クリスタル/クラスター' }).click();
+  const expandedText = await page.locator('.materials-list').innerText();
+  expect(expandedText.indexOf('ファイアクラスター')).toBeGreaterThan(expandedText.indexOf('紫電の霊砂'));
   expect(summaryText).toContain('ギャザラースクリップ:橙貨');
-  await expect(page.locator('.materials-summary-separator')).toHaveCount(2);
+  await expect(page.locator('.materials-summary-separator')).toHaveCount(1);
   await expect(page.locator('.material-supplement-icon').first()).toBeVisible();
+  await expect(page.locator('.material-sub-surplus').first()).toHaveCSS('color', 'rgb(106, 191, 105)');
+  await expect(page.locator('.material-sub-num:not(.material-sub-surplus)').first()).toHaveCSS('color', 'rgb(106, 191, 105)');
 });
 
 test('exchange materials are sorted by their exchange currency first', async ({ page }) => {
@@ -203,6 +213,7 @@ test('creates a named favorite list from a tree pin and exports a base36 share c
   await page.locator('#favBtn').click();
   await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
   await page.locator('#favoriteLists').getByText('剣リスト').click();
+  await expect(page.locator('#favBtn')).toContainText('剣リスト');
   await expect(page.locator('#recipeList')).toContainText('バスタードソード');
 
   await page.locator('#recipeList .pin-btn').first().click();
@@ -355,6 +366,21 @@ test('mobile pin turns active after adding to a favorite list', async ({ page })
   await page.locator('#textInputOkBtn').click();
 
   await expect(pin).not.toHaveClass(/inactive/);
+
+  await page.locator('#appTitle').click();
+  await searchFor(page, 'アリペブレ');
+  await page.getByText('アリペブレ', { exact: true }).first().click();
+  const secondPin = page.locator('.tree-node .pin-btn').first();
+  await secondPin.click();
+  await page.locator('#favoriteTargetChoices').getByText('スマホ確認').click();
+  await expect(page.locator('#confirmMsg')).toContainText('「スマホ確認」に登録しますか？');
+  await page.locator('#confirmNo').click();
+  await expect(page.locator('#favoriteTargetOverlay')).toHaveClass(/open/);
+  await expect(secondPin).toHaveClass(/inactive/);
+
+  await page.locator('#favoriteTargetChoices').getByText('スマホ確認').click();
+  await page.locator('#confirmYes').click();
+  await expect(secondPin).not.toHaveClass(/inactive/);
 });
 
 test('title returns to the startup view', async ({ page }) => {
@@ -365,6 +391,7 @@ test('title returns to the startup view', async ({ page }) => {
 
   await page.locator('#appTitle').click();
   await expect(page.locator('#searchBox')).toHaveValue('');
+  await expect(page.locator('#favBtn')).toHaveText('📌 お気に入り');
   await expect(page.locator('#resultTitle')).toHaveText('');
   await expect(page.locator('#tipsMsg')).toBeVisible();
 });

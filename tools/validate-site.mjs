@@ -18,7 +18,7 @@ for (const relativePath of [
   'sw.js',
   'manifest.webmanifest',
   'data/Item.json',
-  'data/tips.json',
+  'data/tips.md',
   'assets/app-icons/favicon.png',
   'assets/app-icons/icon-192.png',
   'assets/app-icons/icon-512.png'
@@ -27,7 +27,7 @@ for (const relativePath of [
 }
 
 const items = JSON.parse(fs.readFileSync(requireFile('data/Item.json'), 'utf8'));
-JSON.parse(fs.readFileSync(requireFile('data/tips.json'), 'utf8'));
+fs.readFileSync(requireFile('data/tips.md'), 'utf8');
 JSON.parse(fs.readFileSync(requireFile('manifest.webmanifest'), 'utf8'));
 
 const missingIcons = [];
