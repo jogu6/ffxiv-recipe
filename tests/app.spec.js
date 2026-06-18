@@ -11,6 +11,17 @@ async function searchFor(page, value) {
   await expect(page.locator('#recipeList li').first()).toContainText(value);
 }
 
+async function dragHandleAfter(page, handle, targetRow) {
+  const handleBox = await handle.boundingBox();
+  const targetBox = await targetRow.boundingBox();
+  if (!handleBox || !targetBox) throw new Error('Cannot drag invisible reorder handle');
+
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height * 0.85, { steps: 6 });
+  await page.mouse.up();
+}
+
 test('opens the license notice from settings', async ({ page }) => {
   await openApp(page);
 
@@ -22,6 +33,28 @@ test('opens the license notice from settings', async ({ page }) => {
 
   await page.locator('#licenseCloseBtn').click();
   await expect(page.locator('#licenseOverlay')).not.toHaveClass(/open/);
+});
+
+test('opens privacy policy and contact link from settings', async ({ page }) => {
+  await openApp(page);
+
+  await page.locator('#settingsBtn').click();
+  await page.locator('#privacyBtn').click();
+
+  await expect(page.locator('#licenseOverlay')).toHaveClass(/open/);
+  await expect(page.locator('#licenseTitle')).toContainText('プライバシー');
+  await expect(page.locator('#licenseText')).toContainText('Cloudflare Web Analytics');
+
+  await page.locator('#licenseCloseBtn').click();
+  await page.evaluate(() => {
+    window.__contactUrl = '';
+    window.open = url => {
+      window.__contactUrl = url;
+      return null;
+    };
+  });
+  await page.locator('#contactBtn').click();
+  await expect.poll(() => page.evaluate(() => window.__contactUrl)).toBe('https://discord.gg/GAVwZ9Ca');
 });
 
 test('count step buttons adjust the selected recipe count', async ({ page }) => {
@@ -94,9 +127,43 @@ test('materials list shows exchange supplements and summary totals', async ({ pa
   const spiritSandRow = page.locator('.materials-list li').filter({ hasText: '紫電の霊砂' }).first();
   await expect(spiritSandRow).toContainText('ギャザラースクリップ:橙貨');
   await expect(spiritSandRow).toContainText('× 300');
-  await expect(page.locator('.materials-summary-separator')).toBeVisible();
+  await expect(page.locator('.materials-summary-separator').first()).toBeVisible();
   await expect(page.locator('.materials-summary-row')).toContainText('ギャザラースクリップ:橙貨');
   await expect(page.locator('.materials-summary-row')).toContainText('× 300');
+});
+
+test('materials list sorts normal items before crystals and shows supplement icons', async ({ page }) => {
+  await openApp(page);
+  await searchFor(page, 'アリペブレ');
+  await page.getByText('アリペブレ', { exact: true }).first().click();
+
+  await page.locator('#materialsViewBtn').click();
+  const text = await page.locator('.materials-list').innerText();
+  const summaryText = await page.locator('.materials-summary-row').innerText();
+  expect(text.indexOf('ゴールデンイール')).toBeGreaterThanOrEqual(0);
+  expect(text.indexOf('紫電の霊砂')).toBeGreaterThan(text.indexOf('ゴールデンイール'));
+  expect(text.indexOf('ファイアクラスター')).toBeGreaterThan(text.indexOf('紫電の霊砂'));
+  expect(summaryText).toContain('ギャザラースクリップ:橙貨');
+  await expect(page.locator('.materials-summary-separator')).toHaveCount(2);
+  await expect(page.locator('.material-supplement-icon').first()).toBeVisible();
+});
+
+test('exchange materials are sorted by their exchange currency first', async ({ page }) => {
+  await openApp(page);
+  await searchFor(page, 'オールドキングダム・ディフェンダーヘルム');
+  await page.getByText('オールドキングダム・ディフェンダーヘルム', { exact: true }).first().click();
+
+  await page.locator('#materialsViewBtn').click();
+  const rows = await page.locator('.materials-list li:not(.materials-summary-row)').evaluateAll(items =>
+    items
+      .map(item => item.textContent || '')
+      .filter(text => text.includes('アラガントームストーン:数理') || text.includes('ギャザラースクリップ:橙貨'))
+  );
+
+  expect(rows.length).toBeGreaterThan(1);
+  const firstOrangeIndex = rows.findIndex(text => text.includes('ギャザラースクリップ:橙貨'));
+  const lastTomestoneIndex = rows.map(text => text.includes('アラガントームストーン:数理')).lastIndexOf(true);
+  expect(firstOrangeIndex).toBeGreaterThan(lastTomestoneIndex);
 });
 
 test('materials summary keeps exchange alternatives as もしくは groups', async ({ page }) => {
@@ -110,6 +177,16 @@ test('materials summary keeps exchange alternatives as もしくは groups', asy
   await expect(summaryRows.last()).toContainText('ギャザラースクリップ:紫貨');
   await expect(summaryRows.last()).toContainText('もしくは');
   await expect(summaryRows.last()).toContainText('× 200');
+});
+
+test('formats displayed quantities with grouping separators', async ({ page }) => {
+  await openApp(page);
+  await searchFor(page, 'アリペブレ');
+  await page.getByText('アリペブレ', { exact: true }).first().click();
+
+  await page.locator('#countInput').fill('1000');
+  await expect(page.locator('#resultTitle')).toContainText('1,000個分');
+  await expect(page.locator('.tree-node').first()).toContainText('× 1,002');
 });
 
 test('creates a named favorite list from a tree pin and exports a base36 share code', async ({ page }) => {
@@ -137,6 +214,80 @@ test('creates a named favorite list from a tree pin and exports a base36 share c
   await page.locator('#exportListChoices').getByText('剣リスト').click();
   await expect(page.locator('#exportListToggle')).toContainText('剣リスト');
   await expect(page.locator('#exportCode')).toHaveValue(/^[0-9A-Z]+$/);
+});
+
+test('reorders favorite lists locally with the rightmost drag handle', async ({ page }) => {
+  await openApp(page);
+
+  await searchFor(page, 'バスタードソード');
+  await page.getByText('バスタードソード', { exact: true }).first().click();
+  await page.locator('.tree-node .pin-btn').first().click();
+  await page.locator('#favoriteTargetCreate').getByText('新規作成').click();
+  await page.locator('#textInputField').fill('リストA');
+  await page.locator('#textInputOkBtn').click();
+
+  await searchFor(page, 'アリペブレ');
+  await page.getByText('アリペブレ', { exact: true }).first().click();
+  await page.locator('.tree-node .pin-btn').first().click();
+  await page.locator('#favoriteTargetCreate').getByText('新規作成').click();
+  await page.locator('#textInputField').fill('リストB');
+  await page.locator('#textInputOkBtn').click();
+
+  await page.locator('#favBtn').click();
+  const listA = page.locator('#favoriteLists li').filter({ hasText: 'リストA' }).first();
+  const listB = page.locator('#favoriteLists li').filter({ hasText: 'リストB' }).first();
+  await dragHandleAfter(page, listA.locator('.reorder-handle'), listB);
+
+  await expect(page.locator('#favoriteLists li').nth(0)).toContainText('リストB');
+  await expect(page.locator('#favoriteLists li').nth(1)).toContainText('リストA');
+
+  await page.reload();
+  await openApp(page);
+  await page.locator('#favBtn').click();
+  await expect(page.locator('#favoriteLists li').nth(0)).toContainText('リストB');
+  await expect(page.locator('#favoriteLists li').nth(1)).toContainText('リストA');
+});
+
+test('reorders favorite items locally and changes the exported share code order', async ({ page }) => {
+  await openApp(page);
+
+  await searchFor(page, 'バスタードソード');
+  await page.getByText('バスタードソード', { exact: true }).first().click();
+  await page.locator('.tree-node .pin-btn').first().click();
+  await page.locator('#favoriteTargetCreate').getByText('新規作成').click();
+  await page.locator('#textInputField').fill('並び確認');
+  await page.locator('#textInputOkBtn').click();
+
+  await searchFor(page, 'アリペブレ');
+  await page.getByText('アリペブレ', { exact: true }).first().click();
+  await page.locator('.tree-node .pin-btn').first().click();
+  await page.locator('#favoriteTargetChoices').getByText('並び確認').click();
+
+  await page.locator('#favBtn').click();
+  await page.locator('#favoriteLists').getByText('並び確認').click();
+  await expect(page.locator('#recipeList li.fav-item-row').nth(0)).toContainText('バスタードソード');
+  await expect(page.locator('#recipeList li.fav-item-row').nth(1)).toContainText('アリペブレ');
+  await expect(page.locator('#recipeList li.fav-item-row .reorder-handle')).toHaveCount(0);
+
+  await page.locator('#settingsBtn').click();
+  await page.locator('#exportListToggle').click();
+  await page.locator('#exportListChoices').getByText('並び確認').click();
+  const beforeCode = await page.locator('#exportCode').inputValue();
+  await page.locator('#settingsCloseBtn').click();
+
+  await page.locator('#recipeList .favorite-materials-row').getByText('並び替え').click();
+  await expect(page.locator('#recipeList li.fav-item-row .reorder-handle')).toHaveCount(2);
+  const first = page.locator('#recipeList li.fav-item-row').nth(0);
+  const second = page.locator('#recipeList li.fav-item-row').nth(1);
+  await dragHandleAfter(page, first.locator('.reorder-handle'), second);
+  await expect(page.locator('#recipeList li.fav-item-row').nth(0)).toContainText('アリペブレ');
+  await expect(page.locator('#recipeList li.fav-item-row').nth(1)).toContainText('バスタードソード');
+
+  await page.locator('#settingsBtn').click();
+  await page.locator('#exportListToggle').click();
+  await page.locator('#exportListChoices').getByText('並び確認').click();
+  const afterCode = await page.locator('#exportCode').inputValue();
+  expect(afterCode).not.toBe(beforeCode);
 });
 
 test('favorite list selection clears the recipe view switch', async ({ page }) => {
@@ -204,6 +355,41 @@ test('mobile pin turns active after adding to a favorite list', async ({ page })
   await page.locator('#textInputOkBtn').click();
 
   await expect(pin).not.toHaveClass(/inactive/);
+});
+
+test('title returns to the startup view', async ({ page }) => {
+  await openApp(page);
+  await searchFor(page, 'バスタードソード');
+  await page.getByText('バスタードソード', { exact: true }).first().click();
+  await expect(page.locator('#resultTitle')).toContainText('バスタードソード');
+
+  await page.locator('#appTitle').click();
+  await expect(page.locator('#searchBox')).toHaveValue('');
+  await expect(page.locator('#resultTitle')).toHaveText('');
+  await expect(page.locator('#tipsMsg')).toBeVisible();
+});
+
+test('hides the popup button when launched as a desktop PWA', async ({ page }) => {
+  await page.addInitScript(() => {
+    const originalMatchMedia = window.matchMedia.bind(window);
+    window.matchMedia = query => {
+      if (query === '(display-mode: standalone)') {
+        return {
+          matches: true,
+          media: query,
+          onchange: null,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+          addListener: () => {},
+          removeListener: () => {},
+          dispatchEvent: () => false
+        };
+      }
+      return originalMatchMedia(query);
+    };
+  });
+  await openApp(page);
+  await expect(page.locator('#popupBtn')).toBeHidden();
 });
 
 test('crossing the responsive breakpoint resets to startup view', async ({ page }) => {

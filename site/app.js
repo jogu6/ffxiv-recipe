@@ -6,6 +6,9 @@ const LS_SEARCH_HISTORY = 'ff14_search_history';
 const SEARCH_HISTORY_LIMIT = 30;
 const FAVORITE_NAME_MAX = 50;
 const MOBILE_BREAKPOINT = 600;
+const LICENSE_NOTICE_FILE = './docs/license-notice.md';
+const PRIVACY_POLICY_FILE = './docs/privacy-policy.md';
+const CONTACT_URL = 'https://discord.gg/GAVwZ9Ca';
 
 const CRAFT_TYPE_NAME = {
   '0': '木工師', '1': '鍛冶師', '2': '甲冑師', '3': '彫金師',
@@ -20,29 +23,12 @@ const CRYSTAL_EXCLUDE = new Set(
     .flatMap(e => ['シャード','クリスタル','クラスター'].map(t => e + t))
 );
 
-const LICENSE_NOTICE_TEXT = `The MIT License applies only to the original application source code and project tooling in this repository.
-
-It does not grant rights to game images, game data, names, trademarks, or other third-party material stored or referenced by this project.
-
-- FINAL FANTASY XIV (C) SQUARE ENIX
-- FINAL FANTASY is a registered trademark of Square Enix Holdings Co., Ltd.
-- FINAL FANTASY XIV images, names, item and recipe data, trademarks, and other game-derived materials are owned by SQUARE ENIX.
-- Item and recipe information is derived from FINAL FANTASY XIV data.
-- Item image acquisition uses XIVAPI endpoints.
-
-This project is unofficial and is not affiliated with, sponsored by, approved by, or endorsed by SQUARE ENIX.
-
-All third-party material remains subject to the rights and terms of its respective owner. Use of FINAL FANTASY XIV materials is intended to follow the FINAL FANTASY XIV Materials Usage License and related SQUARE ENIX rules and policies.
-
-If SQUARE ENIX requests correction, removal, suspension, or discontinuation of any material or service related to this project, the maintainer will respond promptly and comply. If necessary, distribution of the application may be suspended and affected materials or data may be removed.
-
-XIVAPI is used as a community data and asset endpoint where applicable. Use of XIVAPI remains subject to any applicable XIVAPI documentation, service guidance, and maintainer requests.`;
-
 // Cached DOM references
 const elements = {
   appVersion: document.getElementById('appVersion'),
   loadStatus: document.getElementById('loadStatus'),
   popupBtn: document.getElementById('popupBtn'),
+  appTitle: document.getElementById('appTitle'),
   settingsBtn: document.getElementById('settingsBtn'),
   panelLeft: document.getElementById('panelLeft'),
   panelMiddle: document.getElementById('panelMiddle'),
@@ -84,8 +70,11 @@ const elements = {
   importCode: document.getElementById('importCode'),
   startImportBtn: document.getElementById('startImportBtn'),
   importErr: document.getElementById('importErr'),
+  contactBtn: document.getElementById('contactBtn'),
+  privacyBtn: document.getElementById('privacyBtn'),
   licenseBtn: document.getElementById('licenseBtn'),
   licenseOverlay: document.getElementById('licenseOverlay'),
+  licenseTitle: document.getElementById('licenseTitle'),
   licenseText: document.getElementById('licenseText'),
   licenseCloseBtn: document.getElementById('licenseCloseBtn'),
   settingsCloseBtn: document.getElementById('settingsCloseBtn'),
@@ -121,12 +110,34 @@ let pendingConfirmAction = null;
 let pendingTextInputAction = null;
 let selectedExportListId = null;
 let wasMobile = isMobile();
+let reorderDrag = null;
+let favoriteItemReorderEnabled = false;
 
 const treePinMap = new Map();
 const exchangeTreeState = new Map();
+const CRYSTAL_ELEMENT_ORDER = ['ファイア', 'アイス', 'ウィンド', 'アース', 'ライトニング', 'ウォーター'];
+const CRYSTAL_KIND_ORDER = ['シャード', 'クリスタル', 'クラスター'];
 
 function isMobile() {
   return window.innerWidth <= MOBILE_BREAKPOINT;
+}
+
+function isPwaDisplayMode() {
+  return window.matchMedia('(display-mode: standalone)').matches
+    || window.matchMedia('(display-mode: window-controls-overlay)').matches;
+}
+
+function updatePopupButtonVisibility() {
+  elements.popupBtn.classList.toggle('hidden', isPwaDisplayMode());
+}
+
+function toNumeric(value, fallback = 0) {
+  const number = parseInt(value, 10);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function formatNumber(value) {
+  return toNumeric(value).toLocaleString('ja-JP');
 }
 
 // Sorting and persistence
@@ -440,6 +451,106 @@ function refreshPins(name) {
   });
 }
 
+function moveArrayItem(items, fromIndex, toIndex) {
+  if (!Array.isArray(items) || fromIndex === toIndex) return false;
+  if (fromIndex < 0 || fromIndex >= items.length || toIndex < 0 || toIndex >= items.length) return false;
+  const [item] = items.splice(fromIndex, 1);
+  items.splice(toIndex, 0, item);
+  return true;
+}
+
+function createReorderHandle(label, onPointerDown) {
+  const handle = document.createElement('button');
+  handle.className = 'reorder-handle';
+  handle.type = 'button';
+  handle.textContent = '☰';
+  handle.title = label;
+  handle.setAttribute('aria-label', label);
+  handle.addEventListener('click', event => event.stopPropagation());
+  handle.addEventListener('pointerdown', onPointerDown);
+  return handle;
+}
+
+function clearReorderDropTarget() {
+  document.querySelectorAll('.reorder-drop-before, .reorder-drop-after').forEach(row => {
+    row.classList.remove('reorder-drop-before', 'reorder-drop-after');
+  });
+}
+
+function updateReorderDropTarget() {
+  clearReorderDropTarget();
+  if (!reorderDrag) return;
+  const rows = [...reorderDrag.container.querySelectorAll(reorderDrag.rowSelector)];
+  if (rows.length === 0) return;
+  if (reorderDrag.insertIndex >= rows.length) rows[rows.length - 1].classList.add('reorder-drop-after');
+  else rows[reorderDrag.insertIndex].classList.add('reorder-drop-before');
+}
+
+function startReorderDrag(event, options) {
+  if (event.button !== undefined && event.button !== 0) return;
+  const row = event.currentTarget.closest(options.rowSelector);
+  if (!row) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  reorderDrag = {
+    ...options,
+    handle: event.currentTarget,
+    row,
+    fromIndex: Number(row.dataset.reorderIndex),
+    insertIndex: Number(row.dataset.reorderIndex)
+  };
+  row.classList.add('dragging');
+  event.currentTarget.setPointerCapture?.(event.pointerId);
+  event.currentTarget.addEventListener('pointermove', onReorderPointerMove);
+  event.currentTarget.addEventListener('pointerup', onReorderPointerUp);
+  event.currentTarget.addEventListener('pointercancel', cancelReorderDrag);
+  onReorderPointerMove(event);
+}
+
+function onReorderPointerMove(event) {
+  if (!reorderDrag) return;
+  const rows = [...reorderDrag.container.querySelectorAll(reorderDrag.rowSelector)];
+  let insertIndex = rows.length;
+
+  for (let index = 0; index < rows.length; index += 1) {
+    const rect = rows[index].getBoundingClientRect();
+    if (event.clientY < rect.top + rect.height / 2) {
+      insertIndex = index;
+      break;
+    }
+  }
+
+  reorderDrag.insertIndex = insertIndex;
+  updateReorderDropTarget();
+}
+
+function finishReorderDrag() {
+  if (!reorderDrag) return;
+  const { handle, row } = reorderDrag;
+  handle.removeEventListener('pointermove', onReorderPointerMove);
+  handle.removeEventListener('pointerup', onReorderPointerUp);
+  handle.removeEventListener('pointercancel', cancelReorderDrag);
+  row.classList.remove('dragging');
+  clearReorderDropTarget();
+}
+
+function onReorderPointerUp() {
+  if (!reorderDrag) return;
+  const { fromIndex, insertIndex, onReorder } = reorderDrag;
+  const toIndex = insertIndex > fromIndex ? insertIndex - 1 : insertIndex;
+  finishReorderDrag();
+  const callback = onReorder;
+  reorderDrag = null;
+  callback(fromIndex, toIndex);
+}
+
+function cancelReorderDrag() {
+  finishReorderDrag();
+  reorderDrag = null;
+}
+
 function onSearch() {
   const q = elements.searchBox.value.trim();
   leaveFavoriteMaterialsMode();
@@ -472,6 +583,7 @@ function closeFavoriteLists() {
 
 function selectFavoriteList(listId) {
   leaveFavoriteMaterialsMode();
+  favoriteItemReorderEnabled = false;
   favoriteStore.selectedListId = listId;
   saveFavorites();
   listMode = 'fav';
@@ -513,6 +625,21 @@ function deleteFavoriteList(listId) {
   });
 }
 
+function reorderFavoriteLists(fromIndex, toIndex) {
+  if (!moveArrayItem(favoriteStore.lists, fromIndex, toIndex)) return;
+  saveFavorites();
+  renderFavoriteLists();
+  renderExportListChoices();
+}
+
+function reorderFavoriteItems(fromIndex, toIndex) {
+  const list = getDisplayedFavoriteList();
+  if (!list || !moveArrayItem(list.itemIds, fromIndex, toIndex)) return;
+  saveFavorites();
+  renderList();
+  if (resultSourceMode === 'favorite-materials') renderResultView();
+}
+
 function createFavoriteActionRow(text, onClick) {
   const li = document.createElement('li');
   li.className = 'favorite-list-action-row';
@@ -543,15 +670,27 @@ function createFavoriteSaveRow() {
 function createFavoriteMaterialsRow() {
   const li = document.createElement('li');
   li.className = 'favorite-materials-row';
-  const button = document.createElement('button');
-  button.className = 'favorite-list-action';
-  button.type = 'button';
-  button.textContent = '素材リスト';
-  button.addEventListener('click', event => {
+  const materialButton = document.createElement('button');
+  materialButton.className = 'favorite-list-action favorite-list-action-compact';
+  materialButton.type = 'button';
+  materialButton.textContent = '素材リスト';
+  materialButton.addEventListener('click', event => {
     event.stopPropagation();
     openFavoriteMaterialsMode();
   });
-  li.appendChild(button);
+
+  const reorderButton = document.createElement('button');
+  reorderButton.className = 'favorite-list-action favorite-list-action-compact';
+  reorderButton.classList.toggle('active', favoriteItemReorderEnabled);
+  reorderButton.type = 'button';
+  reorderButton.textContent = '並び替え';
+  reorderButton.addEventListener('click', event => {
+    event.stopPropagation();
+    favoriteItemReorderEnabled = !favoriteItemReorderEnabled;
+    renderList();
+  });
+
+  li.append(materialButton, reorderButton);
   return li;
 }
 
@@ -577,8 +716,9 @@ function renderFavoriteLists() {
   if (favoriteStore.lists.length === 0) {
     frag.appendChild(createEmptyListItem('お気に入りリストがありません'));
   } else {
-    favoriteStore.lists.forEach(list => {
+    favoriteStore.lists.forEach((list, index) => {
       const li = document.createElement('li');
+      li.dataset.reorderIndex = String(index);
       li.classList.toggle('active', list.id === getDisplayedFavoriteList()?.id);
 
       const name = createTextElement('span', 'favorite-list-name', list.name);
@@ -604,7 +744,15 @@ function renderFavoriteLists() {
         deleteFavoriteList(list.id);
       });
 
-      li.append(name, renameBtn, deleteBtn);
+      const reorderBtn = createReorderHandle(`「${list.name}」を並び替え`, event => {
+        startReorderDrag(event, {
+          container: elements.favoriteLists,
+          rowSelector: '#favoriteLists li[data-reorder-index]',
+          onReorder: reorderFavoriteLists
+        });
+      });
+
+      li.append(name, renameBtn, deleteBtn, reorderBtn);
       li.addEventListener('click', () => selectFavoriteList(list.id));
       frag.appendChild(li);
     });
@@ -746,8 +894,8 @@ function renderList() {
     if (listMode === 'fav' && getDisplayedFavoriteList()) {
       frag.appendChild(createFavoriteMaterialsRow());
     }
-    names.forEach(name => {
-      if (listMode === 'fav') frag.appendChild(makeFavLi(name));
+    names.forEach((name, index) => {
+      if (listMode === 'fav') frag.appendChild(makeFavLi(name, index));
       else if (recipes[name]) frag.appendChild(makeRecipeLi(name));
       else frag.appendChild(makeIngredientLi(name));
     });
@@ -760,8 +908,9 @@ function renderList() {
   elements.recipeList.replaceChildren(frag);
 }
 
-function makeFavLi(name) {
+function makeFavLi(name, index) {
   const li = createItemListRow(name, 'fav-item-row');
+  li.dataset.reorderIndex = String(index);
   li.classList.toggle('selected', selectedRecipe === name);
 
   const pin = document.createElement('button');
@@ -773,6 +922,16 @@ function makeFavLi(name) {
     pinOff(name);
   });
   li.insertBefore(pin, li.querySelector('.list-name'));
+
+  if (favoriteItemReorderEnabled) {
+    li.appendChild(createReorderHandle(`「${name}」を並び替え`, event => {
+      startReorderDrag(event, {
+        container: elements.recipeList,
+        rowSelector: '#recipeList li.fav-item-row[data-reorder-index]',
+        onReorder: reorderFavoriteItems
+      });
+    }));
+  }
 
   li.addEventListener('click', () => selectRecipeByName(name));
   return li;
@@ -819,7 +978,7 @@ function closeUsesPanel() {
 // Used-in panel and mobile navigation
 function showUsesPanel(ingredientName) {
   const uses = usedIn[ingredientName] || [];
-  elements.usesTitle.textContent = `${ingredientName}（${uses.length}件）`;
+  elements.usesTitle.textContent = `${ingredientName}（${formatNumber(uses.length)}件）`;
   const frag = document.createDocumentFragment();
 
   uses.forEach(recipeName => {
@@ -925,7 +1084,7 @@ function buildItemAndRecipeMasters(rawList, idToItem) {
     const name = item.Name;
 
     if (recipe?.PatchNumber) {
-      const patchNumber = parseInt(recipe.PatchNumber, 10);
+      const patchNumber = toNumeric(recipe.PatchNumber);
       if (patchNumber > maxPatch) maxPatch = patchNumber;
     }
 
@@ -936,19 +1095,21 @@ function buildItemAndRecipeMasters(rawList, idToItem) {
         icon: iconPath(item),
         craftType,
         id: item.ID,
+        numericId: toNumeric(item.ID),
+        uiCategory: toNumeric(item.ItemUICategory),
         uiCategoryName: item.ItemUICategoryName || ''
       };
       recipes[name] = {
-        yield: parseInt(recipe.AmountResult, 10) || 1,
+        yield: toNumeric(recipe.AmountResult, 1),
         craftType,
         ingredients: recipe.Ingredients.map(ingredient => ({
           name: ingredient.Name,
-          qty: parseInt(ingredient.Amount, 10) || 1,
+          qty: toNumeric(ingredient.Amount, 1),
           itemId: ingredient.ItemID
         }))
       };
 
-      const numericId = parseInt(item.ID, 10);
+      const numericId = toNumeric(item.ID, NaN);
       if (!Number.isNaN(numericId)) idToRecipeName[numericId] = name;
     } else if (!itemMaster[name]) {
       itemMaster[name] = {
@@ -956,6 +1117,8 @@ function buildItemAndRecipeMasters(rawList, idToItem) {
         icon: iconPath(item),
         craftType: '',
         id: item.ID,
+        numericId: toNumeric(item.ID),
+        uiCategory: toNumeric(item.ItemUICategory),
         uiCategoryName: item.ItemUICategoryName || ''
       };
     }
@@ -968,6 +1131,9 @@ function buildItemAndRecipeMasters(rawList, idToItem) {
         method: '',
         icon: iconPath(idToItem[ingredient.ItemID]),
         craftType: '',
+        id: ingredient.ItemID,
+        numericId: toNumeric(ingredient.ItemID),
+        uiCategory: toNumeric(idToItem[ingredient.ItemID]?.ItemUICategory),
         uiCategoryName: idToItem[ingredient.ItemID]?.ItemUICategoryName || ''
       };
     });
@@ -1018,6 +1184,7 @@ function showLoadError(error) {
 }
 
 async function init() {
+  updatePopupButtonVisibility();
   loadFavorites();
   loadSearchHistory();
   await loadTips();
@@ -1073,7 +1240,7 @@ function setResultSourceMode(mode) {
 }
 
 function getFavoriteMaterialRingNames(list = getDisplayedFavoriteList()) {
-  return getFavoriteListRecipeNames(list).filter(isRingRecipe);
+  return getFavoriteListRecipeNames(list).filter(isRingRecipe).sort(compareItemNames);
 }
 
 function ensureFavoriteMaterialsRingCounts() {
@@ -1109,7 +1276,7 @@ function updateResultHeader() {
   if (resultSourceMode === 'favorite-materials') {
     const listName = getDisplayedFavoriteList()?.name || '';
     elements.countLabel.textContent = 'セット数:';
-    elements.resultTitle.textContent = listName ? `【${listName} × ${count}セット分】` : '';
+    elements.resultTitle.textContent = listName ? `【${listName} × ${formatNumber(count)}セット分】` : '';
     elements.usesBtn.classList.remove('visible');
     elements.treeViewBtn.classList.add('hidden');
     elements.materialsViewBtn.classList.remove('hidden');
@@ -1121,9 +1288,9 @@ function updateResultHeader() {
   }
 
   elements.countLabel.textContent = '個数:';
-  elements.resultTitle.textContent = selectedRecipe ? `【${selectedRecipe} × ${count}個分】` : '';
+  elements.resultTitle.textContent = selectedRecipe ? `【${selectedRecipe} × ${formatNumber(count)}個分】` : '';
   const usesCount = selectedRecipe ? (usedIn[selectedRecipe]?.length || 0) : 0;
-  elements.usesBtn.textContent = `使用先 (${usesCount})`;
+  elements.usesBtn.textContent = `使用先 (${formatNumber(usesCount)})`;
   elements.usesBtn.classList.toggle('visible', usesCount > 0);
   elements.treeViewBtn.classList.remove('hidden');
   elements.materialsViewBtn.disabled = false;
@@ -1155,6 +1322,7 @@ function renderResultView() {
 
 function resetToStartupView() {
   leaveFavoriteMaterialsMode();
+  favoriteItemReorderEnabled = false;
   selectedRecipe = null;
   prevPanel = 'left';
   listMode = 'none';
@@ -1203,7 +1371,102 @@ function shouldShowCraftBadgeOnlyAtRoot(recipeName) {
 }
 
 function createMaterialLabel(name, qty) {
-  return qty === null ? name : `${name} × ${qty}`;
+  return qty === null ? name : `${name} × ${formatNumber(qty)}`;
+}
+
+function itemSortKey(name) {
+  const master = itemMaster[name] || {};
+  return {
+    uiCategory: toNumeric(master.uiCategory),
+    id: toNumeric(master.numericId || master.id)
+  };
+}
+
+function compareItemNames(a, b) {
+  const left = itemSortKey(a);
+  const right = itemSortKey(b);
+  return left.uiCategory - right.uiCategory || left.id - right.id || a.localeCompare(b, 'ja');
+}
+
+function getCrystalPart(name, parts) {
+  return parts.find(part => name.startsWith(part) || name.endsWith(part)) || '';
+}
+
+function crystalKind(name) {
+  return getCrystalPart(name, CRYSTAL_KIND_ORDER);
+}
+
+function crystalElement(name) {
+  return getCrystalPart(name, CRYSTAL_ELEMENT_ORDER);
+}
+
+function compareCrystalNames(a, b) {
+  const kindDiff = CRYSTAL_KIND_ORDER.indexOf(crystalKind(a)) - CRYSTAL_KIND_ORDER.indexOf(crystalKind(b));
+  if (kindDiff !== 0) return kindDiff;
+  const elementDiff = CRYSTAL_ELEMENT_ORDER.indexOf(crystalElement(a)) - CRYSTAL_ELEMENT_ORDER.indexOf(crystalElement(b));
+  return elementDiff || compareItemNames(a, b);
+}
+
+function compareMaterialRows(a, b) {
+  return compareItemNames(a.name, b.name);
+}
+
+function compareCrystalRows(a, b) {
+  return compareCrystalNames(a.name, b.name);
+}
+
+function isExchangeMaterialRow(row) {
+  return row.type === 'item' && EXCHANGE_CRAFT_TYPES.has(itemMaster[row.name]?.craftType);
+}
+
+function compareSupplementEntryLists(a = [], b = []) {
+  const left = sortSupplementEntries(a);
+  const right = sortSupplementEntries(b);
+  const length = Math.max(left.length, right.length);
+
+  for (let index = 0; index < length; index += 1) {
+    if (!left[index]) return -1;
+    if (!right[index]) return 1;
+    const result = compareItemNames(left[index].name, right[index].name);
+    if (result !== 0) return result;
+  }
+  return 0;
+}
+
+function compareExchangeMaterialRows(a, b) {
+  return compareSupplementEntryLists(a.supplements, b.supplements)
+    || compareMaterialRows(a, b);
+}
+
+function sortSupplementEntries(entries = []) {
+  return [...entries].sort((a, b) => compareItemNames(a.name, b.name));
+}
+
+function categorizeMaterialRows(rows) {
+  const normal = [];
+  const exchange = [];
+  const crystals = [];
+
+  rows.forEach(row => {
+    if (row.type !== 'item') {
+      normal.push(row);
+      return;
+    }
+    if (crystalKind(row.name)) crystals.push(row);
+    else if (isExchangeMaterialRow(row)) exchange.push(row);
+    else normal.push(row);
+  });
+
+  const sortRows = targetRows => targetRows.sort((a, b) => {
+    if (a.type === 'item' && b.type === 'item') return compareMaterialRows(a, b);
+    if (a.type === 'item') return -1;
+    if (b.type === 'item') return 1;
+    return 0;
+  });
+  sortRows(normal);
+  exchange.sort((a, b) => compareExchangeMaterialRows(a, b));
+  crystals.sort(compareCrystalRows);
+  return { normal, exchange, crystals };
 }
 
 function childTreePath(pathKey, childName, index) {
@@ -1242,7 +1505,7 @@ function createExchangeSupplementEntries(recipe, craftTimes) {
 }
 
 function supplementGroupKey(entries = []) {
-  return entries
+  return sortSupplementEntries(entries)
     .map(entry => `${entry.name}:${entry.qty}`)
     .join('|');
 }
@@ -1263,14 +1526,15 @@ function accumulateSupplementSummary(summary, entries = []) {
     return;
   }
 
-  const key = supplementGroupKey(entries);
+  const sortedEntries = sortSupplementEntries(entries);
+  const key = supplementGroupKey(sortedEntries);
   if (!summary.choices.has(key)) {
-    summary.choices.set(key, entries.map(cloneSupplementEntry));
+    summary.choices.set(key, sortedEntries.map(cloneSupplementEntry));
     return;
   }
 
   const current = summary.choices.get(key);
-  entries.forEach((entry, index) => {
+  sortedEntries.forEach((entry, index) => {
     current[index].qty += entry.qty;
   });
 }
@@ -1307,7 +1571,7 @@ function createMaterialChoiceContent(row) {
       if (icon) itemEl.appendChild(icon);
       itemEl.appendChild(createTextElement('span', 'material-choice-name', item.name));
       if (item.qty !== null) {
-        itemEl.appendChild(createTextElement('span', 'material-choice-qty', `× ${item.qty}`));
+        itemEl.appendChild(createTextElement('span', 'material-choice-qty', `× ${formatNumber(item.qty)}`));
       }
       optionEl.appendChild(itemEl);
     });
@@ -1454,6 +1718,7 @@ function renderMaterialsList() {
   const rows = resultSourceMode === 'favorite-materials'
     ? collectFavoriteMaterialsRows()
     : collectMaterialRows(selectedRecipe, parseInt(elements.countInput.value, 10) || 1);
+  const categorizedRows = categorizeMaterialRows(rows);
   const list = document.createElement('ul');
   list.className = 'materials-list';
   const exchangeSummary = createSupplementSummaryState();
@@ -1462,7 +1727,14 @@ function renderMaterialsList() {
     renderFavoriteRingControls(elements.treeContainer);
   }
 
-  rows.forEach(row => {
+  const appendListSeparator = () => {
+    if (list.children.length === 0) return;
+    const separator = document.createElement('li');
+    separator.className = 'materials-summary-separator';
+    list.appendChild(separator);
+  };
+
+  const appendMaterialRow = row => {
     const li = document.createElement('li');
     if (row.type === 'item') {
       const icon = createItemIcon(itemMaster[row.name]?.icon);
@@ -1473,23 +1745,25 @@ function renderMaterialsList() {
       primary.className = 'material-primary';
       primary.append(
         createTextElement('span', 'material-name', row.name),
-        createTextElement('span', 'material-qty', `× ${row.qty}`)
+        createTextElement('span', 'material-qty', `× ${formatNumber(row.qty)}`)
       );
       content.appendChild(primary);
 
       if (row.supplements?.length) {
         const supplement = document.createElement('div');
         supplement.className = 'material-supplement';
-        row.supplements.forEach((entry, index) => {
+        sortSupplementEntries(row.supplements).forEach((entry, index) => {
           if (index > 0) {
             supplement.appendChild(createTextElement('div', 'material-supplement-sep', 'もしくは'));
           }
 
           const entryRow = document.createElement('div');
           entryRow.className = 'material-supplement-row';
+          const supplementIcon = createItemIcon(itemMaster[entry.name]?.icon, 'material-supplement-icon');
+          if (supplementIcon) entryRow.appendChild(supplementIcon);
           entryRow.append(
             createTextElement('span', 'material-supplement-name', entry.name),
-            createTextElement('span', 'material-supplement-qty', `× ${entry.qty}`)
+            createTextElement('span', 'material-supplement-qty', `× ${formatNumber(entry.qty)}`)
           );
           supplement.appendChild(entryRow);
         });
@@ -1502,14 +1776,19 @@ function renderMaterialsList() {
       li.appendChild(createMaterialChoiceContent(row));
     }
     list.appendChild(li);
-  });
+  };
+
+  [...categorizedRows.normal, ...categorizedRows.exchange].forEach(appendMaterialRow);
+  if (
+    (categorizedRows.normal.length > 0 || categorizedRows.exchange.length > 0)
+    && categorizedRows.crystals.length > 0
+  ) appendListSeparator();
+  categorizedRows.crystals.forEach(appendMaterialRow);
 
   if (exchangeSummary.fixed.size > 0 || exchangeSummary.choices.size > 0) {
-    const separator = document.createElement('li');
-    separator.className = 'materials-summary-separator';
-    list.appendChild(separator);
+    appendListSeparator();
 
-    [...exchangeSummary.fixed.entries()].forEach(([name, qty]) => {
+    [...exchangeSummary.fixed.entries()].sort(([a], [b]) => compareItemNames(a, b)).forEach(([name, qty]) => {
       const li = document.createElement('li');
       li.className = 'materials-summary-row';
       const icon = createItemIcon(itemMaster[name]?.icon);
@@ -1520,14 +1799,16 @@ function renderMaterialsList() {
       primary.className = 'material-primary';
       primary.append(
         createTextElement('span', 'material-name', name),
-        createTextElement('span', 'material-qty', `× ${qty}`)
+        createTextElement('span', 'material-qty', `× ${formatNumber(qty)}`)
       );
       content.appendChild(primary);
       li.appendChild(content);
       list.appendChild(li);
     });
 
-    [...exchangeSummary.choices.values()].forEach(entries => {
+    [...exchangeSummary.choices.values()].map(sortSupplementEntries).sort((a, b) =>
+      compareItemNames(a[0]?.name || '', b[0]?.name || '')
+    ).forEach(entries => {
       const li = document.createElement('li');
       li.className = 'materials-summary-row';
       const content = document.createElement('div');
@@ -1546,7 +1827,7 @@ function renderMaterialsList() {
         if (icon) entryRow.appendChild(icon);
         entryRow.append(
           createTextElement('span', 'material-name', entry.name),
-          createTextElement('span', 'material-qty', `× ${entry.qty}`)
+          createTextElement('span', 'material-qty', `× ${formatNumber(entry.qty)}`)
         );
         supplement.appendChild(entryRow);
       });
@@ -1630,7 +1911,7 @@ function createTreeMain(name, producedQty, subInfo) {
   title.className = 'node-title';
   title.append(
     createTextElement('span', 'node-name', name),
-    createTextElement('span', 'node-qty', `× ${producedQty}`)
+    createTextElement('span', 'node-qty', `× ${formatNumber(producedQty)}`)
   );
 
   const main = document.createElement('span');
@@ -1658,13 +1939,13 @@ function createTreeSubInfo(recipe, neededQty, producedQty, unitCost, unitTimes) 
   const craftTimes = recipe ? Math.ceil(neededQty / recipe.yield) : 0;
 
   if (unitCost !== null && unitTimes !== null) {
-    rows.push(createTreeSubRow(`(@${unitCost} × `, unitTimes, ')'));
+    rows.push(createTreeSubRow(`(@${formatNumber(unitCost)} × `, formatNumber(unitTimes), ')'));
   }
   if (surplus > 0) {
-    rows.push(createTreeSubRow('(↩', ` ${surplus} `, '個余り)'));
+    rows.push(createTreeSubRow('(↩', ` ${formatNumber(surplus)} `, '個余り)'));
   }
   if (!isExchange && craftTimes >= 1) {
-    rows.push(createTreeSubRow('(🔨', ` ${craftTimes} `, '回制作)'));
+    rows.push(createTreeSubRow('(🔨', ` ${formatNumber(craftTimes)} `, '回制作)'));
   }
   if (rows.length === 0) return null;
 
@@ -1831,13 +2112,95 @@ function closeSettings() {
   closeExportListDropdown();
 }
 
-function openLicenseNotice() {
-  elements.licenseText.textContent = LICENSE_NOTICE_TEXT;
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, char => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[char]));
+}
+
+function renderMarkdownInline(text) {
+  return escapeHtml(text).replace(
+    /(https?:\/\/[^\s<]+)/g,
+    '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
+  );
+}
+
+function renderMarkdown(markdown) {
+  const lines = markdown.replace(/\r\n/g, '\n').split('\n');
+  const html = [];
+  let listOpen = false;
+
+  const closeList = () => {
+    if (!listOpen) return;
+    html.push('</ul>');
+    listOpen = false;
+  };
+
+  lines.forEach(line => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      closeList();
+      return;
+    }
+    if (trimmed.startsWith('## ')) {
+      closeList();
+      html.push(`<h3>${renderMarkdownInline(trimmed.slice(3))}</h3>`);
+      return;
+    }
+    if (trimmed.startsWith('# ')) {
+      closeList();
+      html.push(`<h2>${renderMarkdownInline(trimmed.slice(2))}</h2>`);
+      return;
+    }
+    if (trimmed.startsWith('- ')) {
+      if (!listOpen) {
+        html.push('<ul>');
+        listOpen = true;
+      }
+      html.push(`<li>${renderMarkdownInline(trimmed.slice(2))}</li>`);
+      return;
+    }
+    closeList();
+    html.push(`<p>${renderMarkdownInline(trimmed)}</p>`);
+  });
+
+  closeList();
+  return html.join('');
+}
+
+async function openDocumentNotice(title, path) {
+  elements.licenseTitle.textContent = title;
+  elements.licenseText.textContent = '読み込み中...';
   elements.licenseOverlay.classList.add('open');
+
+  try {
+    const response = await fetch(path, { cache: 'no-cache' });
+    if (!response.ok) throw new Error(`Failed to load ${path}`);
+    const markdown = (await response.text()).replace(/^# .*(?:\n+|$)/, '');
+    elements.licenseText.innerHTML = renderMarkdown(markdown);
+  } catch {
+    elements.licenseText.textContent = '文書を読み込めませんでした。時間をおいて再度お試しください。';
+  }
+}
+
+function openLicenseNotice() {
+  openDocumentNotice('LICENSE / NOTICE', LICENSE_NOTICE_FILE);
+}
+
+function openPrivacyPolicy() {
+  openDocumentNotice('プライバシー・ポリシー', PRIVACY_POLICY_FILE);
 }
 
 function closeLicenseNotice() {
   elements.licenseOverlay.classList.remove('open');
+}
+
+function openContactLink() {
+  window.open(CONTACT_URL, '_blank', 'noopener,noreferrer');
 }
 
 function copyExportCode() {
@@ -1946,6 +2309,17 @@ function handleDocumentPointerDown(event) {
 }
 
 function bindEvents() {
+  const standaloneQuery = window.matchMedia('(display-mode: standalone)');
+  const overlayQuery = window.matchMedia('(display-mode: window-controls-overlay)');
+  standaloneQuery.addEventListener?.('change', updatePopupButtonVisibility);
+  overlayQuery.addEventListener?.('change', updatePopupButtonVisibility);
+
+  elements.appTitle.addEventListener('click', resetToStartupView);
+  elements.appTitle.addEventListener('keydown', event => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    resetToStartupView();
+  });
   elements.popupBtn.addEventListener('click', openPopup);
   elements.settingsBtn.addEventListener('click', openSettings);
   elements.searchBox.addEventListener('input', onSearch);
@@ -1980,6 +2354,8 @@ function bindEvents() {
   });
   elements.copyExportBtn.addEventListener('click', copyExportCode);
   elements.startImportBtn.addEventListener('click', startImport);
+  elements.contactBtn.addEventListener('click', openContactLink);
+  elements.privacyBtn.addEventListener('click', openPrivacyPolicy);
   elements.licenseBtn.addEventListener('click', openLicenseNotice);
   elements.licenseOverlay.addEventListener('click', event => {
     if (event.target === elements.licenseOverlay) closeLicenseNotice();
