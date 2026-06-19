@@ -1445,6 +1445,18 @@ function compareMaterialRows(a, b) {
   return compareItemNames(a.name, b.name);
 }
 
+function compareIntermediateRows(a, b) {
+  const leftRecipe = recipes[a.name];
+  const rightRecipe = recipes[b.name];
+  const left = itemSortKey(a.name);
+  const right = itemSortKey(b.name);
+
+  return toNumeric(leftRecipe?.craftType) - toNumeric(rightRecipe?.craftType)
+    || left.uiCategory - right.uiCategory
+    || left.id - right.id
+    || a.name.localeCompare(b.name, 'ja');
+}
+
 function compareCrystalRows(a, b) {
   return compareCrystalNames(a.name, b.name);
 }
@@ -1963,7 +1975,7 @@ function renderMaterialsList() {
   };
 
   const intermediateSectionRows = intermediateRows
-    .sort((a, b) => compareMaterialRows(a, b))
+    .sort(compareIntermediateRows)
     .map(createIntermediateRow);
   const materialSectionRows = [...categorizedRows.normal, ...categorizedRows.exchange].map(createMaterialRow);
   const crystalSectionRows = categorizedRows.crystals.map(createMaterialRow);
@@ -2187,7 +2199,7 @@ function buildNode(name, neededQty, producedQty, depth, pathKey, unitCost = null
   row.appendChild(
     createTreeMain(
       name,
-      producedQty,
+      neededQty,
       createTreeSubInfo(recipe, neededQty, producedQty, unitCost, unitTimes)
     )
   );
