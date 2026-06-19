@@ -67,6 +67,57 @@ test('count step buttons adjust the selected recipe count', async ({ page }) => 
   await expect(page.locator('#countInput')).toHaveValue('6');
   await page.locator('#countDecrease5Btn').click();
   await expect(page.locator('#countInput')).toHaveValue('1');
+
+  await page.locator('#countIncrease5Btn').click();
+  await searchFor(page, 'アリペブレ');
+  await page.getByText('アリペブレ', { exact: true }).first().click();
+  await expect(page.locator('#countInput')).toHaveValue('1');
+});
+
+test('intermediate materials form a collapsible tree and open an independent material tree', async ({ page }) => {
+  await openApp(page);
+  await searchFor(page, 'ブラスバスタードソード');
+  await page.getByText('ブラスバスタードソード', { exact: true }).first().click();
+  await page.locator('#materialsViewBtn').click();
+
+  const intermediateHeader = page.locator('.materials-section-header').filter({ hasText: '製作する中間素材' });
+  const bastardNode = page.locator('.intermediate-tree-node').filter({ hasText: 'バスタードソード' }).first();
+  await expect(bastardNode.locator('.intermediate-tree-children')).toContainText('ブロンズインゴット');
+  await bastardNode.locator('.intermediate-tree-toggle').first().click();
+  await expect(bastardNode.locator('.intermediate-tree-children')).toHaveClass(/collapsed/);
+
+  await intermediateHeader.click();
+  await expect(bastardNode).toHaveClass(/collapsed/);
+  await intermediateHeader.click();
+  await expect(bastardNode).not.toHaveClass(/collapsed/);
+  await expect(bastardNode.locator('.intermediate-tree-children')).toHaveClass(/collapsed/);
+
+  const materialsHeader = page.locator('.materials-section-header').filter({ hasText: '必要素材' });
+  const firstMaterial = materialsHeader.locator('xpath=following-sibling::*[1]');
+  await materialsHeader.click();
+  await expect(firstMaterial).toHaveClass(/collapsed/);
+  await materialsHeader.click();
+  await expect(firstMaterial).not.toHaveClass(/collapsed/);
+
+  const crystalsHeader = page.locator('.materials-section-header').filter({ hasText: '必要なシャード/クリスタル/クラスター' });
+  const firstCrystal = crystalsHeader.locator('xpath=following-sibling::*[1]');
+  await expect(firstCrystal).toHaveClass(/collapsed/);
+  await crystalsHeader.click();
+  await expect(firstCrystal).not.toHaveClass(/collapsed/);
+  await crystalsHeader.click();
+  await expect(firstCrystal).toHaveClass(/collapsed/);
+
+  await bastardNode.locator('.intermediate-material-tree-btn').first().click();
+  await expect(bastardNode.locator('.intermediate-material-tree-btn').first()).toHaveText('🌲');
+  await expect(page.locator('#materialTreeOverlay')).toHaveClass(/open/);
+  await expect(page.locator('#materialTreeTitle')).toHaveText(/【バスタードソード × [0-9,]+個分】/);
+  await expect(page.locator('#materialTreeContent')).toContainText('ブロンズインゴット');
+  await expect(page.locator('#materialTreeContent .pin-btn')).toHaveCount(0);
+  const initialCount = Number(await page.locator('#materialTreeCountInput').inputValue());
+  await page.locator('#materialTreeIncrease5Btn').click();
+  await expect(page.locator('#materialTreeCountInput')).toHaveValue(String(initialCount + 5));
+  await page.locator('#materialTreeCloseBtn').click();
+  await expect(page.locator('#materialTreeOverlay')).not.toHaveClass(/open/);
 });
 
 test('uses buttons share the accent style', async ({ page }) => {
@@ -247,6 +298,7 @@ test('reorders favorite lists locally with the rightmost drag handle', async ({ 
   await page.locator('#favBtn').click();
   const listA = page.locator('#favoriteLists li').filter({ hasText: 'リストA' }).first();
   const listB = page.locator('#favoriteLists li').filter({ hasText: 'リストB' }).first();
+  await expect(listA).toHaveCSS('user-select', 'none');
   await dragHandleAfter(page, listA.locator('.reorder-handle'), listB);
 
   await expect(page.locator('#favoriteLists li').nth(0)).toContainText('リストB');
@@ -288,6 +340,7 @@ test('reorders favorite items locally and changes the exported share code order'
 
   await page.locator('#recipeList .favorite-materials-row').getByText('並び替え').click();
   await expect(page.locator('#recipeList li.fav-item-row .reorder-handle')).toHaveCount(2);
+  await expect(page.locator('#recipeList li.fav-item-row').first()).toHaveCSS('user-select', 'none');
   const first = page.locator('#recipeList li.fav-item-row').nth(0);
   const second = page.locator('#recipeList li.fav-item-row').nth(1);
   await dragHandleAfter(page, first.locator('.reorder-handle'), second);
@@ -313,9 +366,11 @@ test('favorite list selection clears the recipe view switch', async ({ page }) =
   await searchFor(page, 'アリペブレ');
   await page.getByText('アリペブレ', { exact: true }).first().click();
   await expect(page.locator('#resultViewSwitch')).toBeVisible();
+  await page.locator('#countIncrease5Btn').click();
 
   await page.locator('#favBtn').click();
   await page.locator('#favoriteLists').getByText('切替確認').click();
+  await expect(page.locator('#countInput')).toHaveValue('1');
   await expect(page.locator('#resultViewSwitch')).toBeHidden();
   await expect(page.locator('#resultTitle')).toHaveText('');
 });
@@ -337,9 +392,12 @@ test('shows favorite list materials mode with set count and ring toggles', async
 
   await page.locator('#favBtn').click();
   await page.locator('#favoriteLists').getByText('素材確認').click();
+  await expect(page.locator('#recipeList li.fav-item-row').first().locator('.favorite-item-job')).toHaveClass(/badge-craft/);
+  await page.locator('#countIncrease5Btn').click();
   await page.locator('#recipeList').getByText('素材リスト').click();
 
   await expect(page.locator('#countLabel')).toHaveText('セット数:');
+  await expect(page.locator('#countInput')).toHaveValue('1');
   await expect(page.locator('#materialsViewBtn')).toBeVisible();
   await expect(page.locator('#treeViewBtn')).toBeHidden();
   await expect(page.locator('.favorite-ring-controls')).toContainText('カッパーリング');
@@ -347,8 +405,16 @@ test('shows favorite list materials mode with set count and ring toggles', async
   await expect(page.locator('.favorite-ring-toggle')).toContainText('1つ');
   await expect(page.locator('.materials-list')).toContainText('ゴールデンイール');
 
+  const materialsHeader = page.locator('.materials-section-header').filter({ hasText: '必要素材' });
+  await materialsHeader.click();
+  await expect(materialsHeader.locator('xpath=following-sibling::*[1]')).toHaveClass(/collapsed/);
+  await page.locator('.favorite-ring-toggle button').filter({ hasText: '2つ' }).click();
+  const rerenderedHeader = page.locator('.materials-section-header').filter({ hasText: '必要素材' });
+  await expect(rerenderedHeader.locator('xpath=following-sibling::*[1]')).toHaveClass(/collapsed/);
+
   await page.getByText('アリペブレ', { exact: true }).first().click();
   await expect(page.locator('#countLabel')).toHaveText('個数:');
+  await expect(page.locator('#countInput')).toHaveValue('1');
   await expect(page.locator('#treeViewBtn')).toBeVisible();
   await expect(page.locator('.favorite-ring-controls')).toHaveCount(0);
 });
@@ -381,6 +447,15 @@ test('mobile pin turns active after adding to a favorite list', async ({ page })
   await page.locator('#favoriteTargetChoices').getByText('スマホ確認').click();
   await page.locator('#confirmYes').click();
   await expect(secondPin).not.toHaveClass(/inactive/);
+
+  await page.locator('#backBtn').click();
+  await page.locator('#favBtn').click();
+  await page.locator('#favoriteLists').getByText('スマホ確認').click();
+  const materialsButton = page.locator('#recipeList .favorite-materials-row').getByText('素材リスト');
+  await materialsButton.click();
+  await expect(materialsButton).toHaveClass(/active/);
+  await page.locator('#backBtn').click();
+  await expect(page.locator('#recipeList .favorite-materials-row').getByText('素材リスト')).not.toHaveClass(/active/);
 });
 
 test('title returns to the startup view', async ({ page }) => {

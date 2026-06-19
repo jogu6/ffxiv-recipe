@@ -59,7 +59,7 @@
       </div>
       <div class="result-view-row">
         <div id="resultViewSwitch" class="result-view-switch hidden" role="group" aria-label="表示切替">
-          <button id="treeViewBtn" class="active" type="button">レシピツリー</button>
+          <button id="treeViewBtn" class="active" type="button">🌲 レシピツリー</button>
           <button id="materialsViewBtn" type="button">素材リスト</button>
         </div>
         <button id="usesBtn">使用先</button>
@@ -152,6 +152,28 @@
     <div id="favoriteTargetChoices" class="choice-list"></div>
     <div class="choice-btns">
       <button class="choice-btn" id="favoriteTargetCancelBtn">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<div id="materialTreeOverlay">
+  <div id="materialTreeDialog">
+    <div class="material-tree-dialog-header">
+      <span id="materialTreeTitle"></span>
+      <div class="material-tree-count-row">
+        <label for="materialTreeCountInput">個数:</label>
+        <div class="count-control">
+          <button class="count-btn count-step-wide" id="materialTreeDecrease5Btn" type="button">-5</button>
+          <button class="count-btn" id="materialTreeDecreaseBtn" type="button">－</button>
+          <input type="number" id="materialTreeCountInput" value="1" min="1" inputmode="numeric">
+          <button class="count-btn" id="materialTreeIncreaseBtn" type="button">＋</button>
+          <button class="count-btn count-step-wide" id="materialTreeIncrease5Btn" type="button">+5</button>
+        </div>
+      </div>
+    </div>
+    <div id="materialTreeContent"></div>
+    <div class="settings-close">
+      <button class="confirm-btn no" id="materialTreeCloseBtn" type="button">閉じる</button>
     </div>
   </div>
 </div>

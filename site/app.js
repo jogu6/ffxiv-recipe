@@ -88,7 +88,16 @@ const elements = {
   favoriteTargetMsg: document.getElementById('favoriteTargetMsg'),
   favoriteTargetCreate: document.getElementById('favoriteTargetCreate'),
   favoriteTargetChoices: document.getElementById('favoriteTargetChoices'),
-  favoriteTargetCancelBtn: document.getElementById('favoriteTargetCancelBtn')
+  favoriteTargetCancelBtn: document.getElementById('favoriteTargetCancelBtn'),
+  materialTreeOverlay: document.getElementById('materialTreeOverlay'),
+  materialTreeTitle: document.getElementById('materialTreeTitle'),
+  materialTreeCountInput: document.getElementById('materialTreeCountInput'),
+  materialTreeDecrease5Btn: document.getElementById('materialTreeDecrease5Btn'),
+  materialTreeDecreaseBtn: document.getElementById('materialTreeDecreaseBtn'),
+  materialTreeIncreaseBtn: document.getElementById('materialTreeIncreaseBtn'),
+  materialTreeIncrease5Btn: document.getElementById('materialTreeIncrease5Btn'),
+  materialTreeContent: document.getElementById('materialTreeContent'),
+  materialTreeCloseBtn: document.getElementById('materialTreeCloseBtn')
 };
 
 // Application state and indexes
@@ -113,9 +122,12 @@ let selectedExportListId = null;
 let wasMobile = isMobile();
 let reorderDrag = null;
 let favoriteItemReorderEnabled = false;
+let materialTreeRecipe = null;
 
 const treePinMap = new Map();
 const exchangeTreeState = new Map();
+const materialSectionState = new Map();
+const intermediateTreeState = new Map();
 const CRYSTAL_ELEMENT_ORDER = ['ファイア', 'アイス', 'ウィンド', 'アース', 'ライトニング', 'ウォーター'];
 const CRYSTAL_KIND_ORDER = ['シャード', 'クリスタル', 'クラスター'];
 
@@ -589,9 +601,11 @@ function closeFavoriteLists() {
 }
 
 function selectFavoriteList(listId) {
+  const changedList = getDisplayedFavoriteList()?.id !== listId;
   leaveFavoriteMaterialsMode();
   favoriteItemReorderEnabled = false;
   favoriteStore.selectedListId = listId;
+  if (changedList) resetCountInput();
   saveFavorites();
   listMode = 'fav';
   updateFavoriteButtonState();
@@ -727,6 +741,7 @@ function renderFavoriteLists() {
   } else {
     favoriteStore.lists.forEach((list, index) => {
       const li = document.createElement('li');
+      li.classList.add('reorder-enabled');
       li.dataset.reorderIndex = String(index);
       li.classList.toggle('active', list.id === getDisplayedFavoriteList()?.id);
 
@@ -961,6 +976,19 @@ function makeFavLi(name, index) {
   li.dataset.reorderIndex = String(index);
   li.classList.toggle('selected', selectedRecipe === name);
 
+  const nameElement = li.querySelector('.list-name');
+  const label = document.createElement('span');
+  label.className = 'favorite-item-label';
+  label.append(
+    createTextElement(
+      'span',
+      `favorite-item-job badge ${methodBadgeClass(itemMaster[name]?.method)}`,
+      itemMaster[name]?.method || '製作情報なし'
+    ),
+    createTextElement('span', 'favorite-item-name', name)
+  );
+  nameElement.replaceWith(label);
+
   const pin = document.createElement('button');
   pin.className = 'pin-btn';
   pin.textContent = '📌';
@@ -969,9 +997,10 @@ function makeFavLi(name, index) {
     event.stopPropagation();
     pinOff(name);
   });
-  li.insertBefore(pin, li.querySelector('.list-name'));
+  li.insertBefore(pin, label);
 
   if (favoriteItemReorderEnabled) {
+    li.classList.add('reorder-enabled');
     li.appendChild(createReorderHandle(`「${name}」を並び替え`, event => {
       startReorderDrag(event, {
         container: elements.recipeList,
@@ -1032,6 +1061,7 @@ function showUsesPanel(ingredientName) {
   uses.forEach(recipeName => {
     const li = createItemListRow(recipeName);
     li.addEventListener('click', () => {
+      if (selectedRecipe !== recipeName || resultSourceMode === 'favorite-materials') resetCountInput();
       selectedRecipe = recipeName;
       leaveFavoriteMaterialsMode();
       setResultViewMode('tree');
@@ -1053,6 +1083,11 @@ function showUsesPanel(ingredientName) {
 }
 
 function goBack() {
+  if (isMobile() && resultSourceMode === 'favorite-materials') {
+    leaveFavoriteMaterialsMode();
+    setResultViewMode('tree');
+    renderList();
+  }
   showMobilePanel(prevPanel);
 }
 
@@ -1062,6 +1097,7 @@ function returnToList() {
 }
 
 function selectRecipe(name, li) {
+  if (selectedRecipe !== name || resultSourceMode === 'favorite-materials') resetCountInput();
   selectedRecipe = name;
   leaveFavoriteMaterialsMode();
   exchangeTreeState.clear();
@@ -1076,6 +1112,7 @@ function selectRecipe(name, li) {
 }
 
 function selectRecipeByName(name) {
+  if (selectedRecipe !== name || resultSourceMode === 'favorite-materials') resetCountInput();
   selectedRecipe = name;
   leaveFavoriteMaterialsMode();
   exchangeTreeState.clear();
@@ -1274,6 +1311,10 @@ function changeCount(delta) {
   renderResultView();
 }
 
+function resetCountInput() {
+  elements.countInput.value = '1';
+}
+
 function clearRenderedTree() {
   Array.from(elements.treeContainer.children).forEach(child => {
     if (child !== elements.tipsMsg) child.remove();
@@ -1303,6 +1344,7 @@ function ensureFavoriteMaterialsRingCounts() {
 
 function openFavoriteMaterialsMode() {
   if (!getDisplayedFavoriteList()) return;
+  resetCountInput();
   selectedRecipe = null;
   setResultSourceMode('favorite-materials');
   setResultViewMode('materials');
@@ -1697,18 +1739,6 @@ function mergeMaterialRows(targetRows, incomingRows) {
   });
 }
 
-function mergeIntermediateRows(targetRows, incomingRows) {
-  const rowMap = new Map(targetRows.map(row => [row.name, row]));
-  incomingRows.forEach(row => {
-    if (rowMap.has(row.name)) rowMap.get(row.name).qty += row.qty;
-    else {
-      const nextRow = { ...row };
-      rowMap.set(nextRow.name, nextRow);
-      targetRows.push(nextRow);
-    }
-  });
-}
-
 function mergeMaterialItems(items) {
   const merged = [];
   const itemMap = new Map();
@@ -1799,34 +1829,48 @@ function collectMaterialRows(name, neededQty, pathKey = name) {
   return rows;
 }
 
-function collectIntermediateRows(name, neededQty, includeCurrent = false, pathKey = name) {
-  const recipe = recipes[name];
-  if (!recipe) return [];
-  const craftTimes = Math.ceil(neededQty / recipe.yield);
-  const rows = [];
-
-  if (
-    includeCurrent
-    && !EXCHANGE_CRAFT_TYPES.has(recipe.craftType)
-    && !crystalKind(name)
-  ) {
-    rows.push({ type: 'item', name, qty: neededQty });
-  }
-
-  if (EXCHANGE_CRAFT_TYPES.has(recipe.craftType)) return rows;
-
-  recipe.ingredients.forEach((ingredient, index) => {
-    mergeIntermediateRows(
-      rows,
-      collectIntermediateRows(
-        ingredient.name,
-        ingredient.qty * craftTimes,
-        true,
-        childTreePath(pathKey, ingredient.name, index)
-      )
-    );
+function mergeIntermediateTreeNodes(targetNodes, incomingNodes) {
+  const nodeMap = new Map(targetNodes.map(node => [node.name, node]));
+  incomingNodes.forEach(node => {
+    const current = nodeMap.get(node.name);
+    if (current) {
+      current.qty += node.qty;
+      mergeIntermediateTreeNodes(current.children, node.children);
+      return;
+    }
+    const nextNode = {
+      name: node.name,
+      qty: node.qty,
+      children: []
+    };
+    mergeIntermediateTreeNodes(nextNode.children, node.children);
+    targetNodes.push(nextNode);
+    nodeMap.set(nextNode.name, nextNode);
   });
-  return rows;
+}
+
+function collectIntermediateTree(name, neededQty) {
+  const recipe = recipes[name];
+  if (!recipe || EXCHANGE_CRAFT_TYPES.has(recipe.craftType)) return [];
+  const craftTimes = Math.ceil(neededQty / recipe.yield);
+  const nodes = [];
+
+  recipe.ingredients.forEach(ingredient => {
+    const ingredientRecipe = recipes[ingredient.name];
+    if (
+      !ingredientRecipe
+      || EXCHANGE_CRAFT_TYPES.has(ingredientRecipe.craftType)
+      || crystalKind(ingredient.name)
+    ) return;
+
+    const ingredientQty = ingredient.qty * craftTimes;
+    mergeIntermediateTreeNodes(nodes, [{
+      name: ingredient.name,
+      qty: ingredientQty,
+      children: collectIntermediateTree(ingredient.name, ingredientQty)
+    }]);
+  });
+  return nodes;
 }
 
 function collectFavoriteMaterialsRows() {
@@ -1842,26 +1886,25 @@ function collectFavoriteMaterialsRows() {
   return rows;
 }
 
-function collectFavoriteIntermediateRows() {
+function collectFavoriteIntermediateTree() {
   ensureFavoriteMaterialsRingCounts();
   const setCount = parseInt(elements.countInput.value, 10) || 1;
-  const rows = [];
+  const nodes = [];
 
   getFavoriteListRecipeNames().forEach(name => {
     const multiplier = isRingRecipe(name) ? (favoriteMaterialsRingCounts[name] || 1) : 1;
-    mergeIntermediateRows(rows, collectIntermediateRows(name, setCount * multiplier));
+    mergeIntermediateTreeNodes(nodes, collectIntermediateTree(name, setCount * multiplier));
   });
-
-  return rows;
+  return nodes;
 }
 
 function renderMaterialsList() {
   const rows = resultSourceMode === 'favorite-materials'
     ? collectFavoriteMaterialsRows()
     : collectMaterialRows(selectedRecipe, parseInt(elements.countInput.value, 10) || 1);
-  const intermediateRows = resultSourceMode === 'favorite-materials'
-    ? collectFavoriteIntermediateRows()
-    : collectIntermediateRows(selectedRecipe, parseInt(elements.countInput.value, 10) || 1);
+  const intermediateTree = resultSourceMode === 'favorite-materials'
+    ? collectFavoriteIntermediateTree()
+    : collectIntermediateTree(selectedRecipe, parseInt(elements.countInput.value, 10) || 1);
   const categorizedRows = categorizeMaterialRows(rows);
   const list = document.createElement('ul');
   list.className = 'materials-list';
@@ -1883,20 +1926,28 @@ function renderMaterialsList() {
     list.appendChild(separator);
   };
 
+  const contextKey = resultSourceMode === 'favorite-materials'
+    ? `favorite:${getDisplayedFavoriteList()?.id || ''}`
+    : `recipe:${selectedRecipe || ''}`;
   const appendSectionHeader = (title, initiallyCollapsed, bodyRows) => {
     if (bodyRows.length === 0) return;
+    const stateKey = `${contextKey}:${title}`;
+    const collapsedState = materialSectionState.has(stateKey)
+      ? materialSectionState.get(stateKey)
+      : initiallyCollapsed;
     const header = document.createElement('li');
     header.className = 'materials-section-header';
-    const toggle = createTextElement('span', 'materials-section-toggle', initiallyCollapsed ? '▶' : '▼');
+    const toggle = createTextElement('span', 'materials-section-toggle', collapsedState ? '▶' : '▼');
     header.append(toggle, createTextElement('span', 'materials-section-title', title));
     list.appendChild(header);
     bodyRows.forEach(row => {
-      row.classList.toggle('collapsed', initiallyCollapsed);
+      row.classList.toggle('collapsed', collapsedState);
       list.appendChild(row);
     });
     header.addEventListener('click', () => {
       const collapsed = toggle.textContent === '▼';
       toggle.textContent = collapsed ? '▶' : '▼';
+      materialSectionState.set(stateKey, collapsed);
       bodyRows.forEach(row => row.classList.toggle('collapsed', collapsed));
     });
   };
@@ -1948,10 +1999,22 @@ function renderMaterialsList() {
     return li;
   };
 
-  const createIntermediateRow = row => {
+  const createIntermediateRow = (row, pathKey) => {
     const li = document.createElement('li');
+    li.className = 'intermediate-tree-node';
+    const rowElement = document.createElement('div');
+    rowElement.className = 'intermediate-tree-row';
+    const hasChildren = row.children.length > 0;
+    const expanded = intermediateTreeState.get(pathKey) !== false;
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'intermediate-tree-toggle';
+    toggle.textContent = hasChildren ? (expanded ? '▼' : '▶') : '';
+    toggle.disabled = !hasChildren;
+    toggle.setAttribute('aria-label', hasChildren ? `${row.name}を展開・折り畳み` : '下位の中間素材なし');
+    rowElement.appendChild(toggle);
     const icon = createItemIcon(itemMaster[row.name]?.icon);
-    if (icon) li.appendChild(icon);
+    if (icon) rowElement.appendChild(icon);
     const content = document.createElement('div');
     content.className = 'material-content';
     const primary = document.createElement('div');
@@ -1986,13 +2049,45 @@ function renderMaterialsList() {
       content.appendChild(supplement);
     }
 
-    li.appendChild(content);
+    rowElement.appendChild(content);
+    const treeButton = document.createElement('button');
+    treeButton.type = 'button';
+    treeButton.className = 'intermediate-material-tree-btn';
+    treeButton.textContent = '🌲';
+    treeButton.title = `${row.name}のミニレシピツリー`;
+    treeButton.setAttribute('aria-label', `${row.name}のミニレシピツリー`);
+    treeButton.addEventListener('click', event => {
+      event.stopPropagation();
+      openMaterialTree(row.name, row.qty);
+    });
+    rowElement.appendChild(treeButton);
+    li.appendChild(rowElement);
+
+    if (hasChildren) {
+      const children = document.createElement('ul');
+      children.className = 'intermediate-tree-children';
+      children.classList.toggle('collapsed', !expanded);
+      [...row.children].sort(compareIntermediateRows).forEach((child, index) => {
+        children.appendChild(createIntermediateRow(child, childTreePath(pathKey, child.name, index)));
+      });
+      const toggleChildren = () => {
+        const collapsed = children.classList.toggle('collapsed');
+        toggle.textContent = collapsed ? '▶' : '▼';
+        intermediateTreeState.set(pathKey, !collapsed);
+      };
+      toggle.addEventListener('click', event => {
+        event.stopPropagation();
+        toggleChildren();
+      });
+      rowElement.addEventListener('click', toggleChildren);
+      li.appendChild(children);
+    }
     return li;
   };
 
-  const intermediateSectionRows = intermediateRows
+  const intermediateSectionRows = intermediateTree
     .sort(compareIntermediateRows)
-    .map(createIntermediateRow);
+    .map((row, index) => createIntermediateRow(row, `${contextKey}:intermediate:${index}:${row.name}`));
   const materialSectionRows = [...categorizedRows.normal, ...categorizedRows.exchange].map(createMaterialRow);
   const crystalSectionRows = categorizedRows.crystals.map(createMaterialRow);
 
@@ -2073,6 +2168,47 @@ function renderTree() {
       shouldShowCraftBadgeOnlyAtRoot(selectedRecipe)
     )
   );
+}
+
+function renderMaterialTreeDialog() {
+  if (!materialTreeRecipe) return;
+  const count = Math.max(1, parseInt(elements.materialTreeCountInput.value, 10) || 1);
+  elements.materialTreeTitle.textContent = `【${materialTreeRecipe} × ${formatNumber(count)}個分】`;
+  elements.materialTreeContent.replaceChildren();
+  elements.materialTreeContent.appendChild(
+    buildNode(
+      materialTreeRecipe,
+      count,
+      calcProduced(materialTreeRecipe, count),
+      0,
+      `material-dialog:${materialTreeRecipe}`,
+      null,
+      null,
+      shouldShowCraftBadgeOnlyAtRoot(materialTreeRecipe),
+      false
+    )
+  );
+}
+
+function openMaterialTree(name, neededQty) {
+  materialTreeRecipe = name;
+  elements.materialTreeCountInput.value = String(Math.max(1, neededQty));
+  renderMaterialTreeDialog();
+  elements.materialTreeOverlay.classList.add('open');
+}
+
+function closeMaterialTree() {
+  elements.materialTreeOverlay.classList.remove('open');
+  materialTreeRecipe = null;
+  renderResultView();
+}
+
+function changeMaterialTreeCount(delta) {
+  elements.materialTreeCountInput.value = Math.max(
+    1,
+    (parseInt(elements.materialTreeCountInput.value, 10) || 1) + delta
+  );
+  renderMaterialTreeDialog();
 }
 
 function calcProduced(name, needed) {
@@ -2170,7 +2306,7 @@ function createTreeSubInfo(recipe, neededQty, producedQty, unitCost, unitTimes) 
   return subInfo;
 }
 
-function appendRecipeChildren(container, recipe, producedQty, depth, pathKey, showCraftBadgeOnlyAtRoot) {
+function appendRecipeChildren(container, recipe, producedQty, depth, pathKey, showCraftBadgeOnlyAtRoot, showPins) {
   const isExchange = EXCHANGE_CRAFT_TYPES.has(recipe.craftType);
   const craftTimes = Math.ceil(producedQty / recipe.yield);
 
@@ -2190,13 +2326,24 @@ function appendRecipeChildren(container, recipe, producedQty, depth, pathKey, sh
         childTreePath(pathKey, ingredient.name, index),
         isExchange ? ingredient.qty : null,
         isExchange ? craftTimes : null,
-        showCraftBadgeOnlyAtRoot
+        showCraftBadgeOnlyAtRoot,
+        showPins
       )
     );
   });
 }
 
-function buildNode(name, neededQty, producedQty, depth, pathKey, unitCost = null, unitTimes = null, showCraftBadgeOnlyAtRoot = false) {
+function buildNode(
+  name,
+  neededQty,
+  producedQty,
+  depth,
+  pathKey,
+  unitCost = null,
+  unitTimes = null,
+  showCraftBadgeOnlyAtRoot = false,
+  showPins = true
+) {
   const master = itemMaster[name] || { method: '', icon: '', craftType: '' };
   const recipe = recipes[name];
   const hasChildren = Boolean(recipe);
@@ -2211,7 +2358,7 @@ function buildNode(name, neededQty, producedQty, depth, pathKey, unitCost = null
   row.append(toggle, createTreeBadge(master.method, hideCraftBadge));
   const icon = createItemIcon(master.icon, 'node-icon');
   if (icon) row.appendChild(icon);
-  if (hasChildren) row.appendChild(createTreePin(name));
+  if (hasChildren && showPins) row.appendChild(createTreePin(name));
   row.appendChild(
     createTreeMain(
       name,
@@ -2225,7 +2372,7 @@ function buildNode(name, neededQty, producedQty, depth, pathKey, unitCost = null
 
   const children = document.createElement('div');
   children.className = 'node-children';
-  appendRecipeChildren(children, recipe, producedQty, depth, pathKey, showCraftBadgeOnlyAtRoot);
+  appendRecipeChildren(children, recipe, producedQty, depth, pathKey, showCraftBadgeOnlyAtRoot, showPins);
 
   if (recipe.craftType === '9') {
     const expanded = exchangeTreeState.get(pathKey) === true;
@@ -2608,6 +2755,15 @@ function bindEvents() {
   elements.materialsViewBtn.addEventListener('click', () => {
     setResultViewMode('materials');
     renderResultView();
+  });
+  elements.materialTreeDecrease5Btn.addEventListener('click', () => changeMaterialTreeCount(-5));
+  elements.materialTreeDecreaseBtn.addEventListener('click', () => changeMaterialTreeCount(-1));
+  elements.materialTreeCountInput.addEventListener('input', renderMaterialTreeDialog);
+  elements.materialTreeIncreaseBtn.addEventListener('click', () => changeMaterialTreeCount(1));
+  elements.materialTreeIncrease5Btn.addEventListener('click', () => changeMaterialTreeCount(5));
+  elements.materialTreeCloseBtn.addEventListener('click', closeMaterialTree);
+  elements.materialTreeOverlay.addEventListener('click', event => {
+    if (event.target === elements.materialTreeOverlay) closeMaterialTree();
   });
   elements.usesBtn.addEventListener('click', () => showUsesPanel(selectedRecipe));
   elements.updateReloadBtn.addEventListener('click', () => location.reload());
