@@ -413,10 +413,9 @@ function resetTreeSelection() {
   elements.resultTitle.textContent = '';
   elements.usesBtn.classList.remove('visible');
   clearRenderedTree();
-  elements.tipsMsg.classList.remove('hidden');
+  showTips();
   updateResultHeader();
-  if (!isMobile()) renderTips();
-  else showMobilePanel('left');
+  if (isMobile()) showMobilePanel('left');
 }
 
 function applyFavoriteChange(name, shouldAdd, listId = getDisplayedFavoriteList()?.id) {
@@ -916,6 +915,11 @@ function renderTips() {
   elements.tipsMsg.replaceChildren(createAboutAppButton(), ...rows);
 }
 
+function showTips() {
+  elements.tipsMsg.classList.remove('hidden');
+  if (!isMobile()) renderTips();
+}
+
 function renderList() {
   const frag = document.createDocumentFragment();
   const names = getDisplayList();
@@ -1351,14 +1355,14 @@ function renderResultView() {
   updateResultHeader();
 
   if (resultSourceMode === 'favorite-materials' && !getDisplayedFavoriteList()) {
-    elements.tipsMsg.classList.remove('hidden');
+    showTips();
     setResultSourceMode('recipe');
     updateResultHeader();
     return;
   }
 
   if (!selectedRecipe && resultSourceMode !== 'favorite-materials') {
-    elements.tipsMsg.classList.remove('hidden');
+    showTips();
     return;
   }
 
@@ -1391,14 +1395,13 @@ function resetToStartupView() {
   elements.countInput.value = '1';
 
   clearRenderedTree();
-  elements.tipsMsg.classList.remove('hidden');
+  showTips();
   updateResultHeader();
   renderList();
 
   if (isMobile()) showMobilePanel('left');
   else {
     clearMobilePanels();
-    renderTips();
   }
 }
 
