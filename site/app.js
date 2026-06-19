@@ -1,5 +1,6 @@
 const DATA_FILE = './data/Item.json';
 const TIPS_FILE = './data/tips.md';
+const ABOUT_URL = 'https://jogu6.github.io/ffxiv-recipe-about/';
 const LS_FAV = 'ff14_favorites';
 const LS_FAV_LISTS = 'ff14_favorite_lists_v2';
 const LS_SEARCH_HISTORY = 'ff14_search_history';
@@ -897,11 +898,22 @@ function createMarkdownElement(tagName, className, html) {
   return element;
 }
 
+function createAboutAppButton() {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'tips-about-btn';
+  button.textContent = 'このアプリは何ですか？';
+  button.addEventListener('click', () => {
+    window.location.href = ABOUT_URL;
+  });
+  return button;
+}
+
 function renderTips() {
   const rows = tipsData.map(tip =>
     createMarkdownElement('div', 'tips-row markdown-content', tip.html)
   );
-  elements.tipsMsg.replaceChildren(...rows);
+  elements.tipsMsg.replaceChildren(createAboutAppButton(), ...rows);
 }
 
 function renderList() {
@@ -911,6 +923,7 @@ function renderList() {
   if (listMode === 'none' && isMobile()) {
     const li = document.createElement('li');
     li.className = 'tips-li';
+    li.appendChild(createAboutAppButton());
     tipsData.forEach(tip => li.appendChild(
       createMarkdownElement('div', 'tips-row-list markdown-content', tip.html)
     ));

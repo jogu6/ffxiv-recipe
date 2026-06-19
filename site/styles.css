@@ -675,6 +675,23 @@
     color: var(--soft-text);
     line-height: 1.6;
   }
+  .tips-about-btn {
+    align-self: flex-start;
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    color: #1a1a1a;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: bold;
+    line-height: 1.1;
+    padding: 5px 12px;
+    white-space: nowrap;
+  }
+  .tips-about-btn:hover {
+    background: #d4b458;
+    border-color: #d4b458;
+  }
   .markdown-content h2 {
     color: var(--accent);
     font-size: 14px;
@@ -771,6 +788,7 @@
     gap: 10px;
   }
   #recipeList li.tips-li:hover { background: none; }
+  #recipeList li.tips-li .tips-about-btn { align-self: center; }
   .tips-row-list {
     font-size: 13px;
     color: var(--soft-text);

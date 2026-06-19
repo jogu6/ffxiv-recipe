@@ -385,6 +385,7 @@ test('mobile pin turns active after adding to a favorite list', async ({ page })
 
 test('title returns to the startup view', async ({ page }) => {
   await openApp(page);
+  await expect(page.locator('#tipsMsg .tips-about-btn')).toHaveText('このアプリは何ですか？');
   await searchFor(page, 'バスタードソード');
   await page.getByText('バスタードソード', { exact: true }).first().click();
   await expect(page.locator('#resultTitle')).toContainText('バスタードソード');
@@ -432,6 +433,7 @@ test('crossing the responsive breakpoint resets to startup view', async ({ page 
   await expect(page.locator('#countInput')).toHaveValue('1');
   await expect(page.locator('#resultTitle')).toHaveText('');
   await expect(page.locator('#recipeList li.tips-li')).toBeVisible();
+  await expect(page.locator('#recipeList li.tips-li .tips-about-btn')).toHaveText('このアプリは何ですか？');
 
   await page.locator('#searchBox').fill('山羊乳');
   await expect(page.locator('#recipeList li').first()).toContainText('山羊乳');
