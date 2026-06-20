@@ -46,16 +46,16 @@
   <div class="panel-right" id="panelRight">
     <div class="result-header">
       <div class="result-main-row">
+        <span id="resultTitle"></span>
         <button id="backBtn">◀ 戻る</button>
         <label id="countLabel">個数:</label>
         <div class="count-control">
           <button class="count-btn count-step-wide" id="countDecrease5Btn">-5</button>
           <button class="count-btn" id="countDecreaseBtn">－</button>
-          <input type="number" id="countInput" value="1" min="1" inputmode="numeric">
+          <input type="number" id="countInput" value="1" min="1" max="999" step="1" inputmode="numeric">
           <button class="count-btn" id="countIncreaseBtn">＋</button>
           <button class="count-btn count-step-wide" id="countIncrease5Btn">+5</button>
         </div>
-        <span id="resultTitle"></span>
       </div>
       <div class="result-view-row">
         <div id="resultViewSwitch" class="result-view-switch hidden" role="group" aria-label="表示切替">
@@ -165,7 +165,7 @@
         <div class="count-control">
           <button class="count-btn count-step-wide" id="materialTreeDecrease5Btn" type="button">-5</button>
           <button class="count-btn" id="materialTreeDecreaseBtn" type="button">－</button>
-          <input type="number" id="materialTreeCountInput" value="1" min="1" inputmode="numeric">
+          <input type="number" id="materialTreeCountInput" value="1" min="1" max="999" step="1" inputmode="numeric">
           <button class="count-btn" id="materialTreeIncreaseBtn" type="button">＋</button>
           <button class="count-btn count-step-wide" id="materialTreeIncrease5Btn" type="button">+5</button>
         </div>
@@ -178,6 +178,7 @@
   </div>
 </div>
 
+<script src="./calculation.js"></script>
 <script src="./app.js"></script>
 <!-- Cloudflare Web Analytics -->
 <script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "decd66c3481c4277a749a59964c307a6"}'></script>

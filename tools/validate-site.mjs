@@ -13,6 +13,7 @@ function requireFile(relativePath) {
 
 for (const relativePath of [
   'index.html',
+  'calculation.js',
   'app.js',
   'styles.css',
   'sw.js',

@@ -151,10 +151,24 @@
     padding: 5px 4px 5px 8px;
     border-bottom: 1px solid rgba(58, 58, 58, 0.4);
     cursor: pointer;
+    position: relative;
+    overflow: hidden;
   }
   #favoriteLists li:last-child { border-bottom: none; }
   #favoriteLists li:hover { background: var(--hover-bg); }
   #favoriteLists li.active { background: var(--active-bg); color: var(--accent); }
+  #favoriteLists li.recent-favorite-list {
+    border-left: 3px solid var(--accent);
+    background: #242214;
+    color: var(--accent);
+    font-weight: bold;
+    padding-left: 9px;
+  }
+  #favoriteLists li.recent-favorite-list:hover { background: #2b2817; }
+  #favoriteLists li.recent-favorite-list.active {
+    background: var(--active-bg);
+    color: var(--accent);
+  }
   #favoriteLists li.list-empty { cursor: default; }
   #favoriteLists li.list-empty:hover { background: none; }
   #favoriteLists li.favorite-list-action-row {
@@ -171,6 +185,40 @@
     margin-right: auto;
     overflow-wrap: anywhere;
     white-space: normal;
+  }
+  .favorite-list-curtain {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    width: 26px;
+    overflow: hidden;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    box-shadow: -5px 0 8px rgba(0,0,0,0.18);
+    transition: width 180ms ease;
+  }
+  .favorite-list-curtain.expanded { width: 170px; }
+  .favorite-list-curtain-toggle {
+    width: 26px;
+    min-width: 26px;
+    height: 100%;
+    border: none;
+    background: var(--bg);
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+  }
+  .favorite-list-curtain-toggle:hover { background: var(--active-bg); }
+  .favorite-list-curtain-actions {
+    display: flex;
+    align-items: center;
+    gap: 21px;
+    margin-left: 21px;
   }
   .favorite-list-action {
     width: 100%;
@@ -228,6 +276,8 @@
   .reorder-handle + .favorite-list-icon { margin-left: 0; }
   .favorite-list-icon { align-self: flex-start; }
   #favoriteLists .reorder-handle { margin-left: 0; align-self: flex-start; }
+  #favoriteLists .favorite-list-curtain .favorite-list-icon,
+  #favoriteLists .favorite-list-curtain .reorder-handle { align-self: center; }
   #favoriteLists .favorite-list-icon,
   #favoriteLists .reorder-handle {
     min-width: 18px;
@@ -407,6 +457,12 @@
     width: 100%;
   }
   .result-header label { font-size: 12px; color: var(--muted); }
+  #resultTitle {
+    width: 100%;
+    color: var(--accent);
+    overflow-wrap: anywhere;
+  }
+  #resultTitle:empty { display: none; }
 
   .count-control { display: flex; align-items: center; gap: 4px; }
   .count-btn {

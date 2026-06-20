@@ -8,8 +8,9 @@
   },
   "scripts": {
     "dev": "node tools/serve-site.mjs",
-    "check": "npm-run-all check:js check:site",
-    "check:js": "node --check site/app.js && node --check site/sw.js && node --check tools/validate-site.mjs",
+    "check": "npm-run-all check:js check:site check:calculation",
+    "check:js": "node --check site/calculation.js && node --check site/app.js && node --check site/sw.js && node --check tools/validate-site.mjs",
+    "check:calculation": "node --test tests/calculation.test.js",
     "check:site": "node tools/validate-site.mjs",
     "format:check": "prettier --check \"**/*.{html,css,js,mjs,json,md,yml,yaml,webmanifest}\"",
     "format": "prettier --write \"**/*.{html,css,js,mjs,json,md,yml,yaml,webmanifest}\"",

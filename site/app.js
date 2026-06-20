@@ -6,10 +6,20 @@ const LS_FAV_LISTS = 'ff14_favorite_lists_v2';
 const LS_SEARCH_HISTORY = 'ff14_search_history';
 const SEARCH_HISTORY_LIMIT = 30;
 const FAVORITE_NAME_MAX = 50;
+const RECENT_LIST_ID = 'SYSTEM_RECENT_ITEMS';
+const RECENT_LIST_NAME = '検索履歴';
+const RECENT_LIST_LIMIT = 20;
 const MOBILE_BREAKPOINT = 600;
 const LICENSE_NOTICE_FILE = './docs/license-notice.md';
 const PRIVACY_POLICY_FILE = './docs/privacy-policy.md';
 const CONTACT_URL = 'https://discord.gg/GAVwZ9Ca';
+const REQUEST_COUNT_MAX = 999;
+const {
+  calculateCraft,
+  calculateRequirements,
+  createIntermediateForest,
+  validateRequestedCount
+} = RecipeCalculation;
 
 const CRAFT_TYPE_NAME = {
   '0': '木工師', '1': '鍛冶師', '2': '甲冑師', '3': '彫金師',
@@ -109,6 +119,7 @@ let favoriteStore = { version: 2, selectedListId: null, lists: [] };
 let searchHistory = [];
 let tipsData = [];
 let idToRecipeName = {};
+let idToItemName = {};
 let usedIn = {};
 let ingredientNames = [];
 let prevPanel = 'left';
@@ -123,6 +134,7 @@ let wasMobile = isMobile();
 let reorderDrag = null;
 let favoriteItemReorderEnabled = false;
 let materialTreeRecipe = null;
+let expandedFavoriteListActionsId = null;
 
 const treePinMap = new Map();
 const exchangeTreeState = new Map();
@@ -226,6 +238,19 @@ function uniqueFavoriteListName(name, excludeId = null) {
   return withDuplicateSuffix(baseName, Date.now() % 1000);
 }
 
+function isRecentList(listOrId) {
+  return (typeof listOrId === 'string' ? listOrId : listOrId?.id) === RECENT_LIST_ID;
+}
+
+function createRecentList(itemIds = []) {
+  const normalizedIds = normalizeItemIds(itemIds).slice(0, RECENT_LIST_LIMIT);
+  return {
+    id: RECENT_LIST_ID,
+    name: RECENT_LIST_NAME,
+    itemIds: normalizedIds
+  };
+}
+
 function getSelectedFavoriteList() {
   return favoriteStore.lists.find(list => list.id === favoriteStore.selectedListId) || null;
 }
@@ -242,7 +267,7 @@ function updateFavoriteButtonState() {
 }
 
 function getFavoriteListRecipeNames(list = getDisplayedFavoriteList()) {
-  return list ? list.itemIds.map(recipeNameForId).filter(name => name && recipes[name]) : [];
+  return list ? list.itemIds.map(itemNameForId).filter(name => name && recipes[name]) : [];
 }
 
 function isRingRecipe(name) {
@@ -253,13 +278,17 @@ function findFavoriteList(id) {
   return favoriteStore.lists.find(list => list.id === id) || null;
 }
 
-function recipeIdForName(name) {
+function itemIdForName(name) {
   const id = parseInt(itemMaster[name]?.id, 10);
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
 function recipeNameForId(id) {
   return idToRecipeName[parseInt(id, 10)] || null;
+}
+
+function itemNameForId(id) {
+  return idToItemName[parseInt(id, 10)] || null;
 }
 
 function createFavoriteList(name, itemIds = []) {
@@ -277,13 +306,28 @@ function createFavoriteList(name, itemIds = []) {
 function loadFavorites() {
   localStorage.removeItem(LS_FAV);
   const stored = readStoredJson(LS_FAV_LISTS, null);
-  const lists = Array.isArray(stored?.lists)
+  const storedLists = Array.isArray(stored?.lists)
     ? stored.lists.map(list => ({
         id: typeof list.id === 'string' ? list.id : createFavoriteListId(),
         name: normalizeFavoriteListName(list.name),
         itemIds: normalizeItemIds(list.itemIds)
       }))
     : [];
+  const storedRecent = storedLists.find(isRecentList);
+  const normalLists = storedLists.filter(list => !isRecentList(list));
+  normalLists.forEach(list => {
+    if (list.name === RECENT_LIST_NAME) {
+      const exists = candidate => normalLists.some(other => other !== list && other.name === candidate);
+      for (let suffix = 1; suffix < 1000; suffix += 1) {
+        const candidate = withDuplicateSuffix(RECENT_LIST_NAME, suffix);
+        if (!exists(candidate)) {
+          list.name = candidate;
+          break;
+        }
+      }
+    }
+  });
+  const lists = [createRecentList(storedRecent?.itemIds), ...normalLists];
 
   favoriteStore = {
     version: 2,
@@ -297,6 +341,18 @@ function loadFavorites() {
 
 function saveFavorites() {
   writeStoredJson(LS_FAV_LISTS, favoriteStore);
+}
+
+function recordViewedItem(name) {
+  const id = itemIdForName(name);
+  const list = findFavoriteList(RECENT_LIST_ID);
+  if (!id || !list) return;
+
+  if (list.itemIds.includes(id)) return;
+  list.itemIds.unshift(id);
+  list.itemIds = list.itemIds.slice(0, RECENT_LIST_LIMIT);
+  saveFavorites();
+  if (getDisplayedFavoriteList()?.id === RECENT_LIST_ID) renderList();
 }
 
 function loadSearchHistory() {
@@ -406,8 +462,8 @@ function submitTextInput() {
 
 function isFavorite(name, listId = getDisplayedFavoriteList()?.id || favoriteStore.selectedListId) {
   const list = findFavoriteList(listId);
-  const id = recipeIdForName(name);
-  return Boolean(list && id && list.itemIds.includes(id));
+  const id = itemIdForName(name);
+  return Boolean(list && !isRecentList(list) && id && list.itemIds.includes(id));
 }
 
 function markRecipeListSelection(li) {
@@ -432,11 +488,14 @@ function resetTreeSelection() {
 
 function applyFavoriteChange(name, shouldAdd, listId = getDisplayedFavoriteList()?.id) {
   const list = findFavoriteList(listId);
-  const id = recipeIdForName(name);
+  const id = itemIdForName(name);
   if (!list || !id) return;
+  if (shouldAdd && isRecentList(list)) return;
 
   if (shouldAdd && !list.itemIds.includes(id)) list.itemIds.push(id);
-  if (!shouldAdd) list.itemIds = list.itemIds.filter(itemId => itemId !== id);
+  if (!shouldAdd) {
+    list.itemIds = list.itemIds.filter(itemId => itemId !== id);
+  }
   saveFavorites();
   refreshPins(name);
   if (listMode === 'fav') renderList();
@@ -598,6 +657,7 @@ function toggleFav() {
 
 function closeFavoriteLists() {
   elements.favoriteLists.classList.remove('open');
+  expandedFavoriteListActionsId = null;
 }
 
 function selectFavoriteList(listId) {
@@ -616,7 +676,7 @@ function selectFavoriteList(listId) {
 
 function renameFavoriteList(listId) {
   const list = findFavoriteList(listId);
-  if (!list) return;
+  if (!list || isRecentList(list)) return;
   showTextInput('お気に入りリスト名を変更', list.name, value => {
     list.name = uniqueFavoriteListName(value, list.id);
     saveFavorites();
@@ -628,7 +688,7 @@ function renameFavoriteList(listId) {
 
 function deleteFavoriteList(listId) {
   const list = findFavoriteList(listId);
-  if (!list) return;
+  if (!list || isRecentList(list)) return;
   showConfirm(`「${list.name}」を\n削除しますか？`, () => {
     const wasDisplayed = getDisplayedFavoriteList()?.id === listId;
     favoriteStore.lists = favoriteStore.lists.filter(entry => entry.id !== listId);
@@ -648,7 +708,10 @@ function deleteFavoriteList(listId) {
 }
 
 function reorderFavoriteLists(fromIndex, toIndex) {
-  if (!moveArrayItem(favoriteStore.lists, fromIndex, toIndex)) return;
+  const recentList = findFavoriteList(RECENT_LIST_ID);
+  const normalLists = favoriteStore.lists.filter(list => !isRecentList(list));
+  if (!moveArrayItem(normalLists, fromIndex, toIndex)) return;
+  favoriteStore.lists = [recentList, ...normalLists].filter(Boolean);
   saveFavorites();
   renderFavoriteLists();
   renderExportListChoices();
@@ -656,7 +719,7 @@ function reorderFavoriteLists(fromIndex, toIndex) {
 
 function reorderFavoriteItems(fromIndex, toIndex) {
   const list = getDisplayedFavoriteList();
-  if (!list || !moveArrayItem(list.itemIds, fromIndex, toIndex)) return;
+  if (!list || isRecentList(list) || !moveArrayItem(list.itemIds, fromIndex, toIndex)) return;
   saveFavorites();
   renderList();
   if (resultSourceMode === 'favorite-materials') renderResultView();
@@ -702,6 +765,12 @@ function createFavoriteMaterialsRow() {
     openFavoriteMaterialsMode();
   });
 
+  const list = getDisplayedFavoriteList();
+  if (isRecentList(list)) {
+    li.appendChild(materialButton);
+    return li;
+  }
+
   const reorderButton = document.createElement('button');
   reorderButton.className = 'favorite-list-action favorite-list-action-compact';
   reorderButton.classList.toggle('active', favoriteItemReorderEnabled);
@@ -735,17 +804,29 @@ function saveSelectedFavoriteListAs() {
 
 function renderFavoriteLists() {
   const frag = document.createDocumentFragment();
+  let normalIndex = 0;
 
   if (favoriteStore.lists.length === 0) {
     frag.appendChild(createEmptyListItem('お気に入りリストがありません'));
   } else {
-    favoriteStore.lists.forEach((list, index) => {
+    favoriteStore.lists.forEach(list => {
       const li = document.createElement('li');
-      li.classList.add('reorder-enabled');
-      li.dataset.reorderIndex = String(index);
+      const recent = isRecentList(list);
+      li.classList.toggle('recent-favorite-list', recent);
+      if (!recent) {
+        li.classList.add('reorder-enabled');
+        li.dataset.reorderIndex = String(normalIndex);
+        normalIndex += 1;
+      }
       li.classList.toggle('active', list.id === getDisplayedFavoriteList()?.id);
 
       const name = createTextElement('span', 'favorite-list-name', list.name);
+      if (recent) {
+        li.appendChild(name);
+        li.addEventListener('click', () => selectFavoriteList(list.id));
+        frag.appendChild(li);
+        return;
+      }
       const renameBtn = document.createElement('button');
       renameBtn.className = 'favorite-list-icon';
       renameBtn.type = 'button';
@@ -771,12 +852,49 @@ function renderFavoriteLists() {
       const reorderBtn = createReorderHandle(`「${list.name}」を並び替え`, event => {
         startReorderDrag(event, {
           container: elements.favoriteLists,
-          rowSelector: '#favoriteLists li[data-reorder-index]',
+          rowSelector: '#favoriteLists li[data-reorder-index]:not(.recent-favorite-list)',
           onReorder: reorderFavoriteLists
         });
       });
 
-      li.append(name, renameBtn, deleteBtn, reorderBtn);
+      const curtain = document.createElement('div');
+      const expanded = expandedFavoriteListActionsId === list.id;
+      curtain.className = 'favorite-list-curtain';
+      curtain.classList.toggle('expanded', expanded);
+
+      const curtainToggle = document.createElement('button');
+      curtainToggle.className = 'favorite-list-curtain-toggle';
+      curtainToggle.type = 'button';
+      curtainToggle.textContent = expanded ? '▶' : '◀';
+      curtainToggle.title = expanded ? 'リスト操作を折り畳む' : 'リスト操作を展開する';
+      curtainToggle.setAttribute('aria-label', curtainToggle.title);
+      curtainToggle.setAttribute('aria-expanded', String(expanded));
+      curtainToggle.addEventListener('click', event => {
+        event.stopPropagation();
+        const nextExpanded = !curtain.classList.contains('expanded');
+        elements.favoriteLists.querySelectorAll('.favorite-list-curtain.expanded').forEach(openCurtain => {
+          if (openCurtain === curtain) return;
+          openCurtain.classList.remove('expanded');
+          const openToggle = openCurtain.querySelector('.favorite-list-curtain-toggle');
+          openToggle.textContent = '◀';
+          openToggle.title = 'リスト操作を展開する';
+          openToggle.setAttribute('aria-label', openToggle.title);
+          openToggle.setAttribute('aria-expanded', 'false');
+        });
+        curtain.classList.toggle('expanded', nextExpanded);
+        curtainToggle.textContent = nextExpanded ? '▶' : '◀';
+        curtainToggle.title = nextExpanded ? 'リスト操作を折り畳む' : 'リスト操作を展開する';
+        curtainToggle.setAttribute('aria-label', curtainToggle.title);
+        curtainToggle.setAttribute('aria-expanded', String(nextExpanded));
+        expandedFavoriteListActionsId = nextExpanded ? list.id : null;
+      });
+
+      const actions = document.createElement('div');
+      actions.className = 'favorite-list-curtain-actions';
+      actions.append(renameBtn, deleteBtn, reorderBtn);
+      curtain.append(curtainToggle, actions);
+
+      li.append(name, curtain);
       li.addEventListener('click', () => selectFavoriteList(list.id));
       frag.appendChild(li);
     });
@@ -811,13 +929,14 @@ function confirmFavoriteTargetOnMobile(name, list, onConfirm) {
 }
 
 function addFavoriteToNewList(name) {
+  const preserveSearch = listMode === 'search';
   closeFavoriteTarget();
   showTextInput('新しいお気に入りリスト名', formatDefaultListName(), value => {
-    const id = recipeIdForName(name);
+    const id = itemIdForName(name);
     const list = createFavoriteList(value, id ? [id] : []);
     favoriteStore.selectedListId = list.id;
     saveFavorites();
-    listMode = 'fav';
+    if (!preserveSearch) listMode = 'fav';
     updateFavoriteButtonState();
     refreshPins(name);
     renderList();
@@ -838,12 +957,13 @@ function createFavoriteTargetButton(text, active, onClick) {
 function openFavoriteTarget(name) {
   elements.favoriteTargetMsg.textContent = `「${name}」を登録するお気に入りリスト`;
   const frag = document.createDocumentFragment();
-  const selectedList = getDisplayedFavoriteList();
+  const displayedList = getDisplayedFavoriteList();
+  const selectedList = isRecentList(displayedList) ? null : displayedList;
 
   elements.favoriteTargetCreate.replaceChildren(
     createFavoriteTargetButton('新規作成', !selectedList, () => addFavoriteToNewList(name))
   );
-  favoriteStore.lists.forEach(list => {
+  favoriteStore.lists.filter(list => !isRecentList(list)).forEach(list => {
     frag.appendChild(createFavoriteTargetButton(list.name, list.id === selectedList?.id, () => {
       confirmFavoriteTargetOnMobile(name, list, () => {
         addFavoriteToList(name, list.id);
@@ -866,7 +986,7 @@ function getDisplayList() {
     }
     case 'fav': {
       const list = getSelectedFavoriteList();
-      return list ? list.itemIds.map(recipeNameForId).filter(name => name && recipes[name]) : [];
+      return list ? list.itemIds.map(itemNameForId).filter(Boolean) : [];
     }
     default:
       return [];
@@ -977,17 +1097,20 @@ function makeFavLi(name, index) {
   li.classList.toggle('selected', selectedRecipe === name);
 
   const nameElement = li.querySelector('.list-name');
-  const label = document.createElement('span');
-  label.className = 'favorite-item-label';
-  label.append(
-    createTextElement(
-      'span',
-      `favorite-item-job badge ${methodBadgeClass(itemMaster[name]?.method)}`,
-      itemMaster[name]?.method || '製作情報なし'
-    ),
-    createTextElement('span', 'favorite-item-name', name)
-  );
-  nameElement.replaceWith(label);
+  let label = nameElement;
+  if (recipes[name]) {
+    label = document.createElement('span');
+    label.className = 'favorite-item-label';
+    label.append(
+      createTextElement(
+        'span',
+        `favorite-item-job badge ${methodBadgeClass(itemMaster[name]?.method)}`,
+        itemMaster[name]?.method || '製作情報なし'
+      ),
+      createTextElement('span', 'favorite-item-name', name)
+    );
+    nameElement.replaceWith(label);
+  }
 
   const pin = document.createElement('button');
   pin.className = 'pin-btn';
@@ -998,6 +1121,8 @@ function makeFavLi(name, index) {
     pinOff(name);
   });
   li.insertBefore(pin, label);
+
+  if (!recipes[name]) li.appendChild(createUsesListButton(name, li, false));
 
   if (favoriteItemReorderEnabled) {
     li.classList.add('reorder-enabled');
@@ -1010,7 +1135,13 @@ function makeFavLi(name, index) {
     }));
   }
 
-  li.addEventListener('click', () => selectRecipeByName(name));
+  li.addEventListener('click', () => {
+    if (recipes[name]) selectRecipeByName(name);
+    else {
+      markRecipeListSelection(li);
+      showUsesPanel(name);
+    }
+  });
   return li;
 }
 
@@ -1028,23 +1159,27 @@ function makeRecipeLi(name) {
 
 function makeIngredientLi(name) {
   const li = createItemListRow(name, 'ingredient-row');
-  const usesButton = document.createElement('button');
-  usesButton.className = 'uses-list-btn';
-  usesButton.type = 'button';
-  usesButton.textContent = '使用先';
-  usesButton.addEventListener('click', event => {
-    event.stopPropagation();
-    rememberCurrentSearch();
-    markRecipeListSelection(li);
-    showUsesPanel(name);
-  });
-  li.appendChild(usesButton);
+  li.appendChild(createUsesListButton(name, li, true));
   li.addEventListener('click', () => {
     rememberCurrentSearch();
     markRecipeListSelection(li);
     showUsesPanel(name);
   });
   return li;
+}
+
+function createUsesListButton(name, row, rememberSearch) {
+  const usesButton = document.createElement('button');
+  usesButton.className = 'uses-list-btn';
+  usesButton.type = 'button';
+  usesButton.textContent = '使用先';
+  usesButton.addEventListener('click', event => {
+    event.stopPropagation();
+    if (rememberSearch) rememberCurrentSearch();
+    markRecipeListSelection(row);
+    showUsesPanel(name);
+  });
+  return usesButton;
 }
 
 function closeUsesPanel() {
@@ -1054,6 +1189,7 @@ function closeUsesPanel() {
 
 // Used-in panel and mobile navigation
 function showUsesPanel(ingredientName) {
+  recordViewedItem(ingredientName);
   const uses = usedIn[ingredientName] || [];
   elements.usesTitle.textContent = `${ingredientName}（${formatNumber(uses.length)}件）`;
   const frag = document.createDocumentFragment();
@@ -1061,6 +1197,7 @@ function showUsesPanel(ingredientName) {
   uses.forEach(recipeName => {
     const li = createItemListRow(recipeName);
     li.addEventListener('click', () => {
+      recordViewedItem(recipeName);
       if (selectedRecipe !== recipeName || resultSourceMode === 'favorite-materials') resetCountInput();
       selectedRecipe = recipeName;
       leaveFavoriteMaterialsMode();
@@ -1097,6 +1234,7 @@ function returnToList() {
 }
 
 function selectRecipe(name, li) {
+  recordViewedItem(name);
   if (selectedRecipe !== name || resultSourceMode === 'favorite-materials') resetCountInput();
   selectedRecipe = name;
   leaveFavoriteMaterialsMode();
@@ -1112,6 +1250,7 @@ function selectRecipe(name, li) {
 }
 
 function selectRecipeByName(name) {
+  recordViewedItem(name);
   if (selectedRecipe !== name || resultSourceMode === 'favorite-materials') resetCountInput();
   selectedRecipe = name;
   leaveFavoriteMaterialsMode();
@@ -1251,7 +1390,11 @@ function buildRecipeIndexes() {
 
 function buildApplicationData(rawList) {
   const idToItem = {};
-  rawList.forEach(item => { idToItem[item.ID] = item; });
+  rawList.forEach(item => {
+    idToItem[item.ID] = item;
+    const numericId = toNumeric(item.ID, NaN);
+    if (!Number.isNaN(numericId)) idToItemName[numericId] = item.Name;
+  });
   const maxPatch = buildItemAndRecipeMasters(rawList, idToItem);
   buildRecipeIndexes();
   return maxPatch;
@@ -1307,8 +1450,29 @@ function clearMobilePanels() {
 }
 
 function changeCount(delta) {
-  elements.countInput.value = Math.max(1, (parseInt(elements.countInput.value, 10) || 1) + delta);
+  elements.countInput.value = Math.min(
+    REQUEST_COUNT_MAX,
+    Math.max(1, readRequestedCount(elements.countInput) + delta)
+  );
   renderResultView();
+}
+
+function readRequestedCount(input) {
+  const numericValue = Number(input.value);
+  try {
+    return validateRequestedCount(numericValue, REQUEST_COUNT_MAX);
+  } catch {
+    const normalized = Number.isSafeInteger(numericValue) && numericValue > REQUEST_COUNT_MAX
+      ? REQUEST_COUNT_MAX
+      : 1;
+    input.value = String(normalized);
+    return normalized;
+  }
+}
+
+function handleRequestedCountInput(input, render) {
+  readRequestedCount(input);
+  render();
 }
 
 function resetCountInput() {
@@ -1365,7 +1529,7 @@ function leaveFavoriteMaterialsMode() {
 }
 
 function updateResultHeader() {
-  const count = parseInt(elements.countInput.value, 10) || 1;
+  const count = readRequestedCount(elements.countInput);
   if (resultSourceMode === 'favorite-materials') {
     const listName = getDisplayedFavoriteList()?.name || '';
     elements.countLabel.textContent = 'セット数:';
@@ -1611,12 +1775,7 @@ function createExchangeSupplementEntries(recipe, craftTimes) {
 function createCraftInfo(name, neededQty) {
   const recipe = recipes[name];
   if (!recipe) return null;
-  const craftTimes = Math.ceil(neededQty / recipe.yield);
-  const producedQty = recipe.yield * craftTimes;
-  return {
-    craftTimes,
-    surplus: producedQty - neededQty
-  };
+  return calculateCraft(neededQty, recipe.yield);
 }
 
 function createCraftSupplementEntries(name, neededQty) {
@@ -1801,110 +1960,50 @@ function renderFavoriteRingControls(container) {
   container.appendChild(separator);
 }
 
-function collectMaterialRows(name, neededQty, pathKey = name) {
-  const recipe = recipes[name];
-  if (!recipe) return [{ type: 'item', name, qty: neededQty }];
-
-  const craftTimes = Math.ceil(neededQty / recipe.yield);
-  if (EXCHANGE_CRAFT_TYPES.has(recipe.craftType)) {
-    return [{
-      type: 'item',
-      name,
-      qty: neededQty,
-      supplements: createExchangeSupplementEntries(recipe, craftTimes)
-    }];
-  }
-
-  const rows = [];
-  recipe.ingredients.forEach((ingredient, index) => {
-    mergeMaterialRows(
-      rows,
-      collectMaterialRows(
-        ingredient.name,
-        ingredient.qty * craftTimes,
-        childTreePath(pathKey, ingredient.name, index)
-      )
-    );
+function calculateMaterialRequirements(rootItems) {
+  return calculateRequirements(recipes, rootItems, {
+    exchangeCraftTypes: EXCHANGE_CRAFT_TYPES
   });
-  return rows;
 }
 
-function mergeIntermediateTreeNodes(targetNodes, incomingNodes) {
-  const nodeMap = new Map(targetNodes.map(node => [node.name, node]));
-  incomingNodes.forEach(node => {
-    const current = nodeMap.get(node.name);
-    if (current) {
-      current.qty += node.qty;
-      mergeIntermediateTreeNodes(current.children, node.children);
-      return;
+function materialRowsFromRequirements(result) {
+  const rows = [];
+  result.states.forEach(state => {
+    if (state.recipe && !state.isExchange) return;
+    const row = { type: 'item', name: state.name, qty: state.needed };
+    if (state.isExchange) {
+      row.supplements = createExchangeSupplementEntries(state.recipe, state.craftTimes);
     }
-    const nextNode = {
-      name: node.name,
-      qty: node.qty,
-      children: []
-    };
-    mergeIntermediateTreeNodes(nextNode.children, node.children);
-    targetNodes.push(nextNode);
-    nodeMap.set(nextNode.name, nextNode);
+    rows.push(row);
   });
-}
-
-function collectIntermediateTree(name, neededQty) {
-  const recipe = recipes[name];
-  if (!recipe || EXCHANGE_CRAFT_TYPES.has(recipe.craftType)) return [];
-  const craftTimes = Math.ceil(neededQty / recipe.yield);
-  const nodes = [];
-
-  recipe.ingredients.forEach(ingredient => {
-    const ingredientRecipe = recipes[ingredient.name];
-    if (
-      !ingredientRecipe
-      || EXCHANGE_CRAFT_TYPES.has(ingredientRecipe.craftType)
-      || crystalKind(ingredient.name)
-    ) return;
-
-    const ingredientQty = ingredient.qty * craftTimes;
-    mergeIntermediateTreeNodes(nodes, [{
-      name: ingredient.name,
-      qty: ingredientQty,
-      children: collectIntermediateTree(ingredient.name, ingredientQty)
-    }]);
-  });
-  return nodes;
-}
-
-function collectFavoriteMaterialsRows() {
-  ensureFavoriteMaterialsRingCounts();
-  const setCount = parseInt(elements.countInput.value, 10) || 1;
-  const rows = [];
-
-  getFavoriteListRecipeNames().forEach(name => {
-    const multiplier = isRingRecipe(name) ? (favoriteMaterialsRingCounts[name] || 1) : 1;
-    mergeMaterialRows(rows, collectMaterialRows(name, setCount * multiplier));
-  });
-
   return rows;
 }
 
-function collectFavoriteIntermediateTree() {
-  ensureFavoriteMaterialsRingCounts();
-  const setCount = parseInt(elements.countInput.value, 10) || 1;
-  const nodes = [];
+function intermediateTreeFromRequirements(result) {
+  return createIntermediateForest(result, state => !crystalKind(state.name));
+}
 
-  getFavoriteListRecipeNames().forEach(name => {
+function getFavoriteMaterialRoots() {
+  ensureFavoriteMaterialsRingCounts();
+  const setCount = readRequestedCount(elements.countInput);
+  return getFavoriteListRecipeNames().map(name => {
     const multiplier = isRingRecipe(name) ? (favoriteMaterialsRingCounts[name] || 1) : 1;
-    mergeIntermediateTreeNodes(nodes, collectIntermediateTree(name, setCount * multiplier));
+    return { name, qty: setCount * multiplier };
   });
-  return nodes;
+}
+
+function getCurrentMaterialRequirements() {
+  const count = readRequestedCount(elements.countInput);
+  const roots = resultSourceMode === 'favorite-materials'
+    ? getFavoriteMaterialRoots()
+    : [{ name: selectedRecipe, qty: count }];
+  return calculateMaterialRequirements(roots);
 }
 
 function renderMaterialsList() {
-  const rows = resultSourceMode === 'favorite-materials'
-    ? collectFavoriteMaterialsRows()
-    : collectMaterialRows(selectedRecipe, parseInt(elements.countInput.value, 10) || 1);
-  const intermediateTree = resultSourceMode === 'favorite-materials'
-    ? collectFavoriteIntermediateTree()
-    : collectIntermediateTree(selectedRecipe, parseInt(elements.countInput.value, 10) || 1);
+  const requirements = getCurrentMaterialRequirements();
+  const rows = materialRowsFromRequirements(requirements);
+  const intermediateTree = intermediateTreeFromRequirements(requirements);
   const categorizedRows = categorizeMaterialRows(rows);
   const list = document.createElement('ul');
   list.className = 'materials-list';
@@ -2152,7 +2251,7 @@ function renderMaterialsList() {
 }
 
 function renderTree() {
-  const count = parseInt(elements.countInput.value, 10) || 1;
+  const count = readRequestedCount(elements.countInput);
   treePinMap.clear();
 
   const producedQty = calcProduced(selectedRecipe, count);
@@ -2172,7 +2271,7 @@ function renderTree() {
 
 function renderMaterialTreeDialog() {
   if (!materialTreeRecipe) return;
-  const count = Math.max(1, parseInt(elements.materialTreeCountInput.value, 10) || 1);
+  const count = readRequestedCount(elements.materialTreeCountInput);
   elements.materialTreeTitle.textContent = `【${materialTreeRecipe} × ${formatNumber(count)}個分】`;
   elements.materialTreeContent.replaceChildren();
   elements.materialTreeContent.appendChild(
@@ -2192,7 +2291,7 @@ function renderMaterialTreeDialog() {
 
 function openMaterialTree(name, neededQty) {
   materialTreeRecipe = name;
-  elements.materialTreeCountInput.value = String(Math.max(1, neededQty));
+  elements.materialTreeCountInput.value = String(Math.min(REQUEST_COUNT_MAX, Math.max(1, neededQty)));
   renderMaterialTreeDialog();
   elements.materialTreeOverlay.classList.add('open');
 }
@@ -2206,7 +2305,7 @@ function closeMaterialTree() {
 function changeMaterialTreeCount(delta) {
   elements.materialTreeCountInput.value = Math.max(
     1,
-    (parseInt(elements.materialTreeCountInput.value, 10) || 1) + delta
+    Math.min(REQUEST_COUNT_MAX, readRequestedCount(elements.materialTreeCountInput) + delta)
   );
   renderMaterialTreeDialog();
 }
@@ -2214,7 +2313,7 @@ function changeMaterialTreeCount(delta) {
 function calcProduced(name, needed) {
   const r = recipes[name];
   if (!r) return needed;
-  return r.yield * Math.ceil(needed / r.yield);
+  return calculateCraft(needed, r.yield).produced;
 }
 
 function collectTreeCraftTypes(rootName) {
@@ -2287,7 +2386,7 @@ function createTreeSubInfo(recipe, neededQty, producedQty, unitCost, unitTimes) 
   const rows = [];
   const surplus = producedQty - neededQty;
   const isExchange = recipe && EXCHANGE_CRAFT_TYPES.has(recipe.craftType);
-  const craftTimes = recipe ? Math.ceil(neededQty / recipe.yield) : 0;
+  const craftTimes = recipe ? calculateCraft(neededQty, recipe.yield).craftTimes : 0;
 
   if (unitCost !== null && unitTimes !== null) {
     rows.push(createTreeSubRow(`(@${formatNumber(unitCost)} × `, formatNumber(unitTimes), ')'));
@@ -2306,9 +2405,9 @@ function createTreeSubInfo(recipe, neededQty, producedQty, unitCost, unitTimes) 
   return subInfo;
 }
 
-function appendRecipeChildren(container, recipe, producedQty, depth, pathKey, showCraftBadgeOnlyAtRoot, showPins) {
+function appendRecipeChildren(container, recipe, neededQty, depth, pathKey, showCraftBadgeOnlyAtRoot, showPins) {
   const isExchange = EXCHANGE_CRAFT_TYPES.has(recipe.craftType);
-  const craftTimes = Math.ceil(producedQty / recipe.yield);
+  const craftTimes = calculateCraft(neededQty, recipe.yield).craftTimes;
 
   recipe.ingredients.forEach((ingredient, index) => {
     if (isExchange && index > 0) {
@@ -2358,7 +2457,7 @@ function buildNode(
   row.append(toggle, createTreeBadge(master.method, hideCraftBadge));
   const icon = createItemIcon(master.icon, 'node-icon');
   if (icon) row.appendChild(icon);
-  if (hasChildren && showPins) row.appendChild(createTreePin(name));
+  if (showPins) row.appendChild(createTreePin(name));
   row.appendChild(
     createTreeMain(
       name,
@@ -2372,7 +2471,7 @@ function buildNode(
 
   const children = document.createElement('div');
   children.className = 'node-children';
-  appendRecipeChildren(children, recipe, producedQty, depth, pathKey, showCraftBadgeOnlyAtRoot, showPins);
+  appendRecipeChildren(children, recipe, neededQty, depth, pathKey, showCraftBadgeOnlyAtRoot, showPins);
 
   if (recipe.craftType === '9') {
     const expanded = exchangeTreeState.get(pathKey) === true;
@@ -2429,7 +2528,7 @@ function decodeOldFavorites(str) {
     const name = idToRecipeName[parseInt(str.slice(i, i + 4), 36)];
     if (name) names.push(name);
   }
-  return { name: '', itemIds: names.map(recipeIdForName).filter(Boolean), needsName: true };
+  return { name: '', itemIds: names.map(itemIdForName).filter(Boolean), needsName: true };
 }
 
 function decodeNewFavoriteList(str) {
@@ -2443,7 +2542,7 @@ function decodeNewFavoriteList(str) {
     const payload = JSON.parse(new TextDecoder().decode(bytes));
     return {
       name: normalizeFavoriteListName(payload.n),
-      itemIds: normalizeItemIds(payload.i).filter(id => recipeNameForId(id)),
+      itemIds: normalizeItemIds(payload.i).filter(id => itemNameForId(id)),
       needsName: false
     };
   } catch {
@@ -2672,7 +2771,7 @@ function startImport() {
     return;
   }
   if (decoded.itemIds.length === 0) {
-    setImportError('有効なレシピが見つかりませんでした');
+    setImportError('有効なアイテムが見つかりませんでした');
     return;
   }
   setImportError();
@@ -2745,7 +2844,7 @@ function bindEvents() {
   elements.backBtn.addEventListener('click', goBack);
   elements.countDecrease5Btn.addEventListener('click', () => changeCount(-5));
   elements.countDecreaseBtn.addEventListener('click', () => changeCount(-1));
-  elements.countInput.addEventListener('input', renderResultView);
+  elements.countInput.addEventListener('input', () => handleRequestedCountInput(elements.countInput, renderResultView));
   elements.countIncreaseBtn.addEventListener('click', () => changeCount(1));
   elements.countIncrease5Btn.addEventListener('click', () => changeCount(5));
   elements.treeViewBtn.addEventListener('click', () => {
@@ -2758,7 +2857,9 @@ function bindEvents() {
   });
   elements.materialTreeDecrease5Btn.addEventListener('click', () => changeMaterialTreeCount(-5));
   elements.materialTreeDecreaseBtn.addEventListener('click', () => changeMaterialTreeCount(-1));
-  elements.materialTreeCountInput.addEventListener('input', renderMaterialTreeDialog);
+  elements.materialTreeCountInput.addEventListener('input', () => {
+    handleRequestedCountInput(elements.materialTreeCountInput, renderMaterialTreeDialog);
+  });
   elements.materialTreeIncreaseBtn.addEventListener('click', () => changeMaterialTreeCount(1));
   elements.materialTreeIncrease5Btn.addEventListener('click', () => changeMaterialTreeCount(5));
   elements.materialTreeCloseBtn.addEventListener('click', closeMaterialTree);

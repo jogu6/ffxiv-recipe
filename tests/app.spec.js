@@ -63,6 +63,9 @@ test('count step buttons adjust the selected recipe count', async ({ page }) => 
   await page.getByText('バスタードソード', { exact: true }).first().click();
 
   await expect(page.locator('#countInput')).toHaveValue('1');
+  const titleBox = await page.locator('#resultTitle').boundingBox();
+  const countBox = await page.locator('#countLabel').boundingBox();
+  expect(titleBox.y).toBeLessThan(countBox.y);
   await page.locator('#countIncrease5Btn').click();
   await expect(page.locator('#countInput')).toHaveValue('6');
   await page.locator('#countDecrease5Btn').click();
@@ -116,6 +119,10 @@ test('intermediate materials form a collapsible tree and open an independent mat
   const initialCount = Number(await page.locator('#materialTreeCountInput').inputValue());
   await page.locator('#materialTreeIncrease5Btn').click();
   await expect(page.locator('#materialTreeCountInput')).toHaveValue(String(initialCount + 5));
+  await page.locator('#materialTreeCountInput').fill('1000');
+  await expect(page.locator('#materialTreeCountInput')).toHaveValue('999');
+  await page.locator('#materialTreeIncrease5Btn').click();
+  await expect(page.locator('#materialTreeCountInput')).toHaveValue('999');
   await page.locator('#materialTreeCloseBtn').click();
   await expect(page.locator('#materialTreeOverlay')).not.toHaveClass(/open/);
 });
@@ -245,9 +252,27 @@ test('formats displayed quantities with grouping separators', async ({ page }) =
   await searchFor(page, 'アリペブレ');
   await page.getByText('アリペブレ', { exact: true }).first().click();
 
+  await page.locator('#countInput').fill('999');
+  await expect(page.locator('#resultTitle')).toContainText('999個分');
+  await expect(page.locator('#treeContainer')).toContainText(/× \d{1,3},\d{3}/);
+});
+
+test('restricts requested counts to integers from 1 through 999', async ({ page }) => {
+  await openApp(page);
+  await searchFor(page, 'アリペブレ');
+  await page.getByText('アリペブレ', { exact: true }).first().click();
+
   await page.locator('#countInput').fill('1000');
-  await expect(page.locator('#resultTitle')).toContainText('1,000個分');
-  await expect(page.locator('.tree-node').first()).toContainText('× 1,002');
+  await expect(page.locator('#countInput')).toHaveValue('999');
+  await page.locator('#countIncrease5Btn').click();
+  await expect(page.locator('#countInput')).toHaveValue('999');
+
+  await page.locator('#countInput').fill('-1');
+  await expect(page.locator('#countInput')).toHaveValue('1');
+  await page.locator('#countInput').fill('1.5');
+  await expect(page.locator('#countInput')).toHaveValue('1');
+  await page.locator('#countInput').fill('');
+  await expect(page.locator('#countInput')).toHaveValue('1');
 });
 
 test('creates a named favorite list from a tree pin and exports a base36 share code', async ({ page }) => {
@@ -278,6 +303,97 @@ test('creates a named favorite list from a tree pin and exports a base36 share c
   await expect(page.locator('#exportCode')).toHaveValue(/^[0-9A-Z]+$/);
 });
 
+test('keeps a protected recent-items list with recipes and reverse-looked-up materials', async ({ page }) => {
+  await openApp(page);
+
+  await page.locator('#favBtn').click();
+  const recentChoice = page.locator('#favoriteLists li').first();
+  await expect(recentChoice).toHaveText('検索履歴');
+  await expect(recentChoice).toHaveClass(/recent-favorite-list/);
+  await expect(recentChoice.locator('button')).toHaveCount(0);
+
+  await searchFor(page, 'アリペブレ');
+  await page.getByText('アリペブレ', { exact: true }).first().click();
+  await searchFor(page, '山羊乳');
+  await page.getByText('山羊乳', { exact: true }).first().click();
+
+  await page.locator('#favBtn').click();
+  await page.locator('#favoriteLists').getByText('検索履歴', { exact: true }).click();
+  const recentRows = page.locator('#recipeList li.fav-item-row');
+  await expect(recentRows).toHaveCount(2);
+  await expect(recentRows.nth(0)).toContainText('山羊乳');
+  await expect(recentRows.nth(1)).toContainText('アリペブレ');
+  await expect(page.locator('#recipeList').getByText('並び替え')).toHaveCount(0);
+
+  await recentRows.nth(0).click();
+  await expect(page.locator('#usesTitle')).toContainText('山羊乳');
+  await recentRows.nth(1).click();
+  await expect(page.locator('.tree-node .pin-btn').first()).toHaveClass(/inactive/);
+
+  await recentRows.nth(0).locator('.pin-btn').click();
+  await page.locator('#confirmYes').click();
+  await expect(page.locator('#recipeList')).not.toContainText('山羊乳');
+});
+
+test('limits the protected recent-items list to twenty entries', async ({ page }) => {
+  await openApp(page);
+  await page.evaluate(async () => {
+    const items = await fetch('./data/Item.json').then(response => response.json());
+    const itemIds = items
+      .map(item => Number(item.ID))
+      .filter(id => Number.isInteger(id) && id > 0)
+      .slice(0, 21);
+    localStorage.setItem('ff14_favorite_lists_v2', JSON.stringify({
+      version: 2,
+      selectedListId: 'SYSTEM_RECENT_ITEMS',
+      lists: [{
+        id: 'SYSTEM_RECENT_ITEMS',
+        name: '検索履歴',
+        itemIds
+      }]
+    }));
+  });
+  await page.reload();
+  await expect(page.locator('#loadStatus')).toContainText(/patch/);
+  await page.locator('#favBtn').click();
+  await page.locator('#favoriteLists').getByText('検索履歴', { exact: true }).click();
+  await expect(page.locator('#recipeList li.fav-item-row')).toHaveCount(20);
+});
+
+test('favorites and shares an ingredient while preserving search results', async ({ page }) => {
+  await openApp(page);
+  await searchFor(page, '山羊乳');
+  const ingredientRow = page.locator('#recipeList li').filter({ hasText: '山羊乳' }).first();
+  await expect(ingredientRow.locator('.pin-btn')).toHaveCount(0);
+  await ingredientRow.click();
+  await page.locator('#usesList li').first().click();
+  const treeIngredient = page.locator('.tree-node').filter({ hasText: '山羊乳' }).last();
+  await treeIngredient.locator('.pin-btn').click();
+  await expect(page.locator('#favoriteTargetChoices')).not.toContainText('検索履歴');
+  await page.locator('#favoriteTargetCreate').getByText('新規作成').click();
+  await page.locator('#textInputField').fill('素材お気に入り');
+  await page.locator('#textInputOkBtn').click();
+
+  await expect(page.locator('#searchBox')).toHaveValue('山羊乳');
+  await expect(page.locator('#recipeList')).toContainText('山羊乳');
+
+  await page.locator('#favBtn').click();
+  await page.locator('#favoriteLists').getByText('素材お気に入り').click();
+  const favoriteIngredient = page.locator('#recipeList li.fav-item-row');
+  await expect(favoriteIngredient).toContainText('使用先');
+  await expect(favoriteIngredient).not.toContainText('素材');
+  await favoriteIngredient.click();
+  await expect(page.locator('#usesTitle')).toContainText('山羊乳');
+
+  await page.locator('#settingsBtn').click();
+  await page.locator('#exportListToggle').click();
+  await page.locator('#exportListChoices').getByText('素材お気に入り').click();
+  const shareCode = await page.locator('#exportCode').inputValue();
+  await page.locator('#importCode').fill(shareCode);
+  await page.locator('#startImportBtn').click();
+  await expect(page.locator('#recipeList')).toContainText('山羊乳');
+});
+
 test('reorders favorite lists locally with the rightmost drag handle', async ({ page }) => {
   await openApp(page);
 
@@ -299,16 +415,33 @@ test('reorders favorite lists locally with the rightmost drag handle', async ({ 
   const listA = page.locator('#favoriteLists li').filter({ hasText: 'リストA' }).first();
   const listB = page.locator('#favoriteLists li').filter({ hasText: 'リストB' }).first();
   await expect(listA).toHaveCSS('user-select', 'none');
+  await expect(listA.locator('.favorite-list-curtain')).not.toHaveClass(/expanded/);
+  const nameBoxBefore = await listA.locator('.favorite-list-name').boundingBox();
+  await listA.locator('.favorite-list-curtain-toggle').click();
+  await expect(listA.locator('.favorite-list-curtain')).toHaveClass(/expanded/);
+  await expect(listA.locator('.favorite-list-curtain')).toHaveCSS('width', '170px');
+  await expect(listA.locator('.favorite-list-curtain-toggle')).toHaveText('▶');
+  const nameBoxAfter = await listA.locator('.favorite-list-name').boundingBox();
+  expect(nameBoxAfter.width).toBeCloseTo(nameBoxBefore.width, 0);
+  expect(nameBoxAfter.height).toBeCloseTo(nameBoxBefore.height, 0);
+
+  const actionButtons = listA.locator('.favorite-list-curtain-actions button');
+  const firstActionBox = await actionButtons.nth(0).boundingBox();
+  const secondActionBox = await actionButtons.nth(1).boundingBox();
+  expect(secondActionBox.x - (firstActionBox.x + firstActionBox.width)).toBeGreaterThanOrEqual(firstActionBox.width - 1);
+
   await dragHandleAfter(page, listA.locator('.reorder-handle'), listB);
 
-  await expect(page.locator('#favoriteLists li').nth(0)).toContainText('リストB');
-  await expect(page.locator('#favoriteLists li').nth(1)).toContainText('リストA');
+  await expect(page.locator('#favoriteLists li').nth(0)).toContainText('検索履歴');
+  await expect(page.locator('#favoriteLists li').nth(1)).toContainText('リストB');
+  await expect(page.locator('#favoriteLists li').nth(2)).toContainText('リストA');
 
   await page.reload();
   await openApp(page);
   await page.locator('#favBtn').click();
-  await expect(page.locator('#favoriteLists li').nth(0)).toContainText('リストB');
-  await expect(page.locator('#favoriteLists li').nth(1)).toContainText('リストA');
+  await expect(page.locator('#favoriteLists li').nth(0)).toContainText('検索履歴');
+  await expect(page.locator('#favoriteLists li').nth(1)).toContainText('リストB');
+  await expect(page.locator('#favoriteLists li').nth(2)).toContainText('リストA');
 });
 
 test('reorders favorite items locally and changes the exported share code order', async ({ page }) => {
