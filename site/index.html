@@ -13,13 +13,16 @@
 <body>
 
 <header>
-  <div class="app-title" id="appTitle" role="button" tabindex="0" title="初期画面に戻る">
-    <img class="app-title-icon" src="./assets/app-icons/favicon.png" alt="">
-    <h1>FF14 レシピ素材ツリー</h1>
+  <div class="header-primary-row">
+    <div class="app-title" id="appTitle" role="button" tabindex="0" title="初期画面に戻る">
+      <img class="app-title-icon" src="./assets/app-icons/favicon.png" alt="">
+      <h1>FF14 レシピ素材ツリー</h1>
+    </div>
+    <span id="appVersion"></span>
+    <span id="loadStatus">データ読み込み中...</span>
   </div>
-  <span id="appVersion"></span>
-  <span id="loadStatus">データ読み込み中...</span>
   <button id="popupBtn">⧉ 小窓で開く</button>
+  <button id="mobileBackBtn" type="button">◀ 戻る</button>
   <button id="settingsBtn">⚙ 設定</button>
 </header>
 
@@ -35,6 +38,7 @@
       <ul id="favoriteLists"></ul>
     </div>
     <ul id="recipeList"></ul>
+    <div class="tips-msg mobile-tips-msg hidden" id="mobileTipsMsg"></div>
   </div>
   <div class="panel-middle" id="panelMiddle">
     <div class="panel-middle-header">

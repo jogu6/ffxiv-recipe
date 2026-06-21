@@ -36,6 +36,7 @@
     gap: 10px;
     flex-wrap: wrap;
   }
+  .header-primary-row { display: contents; }
   .app-title { display: flex; align-items: center; gap: 6px; cursor: pointer; }
   .app-title:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
   .app-title-icon { width: 22.5px; height: 22.5px; flex-shrink: 0; }
@@ -54,6 +55,7 @@
     white-space: nowrap;
   }
   #popupBtn:hover { background: var(--active-bg); }
+  #mobileBackBtn { display: none; }
 
   .main {
     display: flex;
@@ -352,8 +354,8 @@
   .favorite-item-job {
     align-self: flex-start;
     width: fit-content;
-    font-size: 11px;
   }
+  .badge.favorite-item-job,
   .favorite-item-name {
     font-size: 12px;
     overflow-wrap: break-word;
@@ -367,6 +369,10 @@
     user-select: none;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
+  }
+  #favoriteLists li.reorder-enabled:not(:has(.favorite-list-curtain.expanded)) {
+    user-select: text;
+    -webkit-user-select: text;
   }
   li.dragging {
     opacity: 0.55;
@@ -485,12 +491,15 @@
   .count-btn:hover { border-color: var(--accent); color: var(--accent); }
   #countInput {
     width: 52px;
+    height: 26px;
     background: var(--bg);
     border: 1px solid var(--border);
-    color: var(--text);
-    padding: 4px 7px;
+    color: var(--accent);
+    padding: 0 7px;
     border-radius: 3px;
-    font-size: 13px;
+    font-size: 18px;
+    font-weight: bold;
+    line-height: 1;
     text-align: right;
   }
   #countInput:focus { outline: none; border-color: var(--accent); }
@@ -792,6 +801,7 @@
     flex-direction: column;
     gap: 10px;
   }
+  .mobile-tips-msg { display: none; }
   .tips-row {
     font-size: 13px;
     color: var(--soft-text);
@@ -900,24 +910,6 @@
     white-space: nowrap;
   }
 
-  #recipeList li.tips-li {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    cursor: default;
-    padding: 10px 14px;
-    background: none;
-    gap: 10px;
-  }
-  #recipeList li.tips-li:hover { background: none; }
-  #recipeList li.tips-li .tips-about-btn { align-self: center; }
-  .tips-row-list {
-    font-size: 13px;
-    color: var(--soft-text);
-    line-height: 1.5;
-    text-align: left;
-    width: 100%;
-  }
   .badge { font-size: 10px; padding: 1px 5px; border-radius: 3px; font-weight: bold; flex-shrink: 0; }
   .badge-craft    { background: #3a2e10; color: var(--craft); }
   .badge-gather   { background: #102030; color: var(--gather); }
@@ -1331,13 +1323,29 @@
   .material-tree-dialog-header label { color: var(--muted); font-size: 12px; }
   #materialTreeCountInput {
     width: 54px;
-    height: 28px;
+    height: 26px;
     border: 1px solid var(--border);
     border-radius: 3px;
     background: var(--bg);
-    color: var(--text);
-    font-size: 14px;
+    color: var(--accent);
+    font-size: 18px;
+    font-weight: bold;
+    line-height: 1;
     text-align: center;
+  }
+  @media (min-width: 601px) {
+    #countInput,
+    #materialTreeCountInput {
+      appearance: textfield;
+      -moz-appearance: textfield;
+    }
+    #countInput::-webkit-inner-spin-button,
+    #countInput::-webkit-outer-spin-button,
+    #materialTreeCountInput::-webkit-inner-spin-button,
+    #materialTreeCountInput::-webkit-outer-spin-button {
+      margin: 0;
+      -webkit-appearance: none;
+    }
   }
   #materialTreeTitle {
     color: var(--accent);
@@ -1412,12 +1420,65 @@
 
   /* Mobile layout */
   @media (max-width: 600px) {
-    header { padding: 8px 12px; }
+    body {
+      height: 100svh;
+      min-height: 100svh;
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      flex-shrink: 0;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto auto;
+      gap: 6px 8px;
+      padding: 8px 12px;
+    }
+    .header-primary-row {
+      grid-column: 1 / -1;
+      grid-row: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-width: 0;
+      width: 100%;
+    }
+    #loadStatus {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .app-title-icon { width: 21px; height: 21px; }
     header h1 { font-size: 14px; }
     #popupBtn { display: none; }
-    #settingsBtn { margin-left: auto; }
-    .main { flex-direction: column; height: calc(100vh - 45px); }
+    #mobileBackBtn {
+      grid-column: 1;
+      grid-row: 2;
+      justify-self: start;
+      visibility: hidden;
+      display: inline-block;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--accent);
+      cursor: pointer;
+      font-size: 18px;
+      padding: 6px 15px;
+      align-self: center;
+    }
+    #mobileBackBtn.visible { visibility: visible; }
+    #settingsBtn {
+      grid-column: 2;
+      grid-row: 2;
+      justify-self: end;
+      align-self: center;
+      margin-left: 0;
+    }
+    .main { flex: 1; min-height: 0; flex-direction: column; height: auto; }
     .panel-left,
     .panel-middle,
     .panel-right { display: none; }
@@ -1426,10 +1487,16 @@
     .panel-middle { width: 100%; min-width: unset; border-right: none; border-bottom: 1px solid var(--border); }
     .panel-left.mobile-visible,
     .panel-middle.mobile-visible,
-    .panel-right.mobile-visible { display: flex; }
-    #usesBackBtn { display: block; }
+    .panel-right.mobile-visible {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      height: 100%;
+    }
+    #recipeList { min-height: 0; }
+    #usesBackBtn { display: none; }
     .panel-right { display: none; flex: 1; }
-    #backBtn { display: inline; }
+    #backBtn { display: none; }
     #recipeList li, #usesList li { padding: 12px 14px; font-size: 14px; border-bottom: 1px solid rgba(58, 58, 58, 0.4); }
     #searchBox { padding: 7px 34px 7px 10px; font-size: 14px; }
     .node-name { font-size: 15px; }
@@ -1440,4 +1507,15 @@
     .tree-node { line-height: 2; }
     .count-btn { width: 32px; height: 32px; font-size: 18px; }
     .count-step-wide { width: 40px; font-size: 13px; }
+    #countInput,
+    #materialTreeCountInput {
+      height: 32px;
+      font-size: 22px;
+    }
+    .mobile-tips-msg:not(.hidden) {
+      display: flex;
+      flex: 1;
+      overflow-y: auto;
+      background: var(--bg);
+    }
   }

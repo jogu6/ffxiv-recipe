@@ -50,6 +50,7 @@ const elements = {
   favBtn: document.getElementById('favBtn'),
   favoriteLists: document.getElementById('favoriteLists'),
   recipeList: document.getElementById('recipeList'),
+  mobileTipsMsg: document.getElementById('mobileTipsMsg'),
   usesBackBtn: document.getElementById('usesBackBtn'),
   usesTitle: document.getElementById('usesTitle'),
   usesList: document.getElementById('usesList'),
@@ -67,6 +68,7 @@ const elements = {
   usesBtn: document.getElementById('usesBtn'),
   treeContainer: document.getElementById('treeContainer'),
   tipsMsg: document.getElementById('tipsMsg'),
+  mobileBackBtn: document.getElementById('mobileBackBtn'),
   updateNotice: document.getElementById('updateNotice'),
   updateReloadBtn: document.getElementById('updateReloadBtn'),
   confirmOverlay: document.getElementById('confirmOverlay'),
@@ -1044,30 +1046,28 @@ function createAboutAppButton() {
 }
 
 function renderTips() {
-  const rows = tipsData.map(tip =>
-    createMarkdownElement('div', 'tips-row markdown-content', tip.html)
-  );
-  elements.tipsMsg.replaceChildren(createAboutAppButton(), ...rows);
+  [elements.tipsMsg, elements.mobileTipsMsg].forEach(container => {
+    const rows = tipsData.map(tip =>
+      createMarkdownElement('div', 'tips-row markdown-content', tip.html)
+    );
+    container.replaceChildren(createAboutAppButton(), ...rows);
+  });
 }
 
 function showTips() {
   elements.tipsMsg.classList.remove('hidden');
-  if (!isMobile()) renderTips();
+  renderTips();
 }
 
 function renderList() {
   const frag = document.createDocumentFragment();
   const names = getDisplayList();
+  const showMobileTips = listMode === 'none' && isMobile();
 
-  if (listMode === 'none' && isMobile()) {
-    const li = document.createElement('li');
-    li.className = 'tips-li';
-    li.appendChild(createAboutAppButton());
-    tipsData.forEach(tip => li.appendChild(
-      createMarkdownElement('div', 'tips-row-list markdown-content', tip.html)
-    ));
-    frag.appendChild(li);
-  } else if (listMode === 'fav' && !getDisplayedFavoriteList()) {
+  elements.recipeList.classList.toggle('hidden', showMobileTips);
+  elements.mobileTipsMsg.classList.toggle('hidden', !showMobileTips);
+
+  if (listMode === 'fav' && !getDisplayedFavoriteList()) {
     frag.appendChild(createEmptyListItem('お気に入りリストを選択してください'));
   } else if (listMode === 'fav' && names.length === 0) {
     frag.appendChild(createEmptyListItem('お気に入りはありません'));
@@ -1421,7 +1421,7 @@ async function init() {
   await loadTips();
 
   renderList();
-  if (!isMobile()) renderTips();
+  renderTips();
 
   try {
     const rawList = await fetchJson(
@@ -1441,12 +1441,16 @@ function showMobilePanel(panelName) {
   elements.panelLeft.classList.toggle('mobile-visible', panelName === 'left');
   elements.panelMiddle.classList.toggle('mobile-visible', panelName === 'middle');
   elements.panelRight.classList.toggle('mobile-visible', panelName === 'right');
+  elements.mobileBackBtn.classList.toggle('visible', panelName !== 'left');
+  elements.mobileBackBtn.dataset.panel = panelName;
 }
 
 function clearMobilePanels() {
   elements.panelLeft.classList.remove('mobile-visible');
   elements.panelMiddle.classList.remove('mobile-visible');
   elements.panelRight.classList.remove('mobile-visible');
+  elements.mobileBackBtn.classList.remove('visible');
+  delete elements.mobileBackBtn.dataset.panel;
 }
 
 function changeCount(delta) {
@@ -1471,6 +1475,12 @@ function readRequestedCount(input) {
 }
 
 function handleRequestedCountInput(input, render) {
+  if (input.value === '') return;
+  readRequestedCount(input);
+  render();
+}
+
+function commitRequestedCountInput(input, render) {
   readRequestedCount(input);
   render();
 }
@@ -2105,13 +2115,15 @@ function renderMaterialsList() {
     rowElement.className = 'intermediate-tree-row';
     const hasChildren = row.children.length > 0;
     const expanded = intermediateTreeState.get(pathKey) !== false;
-    const toggle = document.createElement('button');
-    toggle.type = 'button';
-    toggle.className = 'intermediate-tree-toggle';
-    toggle.textContent = hasChildren ? (expanded ? '▼' : '▶') : '';
-    toggle.disabled = !hasChildren;
-    toggle.setAttribute('aria-label', hasChildren ? `${row.name}を展開・折り畳み` : '下位の中間素材なし');
-    rowElement.appendChild(toggle);
+    let toggle;
+    if (hasChildren) {
+      toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'intermediate-tree-toggle';
+      toggle.textContent = expanded ? '▼' : '▶';
+      toggle.setAttribute('aria-label', `${row.name}を展開・折り畳み`);
+      rowElement.appendChild(toggle);
+    }
     const icon = createItemIcon(itemMaster[row.name]?.icon);
     if (icon) rowElement.appendChild(icon);
     const content = document.createElement('div');
@@ -2842,9 +2854,17 @@ function bindEvents() {
   elements.favBtn.addEventListener('click', toggleFav);
   elements.usesBackBtn.addEventListener('click', returnToList);
   elements.backBtn.addEventListener('click', goBack);
+  elements.mobileBackBtn.addEventListener('click', () => {
+    if (elements.mobileBackBtn.dataset.panel === 'middle') returnToList();
+    else goBack();
+  });
   elements.countDecrease5Btn.addEventListener('click', () => changeCount(-5));
   elements.countDecreaseBtn.addEventListener('click', () => changeCount(-1));
   elements.countInput.addEventListener('input', () => handleRequestedCountInput(elements.countInput, renderResultView));
+  elements.countInput.addEventListener('blur', () => commitRequestedCountInput(elements.countInput, renderResultView));
+  elements.countInput.addEventListener('keydown', event => {
+    if (event.key === 'Enter') elements.countInput.blur();
+  });
   elements.countIncreaseBtn.addEventListener('click', () => changeCount(1));
   elements.countIncrease5Btn.addEventListener('click', () => changeCount(5));
   elements.treeViewBtn.addEventListener('click', () => {
@@ -2859,6 +2879,12 @@ function bindEvents() {
   elements.materialTreeDecreaseBtn.addEventListener('click', () => changeMaterialTreeCount(-1));
   elements.materialTreeCountInput.addEventListener('input', () => {
     handleRequestedCountInput(elements.materialTreeCountInput, renderMaterialTreeDialog);
+  });
+  elements.materialTreeCountInput.addEventListener('blur', () => {
+    commitRequestedCountInput(elements.materialTreeCountInput, renderMaterialTreeDialog);
+  });
+  elements.materialTreeCountInput.addEventListener('keydown', event => {
+    if (event.key === 'Enter') elements.materialTreeCountInput.blur();
   });
   elements.materialTreeIncreaseBtn.addEventListener('click', () => changeMaterialTreeCount(1));
   elements.materialTreeIncrease5Btn.addEventListener('click', () => changeMaterialTreeCount(5));

@@ -61,7 +61,6 @@ test('count step buttons adjust the selected recipe count', async ({ page }) => 
   await openApp(page);
   await searchFor(page, 'バスタードソード');
   await page.getByText('バスタードソード', { exact: true }).first().click();
-
   await expect(page.locator('#countInput')).toHaveValue('1');
   const titleBox = await page.locator('#resultTitle').boundingBox();
   const countBox = await page.locator('#countLabel').boundingBox();
@@ -77,6 +76,18 @@ test('count step buttons adjust the selected recipe count', async ({ page }) => 
   await expect(page.locator('#countInput')).toHaveValue('1');
 });
 
+test('desktop number inputs hide native spin buttons', async ({ page }) => {
+  await openApp(page, 900);
+
+  for (const selector of ['#countInput', '#materialTreeCountInput']) {
+    await expect(page.locator(selector)).toHaveCSS('appearance', 'textfield');
+    await expect(page.locator(selector)).toHaveCSS('color', 'rgb(200, 168, 75)');
+    await expect(page.locator(selector)).toHaveCSS('font-size', '18px');
+    await expect(page.locator(selector)).toHaveCSS('font-weight', '700');
+    await expect(page.locator(selector)).toHaveCSS('height', '26px');
+  }
+});
+
 test('intermediate materials form a collapsible tree and open an independent material tree', async ({ page }) => {
   await openApp(page);
   await searchFor(page, 'ブラスバスタードソード');
@@ -84,7 +95,11 @@ test('intermediate materials form a collapsible tree and open an independent mat
   await page.locator('#materialsViewBtn').click();
 
   const intermediateHeader = page.locator('.materials-section-header').filter({ hasText: '製作する中間素材' });
-  const bastardNode = page.locator('.intermediate-tree-node').filter({ hasText: 'バスタードソード' }).first();
+  const bastardNode = page.locator('.intermediate-tree-row').filter({
+    has: page.getByText('バスタードソード', { exact: true }),
+  }).first().locator('..');
+  const leafNode = page.locator('.intermediate-tree-node:not(:has(> .intermediate-tree-children))').first();
+  await expect(leafNode.locator('.intermediate-tree-toggle')).toHaveCount(0);
   await expect(bastardNode.locator('.intermediate-tree-children')).toContainText('ブロンズインゴット');
   await bastardNode.locator('.intermediate-tree-toggle').first().click();
   await expect(bastardNode.locator('.intermediate-tree-children')).toHaveClass(/collapsed/);
@@ -123,6 +138,10 @@ test('intermediate materials form a collapsible tree and open an independent mat
   await expect(page.locator('#materialTreeCountInput')).toHaveValue('999');
   await page.locator('#materialTreeIncrease5Btn').click();
   await expect(page.locator('#materialTreeCountInput')).toHaveValue('999');
+  await page.locator('#materialTreeCountInput').fill('');
+  await expect(page.locator('#materialTreeCountInput')).toHaveValue('');
+  await page.locator('#materialTreeCountInput').pressSequentially('300');
+  await expect(page.locator('#materialTreeCountInput')).toHaveValue('300');
   await page.locator('#materialTreeCloseBtn').click();
   await expect(page.locator('#materialTreeOverlay')).not.toHaveClass(/open/);
 });
@@ -272,6 +291,12 @@ test('restricts requested counts to integers from 1 through 999', async ({ page 
   await page.locator('#countInput').fill('1.5');
   await expect(page.locator('#countInput')).toHaveValue('1');
   await page.locator('#countInput').fill('');
+  await expect(page.locator('#countInput')).toHaveValue('');
+  await page.locator('#countInput').pressSequentially('300');
+  await expect(page.locator('#countInput')).toHaveValue('300');
+  await expect(page.locator('#resultTitle')).toContainText('300個分');
+  await page.locator('#countInput').fill('');
+  await page.locator('#countInput').press('Enter');
   await expect(page.locator('#countInput')).toHaveValue('1');
 });
 
@@ -414,11 +439,12 @@ test('reorders favorite lists locally with the rightmost drag handle', async ({ 
   await page.locator('#favBtn').click();
   const listA = page.locator('#favoriteLists li').filter({ hasText: 'リストA' }).first();
   const listB = page.locator('#favoriteLists li').filter({ hasText: 'リストB' }).first();
-  await expect(listA).toHaveCSS('user-select', 'none');
+  await expect(listA).toHaveCSS('user-select', 'text');
   await expect(listA.locator('.favorite-list-curtain')).not.toHaveClass(/expanded/);
   const nameBoxBefore = await listA.locator('.favorite-list-name').boundingBox();
   await listA.locator('.favorite-list-curtain-toggle').click();
   await expect(listA.locator('.favorite-list-curtain')).toHaveClass(/expanded/);
+  await expect(listA).toHaveCSS('user-select', 'none');
   await expect(listA.locator('.favorite-list-curtain')).toHaveCSS('width', '170px');
   await expect(listA.locator('.favorite-list-curtain-toggle')).toHaveText('▶');
   const nameBoxAfter = await listA.locator('.favorite-list-name').boundingBox();
@@ -526,6 +552,11 @@ test('shows favorite list materials mode with set count and ring toggles', async
   await page.locator('#favBtn').click();
   await page.locator('#favoriteLists').getByText('素材確認').click();
   await expect(page.locator('#recipeList li.fav-item-row').first().locator('.favorite-item-job')).toHaveClass(/badge-craft/);
+  const favoriteItemFontSizes = await page.locator('#recipeList li.fav-item-row').first().evaluate(row => ({
+    job: getComputedStyle(row.querySelector('.favorite-item-job')).fontSize,
+    name: getComputedStyle(row.querySelector('.favorite-item-name')).fontSize,
+  }));
+  expect(favoriteItemFontSizes.job).toBe(favoriteItemFontSizes.name);
   await page.locator('#countIncrease5Btn').click();
   await page.locator('#recipeList').getByText('素材リスト').click();
 
@@ -556,6 +587,21 @@ test('mobile pin turns active after adding to a favorite list', async ({ page })
   await openApp(page, 600, 700);
   await searchFor(page, 'バスタードソード');
   await page.getByText('バスタードソード', { exact: true }).first().click();
+  await expect(page.locator('#mobileBackBtn')).toBeVisible();
+  await expect(page.locator('#backBtn')).toBeHidden();
+  const titleBox = await page.locator('#appTitle').boundingBox();
+  const mobileBackBox = await page.locator('#mobileBackBtn').boundingBox();
+  const settingsBox = await page.locator('#settingsBtn').boundingBox();
+  const primaryRowBox = await page.locator('.header-primary-row').boundingBox();
+  expect(titleBox.y).toBeLessThan(mobileBackBox.y);
+  expect(mobileBackBox.x).toBeLessThan(settingsBox.x);
+  expect(Math.abs(
+    (primaryRowBox.x + primaryRowBox.width / 2) - 300
+  )).toBeLessThan(1);
+  expect(Math.abs(
+    (mobileBackBox.y + mobileBackBox.height / 2) - (settingsBox.y + settingsBox.height / 2)
+  )).toBeLessThan(1);
+  await expect(page.locator('#mobileBackBtn')).toHaveCSS('font-size', '18px');
 
   const pin = page.locator('.tree-node .pin-btn').first();
   await expect(pin).toHaveClass(/inactive/);
@@ -581,13 +627,15 @@ test('mobile pin turns active after adding to a favorite list', async ({ page })
   await page.locator('#confirmYes').click();
   await expect(secondPin).not.toHaveClass(/inactive/);
 
-  await page.locator('#backBtn').click();
+  await page.locator('#mobileBackBtn').click();
   await page.locator('#favBtn').click();
   await page.locator('#favoriteLists').getByText('スマホ確認').click();
+  await expect(page.locator('#recipeList')).toHaveCSS('overflow-y', 'auto');
+  await expect(page.locator('#panelLeft')).toHaveCSS('min-height', '0px');
   const materialsButton = page.locator('#recipeList .favorite-materials-row').getByText('素材リスト');
   await materialsButton.click();
   await expect(materialsButton).toHaveClass(/active/);
-  await page.locator('#backBtn').click();
+  await page.locator('#mobileBackBtn').click();
   await expect(page.locator('#recipeList .favorite-materials-row').getByText('素材リスト')).not.toHaveClass(/active/);
 });
 
@@ -640,10 +688,17 @@ test('crossing the responsive breakpoint resets to startup view', async ({ page 
   await expect(page.locator('#searchBox')).toHaveValue('');
   await expect(page.locator('#countInput')).toHaveValue('1');
   await expect(page.locator('#resultTitle')).toHaveText('');
-  await expect(page.locator('#recipeList li.tips-li')).toBeVisible();
-  await expect(page.locator('#recipeList li.tips-li .tips-about-btn')).toHaveText('このアプリは何ですか？');
+  await expect(page.locator('#recipeList')).toBeHidden();
+  await expect(page.locator('#recipeList li.tips-li')).toHaveCount(0);
+  await expect(page.locator('#mobileTipsMsg')).toBeVisible();
+  await expect(page.locator('#mobileTipsMsg .tips-about-btn')).toHaveText('このアプリは何ですか？');
+  await expect(page.locator('#mobileTipsMsg .tips-row')).toBeVisible();
+  await expect(page.locator('#mobileTipsMsg')).toHaveCSS('padding', '16px 20px');
+  await expect(page.locator('#mobileTipsMsg')).toHaveCSS('background-color', 'rgb(26, 26, 26)');
 
   await page.locator('#searchBox').fill('山羊乳');
+  await expect(page.locator('#mobileTipsMsg')).toBeHidden();
+  await expect(page.locator('#recipeList')).toBeVisible();
   await expect(page.locator('#recipeList li').first()).toContainText('山羊乳');
 
   await page.setViewportSize({ width: 601, height: 700 });
@@ -651,6 +706,6 @@ test('crossing the responsive breakpoint resets to startup view', async ({ page 
   await expect(page.locator('#searchBox')).toHaveValue('');
   await expect(page.locator('#countInput')).toHaveValue('1');
   await expect(page.locator('#resultTitle')).toHaveText('');
-  await expect(page.locator('#recipeList li.tips-li')).toHaveCount(0);
+  await expect(page.locator('#mobileTipsMsg')).toBeHidden();
   await expect(page.locator('#tipsMsg')).toBeVisible();
 });
