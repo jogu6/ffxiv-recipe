@@ -54,7 +54,7 @@ test('opens privacy policy and contact link from settings', async ({ page }) => 
     };
   });
   await page.locator('#contactBtn').click();
-  await expect.poll(() => page.evaluate(() => window.__contactUrl)).toBe('https://discord.gg/GAVwZ9Ca');
+  await expect.poll(() => page.evaluate(() => window.__contactUrl)).toBe('https://discord.gg/eZP5temK6e');
 });
 
 test('count step buttons adjust the selected recipe count', async ({ page }) => {
@@ -76,7 +76,7 @@ test('count step buttons adjust the selected recipe count', async ({ page }) => 
   await expect(page.locator('#countInput')).toHaveValue('1');
 });
 
-test('desktop number inputs hide native spin buttons', async ({ page }) => {
+test('number inputs hide native spin buttons', async ({ page }) => {
   await openApp(page, 900);
 
   for (const selector of ['#countInput', '#materialTreeCountInput']) {
@@ -86,6 +86,9 @@ test('desktop number inputs hide native spin buttons', async ({ page }) => {
     await expect(page.locator(selector)).toHaveCSS('font-weight', '700');
     await expect(page.locator(selector)).toHaveCSS('height', '26px');
   }
+
+  await page.setViewportSize({ width: 600, height: 700 });
+  await expect(page.locator('#countInput')).toHaveCSS('appearance', 'textfield');
 });
 
 test('intermediate materials form a collapsible tree and open an independent material tree', async ({ page }) => {
@@ -99,7 +102,7 @@ test('intermediate materials form a collapsible tree and open an independent mat
     has: page.getByText('バスタードソード', { exact: true }),
   }).first().locator('..');
   const leafNode = page.locator('.intermediate-tree-node:not(:has(> .intermediate-tree-children))').first();
-  await expect(leafNode.locator('.intermediate-tree-toggle')).toHaveCount(0);
+  await expect(leafNode.locator('.intermediate-tree-toggle-spacer')).toHaveCount(1);
   await expect(bastardNode.locator('.intermediate-tree-children')).toContainText('ブロンズインゴット');
   await bastardNode.locator('.intermediate-tree-toggle').first().click();
   await expect(bastardNode.locator('.intermediate-tree-children')).toHaveClass(/collapsed/);
@@ -202,11 +205,18 @@ test('materials list shows exchange supplements and summary totals', async ({ pa
 
   await page.locator('#materialsViewBtn').click();
   const spiritSandRow = page.locator('.materials-list li').filter({ hasText: '紫電の霊砂' }).first();
+  await expect(spiritSandRow.locator('.supplement-refine-label')).toContainText('精選、または');
+  await expect(spiritSandRow.locator('.supplement-refine-label')).toHaveCSS('color', 'rgb(91, 213, 200)');
   await expect(spiritSandRow).toContainText('ギャザラースクリップ:橙貨');
   await expect(spiritSandRow).toContainText('× 300');
   await expect(page.locator('.materials-summary-separator').first()).toBeVisible();
-  await expect(page.locator('.materials-summary-row')).toContainText('ギャザラースクリップ:橙貨');
-  await expect(page.locator('.materials-summary-row')).toContainText('× 300');
+  const summaryHeader = page.locator('.materials-section-header').filter({ hasText: '必要な交換貨幣' });
+  await expect(summaryHeader).toContainText('▶');
+  await summaryHeader.click();
+  const summaryRow = page.locator('.materials-summary-row').filter({ hasText: 'ギャザラースクリップ:橙貨' }).first();
+  await expect(summaryRow.locator('.material-refine-row')).toContainText('精選、または');
+  await expect(summaryRow.locator('.material-primary')).toContainText('ギャザラースクリップ:橙貨');
+  await expect(summaryRow.locator('.material-primary')).toContainText('× 300');
 });
 
 test('materials list sorts normal items before crystals and shows supplement icons', async ({ page }) => {
@@ -218,9 +228,11 @@ test('materials list sorts normal items before crystals and shows supplement ico
   await expect(page.locator('.materials-section-header')).toContainText([
     '製作する中間素材',
     '必要素材',
-    '必要なシャード/クリスタル/クラスター'
+    '必要なシャード/クリスタル/クラスター',
+    '必要な交換貨幣'
   ]);
   const text = await page.locator('.materials-list').innerText();
+  await page.locator('.materials-section-header').filter({ hasText: '必要な交換貨幣' }).click();
   const summaryText = await page.locator('.materials-summary-row').innerText();
   expect(text.indexOf('ゴールデンイール')).toBeGreaterThanOrEqual(0);
   expect(text.indexOf('紫電の霊砂')).toBeGreaterThan(text.indexOf('ゴールデンイール'));
@@ -259,6 +271,7 @@ test('materials summary keeps exchange alternatives as もしくは groups', asy
   await page.getByText('ピレトリン', { exact: true }).first().click();
 
   await page.locator('#materialsViewBtn').click();
+  await page.locator('.materials-section-header').filter({ hasText: '必要な交換貨幣' }).click();
   const summaryRows = page.locator('.materials-summary-row');
   await expect(summaryRows.last()).toContainText('クラフタースクリップ:紫貨');
   await expect(summaryRows.last()).toContainText('ギャザラースクリップ:紫貨');
@@ -349,6 +362,7 @@ test('keeps a protected recent-items list with recipes and reverse-looked-up mat
   await expect(recentRows.nth(0)).toContainText('山羊乳');
   await expect(recentRows.nth(1)).toContainText('アリペブレ');
   await expect(page.locator('#recipeList').getByText('並び替え')).toHaveCount(0);
+  await expect(page.locator('#recipeList').getByText('素材リスト')).toHaveCount(0);
 
   await recentRows.nth(0).click();
   await expect(page.locator('#usesTitle')).toContainText('山羊乳');
@@ -360,14 +374,36 @@ test('keeps a protected recent-items list with recipes and reverse-looked-up mat
   await expect(page.locator('#recipeList')).not.toContainText('山羊乳');
 });
 
-test('limits the protected recent-items list to twenty entries', async ({ page }) => {
+test('restores selected view state after reload without saving calculated material output', async ({ page }) => {
+  await openApp(page);
+  await searchFor(page, 'アリペブレ');
+  await page.getByText('アリペブレ', { exact: true }).first().click();
+  await page.locator('#countIncrease5Btn').click();
+  await page.locator('#materialsViewBtn').click();
+
+  await page.reload();
+  await expect(page.locator('#loadStatus')).toContainText(/patch/);
+  await expect(page.locator('#searchBox')).toHaveValue('アリペブレ');
+  await expect(page.locator('#countInput')).toHaveValue('6');
+  await expect(page.locator('#resultTitle')).toContainText('アリペブレ');
+  await expect(page.locator('#materialsViewBtn')).toHaveClass(/active/);
+  await expect(page.locator('.materials-list')).toContainText('ゴールデンイール');
+
+  const storedState = await page.evaluate(() => JSON.parse(localStorage.getItem('ff14_view_state_v1')));
+  expect(storedState.selected.recipe).toBe('アリペブレ');
+  expect(storedState.input.count).toBe('6');
+  expect(storedState.view.resultMode).toBe('materials');
+  expect(JSON.stringify(storedState)).not.toContain('ゴールデンイール');
+});
+
+test('limits the protected recent-items list to one hundred entries', async ({ page }) => {
   await openApp(page);
   await page.evaluate(async () => {
     const items = await fetch('./data/Item.json').then(response => response.json());
     const itemIds = items
       .map(item => Number(item.ID))
       .filter(id => Number.isInteger(id) && id > 0)
-      .slice(0, 21);
+      .slice(0, 101);
     localStorage.setItem('ff14_favorite_lists_v2', JSON.stringify({
       version: 2,
       selectedListId: 'SYSTEM_RECENT_ITEMS',
@@ -382,7 +418,7 @@ test('limits the protected recent-items list to twenty entries', async ({ page }
   await expect(page.locator('#loadStatus')).toContainText(/patch/);
   await page.locator('#favBtn').click();
   await page.locator('#favoriteLists').getByText('検索履歴', { exact: true }).click();
-  await expect(page.locator('#recipeList li.fav-item-row')).toHaveCount(20);
+  await expect(page.locator('#recipeList li.fav-item-row')).toHaveCount(100);
 });
 
 test('favorites and shares an ingredient while preserving search results', async ({ page }) => {
@@ -557,11 +593,12 @@ test('shows favorite list materials mode with set count and ring toggles', async
     name: getComputedStyle(row.querySelector('.favorite-item-name')).fontSize,
   }));
   expect(favoriteItemFontSizes.job).toBe(favoriteItemFontSizes.name);
-  await page.locator('#countIncrease5Btn').click();
+  await expect(page.locator('.result-header')).toBeHidden();
   await page.locator('#recipeList').getByText('素材リスト').click();
+  await page.locator('#countIncrease5Btn').click();
 
   await expect(page.locator('#countLabel')).toHaveText('セット数:');
-  await expect(page.locator('#countInput')).toHaveValue('1');
+  await expect(page.locator('#countInput')).toHaveValue('6');
   await expect(page.locator('#materialsViewBtn')).toBeVisible();
   await expect(page.locator('#treeViewBtn')).toBeHidden();
   await expect(page.locator('.favorite-ring-controls')).toContainText('カッパーリング');
@@ -601,7 +638,7 @@ test('mobile pin turns active after adding to a favorite list', async ({ page })
   expect(Math.abs(
     (mobileBackBox.y + mobileBackBox.height / 2) - (settingsBox.y + settingsBox.height / 2)
   )).toBeLessThan(1);
-  await expect(page.locator('#mobileBackBtn')).toHaveCSS('font-size', '18px');
+  await expect(page.locator('#mobileBackBtn')).toHaveCSS('font-size', '15px');
 
   const pin = page.locator('.tree-node .pin-btn').first();
   await expect(pin).toHaveClass(/inactive/);
@@ -693,7 +730,7 @@ test('crossing the responsive breakpoint resets to startup view', async ({ page 
   await expect(page.locator('#mobileTipsMsg')).toBeVisible();
   await expect(page.locator('#mobileTipsMsg .tips-about-btn')).toHaveText('このアプリは何ですか？');
   await expect(page.locator('#mobileTipsMsg .tips-row')).toBeVisible();
-  await expect(page.locator('#mobileTipsMsg')).toHaveCSS('padding', '16px 20px');
+  await expect(page.locator('#mobileTipsMsg')).toHaveCSS('padding', '16px 20px 22px');
   await expect(page.locator('#mobileTipsMsg')).toHaveCSS('background-color', 'rgb(26, 26, 26)');
 
   await page.locator('#searchBox').fill('山羊乳');

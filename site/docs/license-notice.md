@@ -16,4 +16,6 @@ All third-party material remains subject to the rights and terms of its respecti
 
 If SQUARE ENIX requests correction, removal, suspension, or discontinuation of any material or service related to this project, the maintainer will respond promptly and comply. If necessary, distribution of the application may be suspended and affected materials or data may be removed.
 
+The project also respects actions or requirements from hosting providers such as GitHub. If the site, repository, assets, or related services are suspended, removed, restricted, or otherwise made unavailable with or without advance notice, the maintainer will respect that action and comply with any required follow-up. The maintainer will not attempt to bypass such measures and will make necessary corrections, removals, or service changes as appropriate.
+
 XIVAPI is used as a community data and asset endpoint where applicable. Use of XIVAPI remains subject to any applicable XIVAPI documentation, service guidance, and maintainer requests.

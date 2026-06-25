@@ -14,6 +14,7 @@
     --hover-bg: #2e2e2e;
     --active-bg: #2a2a1a;
     --overlay-bg: rgba(0,0,0,0.6);
+    --footer-space: 22px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   .hidden { display: none !important; }
@@ -325,7 +326,12 @@
   #favBtn:hover { border-color: var(--accent); color: var(--accent); }
   #favBtn.active { border-color: var(--accent); color: var(--accent); background: var(--active-bg); }
 
-  #recipeList { flex: 1; overflow-y: auto; list-style: none; }
+  #recipeList {
+    flex: 1;
+    overflow-y: auto;
+    list-style: none;
+    padding-bottom: var(--footer-space);
+  }
   #recipeList li,
   #usesList li {
     padding: 9px 12px;
@@ -424,7 +430,12 @@
   }
   #usesBackBtn:hover { background: var(--active-bg); }
   #usesTitle { font-size: 12px; color: var(--accent); }
-  #usesList { flex: 1; overflow-y: auto; list-style: none; }
+  #usesList {
+    flex: 1;
+    overflow-y: auto;
+    list-style: none;
+    padding-bottom: var(--footer-space);
+  }
   li.ingredient-row { background: #1a1a1a; }
   li.ingredient-row:hover { background: var(--hover-bg); }
   li.ingredient-row.selected { background: var(--active-bg); color: var(--accent); }
@@ -445,7 +456,7 @@
   /* Recipe tree */
   .panel-right { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
   .result-header {
-    padding: 8px 14px;
+    padding: 4px 6px;
     border-bottom: 1px solid var(--border);
     display: flex;
     align-items: flex-start;
@@ -503,6 +514,18 @@
     text-align: right;
   }
   #countInput:focus { outline: none; border-color: var(--accent); }
+  #countInput,
+  #materialTreeCountInput {
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+  #countInput::-webkit-inner-spin-button,
+  #countInput::-webkit-outer-spin-button,
+  #materialTreeCountInput::-webkit-inner-spin-button,
+  #materialTreeCountInput::-webkit-outer-spin-button {
+    margin: 0;
+    -webkit-appearance: none;
+  }
   #resultTitle { font-size: 13px; color: var(--accent); }
 
   .result-view-switch {
@@ -563,7 +586,11 @@
   }
   #backBtn:hover { background: var(--active-bg); }
 
-  #treeContainer { flex: 1; overflow: auto; padding: 10px 14px; }
+  #treeContainer {
+    flex: 1;
+    overflow: auto;
+    padding: 4px 6px calc(4px + var(--footer-space));
+  }
 
   .materials-list {
     list-style: none;
@@ -619,6 +646,10 @@
     padding: 0;
   }
   .intermediate-tree-toggle:disabled { cursor: default; }
+  .intermediate-tree-toggle-spacer {
+    cursor: default;
+    pointer-events: none;
+  }
   .intermediate-tree-children { list-style: none; padding-left: 20px; }
   .intermediate-tree-children.collapsed { display: none; }
   .intermediate-material-tree-btn {
@@ -677,6 +708,24 @@
   .material-supplement-name {
     overflow-wrap: anywhere;
   }
+  .supplement-refine-label {
+    display: inline-flex;
+    align-items: center;
+    align-self: center;
+    flex-shrink: 0;
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: inherit;
+    font-weight: bold;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+  .material-refine-row {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    line-height: 1.2;
+  }
   .material-supplement-qty {
     color: var(--accent);
     font-size: 12px;
@@ -716,6 +765,12 @@
   }
   .materials-summary-row {
     border-top: none;
+  }
+  .material-summary-entry-content {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
   }
   .materials-summary-choice-row .material-name,
   .materials-summary-choice-row .material-qty {
@@ -1331,21 +1386,7 @@
     font-size: 18px;
     font-weight: bold;
     line-height: 1;
-    text-align: center;
-  }
-  @media (min-width: 601px) {
-    #countInput,
-    #materialTreeCountInput {
-      appearance: textfield;
-      -moz-appearance: textfield;
-    }
-    #countInput::-webkit-inner-spin-button,
-    #countInput::-webkit-outer-spin-button,
-    #materialTreeCountInput::-webkit-inner-spin-button,
-    #materialTreeCountInput::-webkit-outer-spin-button {
-      margin: 0;
-      -webkit-appearance: none;
-    }
+    text-align: right;
   }
   #materialTreeTitle {
     color: var(--accent);
@@ -1357,7 +1398,7 @@
     min-width: 0;
     min-height: 120px;
     overflow: auto;
-    padding: 8px;
+    padding: 4px 6px;
     border: 1px solid var(--border);
     border-radius: 4px;
     background: var(--bg);
@@ -1466,8 +1507,8 @@
       border-radius: 4px;
       color: var(--accent);
       cursor: pointer;
-      font-size: 18px;
-      padding: 6px 15px;
+      font-size: 15px;
+      padding: 5px 12px;
       align-self: center;
     }
     #mobileBackBtn.visible { visibility: visible; }
@@ -1492,6 +1533,7 @@
       flex: 1;
       min-height: 0;
       height: 100%;
+      overflow-y: auto;
     }
     #recipeList { min-height: 0; }
     #usesBackBtn { display: none; }
@@ -1501,7 +1543,8 @@
     #searchBox { padding: 7px 34px 7px 10px; font-size: 14px; }
     .node-name { font-size: 15px; }
     .node-qty  { font-size: 14px; }
-    .result-main-row { justify-content: flex-start; }
+    .result-main-row { justify-content: center; }
+    #resultTitle { text-align: center; }
     .result-view-row { justify-content: center; }
     #usesBtn.visible { margin-left: 0; }
     .tree-node { line-height: 2; }
@@ -1512,10 +1555,19 @@
       height: 32px;
       font-size: 22px;
     }
+    .panel-right.mobile-visible .result-header,
+    .panel-right.mobile-visible #treeContainer {
+      flex: 0 0 auto;
+    }
+    .panel-right.mobile-visible #treeContainer {
+      overflow: visible;
+      min-height: 0;
+    }
     .mobile-tips-msg:not(.hidden) {
       display: flex;
       flex: 1;
       overflow-y: auto;
       background: var(--bg);
+      padding-bottom: var(--footer-space);
     }
   }

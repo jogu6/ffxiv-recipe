@@ -4,15 +4,16 @@ const ABOUT_URL = 'https://jogu6.github.io/ffxiv-recipe-about/';
 const LS_FAV = 'ff14_favorites';
 const LS_FAV_LISTS = 'ff14_favorite_lists_v2';
 const LS_SEARCH_HISTORY = 'ff14_search_history';
+const LS_VIEW_STATE = 'ff14_view_state_v1';
 const SEARCH_HISTORY_LIMIT = 30;
 const FAVORITE_NAME_MAX = 50;
 const RECENT_LIST_ID = 'SYSTEM_RECENT_ITEMS';
 const RECENT_LIST_NAME = '検索履歴';
-const RECENT_LIST_LIMIT = 20;
+const RECENT_LIST_LIMIT = 100;
 const MOBILE_BREAKPOINT = 600;
 const LICENSE_NOTICE_FILE = './docs/license-notice.md';
 const PRIVACY_POLICY_FILE = './docs/privacy-policy.md';
-const CONTACT_URL = 'https://discord.gg/GAVwZ9Ca';
+const CONTACT_URL = 'https://discord.gg/eZP5temK6e';
 const REQUEST_COUNT_MAX = 999;
 const {
   calculateCraft,
@@ -44,6 +45,7 @@ const elements = {
   panelLeft: document.getElementById('panelLeft'),
   panelMiddle: document.getElementById('panelMiddle'),
   panelRight: document.getElementById('panelRight'),
+  resultHeader: document.querySelector('.result-header'),
   searchBox: document.getElementById('searchBox'),
   searchClearBtn: document.getElementById('searchClearBtn'),
   searchHistory: document.getElementById('searchHistory'),
@@ -128,6 +130,7 @@ let prevPanel = 'left';
 let listMode = 'none';
 let resultViewMode = 'tree';
 let resultSourceMode = 'recipe';
+let selectedUsesItem = null;
 let favoriteMaterialsRingCounts = {};
 let pendingConfirmAction = null;
 let pendingTextInputAction = null;
@@ -137,6 +140,8 @@ let reorderDrag = null;
 let favoriteItemReorderEnabled = false;
 let materialTreeRecipe = null;
 let expandedFavoriteListActionsId = null;
+let canSaveViewState = false;
+let suppressViewStateSave = false;
 
 const treePinMap = new Map();
 const exchangeTreeState = new Map();
@@ -189,6 +194,100 @@ function readStoredJson(key, fallback) {
 
 function writeStoredJson(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
+}
+
+function removeStoredItem(key) {
+  localStorage.removeItem(key);
+}
+
+function currentMobilePanel() {
+  if (!isMobile()) return '';
+  return elements.mobileBackBtn.dataset.panel || 'left';
+}
+
+function saveViewState() {
+  if (!canSaveViewState || suppressViewStateSave) return;
+  writeStoredJson(LS_VIEW_STATE, {
+    v: 1,
+    input: {
+      search: elements.searchBox.value,
+      count: elements.countInput.value,
+      active: ['searchBox', 'countInput'].includes(document.activeElement?.id)
+        ? document.activeElement.id
+        : ''
+    },
+    selected: {
+      recipe: selectedRecipe || '',
+      favoriteListId: favoriteStore.selectedListId || '',
+      usesItem: selectedUsesItem || ''
+    },
+    view: {
+      listMode,
+      sourceMode: resultSourceMode,
+      resultMode: resultViewMode,
+      mobilePanel: currentMobilePanel()
+    }
+  });
+}
+
+function clearViewState() {
+  removeStoredItem(LS_VIEW_STATE);
+}
+
+function restoreViewState() {
+  const state = readStoredJson(LS_VIEW_STATE, null);
+  if (!state || state.v !== 1) return false;
+
+  suppressViewStateSave = true;
+  try {
+    const search = typeof state.input?.search === 'string' ? state.input.search : '';
+    const count = typeof state.input?.count === 'string' ? state.input.count : '1';
+    const activeInput = ['searchBox', 'countInput'].includes(state.input?.active)
+      ? state.input.active
+      : '';
+    const favoriteList = findFavoriteList(state.selected?.favoriteListId);
+    const recipe = recipes[state.selected?.recipe] ? state.selected.recipe : '';
+    const usesItem = usedIn[state.selected?.usesItem] ? state.selected.usesItem : '';
+
+    elements.searchBox.value = search;
+    elements.searchClearBtn.classList.toggle('visible', search.trim() !== '');
+    favoriteStore.selectedListId = favoriteList?.id || null;
+
+    if (state.view?.listMode === 'fav' && favoriteList) listMode = 'fav';
+    else listMode = search.trim() ? 'search' : 'none';
+
+    selectedRecipe = recipe || null;
+    selectedUsesItem = usesItem || null;
+    elements.countInput.value = count || '1';
+    readRequestedCount(elements.countInput);
+    setResultSourceMode(
+      state.view?.sourceMode === 'favorite-materials' && favoriteList && !isRecentList(favoriteList)
+        ? 'favorite-materials'
+        : 'recipe'
+    );
+    if (resultSourceMode === 'favorite-materials') selectedRecipe = null;
+    setResultViewMode(state.view?.resultMode === 'materials' ? 'materials' : 'tree');
+    updateFavoriteButtonState();
+    renderList();
+    renderResultView();
+
+    if (selectedUsesItem) showUsesPanel(selectedUsesItem, { record: false });
+
+    if (isMobile()) {
+      const panel = state.view?.mobilePanel;
+      if (panel === 'right' && (selectedRecipe || resultSourceMode === 'favorite-materials')) showMobilePanel('right');
+      else if (panel === 'middle' && selectedUsesItem) showMobilePanel('middle');
+      else showMobilePanel('left');
+    } else {
+      clearMobilePanels();
+    }
+    if (activeInput) {
+      setTimeout(() => document.getElementById(activeInput)?.focus(), 0);
+    }
+    return true;
+  } finally {
+    suppressViewStateSave = false;
+  }
 }
 
 function formatDefaultListName() {
@@ -755,6 +854,9 @@ function createFavoriteSaveRow() {
 }
 
 function createFavoriteMaterialsRow() {
+  const list = getDisplayedFavoriteList();
+  if (isRecentList(list)) return null;
+
   const li = document.createElement('li');
   li.className = 'favorite-materials-row';
   const materialButton = document.createElement('button');
@@ -766,12 +868,6 @@ function createFavoriteMaterialsRow() {
     event.stopPropagation();
     openFavoriteMaterialsMode();
   });
-
-  const list = getDisplayedFavoriteList();
-  if (isRecentList(list)) {
-    li.appendChild(materialButton);
-    return li;
-  }
 
   const reorderButton = document.createElement('button');
   reorderButton.className = 'favorite-list-action favorite-list-action-compact';
@@ -1075,7 +1171,8 @@ function renderList() {
     frag.appendChild(createEmptyListItem('該当するレシピがありません'));
   } else {
     if (listMode === 'fav' && getDisplayedFavoriteList()) {
-      frag.appendChild(createFavoriteMaterialsRow());
+      const materialsRow = createFavoriteMaterialsRow();
+      if (materialsRow) frag.appendChild(materialsRow);
     }
     names.forEach((name, index) => {
       if (listMode === 'fav') frag.appendChild(makeFavLi(name, index));
@@ -1089,6 +1186,7 @@ function renderList() {
   }
 
   elements.recipeList.replaceChildren(frag);
+  saveViewState();
 }
 
 function makeFavLi(name, index) {
@@ -1185,11 +1283,14 @@ function createUsesListButton(name, row, rememberSearch) {
 function closeUsesPanel() {
   elements.panelMiddle.classList.remove('open');
   elements.panelMiddle.classList.remove('mobile-visible');
+  selectedUsesItem = null;
+  saveViewState();
 }
 
 // Used-in panel and mobile navigation
-function showUsesPanel(ingredientName) {
-  recordViewedItem(ingredientName);
+function showUsesPanel(ingredientName, options = {}) {
+  selectedUsesItem = ingredientName;
+  if (options.record !== false) recordViewedItem(ingredientName);
   const uses = usedIn[ingredientName] || [];
   elements.usesTitle.textContent = `${ingredientName}（${formatNumber(uses.length)}件）`;
   const frag = document.createDocumentFragment();
@@ -1217,6 +1318,7 @@ function showUsesPanel(ingredientName) {
   elements.usesList.replaceChildren(frag);
   elements.panelMiddle.classList.add('open');
   if (isMobile()) showMobilePanel('middle');
+  saveViewState();
 }
 
 function goBack() {
@@ -1231,12 +1333,14 @@ function goBack() {
 function returnToList() {
   closeUsesPanel();
   showMobilePanel('left');
+  saveViewState();
 }
 
 function selectRecipe(name, li) {
   recordViewedItem(name);
   if (selectedRecipe !== name || resultSourceMode === 'favorite-materials') resetCountInput();
   selectedRecipe = name;
+  selectedUsesItem = null;
   leaveFavoriteMaterialsMode();
   exchangeTreeState.clear();
   setResultViewMode('tree');
@@ -1253,6 +1357,7 @@ function selectRecipeByName(name) {
   recordViewedItem(name);
   if (selectedRecipe !== name || resultSourceMode === 'favorite-materials') resetCountInput();
   selectedRecipe = name;
+  selectedUsesItem = null;
   leaveFavoriteMaterialsMode();
   exchangeTreeState.clear();
   setResultViewMode('tree');
@@ -1429,8 +1534,14 @@ async function init() {
       status => `Item.json が見つかりません (${status})`
     );
     updatePatchStatus(buildApplicationData(rawList));
-    renderList();
-    if (isMobile()) showMobilePanel('left');
+    canSaveViewState = true;
+    if (!restoreViewState()) {
+      renderList();
+      renderResultView();
+      if (isMobile()) showMobilePanel('left');
+      else clearMobilePanels();
+      saveViewState();
+    }
   } catch (e) {
     showLoadError(e);
   }
@@ -1443,6 +1554,7 @@ function showMobilePanel(panelName) {
   elements.panelRight.classList.toggle('mobile-visible', panelName === 'right');
   elements.mobileBackBtn.classList.toggle('visible', panelName !== 'left');
   elements.mobileBackBtn.dataset.panel = panelName;
+  saveViewState();
 }
 
 function clearMobilePanels() {
@@ -1551,6 +1663,7 @@ function updateResultHeader() {
     elements.materialsViewBtn.disabled = true;
     elements.resultViewSwitch.classList.toggle('hidden', !listName);
     elements.resultViewSwitch.classList.add('favorite-materials-only');
+    elements.resultHeader.classList.toggle('hidden', !listName);
     return;
   }
 
@@ -1564,6 +1677,7 @@ function updateResultHeader() {
   elements.resultViewSwitch.classList.remove('favorite-materials-only');
   const showSwitch = Boolean(selectedRecipe);
   elements.resultViewSwitch.classList.toggle('hidden', !showSwitch);
+  elements.resultHeader.classList.toggle('hidden', !showSwitch);
 }
 
 function renderResultView() {
@@ -1574,23 +1688,28 @@ function renderResultView() {
     showTips();
     setResultSourceMode('recipe');
     updateResultHeader();
+    saveViewState();
     return;
   }
 
   if (!selectedRecipe && resultSourceMode !== 'favorite-materials') {
     showTips();
+    saveViewState();
     return;
   }
 
   elements.tipsMsg.classList.add('hidden');
   if (resultViewMode === 'materials') renderMaterialsList();
   else renderTree();
+  saveViewState();
 }
 
 function resetToStartupView() {
+  suppressViewStateSave = true;
   leaveFavoriteMaterialsMode();
   favoriteItemReorderEnabled = false;
   selectedRecipe = null;
+  selectedUsesItem = null;
   prevPanel = 'left';
   listMode = 'none';
   setResultViewMode('tree');
@@ -1619,6 +1738,8 @@ function resetToStartupView() {
   else {
     clearMobilePanels();
   }
+  suppressViewStateSave = false;
+  clearViewState();
 }
 
 function handleResize() {
@@ -1778,7 +1899,8 @@ function mergeSupplementEntries(targetEntries = [], incomingEntries = []) {
 function createExchangeSupplementEntries(recipe, craftTimes) {
   return recipe.ingredients.map(ingredient => ({
     name: ingredient.name,
-    qty: ingredient.qty * craftTimes
+    qty: ingredient.qty * craftTimes,
+    refinable: recipe.craftType === '9'
   }));
 }
 
@@ -1803,7 +1925,7 @@ function createCraftSupplementEntries(name, neededQty) {
 
 function supplementGroupKey(entries = []) {
   return sortSupplementEntries(entries)
-    .map(entry => `${entry.name}:${entry.qty}`)
+    .map(entry => `${entry.name}:${entry.qty}:${entry.refinable ? 1 : 0}`)
     .join('|');
 }
 
@@ -1819,7 +1941,14 @@ function accumulateSupplementSummary(summary, entries = []) {
 
   if (entries.length === 1) {
     const entry = entries[0];
-    summary.fixed.set(entry.name, (summary.fixed.get(entry.name) || 0) + entry.qty);
+    const key = `${entry.name}:${entry.refinable ? 1 : 0}`;
+    const current = summary.fixed.get(key) || {
+      name: entry.name,
+      qty: 0,
+      refinable: Boolean(entry.refinable)
+    };
+    current.qty += entry.qty;
+    summary.fixed.set(key, current);
     return;
   }
 
@@ -1877,6 +2006,15 @@ function createMaterialChoiceContent(row) {
   });
 
   return wrapper;
+}
+
+function createRefinableSupplementLabel() {
+  return createTextElement('span', 'supplement-refine-label badge-exchange', '精選、または');
+}
+
+function appendSupplementName(target, entry, className) {
+  if (entry.refinable) target.appendChild(createRefinableSupplementLabel());
+  target.appendChild(createTextElement('span', className, entry.name));
 }
 
 function mergeMaterialRows(targetRows, incomingRows) {
@@ -2087,14 +2225,12 @@ function renderMaterialsList() {
           const entryRow = document.createElement('div');
           entryRow.className = 'material-supplement-row';
           if (entry.isTextOnly) {
-            entryRow.appendChild(createTextElement('span', 'material-supplement-name', entry.name));
+            appendSupplementName(entryRow, entry, 'material-supplement-name');
           } else {
             const supplementIcon = createItemIcon(itemMaster[entry.name]?.icon, 'material-supplement-icon');
             if (supplementIcon) entryRow.appendChild(supplementIcon);
-            entryRow.append(
-              createTextElement('span', 'material-supplement-name', entry.name),
-              createTextElement('span', 'material-supplement-qty', `× ${formatNumber(entry.qty)}`)
-            );
+            appendSupplementName(entryRow, entry, 'material-supplement-name');
+            entryRow.appendChild(createTextElement('span', 'material-supplement-qty', `× ${formatNumber(entry.qty)}`));
           }
           supplement.appendChild(entryRow);
         });
@@ -2123,6 +2259,11 @@ function renderMaterialsList() {
       toggle.textContent = expanded ? '▼' : '▶';
       toggle.setAttribute('aria-label', `${row.name}を展開・折り畳み`);
       rowElement.appendChild(toggle);
+    } else {
+      const spacer = document.createElement('span');
+      spacer.className = 'intermediate-tree-toggle intermediate-tree-toggle-spacer';
+      spacer.setAttribute('aria-hidden', 'true');
+      rowElement.appendChild(spacer);
     }
     const icon = createItemIcon(itemMaster[row.name]?.icon);
     if (icon) rowElement.appendChild(icon);
@@ -2201,6 +2342,9 @@ function renderMaterialsList() {
     .map((row, index) => createIntermediateRow(row, `${contextKey}:intermediate:${index}:${row.name}`));
   const materialSectionRows = [...categorizedRows.normal, ...categorizedRows.exchange].map(createMaterialRow);
   const crystalSectionRows = categorizedRows.crystals.map(createMaterialRow);
+  const exchangeSourceRows = rows.filter(row => row.type === 'item' && row.supplements?.length);
+  const shouldCollapseExchangeSummary = exchangeSourceRows.length > 0
+    && exchangeSourceRows.every(row => itemMaster[row.name]?.craftType === '9');
 
   appendSectionHeader('製作する中間素材', false, intermediateSectionRows);
   appendSectionHeader('必要素材', false, materialSectionRows);
@@ -2208,23 +2352,32 @@ function renderMaterialsList() {
 
   if (exchangeSummary.fixed.size > 0 || exchangeSummary.choices.size > 0) {
     appendListSeparator();
+    const summaryRows = [];
 
-    [...exchangeSummary.fixed.entries()].sort(([a], [b]) => compareItemNames(a, b)).forEach(([name, qty]) => {
+    [...exchangeSummary.fixed.values()].sort((a, b) =>
+      compareItemNames(a.name, b.name) || Number(a.refinable) - Number(b.refinable)
+    ).forEach(entry => {
       const li = document.createElement('li');
       li.className = 'materials-summary-row';
-      const icon = createItemIcon(itemMaster[name]?.icon);
+      const icon = createItemIcon(itemMaster[entry.name]?.icon);
       if (icon) li.appendChild(icon);
       const content = document.createElement('div');
       content.className = 'material-content';
+      if (entry.refinable) {
+        const labelRow = document.createElement('div');
+        labelRow.className = 'material-refine-row';
+        labelRow.appendChild(createRefinableSupplementLabel());
+        content.appendChild(labelRow);
+      }
       const primary = document.createElement('div');
       primary.className = 'material-primary';
       primary.append(
-        createTextElement('span', 'material-name', name),
-        createTextElement('span', 'material-qty', `× ${formatNumber(qty)}`)
+        createTextElement('span', 'material-name', entry.name),
+        createTextElement('span', 'material-qty', `× ${formatNumber(entry.qty)}`)
       );
       content.appendChild(primary);
       li.appendChild(content);
-      list.appendChild(li);
+      summaryRows.push(li);
     });
 
     [...exchangeSummary.choices.values()].map(sortSupplementEntries).sort((a, b) =>
@@ -2246,17 +2399,35 @@ function renderMaterialsList() {
         entryRow.className = 'material-supplement-row materials-summary-choice-row';
         const icon = createItemIcon(itemMaster[entry.name]?.icon);
         if (icon) entryRow.appendChild(icon);
-        entryRow.append(
-          createTextElement('span', 'material-name', entry.name),
-          createTextElement('span', 'material-qty', `× ${formatNumber(entry.qty)}`)
-        );
+        if (entry.refinable) {
+          const entryContent = document.createElement('div');
+          entryContent.className = 'material-summary-entry-content';
+          const labelRow = document.createElement('div');
+          labelRow.className = 'material-refine-row';
+          labelRow.appendChild(createRefinableSupplementLabel());
+          const infoRow = document.createElement('div');
+          infoRow.className = 'material-primary';
+          infoRow.append(
+            createTextElement('span', 'material-name', entry.name),
+            createTextElement('span', 'material-qty', `× ${formatNumber(entry.qty)}`)
+          );
+          entryContent.append(labelRow, infoRow);
+          entryRow.appendChild(entryContent);
+        } else {
+          entryRow.append(
+            createTextElement('span', 'material-name', entry.name),
+            createTextElement('span', 'material-qty', `× ${formatNumber(entry.qty)}`)
+          );
+        }
         supplement.appendChild(entryRow);
       });
 
       content.appendChild(supplement);
       li.appendChild(content);
-      list.appendChild(li);
+      summaryRows.push(li);
     });
+
+    appendSectionHeader('必要な交換貨幣', shouldCollapseExchangeSummary, summaryRows);
   }
 
   elements.treeContainer.appendChild(list);
