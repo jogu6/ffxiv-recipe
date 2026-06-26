@@ -89,6 +89,30 @@ test('number inputs hide native spin buttons', async ({ page }) => {
 
   await page.setViewportSize({ width: 600, height: 700 });
   await expect(page.locator('#countInput')).toHaveCSS('appearance', 'textfield');
+  await expect(page.locator('#countInput')).toHaveCSS('font-size', '22px');
+  await expect(page.locator('#countInput')).toHaveCSS('height', '32px');
+  await expect(page.locator('#materialTreeCountInput')).toHaveCSS('font-size', '18px');
+  await expect(page.locator('#materialTreeCountInput')).toHaveCSS('height', '26px');
+  await expect(page.locator('#materialTreeDecreaseBtn')).toHaveCSS('height', '26px');
+  await expect(page.locator('#materialTreeIncreaseBtn')).toHaveCSS('height', '26px');
+
+  await searchFor(page, 'ブラスバスタードソード');
+  await page.getByText('ブラスバスタードソード', { exact: true }).first().click();
+  await expect(page.locator('#treeContainer .tree-node .node-row').first()).toHaveCSS('white-space', 'normal');
+  await page.locator('#materialsViewBtn').click();
+  await page.locator('.intermediate-material-tree-btn').first().click();
+  await expect(page.locator('#materialTreeContent .tree-node .node-row').first()).toHaveCSS('white-space', 'nowrap');
+
+  await page.evaluate(() => openMaterialTree('ローズガーネット', 6));
+  const materialTreeRightGap = await page.evaluate(() => {
+    const content = document.querySelector('#materialTreeContent');
+    content.scrollLeft = content.scrollWidth;
+    const row = [...content.querySelectorAll('.node-row')].find(node => node.textContent.includes('数理'));
+    const contentBox = content.getBoundingClientRect();
+    const qtyBox = row.querySelector('.node-qty').getBoundingClientRect();
+    return contentBox.right - qtyBox.right;
+  });
+  expect(materialTreeRightGap).toBeGreaterThanOrEqual(8);
 });
 
 test('intermediate materials form a collapsible tree and open an independent material tree', async ({ page }) => {

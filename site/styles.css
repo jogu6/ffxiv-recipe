@@ -1357,7 +1357,7 @@
   }
   .material-tree-dialog-header {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     flex-direction: column;
     gap: 8px;
     margin-bottom: 10px;
@@ -1366,7 +1366,17 @@
     display: flex;
     align-items: center;
     flex-wrap: wrap;
+    justify-content: center;
     gap: 8px;
+  }
+  .material-tree-count-row .count-btn {
+    width: 26px;
+    height: 26px;
+    font-size: 16px;
+  }
+  .material-tree-count-row .count-step-wide {
+    width: 34px;
+    font-size: 12px;
   }
   .material-tree-dialog-header label { color: var(--muted); font-size: 12px; }
   #materialTreeCountInput {
@@ -1376,6 +1386,7 @@
     border-radius: 3px;
     background: var(--bg);
     color: var(--accent);
+    padding: 0 7px;
     font-size: 18px;
     font-weight: bold;
     line-height: 1;
@@ -1385,6 +1396,7 @@
     color: var(--accent);
     font-size: 13px;
     overflow-wrap: anywhere;
+    text-align: center;
   }
   #materialTreeContent {
     width: 100%;
@@ -1543,10 +1555,42 @@
     .tree-node { line-height: 2; }
     .count-btn { width: 32px; height: 32px; font-size: 18px; }
     .count-step-wide { width: 40px; font-size: 13px; }
-    #countInput,
-    #materialTreeCountInput {
+    #countInput {
       height: 32px;
       font-size: 22px;
+    }
+    .tree-node .node-row {
+      align-items: flex-start;
+      white-space: normal;
+    }
+    .node-main {
+      flex: 1 1 auto;
+    }
+    .node-title,
+    .node-sub-info,
+    .node-sub-row {
+      flex-wrap: wrap;
+    }
+    .node-name {
+      overflow-wrap: anywhere;
+    }
+    #materialTreeContent .tree-node .node-row {
+      align-items: center;
+      white-space: nowrap;
+    }
+    #materialTreeContent .tree-node {
+      width: max-content;
+    }
+    #materialTreeContent .node-main {
+      flex: 0 1 auto;
+    }
+    #materialTreeContent .node-title,
+    #materialTreeContent .node-sub-info,
+    #materialTreeContent .node-sub-row {
+      flex-wrap: nowrap;
+    }
+    #materialTreeContent .node-name {
+      overflow-wrap: normal;
     }
     .panel-right.mobile-visible .result-header,
     .panel-right.mobile-visible #treeContainer {
