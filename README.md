@@ -24,7 +24,7 @@ FF14のレシピ、必要素材、制作する中間素材、交換/精選素材
 
 ```text
 site/       GitHub Pagesへ公開するWebアプリ
-pipeline/   CSV入力、生成途中のJSON、生成スクリプト、ログ
+pipeline/   CSV入力、生成途中のJSON、生成ツール、GUI、ログ
 design/     アプリアイコンの原本と旧デザイン素材
 docs/       開発・運用ドキュメント
 tools/      環境構築、検証、リポジトリ操作用ツール
@@ -45,10 +45,11 @@ npm run dev
 
 ## Data pipeline
 
-データ生成スクリプトはWindows 11向けです。PowerShellスクリプトはすべてUTF-8 BOM付きで保存します。
+データ生成はこのWebアプリ専用の Node.js/Tauri ツールで実行します。Tauri exe はリポジトリ全体のバージョンとは別に、アイテム情報作成ツール単体として `v1.0` を扱います。
 
 ```powershell
-pwsh -File .\pipeline\scripts\08-build-all.ps1
+npm run pipeline:gui
+npm run pipeline:gui:build
 ```
 
 詳細は [docs/data-pipeline.md](docs/data-pipeline.md) を参照してください。

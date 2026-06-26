@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FF14レシピ素材ツリー アイテム情報作成</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header>
+    <div class="app-title">
+      <img class="app-title-icon" src="./assets/favicon.png" alt="">
+      <h1>FF14レシピ素材ツリー アイテム情報作成</h1>
+    </div>
+    <span id="statusText">待機中</span>
+  </header>
+
+  <main>
+    <aside class="side-panel">
+      <section class="panel-section collapsible-section">
+        <button id="csvToggle" class="section-toggle" type="button" aria-expanded="true">
+          <span class="section-toggle-mark" aria-hidden="true">▼</span>
+          <span>CSV</span>
+        </button>
+        <div id="csvBody" class="collapsible-body">
+        <div class="action-item" data-step="check-updates">
+          <span class="order-label">任意</span>
+          <button id="checkUpdatesBtn" type="button">更新チェック</button>
+          <p>公式 CSV の更新有無を確認し、前回チェック日時を保存します。</p>
+          <span class="action-status">○ 未実行</span>
+        </div>
+        <div class="action-item" data-step="download-csv">
+          <span class="order-label">任意</span>
+          <button id="downloadCsvBtn" type="button">CSV取得</button>
+          <p>更新または不足している公式 CSV を取得します。</p>
+          <span class="action-status">○ 未実行</span>
+        </div>
+        <div class="action-item" data-step="validate-csv">
+          <span class="order-label">2</span>
+          <button id="validateCsvBtn" type="button">CSV検証</button>
+          <p>必須ヘッダーと token-items.csv の形式を確認します。</p>
+          <span class="action-status">○ 未実行</span>
+        </div>
+        <dl class="meta-list">
+          <div><dt>前回チェック</dt><dd id="lastChecked">-</dd></div>
+        </dl>
+        </div>
+      </section>
+
+      <section class="panel-section collapsible-section">
+        <button id="buildToggle" class="section-toggle" type="button" aria-expanded="false">
+          <span class="section-toggle-mark" aria-hidden="true">▶</span>
+          <span>Build</span>
+        </button>
+        <div id="buildBody" class="collapsible-body" hidden>
+        <div class="action-item" data-step="protect-item-json">
+          <span class="order-label">1</span>
+          <button id="protectItemBtn" type="button">Item.json保護</button>
+          <p>現在の Item.json を比較元として保存します。</p>
+          <span class="action-status">○ 未実行</span>
+        </div>
+        <div class="action-item" data-step="build">
+          <span class="order-label">3</span>
+          <button id="buildBtn" type="button">データ生成</button>
+          <p>CSV から公開候補 JSON を作ります。まだ公開データは置き換えません。</p>
+          <span class="action-status">○ 未実行</span>
+        </div>
+        <div class="action-item" data-step="publish">
+          <span class="order-label">4</span>
+          <button id="publishBtn" type="button">公開反映</button>
+          <p>4 公開反映。比較に通った候補で site/data/Item.json を置き換えます。</p>
+          <span class="action-status">○ 未実行</span>
+        </div>
+        <div class="action-item" data-step="icons">
+          <span class="order-label">5</span>
+          <button id="iconsBtn" type="button">アイコン生成</button>
+          <label class="field quality-field">
+            <span>WebP Quality</span>
+            <input id="qualityInput" type="number" min="1" max="100" step="1" value="60">
+          </label>
+          <p>WebP アイコンを生成します。不足 PNG は取得してキャッシュします。</p>
+          <span class="action-status">○ 未実行</span>
+        </div>
+        <div class="action-item" data-step="verify">
+          <span class="order-label">確認</span>
+          <button id="verifyBtn" type="button">Item.json比較</button>
+          <p>確認のみ。比較して結果を出しますが、Item.json は変更しません。</p>
+          <span class="action-status">○ 未実行</span>
+        </div>
+        <div class="action-item">
+          <span class="order-label">一括</span>
+          <button id="runBtn" type="button">全実行</button>
+          <p>CSV検証、候補生成、公開反映、アイコン生成を順番に実行します。</p>
+        </div>
+        </div>
+      </section>
+
+      <section class="panel-section collapsible-section">
+        <button id="iconQualityToggle" class="section-toggle" type="button" aria-expanded="false">
+          <span class="section-toggle-mark" aria-hidden="true">▶</span>
+          <span>Icon Quality</span>
+        </button>
+        <div id="iconQualityBody" class="collapsible-body" hidden>
+        <div class="action-item" data-step="tmp-quality-preview">
+          <span class="order-label">任意</span>
+          <button id="previewBtn" type="button">比較ページ生成</button>
+          <p>PNG と q50/q60/q70/q80 を並べた一時確認ページを作ります。</p>
+          <span class="action-status">○ 未実行</span>
+        </div>
+        </div>
+      </section>
+    </aside>
+
+    <section class="work-panel">
+      <div class="progress-area">
+        <div class="progress-header">
+          <strong id="progressTitle">進捗</strong>
+          <span id="progressPercent">0%</span>
+        </div>
+        <div class="progress-track" aria-hidden="true"><div id="progressBar"></div></div>
+        <div class="progress-details">
+          <span id="progressDetail">未実行</span>
+          <span id="etaText">ETA -</span>
+        </div>
+        <div id="progressActions" class="progress-actions" hidden>
+          <button id="cancelBtn" type="button">中断</button>
+          <button id="resumeBtn" type="button">再開</button>
+        </div>
+      </div>
+
+      <section class="log-panel">
+        <div class="log-header">
+          <h2>Log</h2>
+          <button id="clearLogBtn" type="button">クリア</button>
+        </div>
+        <pre id="log"></pre>
+      </section>
+    </section>
+  </main>
+
+  <div id="previewOverlay" class="preview-overlay" aria-hidden="true">
+    <section class="preview-modal" role="dialog" aria-modal="true" aria-labelledby="previewTitle">
+      <header class="preview-header">
+        <h2 id="previewTitle">アイコン画質比較</h2>
+        <div class="preview-tools">
+          <button id="previewScale1" class="active" type="button">40</button>
+          <button id="previewScale2" type="button">2x</button>
+          <button id="previewScale3" type="button">3x</button>
+          <button id="previewThemeBtn" type="button">light</button>
+          <button id="previewCloseBtn" type="button">閉じる</button>
+        </div>
+      </header>
+      <main id="previewContent" class="preview-content"></main>
+    </section>
+  </div>
+
+  <div id="confirmOverlay" class="modal-overlay" aria-hidden="true">
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+      <h2 id="confirmTitle">確認</h2>
+      <p id="confirmMessage"></p>
+      <div class="modal-actions">
+        <button id="confirmCancelBtn" type="button">キャンセル</button>
+        <button id="confirmOkBtn" class="primary" type="button">実行</button>
+      </div>
+    </section>
+  </div>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

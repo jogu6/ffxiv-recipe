@@ -47,6 +47,7 @@ if (missingIcons.length > 0) {
 const powershellFiles = [];
 for (const directory of ['pipeline/scripts', 'tools/repository', 'tools/setup']) {
   const absoluteDirectory = path.join(repositoryRoot, directory);
+  if (!fs.existsSync(absoluteDirectory)) continue;
   for (const name of fs.readdirSync(absoluteDirectory)) {
     if (name.endsWith('.ps1')) powershellFiles.push(path.join(absoluteDirectory, name));
   }

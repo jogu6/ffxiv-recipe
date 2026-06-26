@@ -1,0 +1,13 @@
+{
+  "remoteCsv": {
+    "Item.csv": "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/master/csv/ja/Item.csv",
+    "Recipe.csv": "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/master/csv/ja/Recipe.csv",
+    "ItemUICategory.csv": "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/master/csv/ja/ItemUICategory.csv",
+    "ItemSearchCategory.csv": "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/master/csv/ja/ItemSearchCategory.csv"
+  },
+  "localCsv": {
+    "token-items.csv": {
+      "description": "Manually maintained token exchange data. This file is never downloaded or overwritten."
+    }
+  }
+}

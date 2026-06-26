@@ -30,4 +30,10 @@ pipeline/logs/*.tmp
 pipeline/input/*.csv
 pipeline/intermediate/*.json
 pipeline/reference/csv-headers/*.txt
+pipeline/reference/expected/*.json
+pipeline/cache/
 pipeline/logs/*.txt
+pipeline/state/*.json
+pipeline/reports/
+pipeline/legacy-powershell/
+site/__tmp_icon_quality/
