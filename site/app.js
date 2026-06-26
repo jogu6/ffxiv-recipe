@@ -1,4 +1,5 @@
-const DATA_FILE = './data/Item.json';
+const DATA_CACHE_VERSION = 'ff14recipe-data-7.50-2dbf6112';
+const DATA_FILE = `./data/Item.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 const TIPS_FILE = './data/tips.md';
 const ABOUT_URL = 'https://jogu6.github.io/ffxiv-recipe-about/';
 const LS_FAV = 'ff14_favorites';
@@ -226,6 +227,9 @@ function saveViewState() {
       sourceMode: resultSourceMode,
       resultMode: resultViewMode,
       mobilePanel: currentMobilePanel()
+    },
+    favoriteMaterials: {
+      ringCounts: favoriteMaterialsRingCounts
     }
   });
 }
@@ -265,6 +269,7 @@ function restoreViewState() {
         ? 'favorite-materials'
         : 'recipe'
     );
+    favoriteMaterialsRingCounts = normalizeFavoriteMaterialsRingCounts(state.favoriteMaterials?.ringCounts);
     if (resultSourceMode === 'favorite-materials') selectedRecipe = null;
     setResultViewMode(state.view?.resultMode === 'materials' ? 'materials' : 'tree');
     updateFavoriteButtonState();
@@ -288,6 +293,15 @@ function restoreViewState() {
   } finally {
     suppressViewStateSave = false;
   }
+}
+
+function normalizeFavoriteMaterialsRingCounts(value) {
+  if (!value || typeof value !== 'object') return {};
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, count]) => count === 2)
+      .map(([name]) => [name, 2])
+  );
 }
 
 function formatDefaultListName() {
@@ -1376,7 +1390,7 @@ async function loadAppVersion() {
       if (!response.ok) throw new Error(`sw.js (${response.status})`);
       return response.text();
     });
-    const match = source.match(/const\s+CACHE_VERSION\s*=\s*['"][^'"]*?(v\d+(?:\.\d+)*)['"]/i);
+    const match = source.match(/const\s+APP_CACHE_VERSION\s*=\s*['"][^'"]*?(v\d+(?:\.\d+)*)['"]/i);
     elements.appVersion.textContent = match ? match[1] : '';
   } catch {
     elements.appVersion.textContent = '';
@@ -1405,7 +1419,7 @@ async function loadTips() {
 function iconPath(item) {
   if (!item?.IconFile) return '';
   const folder = item.IconFile.slice(0, 3);
-  return `./assets/item-icons/${folder}/${item.IconFile}`;
+  return `./assets/item-icons/${folder}/${item.IconFile}?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 }
 
 function buildItemAndRecipeMasters(rawList, idToItem) {
@@ -2093,6 +2107,7 @@ function renderFavoriteRingControls(container) {
       button.classList.toggle('active', favoriteMaterialsRingCounts[name] === value);
       button.addEventListener('click', () => {
         favoriteMaterialsRingCounts[name] = value;
+        saveViewState();
         renderResultView();
       });
       toggle.appendChild(button);
@@ -2166,13 +2181,6 @@ function renderMaterialsList() {
     renderFavoriteRingControls(elements.treeContainer);
   }
 
-  const appendListSeparator = () => {
-    if (list.children.length === 0) return;
-    const separator = document.createElement('li');
-    separator.className = 'materials-summary-separator';
-    list.appendChild(separator);
-  };
-
   const contextKey = resultSourceMode === 'favorite-materials'
     ? `favorite:${getDisplayedFavoriteList()?.id || ''}`
     : `recipe:${selectedRecipe || ''}`;
@@ -2244,7 +2252,7 @@ function renderMaterialsList() {
     return li;
   };
 
-  const createIntermediateRow = (row, pathKey) => {
+  const createIntermediateRow = (row, pathKey, alignToggleSpace) => {
     const li = document.createElement('li');
     li.className = 'intermediate-tree-node';
     const rowElement = document.createElement('div');
@@ -2259,7 +2267,7 @@ function renderMaterialsList() {
       toggle.textContent = expanded ? '▼' : '▶';
       toggle.setAttribute('aria-label', `${row.name}を展開・折り畳み`);
       rowElement.appendChild(toggle);
-    } else {
+    } else if (alignToggleSpace) {
       const spacer = document.createElement('span');
       spacer.className = 'intermediate-tree-toggle intermediate-tree-toggle-spacer';
       spacer.setAttribute('aria-hidden', 'true');
@@ -2320,7 +2328,7 @@ function renderMaterialsList() {
       children.className = 'intermediate-tree-children';
       children.classList.toggle('collapsed', !expanded);
       [...row.children].sort(compareIntermediateRows).forEach((child, index) => {
-        children.appendChild(createIntermediateRow(child, childTreePath(pathKey, child.name, index)));
+        children.appendChild(createIntermediateRow(child, childTreePath(pathKey, child.name, index), alignToggleSpace));
       });
       const toggleChildren = () => {
         const collapsed = children.classList.toggle('collapsed');
@@ -2337,9 +2345,10 @@ function renderMaterialsList() {
     return li;
   };
 
+  const alignIntermediateToggleSpace = intermediateTree.some(row => row.children.length > 0);
   const intermediateSectionRows = intermediateTree
     .sort(compareIntermediateRows)
-    .map((row, index) => createIntermediateRow(row, `${contextKey}:intermediate:${index}:${row.name}`));
+    .map((row, index) => createIntermediateRow(row, `${contextKey}:intermediate:${index}:${row.name}`, alignIntermediateToggleSpace));
   const materialSectionRows = [...categorizedRows.normal, ...categorizedRows.exchange].map(createMaterialRow);
   const crystalSectionRows = categorizedRows.crystals.map(createMaterialRow);
   const exchangeSourceRows = rows.filter(row => row.type === 'item' && row.supplements?.length);
@@ -2351,7 +2360,6 @@ function renderMaterialsList() {
   appendSectionHeader('必要なシャード/クリスタル/クラスター', true, crystalSectionRows);
 
   if (exchangeSummary.fixed.size > 0 || exchangeSummary.choices.size > 0) {
-    appendListSeparator();
     const summaryRows = [];
 
     [...exchangeSummary.fixed.values()].sort((a, b) =>
@@ -2539,9 +2547,10 @@ function createTreePin(name) {
   return pin;
 }
 
-function createTreeMain(name, producedQty, subInfo) {
+function createTreeMain(name, producedQty, subInfo, badge) {
   const title = document.createElement('span');
   title.className = 'node-title';
+  if (badge) title.appendChild(badge);
   title.append(
     createTextElement('span', 'node-name', name),
     createTextElement('span', 'node-qty', `× ${formatNumber(producedQty)}`)
@@ -2637,7 +2646,7 @@ function buildNode(
   const toggle = createTextElement('span', 'toggle', hasChildren ? '▼' : ' ');
   const hideCraftBadge = showCraftBadgeOnlyAtRoot && depth > 0 && CRAFT_JOBS_SET.has(master.method);
 
-  row.append(toggle, createTreeBadge(master.method, hideCraftBadge));
+  row.appendChild(toggle);
   const icon = createItemIcon(master.icon, 'node-icon');
   if (icon) row.appendChild(icon);
   if (showPins) row.appendChild(createTreePin(name));
@@ -2645,7 +2654,8 @@ function buildNode(
     createTreeMain(
       name,
       neededQty,
-      createTreeSubInfo(recipe, neededQty, producedQty, unitCost, unitTimes)
+      createTreeSubInfo(recipe, neededQty, producedQty, unitCost, unitTimes),
+      createTreeBadge(master.method, hideCraftBadge)
     )
   );
   node.appendChild(row);

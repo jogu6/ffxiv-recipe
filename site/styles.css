@@ -756,13 +756,6 @@
     line-height: 1.35;
     gap: 4px;
   }
-  .materials-summary-separator {
-    min-height: 0;
-    padding: 0;
-    margin-top: 4px;
-    border-top: 1px solid rgba(200, 168, 75, 0.5);
-    border-bottom: none;
-  }
   .materials-summary-row {
     border-top: none;
   }

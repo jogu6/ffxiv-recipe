@@ -209,7 +209,7 @@ test('materials list shows exchange supplements and summary totals', async ({ pa
   await expect(spiritSandRow.locator('.supplement-refine-label')).toHaveCSS('color', 'rgb(91, 213, 200)');
   await expect(spiritSandRow).toContainText('ギャザラースクリップ:橙貨');
   await expect(spiritSandRow).toContainText('× 300');
-  await expect(page.locator('.materials-summary-separator').first()).toBeVisible();
+  await expect(page.locator('.materials-summary-separator')).toHaveCount(0);
   const summaryHeader = page.locator('.materials-section-header').filter({ hasText: '必要な交換貨幣' });
   await expect(summaryHeader).toContainText('▶');
   await summaryHeader.click();
@@ -241,7 +241,7 @@ test('materials list sorts normal items before crystals and shows supplement ico
   const expandedText = await page.locator('.materials-list').innerText();
   expect(expandedText.indexOf('ファイアクラスター')).toBeGreaterThan(expandedText.indexOf('紫電の霊砂'));
   expect(summaryText).toContain('ギャザラースクリップ:橙貨');
-  await expect(page.locator('.materials-summary-separator')).toHaveCount(1);
+  await expect(page.locator('.materials-summary-separator')).toHaveCount(0);
   await expect(page.locator('.material-supplement-icon').first()).toBeVisible();
   await expect(page.locator('.material-sub-surplus').first()).toHaveCSS('color', 'rgb(106, 191, 105)');
   await expect(page.locator('.material-sub-num:not(.material-sub-surplus)').first()).toHaveCSS('color', 'rgb(106, 191, 105)');
@@ -612,6 +612,8 @@ test('shows favorite list materials mode with set count and ring toggles', async
   await page.locator('.favorite-ring-toggle button').filter({ hasText: '2つ' }).click();
   const rerenderedHeader = page.locator('.materials-section-header').filter({ hasText: '必要素材' });
   await expect(rerenderedHeader.locator('xpath=following-sibling::*[1]')).toHaveClass(/collapsed/);
+  await page.reload();
+  await expect(page.locator('.favorite-ring-toggle button').filter({ hasText: '2つ' })).toHaveClass(/active/);
 
   await page.getByText('アリペブレ', { exact: true }).first().click();
   await expect(page.locator('#countLabel')).toHaveText('個数:');

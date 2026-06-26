@@ -46,6 +46,8 @@ const buildOutputs = {
   publicItems: path.join(intermediateRoot, '06-public-items.json')
 };
 const publicCandidatePath = buildOutputs.publicItems;
+const serviceWorkerPath = path.join(siteRoot, 'sw.js');
+const appScriptPath = path.join(siteRoot, 'app.js');
 
 const csvSchemas = {
   'Item.csv': { required: ['#', 'Description', 'Name', 'LevelEquip', 'Icon', 'ItemUICategory', 'ItemSearchCategory'] },
@@ -87,6 +89,40 @@ function writeBytesAtomic(file, bytes) {
 
 function sha256File(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+}
+
+function formatPatchForCache(value) {
+  const raw = String(Number(value) || 0).padStart(3, '0');
+  return `${Number(raw.slice(0, -2))}.${raw.slice(-2)}`;
+}
+
+function makeDataCacheVersion(itemJsonPath = publicItemJsonPath) {
+  const items = readJson(itemJsonPath, []);
+  const maxPatch = items.reduce((max, item) => Math.max(max, Number(item?.Recipe?.PatchNumber) || 0), 0);
+  return `ff14recipe-data-${formatPatchForCache(maxPatch)}-${sha256File(itemJsonPath).slice(0, 8)}`;
+}
+
+function updateServiceWorkerDataCacheVersion(itemJsonPath = publicItemJsonPath) {
+  const version = makeDataCacheVersion(itemJsonPath);
+  const source = fs.readFileSync(serviceWorkerPath, 'utf8');
+  const next = source.replace(
+    /const\s+DATA_CACHE_VERSION\s*=\s*['"][^'"]+['"];/,
+    `const DATA_CACHE_VERSION = '${version}';`
+  );
+  if (next === source) throw new Error('DATA_CACHE_VERSION was not found in sw.js');
+  writeTextAtomic(serviceWorkerPath, next);
+  log(`データキャッシュ版を更新しました ${version}`);
+}
+
+function updateAppDataCacheVersion(itemJsonPath = publicItemJsonPath) {
+  const version = makeDataCacheVersion(itemJsonPath);
+  const source = fs.readFileSync(appScriptPath, 'utf8');
+  const next = source.replace(
+    /const\s+DATA_CACHE_VERSION\s*=\s*['"][^'"]+['"];/,
+    `const DATA_CACHE_VERSION = '${version}';`
+  );
+  if (next === source) throw new Error('DATA_CACHE_VERSION was not found in app.js');
+  writeTextAtomic(appScriptPath, next);
 }
 
 function nowIso() {
@@ -745,6 +781,8 @@ export function publishItemJson({
   if (!Array.isArray(candidateItems)) throw new Error(`Candidate is not an item array: ${candidate}`);
   verifyOutput({ expected, actual: candidate });
   writeTextAtomic(target, fs.readFileSync(candidate, 'utf8'));
+  updateServiceWorkerDataCacheVersion(target);
+  updateAppDataCacheVersion(target);
   updateRunState({ command: 'publish', status: 'completed', finalOutput: path.relative(repositoryRoot, target) });
   log(`公開反映しました ${path.relative(repositoryRoot, candidate)} -> ${path.relative(repositoryRoot, target)}`);
 }

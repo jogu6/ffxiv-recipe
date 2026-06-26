@@ -1,5 +1,5 @@
-// データを更新したときは、このバージョンを手動で上げる
-const CACHE_VERSION = 'ff14recipe-v2.32';
+const APP_CACHE_VERSION = 'ff14recipe-app-v2.33';
+const DATA_CACHE_VERSION = 'ff14recipe-data-7.50-2dbf6112';
 const CACHE_PREFIX = 'ff14recipe-';
 
 const PRECACHE_FILES = [
@@ -22,7 +22,7 @@ const CACHE_FIRST_PATTERNS = [
 
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_VERSION).then(cache => cache.addAll(PRECACHE_FILES))
+    caches.open(APP_CACHE_VERSION).then(cache => cache.addAll(PRECACHE_FILES))
   );
   self.skipWaiting();
 });
@@ -32,7 +32,7 @@ self.addEventListener('activate', event => {
     caches.keys().then(keys =>
       Promise.all(
         keys
-          .filter(key => key.startsWith(CACHE_PREFIX) && key !== CACHE_VERSION)
+          .filter(key => key.startsWith(CACHE_PREFIX) && ![APP_CACHE_VERSION, DATA_CACHE_VERSION].includes(key))
           .map(key => caches.delete(key))
       )
     ).then(() => self.clients.claim())
@@ -57,21 +57,21 @@ self.addEventListener('fetch', event => {
   }
 
   if (CACHE_FIRST_PATTERNS.some(pattern => pattern.test(url.pathname))) {
-    event.respondWith(cacheFirst(request));
+    event.respondWith(cacheFirst(request, DATA_CACHE_VERSION));
     return;
   }
 
-  event.respondWith(networkFirst(request));
+  event.respondWith(networkFirst(request, APP_CACHE_VERSION));
 });
 
-async function cacheFirst(request) {
-  const cached = await caches.match(request);
+async function cacheFirst(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(request);
   if (cached) return cached;
 
   try {
     const response = await fetch(request);
     if (response.ok) {
-      const cache = await caches.open(CACHE_VERSION);
       await cache.put(request, response.clone());
     }
     return response;
@@ -80,16 +80,16 @@ async function cacheFirst(request) {
   }
 }
 
-async function networkFirst(request) {
+async function networkFirst(request, cacheName) {
+  const cache = await caches.open(cacheName);
   try {
     const response = await fetch(request);
     if (response.ok) {
-      const cache = await caches.open(CACHE_VERSION);
       await cache.put(request, response.clone());
     }
     return response;
   } catch {
-    const cached = await caches.match(request);
+    const cached = await cache.match(request);
     return cached || new Response('Offline', { status: 503 });
   }
 }
@@ -98,7 +98,7 @@ async function networkFirstNavigation(request) {
   try {
     const response = await fetch(request);
     if (response.ok) {
-      const cache = await caches.open(CACHE_VERSION);
+      const cache = await caches.open(APP_CACHE_VERSION);
       await cache.put('./index.html', response.clone());
     }
     return response;
