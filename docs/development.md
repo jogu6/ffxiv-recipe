@@ -14,7 +14,7 @@ npm install
 
 ## Checks
 
-Run the standard JavaScript and site validation checks:
+Run the standard checks:
 
 ```powershell
 npm run check
@@ -22,8 +22,19 @@ npm run check
 
 This runs:
 
-- JavaScript syntax checks for `site/app.js`, `site/sw.js`, and `tools/validate-site.mjs`
-- Site asset and PowerShell encoding validation through `tools/validate-site.mjs`
+- JavaScript syntax checks through `npm run check:js`
+- Site asset and data validation through `npm run check:site`
+- Calculation unit tests through `npm run check:calculation`
+- Pipeline tool and GUI contract tests through `npm run check:pipeline`
+
+Run a single check when you only need that target:
+
+```powershell
+npm run check:js
+npm run check:site
+npm run check:calculation
+npm run check:pipeline
+```
 
 Run Markdown lint:
 
@@ -33,7 +44,7 @@ npm run lint:md
 
 ## UI Regression Tests
 
-Playwright tests cover key browser behavior:
+Playwright tests cover key browser behavior, including:
 
 - LICENSE / NOTICE dialog opens and closes
 - `+5` and `-5` count buttons update the selected recipe count

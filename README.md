@@ -41,7 +41,7 @@ npm run dev
 
 ブラウザで `http://127.0.0.1:4173/` を開きます。
 
-スマートフォンなどLAN内の別端末から確認する方法は [.vscode/local-dev-notes.md](.vscode/local-dev-notes.md) を参照してください。
+スマートフォンなどLAN内の別端末から確認する場合は、同じネットワーク内で開発PCのIPアドレスと表示されたポートを開きます。
 
 ## Data pipeline
 
@@ -62,13 +62,22 @@ Node.js依存関係をインストールします。
 npm install
 ```
 
-標準チェックを実行します。
+標準チェックを実行します。JavaScript構文チェック、サイトデータ検証、計算ロジックのNode.jsテスト、パイプラインツールのNode.jsテストをまとめて実行します。
 
 ```powershell
 npm run check
 ```
 
-Playwright UI回帰テストを実行します。
+個別に確認したい場合は、以下の npm scripts を使います。
+
+```powershell
+npm run check:js
+npm run check:site
+npm run check:calculation
+npm run check:pipeline
+```
+
+PlaywrightによるブラウザUI回帰テストを実行します。
 
 ```powershell
 npm run test:e2e

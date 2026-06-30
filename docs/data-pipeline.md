@@ -9,9 +9,9 @@
 
 ## Inputs
 
-`pipeline/input/` contains the source CSV files and manually maintained token exchange data.
-These files are local-only and are not tracked in Git. Remote CSV files are downloaded from
-`xivapi/ffxiv-datamining` `csv/ja`; `token-items.csv` is hand maintained and is never
+`pipeline/input/` is the local-only input directory. Its CSV and JSON files are ignored by Git, so
+do not treat the repository checkout as containing a complete input set. Remote CSV files are
+downloaded from `xivapi/ffxiv-datamining` `csv/ja`; local hand-maintained input files are never
 downloaded or overwritten.
 
 ```text
@@ -20,6 +20,8 @@ Recipe.csv
 ItemUICategory.csv
 ItemSearchCategory.csv
 token-items.csv
+gathering_area.json
+gathering_timer.json
 ```
 
 ## GUI workflow
@@ -113,6 +115,6 @@ npm run pipeline:gui
 - `pipeline/logs/`: download errors and pipeline logs retained for investigation
 - `pipeline/intermediate/items-truncated.json`: retained historical/manual intermediate output; it is not part of the automated build chain
 
-Files under `pipeline/intermediate/`, `pipeline/reference/csv-headers/`, and `pipeline/logs/` are local-only and are not tracked in Git.
+Files under `pipeline/input/`, `pipeline/intermediate/`, `pipeline/reference/csv-headers/`, and `pipeline/logs/` are local-only and are not tracked in Git.
 
 Missing item icon files under `site/assets/item-icons/` are allowed. The app hides broken icon images and continues to work.

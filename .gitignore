@@ -28,6 +28,7 @@ pipeline/logs/*.tmp
 
 # Local data pipeline files
 pipeline/input/*.csv
+pipeline/input/*.json
 pipeline/intermediate/*.json
 pipeline/reference/csv-headers/*.txt
 pipeline/reference/expected/*.json
