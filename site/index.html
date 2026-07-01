@@ -74,7 +74,13 @@
     </div>
   </div>
 </div>
-<div class="footer">© SQUARE ENIX / Data by XIVAPI / X : <a href="https://x.com/ff14_recipe" target="_blank" rel="noopener">@ff14_recipe</a></div>
+<div class="footer">Data: XIVAPI / Icons: Lodestone / © SQUARE ENIX / X: <a href="https://x.com/ff14_recipe" target="_blank" rel="noopener">@ff14_recipe</a></div>
+<div id="loadingOverlay" class="open" role="status" aria-live="polite">
+  <div class="loading-card">
+    <div class="loading-title">データ読み込み中...</div>
+    <div class="loading-note">収録アイテムは、制作計算に必要なものに絞っています。</div>
+  </div>
+</div>
 <div id="updateNotice" role="status">
   <span>アプリが更新されました</span>
   <button id="updateReloadBtn" type="button">再読み込み</button>
@@ -160,6 +166,18 @@
   </div>
 </div>
 
+<div id="gatheringOverlay">
+  <div id="gatheringDialog">
+    <div class="gathering-dialog-header">
+      <span id="gatheringTitle"></span>
+    </div>
+    <div id="gatheringContent"></div>
+    <div class="settings-close">
+      <button class="confirm-btn no" id="gatheringCloseBtn" type="button">閉じる</button>
+    </div>
+  </div>
+</div>
+
 <div id="materialTreeOverlay">
   <div id="materialTreeDialog">
     <div class="material-tree-dialog-header">
@@ -183,6 +201,8 @@
 </div>
 
 <script src="./calculation.js"></script>
+<script src="./vendor/marked.umd.js"></script>
+<script src="./vendor/purify.min.js"></script>
 <script src="./app.js"></script>
 <!-- Cloudflare Web Analytics -->
 <script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "decd66c3481c4277a749a59964c307a6"}'></script>

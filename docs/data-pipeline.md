@@ -4,7 +4,7 @@
 
 - Windows 11
 - Node.js
-- `cwebp` from libwebp for item icon conversion
+- `sharp` for item icon resizing, WebP conversion, and quality preview generation
 - Tauri GUI: `FF14レシピ素材ツリー アイテム情報作成` (`makeRecipe.exe`, tool version v1.0)
 
 ## Inputs
@@ -72,7 +72,7 @@ node pipeline/tool/pipeline-tool.mjs download-csv
 Ensure item WebP icons:
 
 ```text
-node pipeline/tool/pipeline-tool.mjs icons --quality 70
+node pipeline/tool/pipeline-tool.mjs icons
 ```
 
 Item icons are grouped by the first three digits of their six-digit file name:
@@ -81,14 +81,17 @@ Item icons are grouped by the first three digits of their six-digit file name:
 site/assets/item-icons/020/020001.webp
 ```
 
-The icon command skips existing WebP files, converts local PNG files when available, downloads
-only missing PNG sources, converts them to WebP, and removes item PNG files after conversion.
-HTTP 404 and other download failures are logged and counted in progress; download URLs are retained
-under `pipeline/logs/` for investigation.
+The icon command uses Lodestone NQ item images as the primary source and XIVAPI image URLs only as
+a fallback when Lodestone lookup or download fails. Downloaded source PNG files are cached under
+`pipeline/cache/lodestone-icons-png/` by item ID and are never tracked in Git. Public WebP files are
+always regenerated as 80x80 q80 images under `site/assets/item-icons/` while keeping the existing
+`IconFile` names used by the app.
 
-The selected WebP quality is stored under `pipeline/state/icon-quality.json`. If the quality changes
-later, all item icons registered in `site/data/Item.json` are regenerated from the cached PNG source
-or, only when missing, from XIVAPI.
+HTTP 404 and other download failures are logged and counted in progress; failed URLs and fallback
+details are retained under `pipeline/logs/` for investigation.
+
+The selected WebP quality, output size, source, and current `Item.json` hash are stored under
+`pipeline/state/icon-quality.json`.
 
 Generate a phone-friendly quality preview:
 

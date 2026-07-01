@@ -6,7 +6,10 @@ import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import zlib from 'node:zlib';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
+import sharp from 'sharp';
+
+sharp.cache(false);
 
 export const repositoryRoot = path.resolve(import.meta.dirname, '..', '..');
 export const pipelineRoot = path.join(repositoryRoot, 'pipeline');
@@ -18,6 +21,7 @@ export const stateRoot = path.join(pipelineRoot, 'state');
 export const reportsRoot = path.join(pipelineRoot, 'reports');
 export const cacheRoot = path.join(pipelineRoot, 'cache');
 export const pngIconCacheRoot = path.join(cacheRoot, 'item-icons-png');
+export const lodestonePngIconCacheRoot = path.join(cacheRoot, 'lodestone-icons-png');
 export const siteRoot = path.join(repositoryRoot, 'site');
 export const itemIconsRoot = path.join(siteRoot, 'assets', 'item-icons');
 
@@ -33,9 +37,17 @@ const tmpPreviewManifestPath = path.join(tmpPreviewRoot, 'manifest.json');
 const tmpPreviewDataPath = path.join(tmpPreviewRoot, 'preview-data.json');
 const remoteCsvNames = ['Item.csv', 'Recipe.csv', 'ItemUICategory.csv', 'ItemSearchCategory.csv'];
 const localCsvNames = ['token-items.csv'];
-const defaultIconQuality = 60;
-const defaultIconDelayMs = 200;
+const gatheringAreaPath = path.join(inputRoot, 'gathering_area.json');
+const gatheringTimerPath = path.join(inputRoot, 'gathering_timer.json');
+const defaultIconQuality = 80;
+const defaultIconDelayMs = 1000;
 const defaultPreviewSampleCount = 64;
+const iconFailureAllowedRate = 0.003;
+const lodestoneSearchResultLinkPattern = /<a\b([^>]*)href=["'](\/lodestone\/playguide\/db\/item\/[a-z0-9]+\/)["']([^>]*)>([\s\S]*?)<\/a>/g;
+const lodestoneItemIconImgPattern = /<img\b[^>]*\bsrc=["'](https:\/\/lds-img\.finalfantasyxiv\.com\/itemicon\/[^"']+)["'][^>]*>/g;
+const lodestoneOgImagePattern = /<meta\s+property=["']og:image["']\s+content=["'](https:\/\/lds-img\.finalfantasyxiv\.com\/itemicon\/[^"']+)["']/i;
+const lodestoneOgTitlePattern = /<meta\s+property=["']og:title["']\s+content=["']([^"']+)["']/i;
+const iconFlushEvery = 250;
 
 const buildOutputs = {
   base: path.join(intermediateRoot, '01-items-base.json'),
@@ -96,14 +108,15 @@ function formatPatchForCache(value) {
   return `${Number(raw.slice(0, -2))}.${raw.slice(-2)}`;
 }
 
-function makeDataCacheVersion(itemJsonPath = publicItemJsonPath) {
+function makeDataCacheVersion(itemJsonPath = publicItemJsonPath, salt = '') {
   const items = readJson(itemJsonPath, []);
   const maxPatch = items.reduce((max, item) => Math.max(max, Number(item?.Recipe?.PatchNumber) || 0), 0);
-  return `ff14recipe-data-${formatPatchForCache(maxPatch)}-${sha256File(itemJsonPath).slice(0, 8)}`;
+  const hash = crypto.createHash('sha256').update(fs.readFileSync(itemJsonPath));
+  if (salt) hash.update(String(salt));
+  return `ff14recipe-data-${formatPatchForCache(maxPatch)}-${hash.digest('hex').slice(0, 8)}`;
 }
 
-function updateServiceWorkerDataCacheVersion(itemJsonPath = publicItemJsonPath) {
-  const version = makeDataCacheVersion(itemJsonPath);
+function updateServiceWorkerDataCacheVersion(version) {
   const source = fs.readFileSync(serviceWorkerPath, 'utf8');
   const next = source.replace(
     /const\s+DATA_CACHE_VERSION\s*=\s*['"][^'"]+['"];/,
@@ -111,11 +124,9 @@ function updateServiceWorkerDataCacheVersion(itemJsonPath = publicItemJsonPath) 
   );
   if (next === source) throw new Error('DATA_CACHE_VERSION was not found in sw.js');
   writeTextAtomic(serviceWorkerPath, next);
-  log(`データキャッシュ版を更新しました ${version}`);
 }
 
-function updateAppDataCacheVersion(itemJsonPath = publicItemJsonPath) {
-  const version = makeDataCacheVersion(itemJsonPath);
+function updateAppDataCacheVersion(version) {
   const source = fs.readFileSync(appScriptPath, 'utf8');
   const next = source.replace(
     /const\s+DATA_CACHE_VERSION\s*=\s*['"][^'"]+['"];/,
@@ -123,6 +134,14 @@ function updateAppDataCacheVersion(itemJsonPath = publicItemJsonPath) {
   );
   if (next === source) throw new Error('DATA_CACHE_VERSION was not found in app.js');
   writeTextAtomic(appScriptPath, next);
+}
+
+function updateDataCacheVersion({ itemJsonPath = publicItemJsonPath, salt = '', reason = 'data' } = {}) {
+  const version = makeDataCacheVersion(itemJsonPath, salt);
+  updateServiceWorkerDataCacheVersion(version);
+  updateAppDataCacheVersion(version);
+  log(`データキャッシュ版を更新しました ${version} (${reason})`);
+  return version;
 }
 
 function nowIso() {
@@ -404,6 +423,8 @@ export function buildData() {
   const publicItems = readJson(buildOutputs.filtered, []);
   let searchMatches = 0;
   let searchSkips = 0;
+  const gatheringByName = normalizeGatheringTimerEntries();
+  let gatheringMatches = 0;
   for (const item of publicItems) {
     const name = searchCategoryById.get(String(item.ItemSearchCategory));
     if (name) {
@@ -412,10 +433,22 @@ export function buildData() {
     } else {
       searchSkips += 1;
     }
+    const gathering = gatheringByName.get(String(item.Name));
+    if (gathering?.length) {
+      item.GatheringTimer = gathering;
+      gatheringMatches += 1;
+    }
   }
+  const publicItemNames = new Set(publicItems.map(item => String(item.Name)));
+  const gatheringUnmatched = [...gatheringByName.keys()].filter(name => !publicItemNames.has(name));
+  for (const name of gatheringUnmatched.slice(0, 20)) {
+    log(`採集情報警告: Item.jsonに一致しない item_name: ${name}`);
+  }
+  if (gatheringUnmatched.length > 20) log(`採集情報警告: 未一致がさらに ${gatheringUnmatched.length - 20}件あります`);
   saveStep('06-public-items', buildOutputs.publicItems, publicItems);
   updateRunState({ status: 'completed', candidateOutput: path.relative(repositoryRoot, buildOutputs.publicItems) });
   log(`検索カテゴリ照合: 一致 ${searchMatches}件、スキップ ${searchSkips}件`);
+  log(`採集情報照合: 一致 ${gatheringMatches}件、未一致 ${gatheringUnmatched.length}件`);
   log(`公開候補を作成しました ${path.relative(repositoryRoot, buildOutputs.publicItems)} (${publicItems.length}件)`);
   return publicItems;
 }
@@ -489,32 +522,6 @@ export async function downloadCsv({ force = false } = {}) {
   }
 }
 
-function commandExists(command) {
-  const result = spawnSync(command, ['-version'], { stdio: 'ignore' });
-  return result.status === 0 || result.status === 1;
-}
-
-function findCwebp() {
-  if (commandExists('cwebp')) return 'cwebp';
-  throw new Error('cwebp が見つかりません。アイコン変換前に libwebp cwebp を導入してください。');
-}
-
-function runCwebp(cwebp, pngPath, webpPath, quality) {
-  return new Promise((resolve, reject) => {
-    ensureDir(path.dirname(webpPath));
-    const child = spawn(cwebp, ['-quiet', '-q', String(quality), '-m', '6', pngPath, '-o', webpPath], { stdio: ['ignore', 'pipe', 'pipe'] });
-    let stderr = '';
-    child.stderr.on('data', chunk => {
-      stderr += chunk.toString();
-    });
-    child.on('error', reject);
-    child.on('close', code => {
-      if (code === 0) resolve();
-      else reject(new Error(`cwebp failed (${code}): ${stderr.trim()}`));
-    });
-  });
-}
-
 function iconPaths(iconFile) {
   const webpName = iconFile.replace(/\.[^.]+$/, '.webp');
   const pngName = iconFile.replace(/\.[^.]+$/, '.png');
@@ -547,6 +554,197 @@ async function downloadIconPng(pngName, pngPath, delayMs) {
     throw new Error(`${pngName} の取得に失敗しました: HTTP ${response.status}${notFound}`);
   }
   writeBytesAtomic(pngPath, Buffer.from(await response.arrayBuffer()));
+  return { iconUrl: url };
+}
+
+function decodeHtml(text) {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+function cleanLodestoneUrl(url) {
+  return url.replace(/&amp;/g, '&');
+}
+
+function normalizeLodestoneItemName(name) {
+  return String(name || '').replace(/\s+/g, ' ').trim();
+}
+
+function stripHtmlTags(text) {
+  return String(text || '').replace(/<[^>]*>/g, '');
+}
+
+function cleanLodestoneTitle(title) {
+  const decoded = decodeHtml(title || '').trim();
+  const japanese = decoded.match(/エオルゼアデータベース「(.+?)」/);
+  if (japanese) return normalizeLodestoneItemName(japanese[1]);
+  const english = decoded.match(/Eorzea Database:\s*(.+?)\s*\|/i);
+  if (english) return normalizeLodestoneItemName(english[1]);
+  return normalizeLodestoneItemName(decoded.split('|')[0]);
+}
+
+async function fetchLodestoneText(url, delayMs) {
+  await sleep(delayMs);
+  const response = await fetch(url, {
+    headers: { 'user-agent': 'ffxiv-recipe-icon-pipeline/1.0' }
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.text();
+}
+
+function lodestoneDetailPaths(searchHtml, itemName) {
+  const expectedName = normalizeLodestoneItemName(itemName);
+  const exactPaths = [];
+  for (const match of searchHtml.matchAll(lodestoneSearchResultLinkPattern)) {
+    const attributes = `${match[1]} ${match[3]}`;
+    if (!/\bdb-table__txt--detail_link\b/.test(attributes)) continue;
+    const label = normalizeLodestoneItemName(decodeHtml(stripHtmlTags(match[4])));
+    if (label === expectedName) exactPaths.push(match[2]);
+  }
+  return [...new Set(exactPaths)];
+}
+
+function extractLodestoneNqIconUrl(detailHtml) {
+  for (const match of detailHtml.matchAll(lodestoneItemIconImgPattern)) {
+    if (/\bsys_nq_element\b/.test(match[0])) return cleanLodestoneUrl(match[1]);
+  }
+  const ogImage = detailHtml.match(lodestoneOgImagePattern)?.[1];
+  return ogImage ? cleanLodestoneUrl(ogImage) : '';
+}
+
+function extractLodestoneDetailItemName(detailHtml) {
+  const ogTitle = detailHtml.match(lodestoneOgTitlePattern)?.[1];
+  if (ogTitle) return cleanLodestoneTitle(ogTitle);
+  const title = detailHtml.match(/<title>([^<]+)<\/title>/i)?.[1];
+  return title ? cleanLodestoneTitle(title) : '';
+}
+
+async function resolveLodestoneIconUrl(item, delayMs) {
+  const expectedName = normalizeLodestoneItemName(item.Name);
+  const searchUrl = `https://jp.finalfantasyxiv.com/lodestone/playguide/db/item/?q=${encodeURIComponent(item.Name)}`;
+  const searchHtml = await fetchLodestoneText(searchUrl, delayMs);
+  const detailPaths = lodestoneDetailPaths(searchHtml, item.Name);
+  if (detailPaths.length === 0) throw new Error('Lodestone検索結果から詳細ページを見つけられませんでした');
+
+  const mismatches = [];
+  for (const detailPath of detailPaths) {
+    const detailUrl = `https://jp.finalfantasyxiv.com${detailPath}`;
+    const detailHtml = decodeHtml(await fetchLodestoneText(detailUrl, delayMs));
+    const detailItemName = extractLodestoneDetailItemName(detailHtml);
+    if (normalizeLodestoneItemName(detailItemName) !== expectedName) {
+      mismatches.push(`${detailItemName || '名称取得不可'} @ ${detailPath}`);
+      continue;
+    }
+    const iconUrl = extractLodestoneNqIconUrl(detailHtml);
+    if (!iconUrl) throw new Error(`Lodestone詳細ページからNQアイコンURLを取得できませんでした: ${detailItemName}`);
+    return { detailUrl, iconUrl, detailItemName };
+  }
+  throw new Error(`Lodestone詳細ページ名が一致しません: ${mismatches.slice(0, 5).join(' / ')}`);
+}
+
+async function downloadLodestoneIconPng(item, cachePath, delayMs) {
+  const { detailUrl, iconUrl, detailItemName } = await resolveLodestoneIconUrl(item, delayMs);
+  await sleep(delayMs);
+  const response = await fetch(iconUrl, {
+    headers: { 'user-agent': 'ffxiv-recipe-icon-pipeline/1.0' }
+  });
+  if (!response.ok) throw new Error(`Lodestone画像取得に失敗しました: HTTP ${response.status}`);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('image/png')) throw new Error(`Lodestone画像がPNGではありません: ${contentType || 'content-typeなし'}`);
+  writeBytesAtomic(cachePath, Buffer.from(await response.arrayBuffer()));
+  return { detailUrl, iconUrl, detailItemName };
+}
+
+function iconCacheMetaPath(cachePath) {
+  return cachePath.replace(/\.png$/i, '.json');
+}
+
+function readVerifiedLodestoneIconCache(item, cachePath) {
+  if (!fs.existsSync(cachePath)) return null;
+  const meta = readJson(iconCacheMetaPath(cachePath), null);
+  if (!meta || meta.itemId !== String(item.ID) || meta.itemName !== String(item.Name)) return null;
+  if (meta.source !== 'lodestone' && meta.source !== 'lodestone-reuse') return null;
+  if (!meta.detailUrl || !meta.iconUrl || !meta.detailItemName) return null;
+  return { path: cachePath, ...meta, cachedSource: meta.source, source: 'cache' };
+}
+
+function writeIconCacheMeta(cachePath, meta) {
+  writeJsonAtomic(iconCacheMetaPath(cachePath), {
+    version: 2,
+    ...meta,
+    updatedAt: nowIso()
+  });
+}
+
+function flushIconMemory() {
+  sharp.cache(false);
+  if (global.gc) global.gc();
+}
+
+async function getProductionIconPng(item, pngName, delayMs, alternatives = []) {
+  const cachePath = path.join(lodestonePngIconCacheRoot, `${item.ID}.png`);
+  const verifiedCache = readVerifiedLodestoneIconCache(item, cachePath);
+  if (verifiedCache) return verifiedCache;
+  ensureDir(lodestonePngIconCacheRoot);
+  const lodestoneErrors = [];
+  for (const candidate of [item, ...alternatives]) {
+    try {
+      const lodestone = await downloadLodestoneIconPng(candidate, cachePath, delayMs);
+      const meta = {
+        itemId: String(item.ID),
+        itemName: String(item.Name),
+        source: candidate.ID === item.ID ? 'lodestone' : 'lodestone-reuse',
+        reusedFromItemId: candidate.ID === item.ID ? '' : String(candidate.ID),
+        reusedFromName: candidate.ID === item.ID ? '' : candidate.Name,
+        detailUrl: lodestone.detailUrl,
+        detailItemName: lodestone.detailItemName,
+        iconUrl: lodestone.iconUrl
+      };
+      writeIconCacheMeta(cachePath, meta);
+      return {
+        path: cachePath,
+        ...meta
+      };
+    } catch (error) {
+      lodestoneErrors.push(`${candidate.ID} ${candidate.Name}: ${error.message}`);
+    }
+  }
+  try {
+    const xivapi = await downloadIconPng(pngName, cachePath, delayMs);
+    writeIconCacheMeta(cachePath, {
+      itemId: String(item.ID),
+      itemName: String(item.Name),
+      source: 'xivapi',
+      reusedFromItemId: '',
+      reusedFromName: '',
+      detailUrl: '',
+      detailItemName: '',
+      iconUrl: xivapi.iconUrl,
+      lodestoneError: lodestoneErrors.join(' / ')
+    });
+    fs.appendFileSync(iconDownloadErrorLog, `${item.ID} ${item.Name}: Lodestone検索と同一IconFile流用に失敗したためXIVAPI PNGから取得しました (${lodestoneErrors.join(' / ')})\n`, 'utf8');
+    return { path: cachePath, source: 'xivapi', lodestoneError: lodestoneErrors.join(' / '), iconUrl: xivapi.iconUrl };
+  } catch (xivapiError) {
+    throw new Error(`Lodestone失敗: ${lodestoneErrors.join(' / ')} / XIVAPI失敗: ${xivapiError.message}`);
+  }
+}
+
+async function writeWebpFromPng(pngPath, webpPath, quality, size = 80) {
+  ensureDir(path.dirname(webpPath));
+  const temp = path.join(path.dirname(webpPath), `.${path.basename(webpPath)}.${process.pid}.tmp`);
+  await sharp(pngPath)
+    .resize(size, size, {
+      fit: 'contain',
+      kernel: sharp.kernel.lanczos3,
+      background: { r: 0, g: 0, b: 0, alpha: 0 }
+    })
+    .webp({ quality })
+    .toFile(temp);
+  fs.renameSync(temp, webpPath);
 }
 
 async function getCachedPngBlob(pngFile, delayMs = defaultIconDelayMs) {
@@ -569,109 +767,159 @@ function iconFileToPngRepoPath(iconFile) {
   return `site/assets/item-icons/${pngName.slice(0, 3)}/${pngName}`;
 }
 
-export async function ensureIcons({ quality = defaultIconQuality, delayMs = defaultIconDelayMs } = {}) {
+function hashIconFiles(iconFiles) {
+  const hash = crypto.createHash('sha256');
+  for (const iconFile of [...new Set(iconFiles)].sort()) {
+    const { webpPath } = iconPaths(iconFile);
+    if (!fs.existsSync(webpPath)) continue;
+    hash.update(iconFile);
+    hash.update('\0');
+    hash.update(fs.readFileSync(webpPath));
+    hash.update('\0');
+  }
+  return hash.digest('hex');
+}
+
+function iconGroupsByIconFile(items) {
+  const groups = new Map();
+  for (const item of items.filter(item => item?.ID && item?.Name && item?.IconFile)) {
+    if (!groups.has(item.IconFile)) groups.set(item.IconFile, []);
+    groups.get(item.IconFile).push(item);
+  }
+  return groups;
+}
+
+function sameIconAlternatives(item, iconGroups) {
+  return (iconGroups.get(item.IconFile) || []).filter(candidate => candidate.ID !== item.ID);
+}
+
+export async function ensureIcons({ quality = defaultIconQuality, delayMs = defaultIconDelayMs, size = 80 } = {}) {
+  return ensureIconsForItemJson({ quality, delayMs, size, itemJsonPath: publicItemJsonPath });
+}
+
+export async function ensureIconsForItemJson({ quality = defaultIconQuality, delayMs = defaultIconDelayMs, size = 80, itemJsonPath = publicItemJsonPath } = {}) {
+  const iconSize = Number.isFinite(size) && size > 0 ? Math.floor(size) : 80;
+  const sourceItemJsonPath = path.resolve(repositoryRoot, itemJsonPath);
+  const isPublicItemJson = sourceItemJsonPath === publicItemJsonPath;
   ensureDir(logsRoot);
-  log(`アイコン生成を開始しました quality=${quality}`);
+  log(`アイコン生成を開始しました source=Lodestone(NQ) fallback=XIVAPI size=${iconSize}x${iconSize} quality=${quality} delay=${delayMs}ms itemJson=${path.relative(repositoryRoot, sourceItemJsonPath)}`);
   ensureDir(itemIconsRoot);
   fs.writeFileSync(iconDownloadErrorLog, '', 'utf8');
-  const cwebp = findCwebp();
-  const items = readJson(publicItemJsonPath, []);
-  const uniqueIconFiles = [...new Set(items.map(item => item.IconFile).filter(Boolean))];
-  const state = readJson(iconQualityStatePath, {});
-  const storedQuality = Number(state.quality);
-  const qualityChanged = Number.isFinite(storedQuality) ? storedQuality !== quality : quality !== defaultIconQuality;
-  if (qualityChanged) log(`WebP quality変更を検出しました。全登録アイコンを q${quality} で再生成します`);
-  let skipped = 0;
+  const items = readJson(sourceItemJsonPath, []);
+  const iconItems = items.filter(item => item?.ID && item?.Name && item?.IconFile);
+  const progressTotal = iconItems.length + 3;
+  const iconGroups = iconGroupsByIconFile(iconItems);
+  const generatedIconFiles = new Set();
+  let duplicate = 0;
   let converted = 0;
   let downloaded = 0;
-  let regenerated = 0;
+  let cached = 0;
+  let xivapiFallback = 0;
   let failed = 0;
   let lastProgressLog = 0;
-  updateRunState({ command: 'icons', status: 'running', startedAt: nowIso(), total: uniqueIconFiles.length });
-  log(`アイコン 0/${uniqueIconFiles.length} 開始`);
-  for (let i = 0; i < uniqueIconFiles.length; i += 1) {
-    const { webpName, pngName, webpPath, pngPath } = iconPaths(uniqueIconFiles[i]);
-    let detail = `${webpName} 確認中`;
+  updateRunState({ command: 'icons', status: 'running', startedAt: nowIso(), total: progressTotal });
+  log(`アイコン 0/${progressTotal} 開始`);
+  for (let i = 0; i < iconItems.length; i += 1) {
+    const item = iconItems[i];
+    const { webpName, pngName, webpPath } = iconPaths(item.IconFile);
+    let detail = `${item.ID} ${item.Name} ${webpName} 確認中`;
     let forceProgressLog = false;
-    if (fs.existsSync(webpPath) && !qualityChanged) {
-      if (fs.existsSync(pngPath)) fs.rmSync(pngPath);
-      skipped += 1;
-      detail = `${webpName} 既存WebPを使用`;
+    if (generatedIconFiles.has(item.IconFile)) {
+      duplicate += 1;
+      detail = `${item.ID} ${item.Name} ${webpName} 同一IconFileのためスキップ`;
     } else {
       try {
-        if (qualityChanged && fs.existsSync(webpPath)) {
-          detail = `${webpName} 再生成用PNG準備中`;
-          writeBytesAtomic(pngPath, await getCachedPngBlob(`site/assets/item-icons/${pngName.slice(0, 3)}/${pngName}`, delayMs));
-          regenerated += 1;
-        } else if (!fs.existsSync(pngPath)) {
-          detail = `${pngName} PNG準備中`;
-          writeBytesAtomic(pngPath, await getCachedPngBlob(`site/assets/item-icons/${pngName.slice(0, 3)}/${pngName}`, delayMs));
+        const png = await getProductionIconPng(item, pngName, delayMs, sameIconAlternatives(item, iconGroups));
+        if (png.source === 'cache') cached += 1;
+        else if (png.source === 'xivapi') {
           downloaded += 1;
-          detail = `${pngName} PNG準備完了`;
-        }
-        detail = `${webpName} WebP変換中`;
-        await runCwebp(cwebp, pngPath, webpPath, quality);
-        fs.rmSync(pngPath);
+          xivapiFallback += 1;
+        } else downloaded += 1;
+        const reuseText = png.reusedFromItemId ? ` reuse=${png.reusedFromItemId}` : '';
+        detail = `${item.ID} ${item.Name} ${webpName} WebP変換中 source=${png.source}${reuseText}`;
+        await writeWebpFromPng(png.path, webpPath, quality, iconSize);
+        generatedIconFiles.add(item.IconFile);
         converted += 1;
-        detail = `${webpName} WebP変換完了`;
+        detail = `${item.ID} ${item.Name} ${webpName} WebP変換完了 source=${png.source}${reuseText}`;
       } catch (error) {
         failed += 1;
-        detail = `${webpName} 失敗: ${error.message}`;
+        detail = `${item.ID} ${item.Name} ${webpName} 失敗: ${error.message}`;
         forceProgressLog = true;
-        fs.appendFileSync(iconDownloadErrorLog, `${webpName}: ${error.message}\n`, 'utf8');
+        fs.appendFileSync(iconDownloadErrorLog, `${item.ID} ${item.Name} ${webpName}: ${error.message}\n`, 'utf8');
       }
     }
     const now = Date.now();
-    if (forceProgressLog || now - lastProgressLog >= 1000 || i + 1 === uniqueIconFiles.length) {
-      updateRunState({ command: 'icons', status: 'running', completed: i + 1, total: uniqueIconFiles.length });
-      log(`アイコン ${i + 1}/${uniqueIconFiles.length} ${detail}`);
+    if (forceProgressLog || now - lastProgressLog >= 1000 || i + 1 === iconItems.length) {
+      updateRunState({ command: 'icons', status: 'running', completed: i + 1, total: progressTotal });
+      log(`アイコン ${i + 1}/${progressTotal} ${detail}`);
       lastProgressLog = now;
     }
+    if ((i + 1) % iconFlushEvery === 0) flushIconMemory();
   }
-  updateRunState({ command: 'icons', status: failed > 0 ? 'completed-with-errors' : 'completed', completed: uniqueIconFiles.length, total: uniqueIconFiles.length });
-  if (failed === 0) writeJsonAtomic(iconQualityStatePath, { quality, itemJsonSha256: sha256File(publicItemJsonPath), updatedAt: nowIso() });
-  log(`アイコン生成完了: 既存 ${skipped}件、再生成 ${regenerated}件、変換 ${converted}件、PNG準備 ${downloaded}件、失敗 ${failed}件`);
-  return { skipped, regenerated, converted, downloaded, failed };
+  let progressDone = iconItems.length;
+  updateRunState({ command: 'icons', status: 'running', completed: ++progressDone, total: progressTotal });
+  log(`アイコン ${progressDone}/${progressTotal} 生成結果を確認中`);
+  if (converted > 0) {
+    const iconHash = hashIconFiles(iconItems.map(item => item.IconFile));
+    if (isPublicItemJson) updateDataCacheVersion({ itemJsonPath: publicItemJsonPath, salt: iconHash, reason: 'icons' });
+  }
+  updateRunState({ command: 'icons', status: 'running', completed: ++progressDone, total: progressTotal });
+  log(`アイコン ${progressDone}/${progressTotal} 品質状態を保存中`);
+  if (failed === 0) writeJsonAtomic(iconQualityStatePath, { quality, width: iconSize, height: iconSize, source: 'lodestone-nq', itemJsonSha256: sha256File(sourceItemJsonPath), iconFilesSha256: hashIconFiles(iconItems.map(item => item.IconFile)), updatedAt: nowIso() });
+  updateRunState({ command: 'icons', status: failed > 0 ? 'completed-with-errors' : 'completed', completed: progressTotal, total: progressTotal });
+  log(`アイコン ${progressTotal}/${progressTotal} 完了処理終了`);
+  log(`アイコン生成完了: キャッシュ ${cached}件、取得 ${downloaded}件、XIVAPI代替 ${xivapiFallback}件、変換 ${converted}件、同一IconFile ${duplicate}件、失敗 ${failed}件`);
+  const failedRate = iconItems.length > 0 ? failed / iconItems.length : 0;
+  const allowedFailures = Math.floor(iconItems.length * iconFailureAllowedRate);
+  if (failedRate > iconFailureAllowedRate) {
+    log(`ICON_FAILURE_CONFIRM_REQUIRED ${failed}/${iconItems.length} ${(failedRate * 100).toFixed(3)}% allowed=${allowedFailures}`);
+    log(`アイコン失敗率が許容範囲を超えました。許容範囲は0.3%まで (${allowedFailures}件まで) です。公開反映へ進む前に、エラー扱いで止めるか確認してください。`);
+  }
+  return { cached, downloaded, xivapiFallback, converted, duplicate, failed };
 }
 
-function sampleIconFiles(count) {
-  return [...new Set(readJson(publicItemJsonPath, []).map(item => item.IconFile).filter(Boolean))]
-    .map(iconFile => iconPaths(iconFile))
-    .slice(0, count);
+function sampleIconItems(count) {
+  const seen = new Set();
+  const samples = [];
+  for (const item of readJson(publicItemJsonPath, [])) {
+    if (!item?.ID || !item?.Name || !item?.IconFile || seen.has(item.IconFile)) continue;
+    seen.add(item.IconFile);
+    samples.push({ item, ...iconPaths(item.IconFile) });
+    if (samples.length >= count) break;
+  }
+  return samples;
 }
 
 function fileSize(file) {
   return fs.existsSync(file) ? fs.statSync(file).size : 0;
 }
 
-export async function iconPreview({ qualities = [50, 60, 70, 80], sampleCount = 80 } = {}) {
-  const cwebp = findCwebp();
+export async function iconPreview({ qualities = [50, 60, 70, 80], sampleCount = 80, size = 80 } = {}) {
+  const iconSize = Number.isFinite(size) && size > 0 ? Math.floor(size) : 80;
+  const iconGroups = iconGroupsByIconFile(readJson(publicItemJsonPath, []));
   const reportRoot = path.join(reportsRoot, 'icon-quality');
   const sampleRoot = path.join(reportRoot, 'samples');
   ensureDir(sampleRoot);
   const rows = [];
-  for (const sample of sampleIconFiles(sampleCount)) {
-    const hadPng = fs.existsSync(sample.pngPath);
-    if (!hadPng) {
-      try {
-        await downloadIconPng(sample.pngName, sample.pngPath, defaultIconDelayMs);
-      } catch (error) {
-        log(`プレビュー対象をスキップしました ${sample.pngName}: ${error.message}`);
-        continue;
-      }
+  for (const sample of sampleIconItems(sampleCount)) {
+    let png;
+    try {
+      png = await getProductionIconPng(sample.item, sample.pngName, defaultIconDelayMs, sameIconAlternatives(sample.item, iconGroups));
+    } catch (error) {
+      log(`プレビュー対象をスキップしました ${sample.pngName}: ${error.message}`);
+      continue;
     }
     const originalName = `${path.basename(sample.pngName, '.png')}-original.png`;
     const originalPath = path.join(sampleRoot, originalName);
-    fs.copyFileSync(sample.pngPath, originalPath);
+    fs.copyFileSync(png.path, originalPath);
     const variants = [];
     for (const quality of qualities) {
       const variantName = `${path.basename(sample.pngName, '.png')}-q${quality}.webp`;
       const variantPath = path.join(sampleRoot, variantName);
-      await runCwebp(cwebp, sample.pngPath, variantPath, quality);
+      await writeWebpFromPng(png.path, variantPath, quality, iconSize);
       variants.push({ quality, file: `samples/${variantName}`, size: fileSize(variantPath) });
     }
     rows.push({ icon: sample.pngName, original: { file: `samples/${originalName}`, size: fileSize(originalPath) }, variants });
-    if (!hadPng && fs.existsSync(sample.pngPath)) fs.rmSync(sample.pngPath);
   }
   writeTextAtomic(path.join(reportRoot, 'index.html'), renderIconPreviewHtml(rows));
   log(`作成しました ${path.relative(repositoryRoot, path.join(reportRoot, 'index.html'))}`);
@@ -760,6 +1008,7 @@ export function verifyOutput({ expected = publicItemJsonPath, actual = buildOutp
     throw new Error(`${errors.length} verification error(s).`);
   }
   log(`比較成功: ${actualItems.length}件`);
+  return { errors, actualCount: actualItems.length };
 }
 
 export function protectItemJson({ source = publicItemJsonPath, target = expectedItemJsonPath } = {}) {
@@ -773,18 +1022,50 @@ export function protectItemJson({ source = publicItemJsonPath, target = expected
 export function publishItemJson({
   candidate = publicCandidatePath,
   expected = fs.existsSync(expectedItemJsonPath) ? expectedItemJsonPath : publicItemJsonPath,
-  target = publicItemJsonPath
+  target = publicItemJsonPath,
+  acceptDiff = false
 } = {}) {
   log('公開反映を開始しました');
   if (!fs.existsSync(candidate)) throw new Error(`Missing publish candidate: ${candidate}`);
   const candidateItems = readJson(candidate, null);
   if (!Array.isArray(candidateItems)) throw new Error(`Candidate is not an item array: ${candidate}`);
-  verifyOutput({ expected, actual: candidate });
+  try {
+    verifyOutput({ expected, actual: candidate });
+  } catch (error) {
+    if (!acceptDiff) throw error;
+    log(`確認済み差分として続行します: ${error.message}`);
+  }
+  protectItemJson({ source: target, target: expectedItemJsonPath });
   writeTextAtomic(target, fs.readFileSync(candidate, 'utf8'));
-  updateServiceWorkerDataCacheVersion(target);
-  updateAppDataCacheVersion(target);
+  updateDataCacheVersion({ itemJsonPath: target, salt: hashIconFiles(candidateItems.map(item => item.IconFile).filter(Boolean)), reason: 'publish' });
   updateRunState({ command: 'publish', status: 'completed', finalOutput: path.relative(repositoryRoot, target) });
   log(`公開反映しました ${path.relative(repositoryRoot, candidate)} -> ${path.relative(repositoryRoot, target)}`);
+}
+
+export function publishGatheringTimer({ target = publicItemJsonPath } = {}) {
+  log('採集情報の公開反映を開始しました');
+  const items = readJson(target, null);
+  if (!Array.isArray(items)) throw new Error(`Item.json is not an item array: ${target}`);
+  const gatheringByName = normalizeGatheringTimerEntries();
+  const publicItemNames = new Set(items.map(item => String(item.Name || '')));
+  let matched = 0;
+  let removed = 0;
+  for (const item of items) {
+    const gathering = gatheringByName.get(String(item.Name || ''));
+    if (gathering?.length) {
+      item.GatheringTimer = gathering;
+      matched += 1;
+    } else if (Object.hasOwn(item, 'GatheringTimer')) {
+      delete item.GatheringTimer;
+      removed += 1;
+    }
+  }
+  const unmatched = [...gatheringByName.keys()].filter(name => !publicItemNames.has(name));
+  unmatched.slice(0, 20).forEach(name => log(`採集情報警告: Item.jsonに一致しない item_name: ${name}`));
+  writeJsonAtomic(target, items);
+  updateDataCacheVersion({ itemJsonPath: target, salt: `gathering-${matched}-${unmatched.length}`, reason: 'gathering' });
+  updateRunState({ command: 'publish-gathering', status: 'completed', finalOutput: path.relative(repositoryRoot, target) });
+  log(`採集情報を公開反映しました 一致 ${matched}件、未一致 ${unmatched.length}件、削除 ${removed}件`);
 }
 
 export function smokeTest({ root = fs.mkdtempSync(path.join(os.tmpdir(), 'ffxiv-pipeline-smoke-')) } = {}) {
@@ -852,6 +1133,69 @@ function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatImagePixels(width, height) {
+  return Number.isFinite(width) && Number.isFinite(height) ? `${width}x${height}px` : '-';
+}
+
+function parseGatheringStartMinutes(timeRange) {
+  const match = String(timeRange).match(/^(\d{2}):(\d{2})-/);
+  if (!match) return Number.POSITIVE_INFINITY;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+function buildGatheringMapOrder(areas) {
+  const order = new Map();
+  areas.forEach((area, areaIndex) => {
+    (area.maps || []).forEach((mapName, mapIndex) => {
+      order.set(mapName, { areaName: area.region_name, areaIndex, mapIndex });
+    });
+  });
+  return order;
+}
+
+function normalizeGatheringTimerEntries() {
+  const areas = readJson(gatheringAreaPath, {}).gathering_area || [];
+  const timers = readJson(gatheringTimerPath, {}).gathering_timer || [];
+  const mapOrder = buildGatheringMapOrder(areas);
+  const methodOrder = new Map([['採掘', 0], ['砕岩', 1], ['伐採', 2], ['草刈', 3]]);
+  const byName = new Map();
+
+  for (const entry of timers) {
+    const itemName = String(entry.item_name || '');
+    if (!itemName) continue;
+    for (const [mapName, times] of Object.entries(entry.location || {})) {
+      const order = mapOrder.get(mapName) || { areaName: '', areaIndex: 9999, mapIndex: 9999 };
+      const normalized = {
+        Area: order.areaName,
+        Map: mapName,
+        Method: entry.method,
+        Type: entry.type,
+        Times: [...(Array.isArray(times) ? times : [])].sort((a, b) => parseGatheringStartMinutes(a) - parseGatheringStartMinutes(b))
+      };
+      if (entry.chronicle) normalized.Chronicle = entry.chronicle;
+      if (Number.isFinite(Number(entry.required_technical))) normalized.RequiredTechnical = Number(entry.required_technical);
+      normalized._areaIndex = order.areaIndex;
+      normalized._mapIndex = order.mapIndex;
+      if (!byName.has(itemName)) byName.set(itemName, []);
+      byName.get(itemName).push(normalized);
+    }
+  }
+
+  for (const entries of byName.values()) {
+    entries.sort((a, b) =>
+      a._areaIndex - b._areaIndex
+      || a._mapIndex - b._mapIndex
+      || (methodOrder.get(a.Method) ?? 99) - (methodOrder.get(b.Method) ?? 99)
+      || parseGatheringStartMinutes(a.Times[0]) - parseGatheringStartMinutes(b.Times[0])
+    );
+    entries.forEach(entry => {
+      delete entry._areaIndex;
+      delete entry._mapIndex;
+    });
+  }
+  return byName;
 }
 
 function escapeHtml(value) {
@@ -1008,43 +1352,39 @@ function deterministicShuffle(items, seed = 8675309) {
   return copy;
 }
 
-async function selectPreviewSamples(sampleCount) {
-  const trackedPngFiles = new Set(gitOutput(['ls-files', 'site/assets/item-icons'])
-    .split(/\r?\n/)
-    .filter(file => file.endsWith('.png')));
-  const pngFiles = [...new Set(readJson(publicItemJsonPath, [])
-    .map(item => item.IconFile)
-    .filter(Boolean)
-    .map(iconFileToPngRepoPath))];
-  const trackedForSize = pngFiles.filter(file => trackedPngFiles.has(file));
-  const pngSizes = gitBatchObjectSizes(trackedForSize.map(file => `HEAD:${file}`));
+async function selectPreviewSamples(sampleCount, iconGroups = iconGroupsByIconFile(readJson(publicItemJsonPath, []))) {
+  const representativeItems = new Map();
   const itemGroups = new Map();
   for (const item of readJson(publicItemJsonPath, [])) {
-    if (!item.IconFile) continue;
+    if (!item.ID || !item.Name || !item.IconFile) continue;
     const pngName = item.IconFile.replace(/\.webp$/i, '.png');
     const file = `site/assets/item-icons/${pngName.slice(0, 3)}/${pngName}`;
+    if (!representativeItems.has(file)) representativeItems.set(file, item);
     if (!itemGroups.has(file)) itemGroups.set(file, []);
     itemGroups.get(file).push(item);
   }
-  const entries = pngFiles.map(file => {
+  const entries = [...representativeItems.entries()].map(([file, item]) => {
     const webpPath = path.join(repositoryRoot, file.replace(/\.png$/i, '.webp'));
-    const pngSize = pngSizes.get(`HEAD:${file}`) || 0;
+    const pngName = path.basename(file);
+    const lodestoneCachePath = path.join(lodestonePngIconCacheRoot, `${item.ID}.png`);
+    const legacyCachePath = path.join(pngIconCacheRoot, pngName.slice(0, 3), pngName);
+    const pngSize = fs.existsSync(lodestoneCachePath)
+      ? fs.statSync(lodestoneCachePath).size
+      : fs.existsSync(legacyCachePath)
+        ? fs.statSync(legacyCachePath).size
+        : 0;
     const webpSize = fs.existsSync(webpPath) ? fs.statSync(webpPath).size : 0;
     const items = itemGroups.get(file) || [];
     return {
       file,
+      item,
+      pngName,
       pngSize,
       webpSize,
       ratio: pngSize > 0 && webpSize > 0 ? webpSize / pngSize : Number.POSITIVE_INFINITY,
       category: classifyItemCategory(items)
     };
   });
-  for (const entry of entries) {
-    if (!entry.pngSize && !trackedPngFiles.has(entry.file)) {
-      const cachePath = path.join(pngIconCacheRoot, path.basename(entry.file).slice(0, 3), path.basename(entry.file));
-      if (fs.existsSync(cachePath)) entry.pngSize = fs.statSync(cachePath).size;
-    }
-  }
   const picked = new Set();
   const quota = Math.max(4, Math.ceil(sampleCount / 16));
   const sizedEntries = entries.filter(entry => entry.pngSize > 0);
@@ -1065,8 +1405,9 @@ async function selectPreviewSamples(sampleCount) {
     if (picked.size >= sampleCount) break;
     let bg = 'bg-missing';
     try {
-      bg = classifyIconBackground(await getCachedPngBlob(entry.file));
-    } catch {
+      bg = classifyIconBackground(await getPreviewPngBlob(entry, iconGroups));
+    } catch (error) {
+      log(`比較 ${Math.min(picked.size, sampleCount)}/${sampleCount} サンプル候補 ${entry.item.ID} ${entry.item.Name} スキップ: ${error.message}`);
       continue;
     }
     entry.background = bg;
@@ -1086,8 +1427,9 @@ async function selectPreviewSamples(sampleCount) {
     if (picked.size >= sampleCount) break;
     if (!entry.pngSize) {
       try {
-        entry.pngSize = (await getCachedPngBlob(entry.file)).length;
-      } catch {
+        entry.pngSize = (await getPreviewPngBlob(entry, iconGroups)).length;
+      } catch (error) {
+        log(`比較 ${Math.min(picked.size, sampleCount)}/${sampleCount} サンプル候補 ${entry.item.ID} ${entry.item.Name} スキップ: ${error.message}`);
         continue;
       }
     }
@@ -1105,10 +1447,11 @@ async function selectPreviewSamples(sampleCount) {
   for (const entry of selected) {
     if (!entry.background) {
       try {
-        const blob = await getCachedPngBlob(entry.file);
+        const blob = await getPreviewPngBlob(entry, iconGroups);
         entry.pngSize = entry.pngSize || blob.length;
         entry.background = classifyIconBackground(blob);
-      } catch {
+      } catch (error) {
+        log(`比較 ${Math.min(picked.size, sampleCount)}/${sampleCount} サンプル候補 ${entry.item.ID} ${entry.item.Name} スキップ: ${error.message}`);
         entry.background = 'bg-missing';
       }
     }
@@ -1116,19 +1459,29 @@ async function selectPreviewSamples(sampleCount) {
   return selected.filter(entry => entry.background !== 'bg-missing');
 }
 
-export async function tmpQualityPreview({ sampleCount = defaultPreviewSampleCount, force = false } = {}) {
-  const cwebp = findCwebp();
+async function getPreviewPngBlob(entry, iconGroups = iconGroupsByIconFile(readJson(publicItemJsonPath, []))) {
+  log(`比較 サンプル候補 ${entry.item.ID} ${entry.item.Name} ${entry.pngName}: PNG確認中`);
+  const png = await getProductionIconPng(entry.item, entry.pngName, defaultIconDelayMs, sameIconAlternatives(entry.item, iconGroups));
+  log(`比較 サンプル候補 ${entry.item.ID} ${entry.item.Name} ${entry.pngName}: PNG確認完了 source=${png.source}`);
+  return fs.readFileSync(png.path);
+}
+
+export async function tmpQualityPreview({ sampleCount = defaultPreviewSampleCount, force = false, size = 80 } = {}) {
+  const iconSize = Number.isFinite(size) && size > 0 ? Math.floor(size) : 80;
+  const iconGroups = iconGroupsByIconFile(readJson(publicItemJsonPath, []));
   const qualities = [50, 60, 70, 80];
   const previewRoot = tmpPreviewRoot;
   const sampleRoot = path.join(previewRoot, 'samples');
-  const manifest = { itemJsonSha256: sha256File(publicItemJsonPath), qualities, sampleCount };
+  const manifest = { generator: 'lodestone-sharp-preview-v3', itemJsonSha256: sha256File(publicItemJsonPath), qualities, sampleCount, size: iconSize };
   const previousManifest = readJson(tmpPreviewManifestPath, null);
   const reusable = !force
     && previousManifest
     && fs.existsSync(path.join(previewRoot, 'index.html'))
     && fs.existsSync(tmpPreviewDataPath)
+    && previousManifest.generator === manifest.generator
     && previousManifest.itemJsonSha256 === manifest.itemJsonSha256
     && previousManifest.sampleCount === manifest.sampleCount
+    && previousManifest.size === manifest.size
     && JSON.stringify(previousManifest.qualities) === JSON.stringify(manifest.qualities);
   if (reusable) {
     log(`比較 1/1 既存の比較ページを使用します`);
@@ -1139,7 +1492,7 @@ export async function tmpQualityPreview({ sampleCount = defaultPreviewSampleCoun
   if (fs.existsSync(previewRoot)) fs.rmSync(previewRoot, { recursive: true, force: true });
   ensureDir(sampleRoot);
 
-  const samples = await selectPreviewSamples(sampleCount);
+  const samples = await selectPreviewSamples(sampleCount, iconGroups);
   const rows = [];
   let lastProgressLog = 0;
 
@@ -1150,19 +1503,20 @@ export async function tmpQualityPreview({ sampleCount = defaultPreviewSampleCoun
     const pngOut = path.join(sampleRoot, `${iconName}.png`);
     let pngBytes;
     try {
-      pngBytes = await getCachedPngBlob(pngFile);
+      pngBytes = await getPreviewPngBlob(sample, iconGroups);
     } catch (error) {
       log(`比較 ${i + 1}/${samples.length} スキップ ${path.basename(pngFile)}: ${error.message}`);
       continue;
     }
     writeBytesAtomic(pngOut, pngBytes);
-    const pngSize = sample.pngSize;
+    const pngMeta = await sharp(pngOut).metadata();
+    const pngSize = pngBytes.length;
     if (!Number.isFinite(pngSize)) continue;
 
     const variants = [];
     for (const quality of qualities) {
       const webpOut = path.join(sampleRoot, `${iconName}-q${quality}.webp`);
-      await runCwebp(cwebp, pngOut, webpOut, quality);
+      await writeWebpFromPng(pngOut, webpOut, quality, iconSize);
       variants.push({
         quality,
         file: `samples/${iconName}-q${quality}.webp`,
@@ -1178,6 +1532,8 @@ export async function tmpQualityPreview({ sampleCount = defaultPreviewSampleCoun
       iconName,
       pngFile: `samples/${iconName}.png`,
       pngSize,
+      pngWidth: pngMeta.width,
+      pngHeight: pngMeta.height,
       variants,
       category: sample.category,
       background: sample.background,
@@ -1195,10 +1551,10 @@ export async function tmpQualityPreview({ sampleCount = defaultPreviewSampleCoun
 function renderTmpQualityPreviewHtml(rows) {
   const tableRows = rows.map(row => {
     const cells = [
-      `<div class="cell"><div class="swatch"><img src="${escapeHtml(row.pngFile)}" alt=""></div><b>PNG</b><span>${formatBytes(row.pngSize)}</span></div>`,
+      `<div class="cell"><div class="swatch"><img src="${escapeHtml(row.pngFile)}" alt=""></div><b>PNG</b><span>元画像 ${escapeHtml(formatImagePixels(row.pngWidth, row.pngHeight))}</span><span>${formatBytes(row.pngSize)}</span></div>`,
       ...row.variants.map(variant => `<div class="cell"><div class="swatch"><img src="${escapeHtml(variant.file)}" alt=""></div><b>q${variant.quality}</b><span>${formatBytes(variant.size)} / ${Math.round((variant.size / row.pngSize) * 100)}%</span></div>`)
     ].join('');
-    return `<section class="row"><h2>${escapeHtml(row.iconName)}</h2><div class="tags"><span>${escapeHtml(row.category)}</span><span>${escapeHtml(row.background)}</span><span>q60/current ${Math.round((row.ratio || 0) * 100)}%</span></div><div class="grid">${cells}</div></section>`;
+    return `<section class="row"><h2>${escapeHtml(row.iconName)}</h2><div class="tags"><span>${escapeHtml(row.category)}</span><span>${escapeHtml(row.background)}</span></div><div class="grid">${cells}</div></section>`;
   }).join('\n');
   return `<!doctype html>
 <html lang="ja">
@@ -1245,10 +1601,13 @@ function printHelp() {
   check-updates             公式CSVの更新有無と前回チェック日時を保存
   download-csv [--force]    公式CSVを取得
   build                     中間JSONと公開候補を生成
-  publish                   検証後 site/data/Item.json をatomicに置換
-  icons [--quality 60]      Item WebPアイコン生成とPNG削除
-  icon-preview              アイコン画質比較プレビューを生成
-  tmp-quality-preview       site/配下に一時PNG/WebP比較を生成
+  publish [--accept-diff]   検証後 site/data/Item.json をatomicに置換
+  publish-gathering         既存Item.jsonへ採集情報だけを反映
+  icons [--quality 80] [--size 80] [--delay 1000] [--item-json path]
+                            Lodestone NQ PNGキャッシュから指定Item.jsonのWebPアイコン生成
+  icon-preview [--size 80] アイコン画質比較プレビューを生成
+  tmp-quality-preview [--size 80]
+                            site/配下に一時PNG/WebP比較を生成
   serve-preview             LAN向けに画質比較を配信
   protect-item-json         現在のItem.jsonを比較元として保存
   verify                    06-public-items.json と Item.json を比較
@@ -1267,12 +1626,18 @@ export async function main(argv = process.argv.slice(2)) {
     validateCsvFiles();
     return buildData();
   }
-  if (command === 'icons') return ensureIcons({ quality: Number(args.quality || defaultIconQuality), delayMs: Number(args.delay || defaultIconDelayMs) });
-  if (command === 'icon-preview') return iconPreview({ qualities: String(args.qualities || '50,60,70,80').split(',').map(Number).filter(Number.isFinite), sampleCount: Number(args['sample-count'] || 80) });
-  if (command === 'tmp-quality-preview') return tmpQualityPreview({ force: Boolean(args.force) });
+  if (command === 'icons') return ensureIconsForItemJson({
+    quality: Number(args.quality || defaultIconQuality),
+    delayMs: Number(args.delay || defaultIconDelayMs),
+    size: Number(args.size || 80),
+    itemJsonPath: args['item-json'] ? String(args['item-json']) : publicItemJsonPath
+  });
+  if (command === 'icon-preview') return iconPreview({ qualities: String(args.qualities || '50,60,70,80').split(',').map(Number).filter(Number.isFinite), sampleCount: Number(args['sample-count'] || 80), size: Number(args.size || 80) });
+  if (command === 'tmp-quality-preview') return tmpQualityPreview({ force: Boolean(args.force), size: Number(args.size || 80) });
   if (command === 'serve-preview') return servePreview({ port: Number(args.port || 4174) });
   if (command === 'protect-item-json') return protectItemJson();
-  if (command === 'publish') return publishItemJson();
+  if (command === 'publish') return publishItemJson({ acceptDiff: Boolean(args['accept-diff']) });
+  if (command === 'publish-gathering') return publishGatheringTimer();
   if (command === 'smoke-test') return smokeTest();
   if (command === 'verify') return verifyOutput({
     expected: args.expected ? path.resolve(String(args.expected)) : (fs.existsSync(expectedItemJsonPath) ? expectedItemJsonPath : publicItemJsonPath),
@@ -1281,8 +1646,13 @@ export async function main(argv = process.argv.slice(2)) {
   if (command === 'run') {
     validateCsvFiles();
     buildData();
+    if (!args['skip-icons']) await ensureIconsForItemJson({
+      quality: Number(args.quality || defaultIconQuality),
+      delayMs: Number(args.delay || defaultIconDelayMs),
+      size: Number(args.size || 80),
+      itemJsonPath: publicCandidatePath
+    });
     publishItemJson();
-    if (!args['skip-icons']) await ensureIcons({ quality: Number(args.quality || defaultIconQuality), delayMs: Number(args.delay || defaultIconDelayMs) });
     return;
   }
   throw new Error(`Unknown command: ${command}`);

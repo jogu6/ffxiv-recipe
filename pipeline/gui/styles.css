@@ -90,6 +90,7 @@ h2 { font-size: 12px; color: var(--soft-text); font-weight: bold; }
 .action-item.running .action-status { color: var(--accent); }
 .action-item.done .action-status { color: var(--ok); }
 .action-item.failed .action-status { color: var(--danger); }
+.action-item.interrupted .action-status { color: var(--muted); }
 .order-label {
   grid-row: 1 / span 2;
   align-self: start;
@@ -186,14 +187,22 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
   border-radius: 6px;
 }
 .progress-area { padding: 10px; display: grid; gap: 8px; }
-.progress-header, .progress-details, .log-header {
+.progress-header, .log-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
+.progress-details {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(84px, max-content);
+  align-items: center;
+  gap: 12px;
+}
 #progressTitle { color: var(--accent); }
 #progressPercent, #etaText, #progressDetail { color: var(--muted); font-size: 12px; }
+#progressDetail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#etaText { min-width: 84px; text-align: right; font-variant-numeric: tabular-nums; }
 .progress-track { height: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
 #progressBar { height: 100%; width: 0%; background: var(--accent); transition: width 180ms linear; }
 .progress-actions {
@@ -286,6 +295,11 @@ button.primary:hover { background: #d5b95a; color: #1a1a1a; }
 .preview-tools { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .preview-tools button { min-height: 30px; text-align: center; }
 .preview-tools button.active { background: var(--accent); color: #1a1a1a; border-color: var(--accent); }
+.preview-lan-info { padding: 0 12px 10px; }
+.preview-lan-box { display:grid; gap:6px; border:1px solid var(--border); background:#1b1b1b; border-radius:6px; padding:10px; color:var(--muted); font-size:12px; }
+.preview-lan-box strong { color:var(--accent); }
+.preview-lan-box code { white-space:normal; overflow-wrap:anywhere; color:#e0e0e0; }
+.preview-lan-box a { color:#8fc7ff; overflow-wrap:anywhere; }
 .preview-content { overflow: auto; padding: 12px; display: grid; gap: 12px; }
 .preview-row { background:#252525; border:1px solid #3a3a3a; border-radius:8px; padding:12px; }
 .preview-row h3 { font-size:14px; margin-bottom:6px; }

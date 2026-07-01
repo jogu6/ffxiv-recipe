@@ -36,12 +36,12 @@ tools/      環境構築、検証、リポジトリ操作用ツール
 Service Workerと`fetch()`を使用するため、`site/`をローカルHTTPサーバーで公開します。
 
 ```powershell
-npm run dev
+py -m http.server 4173 --bind 0.0.0.0 --directory site
 ```
 
 ブラウザで `http://127.0.0.1:4173/` を開きます。
 
-スマートフォンなどLAN内の別端末から確認する場合は、同じネットワーク内で開発PCのIPアドレスと表示されたポートを開きます。
+スマートフォンなどLAN内の別端末から確認する場合は、同じネットワーク内で開発PCのIPアドレスと `4173` 番ポートを開きます。
 
 ## Data pipeline
 

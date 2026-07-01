@@ -138,6 +138,26 @@ test('pipeline GUI runs the recommended sequence with WebP quality', async ({ pa
   ]);
 });
 
+test('pipeline GUI defaults icon generation to q80 Lodestone output', async ({ page }) => {
+  await openPipelineGui(page);
+
+  await page.locator('#buildToggle').click();
+  await expect(page.locator('#qualityInput')).toHaveValue('80');
+  await expect(page.locator('.action-item[data-step="icons"]')).toContainText('Lodestone NQ');
+});
+
+test('pipeline GUI surfaces cache version updates', async ({ page }) => {
+  await openPipelineGui(page);
+
+  await page.evaluate(() => window.__pipelineGuiTest.listeners['pipeline-output']({
+    payload: 'データキャッシュ版を更新しました ff14recipe-data-7.50-deadbeef (icons)'
+  }));
+
+  await expect(page.locator('#statusText')).toHaveText('キャッシュ版更新済み');
+  await expect(page.locator('#progressDetail')).toHaveText('キャッシュ版更新済み: ff14recipe-data-7.50-deadbeef (icons)');
+  await expect(page.locator('#log')).toContainText('データキャッシュ版を更新しました ff14recipe-data-7.50-deadbeef (icons)');
+});
+
 test('pipeline GUI can request cancellation of a running command', async ({ page }) => {
   await openPipelineGui(page);
   await page.evaluate(() => {
@@ -155,6 +175,6 @@ test('pipeline GUI can request cancellation of a running command', async ({ page
   await expect(page.locator('#statusText')).toHaveText('中断中');
 
   await page.evaluate(() => window.__pipelineGuiTest.resolveLongRun());
-  await expect(page.locator('.action-item[data-step="icons"] .action-status')).toHaveText('✓ 完了');
+  await expect(page.locator('.action-item[data-step="icons"] .action-status')).toHaveText('○ 中断済み');
   expect(await invokes(page)).toContainEqual({ command: 'cancel_pipeline_command', payload: {} });
 });

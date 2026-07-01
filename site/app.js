@@ -1,9 +1,10 @@
-const DATA_CACHE_VERSION = 'ff14recipe-data-7.50-2dbf6112';
+const DATA_CACHE_VERSION = 'ff14recipe-data-7.50-6eb38953';
 const DATA_FILE = `./data/Item.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 const TIPS_FILE = './data/tips.md';
 const ABOUT_URL = 'https://jogu6.github.io/ffxiv-recipe-about/';
 const LS_FAV = 'ff14_favorites';
 const LS_FAV_LISTS = 'ff14_favorite_lists_v2';
+const LS_FAV_COUNTS = 'ff14_favorite_item_counts_v1';
 const LS_SEARCH_HISTORY = 'ff14_search_history';
 const LS_VIEW_STATE = 'ff14_view_state_v1';
 const SEARCH_HISTORY_LIMIT = 30;
@@ -16,6 +17,8 @@ const LICENSE_NOTICE_FILE = './docs/license-notice.md';
 const PRIVACY_POLICY_FILE = './docs/privacy-policy.md';
 const CONTACT_URL = 'https://discord.gg/eZP5temK6e';
 const REQUEST_COUNT_MAX = 999;
+const MIN_LOADING_OVERLAY_MS = 2000;
+const loadingOverlayStartedAt = Date.now();
 const {
   calculateCraft,
   calculateRequirements,
@@ -40,6 +43,7 @@ const CRYSTAL_EXCLUDE = new Set(
 const elements = {
   appVersion: document.getElementById('appVersion'),
   loadStatus: document.getElementById('loadStatus'),
+  loadingOverlay: document.getElementById('loadingOverlay'),
   popupBtn: document.getElementById('popupBtn'),
   appTitle: document.getElementById('appTitle'),
   settingsBtn: document.getElementById('settingsBtn'),
@@ -112,7 +116,11 @@ const elements = {
   materialTreeIncreaseBtn: document.getElementById('materialTreeIncreaseBtn'),
   materialTreeIncrease5Btn: document.getElementById('materialTreeIncrease5Btn'),
   materialTreeContent: document.getElementById('materialTreeContent'),
-  materialTreeCloseBtn: document.getElementById('materialTreeCloseBtn')
+  materialTreeCloseBtn: document.getElementById('materialTreeCloseBtn'),
+  gatheringOverlay: document.getElementById('gatheringOverlay'),
+  gatheringTitle: document.getElementById('gatheringTitle'),
+  gatheringContent: document.getElementById('gatheringContent'),
+  gatheringCloseBtn: document.getElementById('gatheringCloseBtn')
 };
 
 // Application state and indexes
@@ -133,6 +141,7 @@ let resultViewMode = 'tree';
 let resultSourceMode = 'recipe';
 let selectedUsesItem = null;
 let favoriteMaterialsRingCounts = {};
+let favoriteItemCountStore = { version: 1, lists: {} };
 let pendingConfirmAction = null;
 let pendingTextInputAction = null;
 let selectedExportListId = null;
@@ -141,6 +150,9 @@ let reorderDrag = null;
 let favoriteItemReorderEnabled = false;
 let materialTreeRecipe = null;
 let expandedFavoriteListActionsId = null;
+let expandedFavoriteMaterialActions = false;
+let favoriteMaterialCalcMode = 'sum';
+const expandedFavoriteCountRows = new Set();
 let canSaveViewState = false;
 let suppressViewStateSave = false;
 
@@ -210,6 +222,7 @@ function saveViewState() {
   if (!canSaveViewState || suppressViewStateSave) return;
   writeStoredJson(LS_VIEW_STATE, {
     v: 1,
+    dataVersion: DATA_CACHE_VERSION,
     input: {
       search: elements.searchBox.value,
       count: elements.countInput.value,
@@ -230,6 +243,9 @@ function saveViewState() {
     },
     favoriteMaterials: {
       ringCounts: favoriteMaterialsRingCounts
+    },
+    materials: {
+      sections: Object.fromEntries(materialSectionState)
     }
   });
 }
@@ -241,6 +257,10 @@ function clearViewState() {
 function restoreViewState() {
   const state = readStoredJson(LS_VIEW_STATE, null);
   if (!state || state.v !== 1) return false;
+  if (state.dataVersion !== DATA_CACHE_VERSION) {
+    clearViewState();
+    return false;
+  }
 
   suppressViewStateSave = true;
   try {
@@ -270,6 +290,9 @@ function restoreViewState() {
         : 'recipe'
     );
     favoriteMaterialsRingCounts = normalizeFavoriteMaterialsRingCounts(state.favoriteMaterials?.ringCounts);
+    materialSectionState.clear();
+    Object.entries(normalizeMaterialSectionState(state.materials?.sections))
+      .forEach(([key, collapsed]) => materialSectionState.set(key, collapsed));
     if (resultSourceMode === 'favorite-materials') selectedRecipe = null;
     setResultViewMode(state.view?.resultMode === 'materials' ? 'materials' : 'tree');
     updateFavoriteButtonState();
@@ -302,6 +325,46 @@ function normalizeFavoriteMaterialsRingCounts(value) {
       .filter(([, count]) => count === 2)
       .map(([name]) => [name, 2])
   );
+}
+
+function normalizeMaterialSectionState(value) {
+  if (!value || typeof value !== 'object') return {};
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key, collapsed]) => typeof key === 'string' && typeof collapsed === 'boolean')
+  );
+}
+
+function setCollapsedAnimated(element, collapsed) {
+  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if (reduceMotion || !element.isConnected) {
+    element.classList.toggle('collapsed', collapsed);
+    return;
+  }
+
+  const startHeight = element.getBoundingClientRect().height;
+  element.classList.add('collapsible-animating');
+  element.style.height = `${startHeight}px`;
+  element.getBoundingClientRect();
+
+  if (collapsed) {
+    element.classList.add('collapsed');
+    element.style.height = '0px';
+  } else {
+    element.classList.remove('collapsed');
+    const endHeight = element.scrollHeight;
+    element.style.height = '0px';
+    element.getBoundingClientRect();
+    element.style.height = `${endHeight}px`;
+  }
+
+  const cleanup = event => {
+    if (event.propertyName !== 'height') return;
+    element.classList.remove('collapsible-animating');
+    element.style.height = '';
+    element.removeEventListener('transitionend', cleanup);
+  };
+  element.addEventListener('transitionend', cleanup);
 }
 
 function formatDefaultListName() {
@@ -452,10 +515,96 @@ function loadFavorites() {
     lists
   };
   saveFavorites();
+  loadFavoriteItemCountStore();
 }
 
 function saveFavorites() {
   writeStoredJson(LS_FAV_LISTS, favoriteStore);
+}
+
+function loadFavoriteItemCountStore() {
+  const stored = readStoredJson(LS_FAV_COUNTS, null);
+  const lists = {};
+  Object.entries(stored?.lists || {}).forEach(([listId, state]) => {
+    const counts = {};
+    Object.entries(state?.counts || {}).forEach(([itemId, value]) => {
+      const count = Number(value);
+      if (Number.isInteger(count) && count >= 0 && count <= REQUEST_COUNT_MAX) counts[itemId] = count;
+    });
+    const anyOneTargets = {};
+    Object.entries(state?.anyOneTargets || {}).forEach(([itemId, value]) => {
+      if (typeof value === 'boolean') anyOneTargets[itemId] = value;
+    });
+    lists[listId] = { enabled: false, counts, anyOneTargets };
+  });
+  favoriteItemCountStore = { version: 1, lists };
+  saveFavoriteItemCountStore();
+}
+
+function saveFavoriteItemCountStore() {
+  const lists = Object.fromEntries(
+    Object.entries(favoriteItemCountStore.lists || {}).map(([listId, state]) => [
+      listId,
+      { counts: state.counts || {}, anyOneTargets: state.anyOneTargets || {} }
+    ])
+  );
+  writeStoredJson(LS_FAV_COUNTS, { version: 1, lists });
+}
+
+function getFavoriteCountState(list = getDisplayedFavoriteList()) {
+  if (!list || isRecentList(list)) return { enabled: false, counts: {} };
+  if (!favoriteItemCountStore.lists[list.id]) {
+    favoriteItemCountStore.lists[list.id] = { enabled: false, counts: {}, anyOneTargets: {} };
+  }
+  return favoriteItemCountStore.lists[list.id];
+}
+
+function favoriteCountEnabled(list = getDisplayedFavoriteList()) {
+  return Boolean(getFavoriteCountState(list).enabled);
+}
+
+function favoriteItemCount(itemId, list = getDisplayedFavoriteList()) {
+  const state = getFavoriteCountState(list);
+  const value = state.counts[itemId];
+  return Number.isInteger(value) ? value : 1;
+}
+
+function setFavoriteItemCount(itemId, value) {
+  const state = getFavoriteCountState();
+  state.counts[itemId] = Math.max(0, Math.min(REQUEST_COUNT_MAX, Number.isInteger(value) ? value : 1));
+  saveFavoriteItemCountStore();
+}
+
+function favoriteAnyOneTarget(itemId, list = getDisplayedFavoriteList()) {
+  const state = getFavoriteCountState(list);
+  if (typeof state.anyOneTargets?.[itemId] === 'boolean') return state.anyOneTargets[itemId];
+  return favoriteItemCount(itemId, list) > 0;
+}
+
+function setFavoriteAnyOneTarget(itemId, checked) {
+  const state = getFavoriteCountState();
+  if (!state.anyOneTargets) state.anyOneTargets = {};
+  state.anyOneTargets[itemId] = Boolean(checked);
+  saveFavoriteItemCountStore();
+}
+
+function favoriteCountsChanged(list = getDisplayedFavoriteList()) {
+  const state = getFavoriteCountState(list);
+  return state.enabled && Object.values(state.counts).some(value => value !== 1);
+}
+
+function resetFavoriteOperationModes() {
+  favoriteItemReorderEnabled = false;
+  expandedFavoriteMaterialActions = false;
+  favoriteMaterialCalcMode = 'sum';
+  expandedFavoriteCountRows.clear();
+  Object.values(favoriteItemCountStore.lists || {}).forEach(state => {
+    state.enabled = false;
+  });
+}
+
+function favoriteAnyOneMode() {
+  return favoriteMaterialCalcMode === 'any-one' && favoriteCountEnabled();
 }
 
 function recordViewedItem(name) {
@@ -537,13 +686,35 @@ function closeSearchHistory() {
 }
 
 function showConfirm(msg, onYes) {
+  elements.confirmMsg.classList.remove('markdown-content');
   elements.confirmMsg.textContent = msg;
   pendingConfirmAction = onYes;
+  elements.confirmOverlay.classList.remove('info');
+  elements.confirmYes.textContent = 'はい';
+  elements.confirmNo.textContent = 'いいえ';
+  elements.confirmYes.classList.remove('hidden');
+  elements.confirmOverlay.classList.add('open');
+}
+
+function showInfo(msg, { markdown = false } = {}) {
+  elements.confirmMsg.classList.toggle('markdown-content', markdown);
+  if (markdown) elements.confirmMsg.innerHTML = renderMarkdown(msg);
+  else elements.confirmMsg.textContent = msg;
+  pendingConfirmAction = null;
+  elements.confirmOverlay.classList.add('info');
+  elements.confirmYes.classList.add('hidden');
+  elements.confirmNo.textContent = '閉じる';
   elements.confirmOverlay.classList.add('open');
 }
 
 function closeConfirm() {
   elements.confirmOverlay.classList.remove('open');
+  elements.confirmOverlay.classList.remove('info');
+  elements.confirmMsg.textContent = '';
+  elements.confirmMsg.classList.remove('markdown-content');
+  elements.confirmYes.classList.remove('hidden');
+  elements.confirmYes.textContent = 'はい';
+  elements.confirmNo.textContent = 'いいえ';
   pendingConfirmAction = null;
 }
 
@@ -746,6 +917,7 @@ function cancelReorderDrag() {
 
 function onSearch() {
   const q = elements.searchBox.value.trim();
+  resetFavoriteOperationModes();
   leaveFavoriteMaterialsMode();
   elements.searchClearBtn.classList.toggle('visible', q !== '');
   closeFavoriteLists();
@@ -777,8 +949,8 @@ function closeFavoriteLists() {
 
 function selectFavoriteList(listId) {
   const changedList = getDisplayedFavoriteList()?.id !== listId;
+  resetFavoriteOperationModes();
   leaveFavoriteMaterialsMode();
-  favoriteItemReorderEnabled = false;
   favoriteStore.selectedListId = listId;
   if (changedList) resetCountInput();
   saveFavorites();
@@ -870,6 +1042,18 @@ function createFavoriteSaveRow() {
 function createFavoriteMaterialsRow() {
   const list = getDisplayedFavoriteList();
   if (isRecentList(list)) return null;
+  const countState = getFavoriteCountState(list);
+  const recipeNames = getFavoriteListRecipeNames(list);
+  const recipeCount = recipeNames.length;
+  const activeCount = recipeNames
+    .filter(name => {
+      const itemId = itemIdForName(name);
+      if (!countState.enabled) return true;
+      return favoriteAnyOneMode()
+        ? favoriteAnyOneTarget(itemId, list)
+        : favoriteItemCount(itemId, list) > 0;
+    })
+    .length;
 
   const li = document.createElement('li');
   li.className = 'favorite-materials-row';
@@ -877,10 +1061,37 @@ function createFavoriteMaterialsRow() {
   materialButton.className = 'favorite-list-action favorite-list-action-compact';
   materialButton.classList.toggle('active', resultSourceMode === 'favorite-materials');
   materialButton.type = 'button';
-  materialButton.textContent = '素材リスト';
+  materialButton.textContent = countState.enabled && activeCount < recipeCount
+    ? `素材リスト(${activeCount}/${recipeCount})`
+    : '素材リスト';
   materialButton.addEventListener('click', event => {
     event.stopPropagation();
     openFavoriteMaterialsMode();
+  });
+
+  const curtain = document.createElement('div');
+  curtain.className = 'favorite-material-curtain';
+  curtain.classList.toggle('expanded', expandedFavoriteMaterialActions);
+  const curtainToggle = document.createElement('button');
+  curtainToggle.className = 'favorite-material-curtain-toggle';
+  curtainToggle.type = 'button';
+  curtainToggle.textContent = expandedFavoriteMaterialActions ? '▲' : '▼';
+  curtainToggle.setAttribute('aria-expanded', String(expandedFavoriteMaterialActions));
+  curtainToggle.addEventListener('click', event => {
+    event.stopPropagation();
+    expandedFavoriteMaterialActions = !expandedFavoriteMaterialActions;
+    curtain.classList.toggle('expanded', expandedFavoriteMaterialActions);
+    curtainToggle.textContent = expandedFavoriteMaterialActions ? '▲' : '▼';
+    curtainToggle.setAttribute('aria-expanded', String(expandedFavoriteMaterialActions));
+    if (!expandedFavoriteMaterialActions) {
+      favoriteItemReorderEnabled = false;
+      countState.enabled = false;
+      favoriteMaterialCalcMode = 'sum';
+      expandedFavoriteCountRows.clear();
+      saveFavoriteItemCountStore();
+      if (resultSourceMode === 'favorite-materials') renderResultView();
+      window.setTimeout(renderList, 190);
+    }
   });
 
   const reorderButton = document.createElement('button');
@@ -890,11 +1101,143 @@ function createFavoriteMaterialsRow() {
   reorderButton.textContent = '並び替え';
   reorderButton.addEventListener('click', event => {
     event.stopPropagation();
-    favoriteItemReorderEnabled = !favoriteItemReorderEnabled;
+    const enable = !favoriteItemReorderEnabled;
+    favoriteItemReorderEnabled = enable;
+    if (enable) {
+      countState.enabled = false;
+      favoriteMaterialCalcMode = 'sum';
+      expandedFavoriteCountRows.clear();
+      saveFavoriteItemCountStore();
+      if (resultSourceMode === 'favorite-materials') renderResultView();
+    }
     renderList();
   });
 
-  li.append(materialButton, reorderButton);
+  const countButton = document.createElement('button');
+  countButton.className = 'favorite-list-action favorite-list-action-compact';
+  countButton.classList.toggle('active', countState.enabled && favoriteMaterialCalcMode === 'counts');
+  countButton.type = 'button';
+  countButton.textContent = '個数指定';
+  countButton.addEventListener('click', event => {
+    event.stopPropagation();
+    const enable = favoriteMaterialCalcMode !== 'counts';
+    favoriteItemReorderEnabled = false;
+    countState.enabled = enable;
+    favoriteMaterialCalcMode = enable ? 'counts' : 'sum';
+    expandedFavoriteCountRows.clear();
+    if (countState.enabled) {
+      list.itemIds.forEach(itemId => expandedFavoriteCountRows.add(itemId));
+    }
+    saveFavoriteItemCountStore();
+    renderList();
+    if (resultSourceMode === 'favorite-materials') renderResultView();
+  });
+
+  const anyOneButton = document.createElement('button');
+  anyOneButton.className = 'favorite-list-action favorite-list-action-compact';
+  anyOneButton.classList.toggle('active', favoriteAnyOneMode());
+  anyOneButton.type = 'button';
+  anyOneButton.textContent = 'どれでも1つ';
+  anyOneButton.addEventListener('click', event => {
+    event.stopPropagation();
+    const enable = !favoriteAnyOneMode();
+    favoriteItemReorderEnabled = false;
+    countState.enabled = enable;
+    favoriteMaterialCalcMode = enable ? 'any-one' : 'sum';
+    expandedFavoriteCountRows.clear();
+    if (enable) {
+      list.itemIds.forEach(itemId => expandedFavoriteCountRows.add(itemId));
+    }
+    saveFavoriteItemCountStore();
+    renderList();
+    if (resultSourceMode === 'favorite-materials') renderResultView();
+  });
+
+  const anyOneHelp = document.createElement('button');
+  anyOneHelp.className = 'favorite-material-help-btn';
+  anyOneHelp.type = 'button';
+  anyOneHelp.textContent = '?';
+  anyOneHelp.setAttribute('aria-label', 'お気に入り素材リスト操作の説明');
+  anyOneHelp.addEventListener('click', event => {
+    event.stopPropagation();
+    openMarkdownNotice('お気に入り素材リストの操作', `### 並び替え
+
+お気に入りリスト内のアイテム順を変更します。素材リストの計算内容は変わりません。
+
+### 個数指定
+
+アイテムごとに作りたい個数を指定し、その合計に必要な素材リストを表示します。0個のアイテムは素材リストから外れます。
+
+個数指定中に使える操作:
+
+- **全て1個**  
+  対象アイテムの個数をまとめて1個にします。
+- **全て0個**  
+  対象アイテムの個数をまとめて0個にします。
+
+### どれでも1つ
+
+チェックしたアイテムのうち、どれか1つをセット数分制作するために必要な素材リストを表示します。チェックした全てを制作する素材リストではありません。
+
+どれでも1つ中に使える操作:
+
+- **全てOn**  
+  対象アイテムをまとめてチェックします。
+- **全てOff**  
+  対象アイテムのチェックをまとめて外します。`);
+  });
+
+  const setAllCounts = value => {
+    getFavoriteListRecipeNames(list).forEach(name => {
+      const itemId = itemIdForName(name);
+      if (favoriteAnyOneMode()) {
+        if (!countState.anyOneTargets) countState.anyOneTargets = {};
+        countState.anyOneTargets[itemId] = Boolean(value);
+      } else {
+        countState.counts[itemId] = value;
+      }
+    });
+    saveFavoriteItemCountStore();
+    renderList();
+    if (resultSourceMode === 'favorite-materials') renderResultView();
+  };
+  const oneButton = document.createElement('button');
+  oneButton.className = 'favorite-list-action favorite-list-action-compact';
+  oneButton.type = 'button';
+  oneButton.textContent = favoriteAnyOneMode() ? '全てOn' : '全て1個';
+  oneButton.disabled = !countState.enabled;
+  oneButton.addEventListener('click', event => {
+    event.stopPropagation();
+    setAllCounts(1);
+  });
+  const zeroButton = document.createElement('button');
+  zeroButton.className = 'favorite-list-action favorite-list-action-compact';
+  zeroButton.type = 'button';
+  zeroButton.textContent = favoriteAnyOneMode() ? '全てOff' : '全て0個';
+  zeroButton.disabled = !countState.enabled;
+  zeroButton.addEventListener('click', event => {
+    event.stopPropagation();
+    setAllCounts(0);
+  });
+
+  const actions = document.createElement('div');
+  actions.className = 'favorite-material-curtain-actions';
+  const actionsHeader = document.createElement('div');
+  actionsHeader.className = 'favorite-material-actions-header';
+  actionsHeader.append(createTextElement('span', '', '拡張機能'), anyOneHelp);
+  const modeGroup = document.createElement('div');
+  modeGroup.className = 'favorite-material-action-group favorite-material-mode-group';
+  modeGroup.append(reorderButton, countButton, anyOneButton);
+  actions.append(actionsHeader, modeGroup);
+  const showBulkButtons = countState.enabled && (favoriteMaterialCalcMode === 'counts' || favoriteMaterialCalcMode === 'any-one');
+  if (showBulkButtons) {
+    const bulkGroup = document.createElement('div');
+    bulkGroup.className = 'favorite-material-action-group favorite-material-bulk-group';
+    bulkGroup.append(oneButton, zeroButton);
+    actions.appendChild(bulkGroup);
+  }
+  curtain.appendChild(curtainToggle);
+  li.append(materialButton, curtain, actions);
   return li;
 }
 
@@ -1205,8 +1548,15 @@ function renderList() {
 
 function makeFavLi(name, index) {
   const li = createItemListRow(name, 'fav-item-row');
+  const itemId = itemIdForName(name);
   li.dataset.reorderIndex = String(index);
   li.classList.toggle('selected', selectedRecipe === name);
+  const countState = getFavoriteCountState();
+  const countsEnabled = countState.enabled && recipes[name];
+  const itemCount = favoriteItemCount(itemId);
+  const anyOneMode = favoriteAnyOneMode();
+  const anyOneChecked = favoriteAnyOneTarget(itemId);
+  li.classList.toggle('favorite-count-zero', countsEnabled && (anyOneMode ? !anyOneChecked : itemCount === 0));
 
   const nameElement = li.querySelector('.list-name');
   let label = nameElement;
@@ -1232,7 +1582,7 @@ function makeFavLi(name, index) {
     event.stopPropagation();
     pinOff(name);
   });
-  li.insertBefore(pin, label);
+  if (!countsEnabled) li.insertBefore(pin, label);
 
   if (!recipes[name]) li.appendChild(createUsesListButton(name, li, false));
 
@@ -1247,7 +1597,78 @@ function makeFavLi(name, index) {
     }));
   }
 
+  if (countsEnabled) {
+    const expanded = expandedFavoriteCountRows.has(itemId);
+    const curtain = document.createElement('div');
+    curtain.className = 'favorite-item-count-curtain';
+    curtain.classList.toggle('expanded', expanded);
+    curtain.classList.toggle('any-one', anyOneMode);
+    const toggle = document.createElement('button');
+    toggle.className = 'favorite-item-count-toggle';
+    toggle.type = 'button';
+    toggle.textContent = expanded ? '▶' : '◀';
+    toggle.addEventListener('click', event => {
+      event.stopPropagation();
+      const nextExpanded = !expandedFavoriteCountRows.has(itemId);
+      if (nextExpanded) expandedFavoriteCountRows.add(itemId);
+      else expandedFavoriteCountRows.delete(itemId);
+      curtain.classList.toggle('expanded', nextExpanded);
+      toggle.textContent = nextExpanded ? '▶' : '◀';
+    });
+    const controls = document.createElement('div');
+    controls.className = 'favorite-item-count-controls';
+    if (anyOneMode) {
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = 'favorite-anyone-checkbox';
+      checkbox.checked = anyOneChecked;
+      checkbox.addEventListener('click', event => event.stopPropagation());
+      checkbox.addEventListener('change', event => {
+        setFavoriteAnyOneTarget(itemId, checkbox.checked);
+        renderList();
+        if (resultSourceMode === 'favorite-materials') renderResultView();
+      });
+      controls.appendChild(checkbox);
+    } else {
+      const dec = document.createElement('button');
+      dec.type = 'button';
+      dec.textContent = '－';
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.min = '0';
+      input.max = String(REQUEST_COUNT_MAX);
+      input.step = '1';
+      input.inputMode = 'numeric';
+      input.value = String(itemCount);
+      const inc = document.createElement('button');
+      inc.type = 'button';
+      inc.textContent = '＋';
+      const commit = value => {
+        setFavoriteItemCount(itemId, value);
+        renderList();
+        if (resultSourceMode === 'favorite-materials') renderResultView();
+      };
+      dec.addEventListener('click', event => {
+        event.stopPropagation();
+        commit(itemCount - 1);
+      });
+      inc.addEventListener('click', event => {
+        event.stopPropagation();
+        commit(itemCount + 1);
+      });
+      input.addEventListener('click', event => event.stopPropagation());
+      input.addEventListener('change', event => commit(Number(event.target.value)));
+      input.addEventListener('keydown', event => {
+        if (event.key === 'Enter') input.blur();
+      });
+      controls.append(dec, input, inc);
+    }
+    curtain.append(toggle, controls);
+    li.appendChild(curtain);
+  }
+
   li.addEventListener('click', () => {
+    if (countsEnabled) return;
     if (recipes[name]) selectRecipeByName(name);
     else {
       markRecipeListSelection(li);
@@ -1313,9 +1734,11 @@ function showUsesPanel(ingredientName, options = {}) {
     const li = createItemListRow(recipeName);
     li.addEventListener('click', () => {
       recordViewedItem(recipeName);
+      resetFavoriteOperationModes();
       if (selectedRecipe !== recipeName || resultSourceMode === 'favorite-materials') resetCountInput();
       selectedRecipe = recipeName;
       leaveFavoriteMaterialsMode();
+      resetRightPanelViewState();
       setResultViewMode('tree');
       elements.usesList.querySelectorAll('li').forEach(el => el.classList.remove('selected'));
       li.classList.add('selected');
@@ -1323,7 +1746,6 @@ function showUsesPanel(ingredientName, options = {}) {
       if (isMobile()) {
         prevPanel = 'middle';
         showMobilePanel('right');
-        elements.treeContainer.scrollTop = 0;
       }
     });
     frag.appendChild(li);
@@ -1352,35 +1774,35 @@ function returnToList() {
 
 function selectRecipe(name, li) {
   recordViewedItem(name);
+  resetFavoriteOperationModes();
   if (selectedRecipe !== name || resultSourceMode === 'favorite-materials') resetCountInput();
   selectedRecipe = name;
   selectedUsesItem = null;
   leaveFavoriteMaterialsMode();
-  exchangeTreeState.clear();
+  resetRightPanelViewState();
   setResultViewMode('tree');
   markRecipeListSelection(li);
   renderResultView();
   if (isMobile()) {
     prevPanel = 'left';
     showMobilePanel('right');
-    elements.treeContainer.scrollTop = 0;
   }
 }
 
 function selectRecipeByName(name) {
   recordViewedItem(name);
+  resetFavoriteOperationModes();
   if (selectedRecipe !== name || resultSourceMode === 'favorite-materials') resetCountInput();
   selectedRecipe = name;
   selectedUsesItem = null;
   leaveFavoriteMaterialsMode();
-  exchangeTreeState.clear();
+  resetRightPanelViewState();
   setResultViewMode('tree');
   renderList();
   renderResultView();
   if (isMobile()) {
     prevPanel = 'left';
     showMobilePanel('right');
-    elements.treeContainer.scrollTop = 0;
   }
 }
 
@@ -1443,7 +1865,8 @@ function buildItemAndRecipeMasters(rawList, idToItem) {
         id: item.ID,
         numericId: toNumeric(item.ID),
         uiCategory: toNumeric(item.ItemUICategory),
-        uiCategoryName: item.ItemUICategoryName || ''
+        uiCategoryName: item.ItemUICategoryName || '',
+        gatheringTimer: item.GatheringTimer || []
       };
       recipes[name] = {
         yield: toNumeric(recipe.AmountResult, 1),
@@ -1465,7 +1888,8 @@ function buildItemAndRecipeMasters(rawList, idToItem) {
         id: item.ID,
         numericId: toNumeric(item.ID),
         uiCategory: toNumeric(item.ItemUICategory),
-        uiCategoryName: item.ItemUICategoryName || ''
+        uiCategoryName: item.ItemUICategoryName || '',
+        gatheringTimer: item.GatheringTimer || []
       };
     }
   });
@@ -1480,7 +1904,8 @@ function buildItemAndRecipeMasters(rawList, idToItem) {
         id: ingredient.ItemID,
         numericId: toNumeric(ingredient.ItemID),
         uiCategory: toNumeric(idToItem[ingredient.ItemID]?.ItemUICategory),
-        uiCategoryName: idToItem[ingredient.ItemID]?.ItemUICategoryName || ''
+        uiCategoryName: idToItem[ingredient.ItemID]?.ItemUICategoryName || '',
+        gatheringTimer: idToItem[ingredient.ItemID]?.GatheringTimer || []
       };
     });
   });
@@ -1523,14 +1948,23 @@ function updatePatchStatus(maxPatch) {
   elements.loadStatus.textContent = maxPatch > 0
     ? `patch ${String(maxPatch).slice(0, -2)}.${String(maxPatch).slice(-2)} 対応`
     : '';
+  hideLoadingOverlay();
 }
 
 function showLoadError(error) {
   elements.loadStatus.textContent = '読み込みエラー';
+  hideLoadingOverlay();
   const message = document.createElement('div');
   message.className = 'error-msg';
   message.append('データの読み込みに失敗しました。', document.createElement('br'), error.message);
   elements.treeContainer.replaceChildren(message);
+}
+
+function hideLoadingOverlay() {
+  const overlay = elements.loadingOverlay;
+  if (!overlay) return;
+  const remaining = Math.max(0, MIN_LOADING_OVERLAY_MS - (Date.now() - loadingOverlayStartedAt));
+  window.setTimeout(() => overlay.classList.remove('open'), remaining);
 }
 
 async function init() {
@@ -1577,6 +2011,13 @@ function clearMobilePanels() {
   elements.panelRight.classList.remove('mobile-visible');
   elements.mobileBackBtn.classList.remove('visible');
   delete elements.mobileBackBtn.dataset.panel;
+}
+
+function resetRightPanelViewState() {
+  elements.treeContainer.scrollTop = 0;
+  exchangeTreeState.clear();
+  intermediateTreeState.clear();
+  materialSectionState.clear();
 }
 
 function changeCount(delta) {
@@ -1644,17 +2085,17 @@ function ensureFavoriteMaterialsRingCounts() {
 
 function openFavoriteMaterialsMode() {
   if (!getDisplayedFavoriteList()) return;
-  resetCountInput();
+  if (resultSourceMode !== 'favorite-materials') resetCountInput();
   selectedRecipe = null;
   setResultSourceMode('favorite-materials');
   setResultViewMode('materials');
   ensureFavoriteMaterialsRingCounts();
+  resetRightPanelViewState();
   renderList();
   renderResultView();
   if (isMobile()) {
     prevPanel = 'left';
     showMobilePanel('right');
-    elements.treeContainer.scrollTop = 0;
   }
 }
 
@@ -1668,8 +2109,9 @@ function updateResultHeader() {
   const count = readRequestedCount(elements.countInput);
   if (resultSourceMode === 'favorite-materials') {
     const listName = getDisplayedFavoriteList()?.name || '';
+    const hideCountInput = favoriteCountEnabled() && !favoriteAnyOneMode();
     elements.countLabel.textContent = 'セット数:';
-    elements.resultTitle.textContent = listName ? `【${listName} × ${formatNumber(count)}セット分】` : '';
+    elements.resultTitle.textContent = '';
     elements.usesBtn.classList.remove('visible');
     elements.treeViewBtn.classList.add('hidden');
     elements.materialsViewBtn.classList.remove('hidden');
@@ -1678,11 +2120,19 @@ function updateResultHeader() {
     elements.resultViewSwitch.classList.toggle('hidden', !listName);
     elements.resultViewSwitch.classList.add('favorite-materials-only');
     elements.resultHeader.classList.toggle('hidden', !listName);
+    elements.resultHeader.classList.toggle('hide-count-input', hideCountInput);
+    elements.countInput.disabled = hideCountInput;
+    elements.resultHeader.querySelectorAll('.count-control button')
+      .forEach(button => { button.disabled = hideCountInput; });
     return;
   }
 
+  elements.resultHeader.classList.remove('hide-count-input');
+  elements.countInput.disabled = false;
+  elements.resultHeader.querySelectorAll('.count-control button')
+    .forEach(button => { button.disabled = false; });
   elements.countLabel.textContent = '個数:';
-  elements.resultTitle.textContent = selectedRecipe ? `【${selectedRecipe} × ${formatNumber(count)}個分】` : '';
+  elements.resultTitle.textContent = '';
   const usesCount = selectedRecipe ? (usedIn[selectedRecipe]?.length || 0) : 0;
   elements.usesBtn.textContent = `使用先 (${formatNumber(usesCount)})`;
   elements.usesBtn.classList.toggle('visible', usesCount > 0);
@@ -1721,7 +2171,7 @@ function renderResultView() {
 function resetToStartupView() {
   suppressViewStateSave = true;
   leaveFavoriteMaterialsMode();
-  favoriteItemReorderEnabled = false;
+  resetFavoriteOperationModes();
   selectedRecipe = null;
   selectedUsesItem = null;
   prevPanel = 'left';
@@ -1730,7 +2180,7 @@ function resetToStartupView() {
   favoriteStore.selectedListId = null;
   saveFavorites();
   treePinMap.clear();
-  exchangeTreeState.clear();
+  resetRightPanelViewState();
 
   elements.searchBox.value = '';
   elements.searchClearBtn.classList.remove('visible');
@@ -1794,11 +2244,11 @@ function getCrystalPart(name, parts) {
 }
 
 function crystalKind(name) {
-  return getCrystalPart(name, CRYSTAL_KIND_ORDER);
+  return CRYSTAL_EXCLUDE.has(name) ? getCrystalPart(name, CRYSTAL_KIND_ORDER) : '';
 }
 
 function crystalElement(name) {
-  return getCrystalPart(name, CRYSTAL_ELEMENT_ORDER);
+  return CRYSTAL_EXCLUDE.has(name) ? getCrystalPart(name, CRYSTAL_ELEMENT_ORDER) : '';
 }
 
 function compareCrystalNames(a, b) {
@@ -2083,6 +2533,7 @@ function mergeMaterialItems(items) {
 }
 
 function renderFavoriteRingControls(container) {
+  if (favoriteCountEnabled()) return;
   const ringNames = getFavoriteMaterialRingNames();
   if (ringNames.length === 0) return;
 
@@ -2129,6 +2580,33 @@ function calculateMaterialRequirements(rootItems) {
   });
 }
 
+function mergeMaxRequirementResults(results) {
+  const states = new Map();
+  const roots = new Set();
+  const exchangeTypes = new Set(EXCHANGE_CRAFT_TYPES);
+
+  results.forEach(result => {
+    result.roots.forEach(name => roots.add(name));
+    result.states.forEach((state, name) => {
+      const current = states.get(name);
+      if (current && current.needed >= state.needed) {
+        current.parents = new Set([...current.parents, ...state.parents]);
+        return;
+      }
+      states.set(name, {
+        ...state,
+        parents: new Set(state.parents)
+      });
+    });
+  });
+
+  states.forEach((state, name) => {
+    state.isRoot = roots.has(name);
+  });
+
+  return { states, roots, exchangeTypes };
+}
+
 function materialRowsFromRequirements(result) {
   const rows = [];
   result.states.forEach(state => {
@@ -2149,14 +2627,26 @@ function intermediateTreeFromRequirements(result) {
 function getFavoriteMaterialRoots() {
   ensureFavoriteMaterialsRingCounts();
   const setCount = readRequestedCount(elements.countInput);
-  return getFavoriteListRecipeNames().map(name => {
-    const multiplier = isRingRecipe(name) ? (favoriteMaterialsRingCounts[name] || 1) : 1;
-    return { name, qty: setCount * multiplier };
-  });
+  const list = getDisplayedFavoriteList();
+  const useItemCounts = favoriteCountEnabled(list);
+  return getFavoriteListRecipeNames(list).map(name => {
+    const itemId = itemIdForName(name);
+    const specifiedCount = useItemCounts ? favoriteItemCount(itemId, list) : 1;
+    if (favoriteAnyOneMode() && !favoriteAnyOneTarget(itemId, list)) return null;
+    if (!favoriteAnyOneMode() && specifiedCount <= 0) return null;
+    if (favoriteAnyOneMode()) return { name, qty: setCount };
+    const multiplier = !useItemCounts && isRingRecipe(name) ? (favoriteMaterialsRingCounts[name] || 1) : 1;
+    return { name, qty: setCount * specifiedCount * multiplier };
+  }).filter(Boolean);
 }
 
 function getCurrentMaterialRequirements() {
   const count = readRequestedCount(elements.countInput);
+  if (resultSourceMode === 'favorite-materials' && favoriteAnyOneMode()) {
+    const roots = getFavoriteMaterialRoots();
+    const results = roots.map(root => calculateMaterialRequirements([{ name: root.name, qty: root.qty }]));
+    return mergeMaxRequirementResults(results);
+  }
   const roots = resultSourceMode === 'favorite-materials'
     ? getFavoriteMaterialRoots()
     : [{ name: selectedRecipe, qty: count }];
@@ -2164,6 +2654,7 @@ function getCurrentMaterialRequirements() {
 }
 
 function renderMaterialsList() {
+  const count = readRequestedCount(elements.countInput);
   const requirements = getCurrentMaterialRequirements();
   const rows = materialRowsFromRequirements(requirements);
   const intermediateTree = intermediateTreeFromRequirements(requirements);
@@ -2179,6 +2670,18 @@ function renderMaterialsList() {
 
   if (resultSourceMode === 'favorite-materials') {
     renderFavoriteRingControls(elements.treeContainer);
+    if (favoriteCountEnabled()) {
+      getFavoriteMaterialRoots().forEach((root, index) => {
+        if (favoriteAnyOneMode() && index > 0) {
+          elements.treeContainer.appendChild(createTextElement('div', 'favorite-material-root-or', 'もしくは'));
+        }
+        elements.treeContainer.appendChild(
+          createResultRootSummary(root.name, root.qty, 'result-root-summary favorite-material-root-summary', false)
+        );
+      });
+    }
+  } else {
+    elements.treeContainer.appendChild(createResultRootSummary(selectedRecipe, count, 'result-root-summary', true));
   }
 
   const contextKey = resultSourceMode === 'favorite-materials'
@@ -2203,7 +2706,8 @@ function renderMaterialsList() {
       const collapsed = toggle.textContent === '▼';
       toggle.textContent = collapsed ? '▶' : '▼';
       materialSectionState.set(stateKey, collapsed);
-      bodyRows.forEach(row => row.classList.toggle('collapsed', collapsed));
+      bodyRows.forEach(row => setCollapsedAnimated(row, collapsed));
+      saveViewState();
     });
   };
 
@@ -2239,6 +2743,8 @@ function renderMaterialsList() {
             if (supplementIcon) entryRow.appendChild(supplementIcon);
             appendSupplementName(entryRow, entry, 'material-supplement-name');
             entryRow.appendChild(createTextElement('span', 'material-supplement-qty', `× ${formatNumber(entry.qty)}`));
+            const supplementGatheringButton = createGatheringTimerButton(entry.name);
+            if (supplementGatheringButton) entryRow.appendChild(supplementGatheringButton);
           }
           supplement.appendChild(entryRow);
         });
@@ -2246,6 +2752,8 @@ function renderMaterialsList() {
       }
 
       li.appendChild(content);
+      const gatheringButton = createGatheringTimerButton(row.name);
+      if (gatheringButton) li.appendChild(gatheringButton);
     } else {
       li.appendChild(createMaterialChoiceContent(row));
     }
@@ -2310,6 +2818,8 @@ function renderMaterialsList() {
     }
 
     rowElement.appendChild(content);
+    const gatheringButton = createGatheringTimerButton(row.name);
+    if (gatheringButton) rowElement.appendChild(gatheringButton);
     const treeButton = document.createElement('button');
     treeButton.type = 'button';
     treeButton.className = 'intermediate-material-tree-btn';
@@ -2331,7 +2841,8 @@ function renderMaterialsList() {
         children.appendChild(createIntermediateRow(child, childTreePath(pathKey, child.name, index), alignToggleSpace));
       });
       const toggleChildren = () => {
-        const collapsed = children.classList.toggle('collapsed');
+        const collapsed = !children.classList.contains('collapsed');
+        setCollapsedAnimated(children, collapsed);
         toggle.textContent = collapsed ? '▶' : '▼';
         intermediateTreeState.set(pathKey, !collapsed);
       };
@@ -2445,50 +2956,86 @@ function renderTree() {
   const count = readRequestedCount(elements.countInput);
   treePinMap.clear();
 
-  const producedQty = calcProduced(selectedRecipe, count);
-  elements.treeContainer.appendChild(
-    buildNode(
-      selectedRecipe,
-      count,
-      producedQty,
-      0,
-      selectedRecipe,
-      null,
-      null,
-      shouldShowCraftBadgeOnlyAtRoot(selectedRecipe)
-    )
+  const recipe = recipes[selectedRecipe];
+  elements.treeContainer.appendChild(createResultRootSummary(selectedRecipe, count, 'result-root-summary', true));
+  if (!recipe) return;
+  appendRecipeChildren(
+    elements.treeContainer,
+    recipe,
+    count,
+    -1,
+    selectedRecipe,
+    shouldShowCraftBadgeOnlyAtRoot(selectedRecipe),
+    true
   );
 }
 
 function renderMaterialTreeDialog() {
   if (!materialTreeRecipe) return;
   const count = readRequestedCount(elements.materialTreeCountInput);
-  elements.materialTreeTitle.textContent = `【${materialTreeRecipe} × ${formatNumber(count)}個分】`;
+  elements.materialTreeTitle.textContent = '素材ツリー';
+  elements.materialTreeContent.style.height = '';
   elements.materialTreeContent.replaceChildren();
-  elements.materialTreeContent.appendChild(
-    buildNode(
-      materialTreeRecipe,
+  elements.materialTreeContent.appendChild(createResultRootSummary(materialTreeRecipe, count, 'material-tree-root-summary', false));
+  const recipe = recipes[materialTreeRecipe];
+  if (recipe) {
+    appendRecipeChildren(
+      elements.materialTreeContent,
+      recipe,
       count,
-      calcProduced(materialTreeRecipe, count),
-      0,
+      -1,
       `material-dialog:${materialTreeRecipe}`,
-      null,
-      null,
       shouldShowCraftBadgeOnlyAtRoot(materialTreeRecipe),
       false
+    );
+  }
+  lockMaterialTreeContentHeight();
+}
+
+function createResultRootSummary(name, neededQty, className = 'result-root-summary', showPin = false) {
+  const master = itemMaster[name] || { method: '', icon: '', craftType: '' };
+  const recipe = recipes[name];
+  const producedQty = calcProduced(name, neededQty);
+  const wrapper = document.createElement('div');
+  wrapper.className = className;
+  const row = document.createElement('div');
+  row.className = 'node-row';
+  const icon = createItemIcon(master.icon, 'node-icon');
+  if (showPin) row.appendChild(createTreePin(name));
+  if (icon) row.appendChild(icon);
+  row.appendChild(
+    createTreeMain(
+      name,
+      producedQty,
+      createTreeSubInfo(recipe, neededQty, producedQty, null, null),
+      createTreeBadge(master.method, false)
     )
   );
+  const gatheringButton = createGatheringTimerButton(name);
+  if (gatheringButton) row.appendChild(gatheringButton);
+  wrapper.appendChild(row);
+  return wrapper;
+}
+
+function lockMaterialTreeContentHeight() {
+  if (!elements.materialTreeOverlay.classList.contains('open')) return;
+  const content = elements.materialTreeContent;
+  content.style.height = '';
+  const maxHeight = Math.max(120, Math.min(520, window.innerHeight * 0.52));
+  const height = Math.min(Math.ceil(content.getBoundingClientRect().height), maxHeight);
+  content.style.height = `${height}px`;
 }
 
 function openMaterialTree(name, neededQty) {
   materialTreeRecipe = name;
   elements.materialTreeCountInput.value = String(Math.min(REQUEST_COUNT_MAX, Math.max(1, neededQty)));
-  renderMaterialTreeDialog();
   elements.materialTreeOverlay.classList.add('open');
+  renderMaterialTreeDialog();
 }
 
 function closeMaterialTree() {
   elements.materialTreeOverlay.classList.remove('open');
+  elements.materialTreeContent.style.height = '';
   materialTreeRecipe = null;
   renderResultView();
 }
@@ -2545,6 +3092,83 @@ function createTreePin(name) {
   });
   registerTreePin(name, pin);
   return pin;
+}
+
+function hasGatheringTimer(name) {
+  return (itemMaster[name]?.gatheringTimer || []).length > 0;
+}
+
+function createGatheringTimerButton(name) {
+  if (!hasGatheringTimer(name)) return null;
+  const button = document.createElement('button');
+  button.className = 'gathering-timer-btn';
+  button.type = 'button';
+  button.textContent = '⏰';
+  button.title = `${name}の採集情報`;
+  button.setAttribute('aria-label', `${name}の採集情報`);
+  button.addEventListener('click', event => {
+    event.stopPropagation();
+    showGatheringDialog(name);
+  });
+  return button;
+}
+
+function gatheringMethodClass(method) {
+  return method === '採掘' || method === '砕岩' ? 'gathering-method-mining' : 'gathering-method-botany';
+}
+
+function showGatheringDialog(name) {
+  const entries = itemMaster[name]?.gatheringTimer || [];
+  elements.gatheringTitle.textContent = `採集情報: ${name}`;
+  elements.gatheringContent.replaceChildren();
+  if (entries.length === 0) {
+    elements.gatheringContent.appendChild(createTextElement('p', 'gathering-empty', '採集情報はありません。'));
+  } else {
+    let currentArea = '';
+    let currentMap = '';
+    let areaSection = null;
+    let mapSection = null;
+    for (const entry of entries) {
+      if (entry.Area !== currentArea) {
+        currentArea = entry.Area;
+        currentMap = '';
+        areaSection = createTextElement('section', 'gathering-area-section', '');
+        areaSection.appendChild(createTextElement('h3', '', entry.Area || 'その他'));
+        elements.gatheringContent.appendChild(areaSection);
+      }
+      if (entry.Map !== currentMap) {
+        currentMap = entry.Map;
+        mapSection = createTextElement('section', 'gathering-map-section', '');
+        mapSection.appendChild(createTextElement('h4', '', entry.Map));
+        areaSection.appendChild(mapSection);
+      }
+      const block = createTextElement('div', 'gathering-entry', '');
+      const head = createTextElement('div', 'gathering-entry-head', '');
+      head.appendChild(createTextElement('span', `badge gathering-method ${gatheringMethodClass(entry.Method)}`, entry.Method));
+      head.appendChild(createTextElement('span', 'gathering-type', entry.Type));
+      block.appendChild(head);
+      if (entry.Chronicle) block.appendChild(createTextElement('div', 'gathering-note', `${entry.Chronicle} が必要`));
+      if (Number.isFinite(Number(entry.RequiredTechnical))) {
+        block.appendChild(createTextElement('div', 'gathering-note', `必要技術力: ${formatNumber(Number(entry.RequiredTechnical))} 以上`));
+      }
+      const times = createTextElement('div', 'gathering-times', '');
+      for (const time of entry.Times || []) {
+        const timeChip = createTextElement('span', 'gathering-time', '');
+        timeChip.append(
+          createTextElement('span', 'gathering-time-et', 'ET'),
+          createTextElement('span', 'gathering-time-text', time)
+        );
+        times.appendChild(timeChip);
+      }
+      block.appendChild(times);
+      mapSection.appendChild(block);
+    }
+  }
+  elements.gatheringOverlay.classList.add('open');
+}
+
+function closeGatheringDialog() {
+  elements.gatheringOverlay.classList.remove('open');
 }
 
 function createTreeMain(name, producedQty, subInfo, badge) {
@@ -2658,6 +3282,8 @@ function buildNode(
       createTreeBadge(master.method, hideCraftBadge)
     )
   );
+  const gatheringButton = createGatheringTimerButton(name);
+  if (gatheringButton) row.appendChild(gatheringButton);
   node.appendChild(row);
 
   if (!hasChildren) return node;
@@ -2673,7 +3299,8 @@ function buildNode(
   }
 
   row.addEventListener('click', () => {
-    const collapsed = children.classList.toggle('collapsed');
+    const collapsed = !children.classList.contains('collapsed');
+    setCollapsedAnimated(children, collapsed);
     toggle.textContent = collapsed ? '▶' : '▼';
     if (recipe.craftType === '9') {
       exchangeTreeState.set(pathKey, !collapsed);
@@ -2766,113 +3393,22 @@ function closeSettings() {
   closeExportListDropdown();
 }
 
-function escapeHtml(text) {
-  return String(text).replace(/[&<>"']/g, char => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;'
-  }[char]));
-}
-
-function renderMarkdownInline(text) {
-  const codeSegments = [];
-  let html = escapeHtml(text).replace(/`([^`]+)`/g, (_, code) => {
-    const token = `\u0000CODE${codeSegments.length}\u0000`;
-    codeSegments.push(`<code>${code}</code>`);
-    return token;
-  });
-
-  html = html
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
-
-  codeSegments.forEach((segment, index) => {
-    html = html.replace(`\u0000CODE${index}\u0000`, segment);
-  });
-  return html;
-}
-
 function renderMarkdown(markdown) {
-  const lines = markdown.replace(/\r\n/g, '\n').split('\n');
-  const html = [];
-  let listOpen = false;
-  let listItemOpen = false;
-  let paragraph = [];
+  if (!window.marked?.parse || !window.DOMPurify?.sanitize) {
+    throw new Error('Markdownレンダラの読み込みに失敗しました');
+  }
+  window.marked.use({ gfm: true, breaks: false });
+  return window.DOMPurify.sanitize(window.marked.parse(markdown));
+}
 
-  const closeListItem = () => {
-    if (!listItemOpen) return;
-    html.push('</li>');
-    listItemOpen = false;
-  };
-
-  const closeList = () => {
-    if (!listOpen) return;
-    closeListItem();
-    html.push('</ul>');
-    listOpen = false;
-  };
-
-  const closeParagraph = () => {
-    if (paragraph.length === 0) return;
-    html.push(`<p>${paragraph.map(renderMarkdownInline).join('<br>')}</p>`);
-    paragraph = [];
-  };
-
-  lines.forEach(line => {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      closeParagraph();
-      closeList();
-      return;
-    }
-    if (listItemOpen && /^\s+/.test(line) && !trimmed.startsWith('- ')) {
-      html.push(`<br>${renderMarkdownInline(trimmed)}`);
-      return;
-    }
-    if (trimmed === '---') {
-      closeParagraph();
-      closeList();
-      html.push('<hr>');
-      return;
-    }
-    if (trimmed.startsWith('### ')) {
-      closeParagraph();
-      closeList();
-      html.push(`<h4>${renderMarkdownInline(trimmed.slice(4))}</h4>`);
-      return;
-    }
-    if (trimmed.startsWith('## ')) {
-      closeParagraph();
-      closeList();
-      html.push(`<h3>${renderMarkdownInline(trimmed.slice(3))}</h3>`);
-      return;
-    }
-    if (trimmed.startsWith('# ')) {
-      closeParagraph();
-      closeList();
-      html.push(`<h2>${renderMarkdownInline(trimmed.slice(2))}</h2>`);
-      return;
-    }
-    if (trimmed.startsWith('- ')) {
-      closeParagraph();
-      if (!listOpen) {
-        html.push('<ul>');
-        listOpen = true;
-      }
-      closeListItem();
-      html.push(`<li>${renderMarkdownInline(trimmed.slice(2))}`);
-      listItemOpen = true;
-      return;
-    }
-    closeList();
-    paragraph.push(trimmed);
-  });
-
-  closeParagraph();
-  closeList();
-  return html.join('');
+function openMarkdownNotice(title, markdown) {
+  elements.licenseTitle.textContent = title;
+  try {
+    elements.licenseText.innerHTML = renderMarkdown(markdown);
+  } catch {
+    elements.licenseText.textContent = '文書を表示できませんでした。時間をおいて再度お試しください。';
+  }
+  elements.licenseOverlay.classList.add('open');
 }
 
 async function openDocumentNotice(title, path) {
@@ -2925,8 +3461,16 @@ function toggleExportListDropdown() {
 }
 
 function selectExportList(listId) {
-  selectedExportListId = listId;
   const list = findFavoriteList(listId);
+  if (!list || isRecentList(list)) {
+    selectedExportListId = null;
+    elements.exportCode.value = '';
+    elements.exportListToggle.textContent = 'リストを選択...';
+    closeExportListDropdown();
+    renderExportListChoices();
+    return;
+  }
+  selectedExportListId = listId;
   elements.exportCode.value = encodeFavoriteList(list);
   elements.exportListToggle.textContent = list ? list.name : 'リストを選択...';
   closeExportListDropdown();
@@ -2936,10 +3480,11 @@ function selectExportList(listId) {
 function renderExportListChoices() {
   if (!elements.exportListChoices) return;
   const frag = document.createDocumentFragment();
-  if (favoriteStore.lists.length === 0) {
+  const exportableLists = favoriteStore.lists.filter(list => !isRecentList(list));
+  if (exportableLists.length === 0) {
     frag.appendChild(createTextElement('li', 'list-empty', 'お気に入りリストがありません'));
   } else {
-    favoriteStore.lists.forEach(list => {
+    exportableLists.forEach(list => {
       const li = document.createElement('li');
       li.classList.toggle('active', list.id === selectedExportListId);
       li.textContent = list.name;
@@ -3072,6 +3617,10 @@ function bindEvents() {
   elements.materialTreeCloseBtn.addEventListener('click', closeMaterialTree);
   elements.materialTreeOverlay.addEventListener('click', event => {
     if (event.target === elements.materialTreeOverlay) closeMaterialTree();
+  });
+  elements.gatheringCloseBtn.addEventListener('click', closeGatheringDialog);
+  elements.gatheringOverlay.addEventListener('click', event => {
+    if (event.target === elements.gatheringOverlay) closeGatheringDialog();
   });
   elements.usesBtn.addEventListener('click', () => showUsesPanel(selectedRecipe));
   elements.updateReloadBtn.addEventListener('click', () => location.reload());

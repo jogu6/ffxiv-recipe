@@ -20,7 +20,7 @@
       <section class="panel-section collapsible-section">
         <button id="csvToggle" class="section-toggle" type="button" aria-expanded="true">
           <span class="section-toggle-mark" aria-hidden="true">▼</span>
-          <span>CSV</span>
+          <span>データ更新</span>
         </button>
         <div id="csvBody" class="collapsible-body">
         <div class="action-item" data-step="check-updates">
@@ -36,49 +36,56 @@
           <span class="action-status">○ 未実行</span>
         </div>
         <div class="action-item" data-step="validate-csv">
-          <span class="order-label">2</span>
+          <span class="order-label">1</span>
           <button id="validateCsvBtn" type="button">CSV検証</button>
           <p>必須ヘッダーと token-items.csv の形式を確認します。</p>
+          <span class="action-status">○ 未実行</span>
+        </div>
+        <div class="action-item" data-step="build">
+          <span class="order-label">2</span>
+          <button id="buildBtn" type="button">データ生成</button>
+          <p>CSV から公開候補 JSON を作ります。まだ公開データは置き換えません。</p>
+          <span class="action-status">○ 未実行</span>
+        </div>
+        <div class="action-item" data-step="publish">
+          <span class="order-label">3</span>
+          <button id="publishBtn" type="button">公開反映</button>
+          <p>現在の Item.json を自動保護し、比較に通った候補で site/data/Item.json を置き換えます。</p>
           <span class="action-status">○ 未実行</span>
         </div>
         <dl class="meta-list">
           <div><dt>前回チェック</dt><dd id="lastChecked">-</dd></div>
         </dl>
+        <div class="action-item">
+          <span class="order-label">一括</span>
+          <button id="runBtn" type="button">全実行</button>
+          <p>CSV検証、データ生成、公開反映、アイコン生成を順番に実行します。</p>
+        </div>
         </div>
       </section>
 
       <section class="panel-section collapsible-section">
         <button id="buildToggle" class="section-toggle" type="button" aria-expanded="false">
           <span class="section-toggle-mark" aria-hidden="true">▶</span>
-          <span>Build</span>
+          <span>アイコン生成</span>
         </button>
         <div id="buildBody" class="collapsible-body" hidden>
-        <div class="action-item" data-step="protect-item-json">
-          <span class="order-label">1</span>
-          <button id="protectItemBtn" type="button">Item.json保護</button>
-          <p>現在の Item.json を比較元として保存します。</p>
-          <span class="action-status">○ 未実行</span>
-        </div>
-        <div class="action-item" data-step="build">
-          <span class="order-label">3</span>
-          <button id="buildBtn" type="button">データ生成</button>
-          <p>CSV から公開候補 JSON を作ります。まだ公開データは置き換えません。</p>
-          <span class="action-status">○ 未実行</span>
-        </div>
-        <div class="action-item" data-step="publish">
-          <span class="order-label">4</span>
-          <button id="publishBtn" type="button">公開反映</button>
-          <p>4 公開反映。比較に通った候補で site/data/Item.json を置き換えます。</p>
-          <span class="action-status">○ 未実行</span>
-        </div>
         <div class="action-item" data-step="icons">
-          <span class="order-label">5</span>
+          <span class="order-label">4</span>
           <button id="iconsBtn" type="button">アイコン生成</button>
           <label class="field quality-field">
-            <span>WebP Quality</span>
-            <input id="qualityInput" type="number" min="1" max="100" step="1" value="60">
+            <span>Quality</span>
+            <input id="qualityInput" type="number" min="1" max="100" step="1" value="80">
           </label>
-          <p>WebP アイコンを生成します。不足 PNG は取得してキャッシュします。</p>
+          <label class="field quality-field">
+            <span>生成サイズ(px)</span>
+            <input id="iconSizeInput" type="number" min="1" max="512" step="1" value="80">
+          </label>
+          <label class="field quality-field">
+            <span>アクセス間隔(ms)</span>
+            <input id="iconDelayInput" type="number" min="0" max="60000" step="100" value="1000">
+          </label>
+          <p>Lodestone NQ 画像を優先し、指定サイズの WebP アイコンを生成します。元 PNG はキャッシュします。</p>
           <span class="action-status">○ 未実行</span>
         </div>
         <div class="action-item" data-step="verify">
@@ -87,24 +94,23 @@
           <p>確認のみ。比較して結果を出しますが、Item.json は変更しません。</p>
           <span class="action-status">○ 未実行</span>
         </div>
-        <div class="action-item">
-          <span class="order-label">一括</span>
-          <button id="runBtn" type="button">全実行</button>
-          <p>CSV検証、候補生成、公開反映、アイコン生成を順番に実行します。</p>
-        </div>
         </div>
       </section>
 
       <section class="panel-section collapsible-section">
         <button id="iconQualityToggle" class="section-toggle" type="button" aria-expanded="false">
           <span class="section-toggle-mark" aria-hidden="true">▶</span>
-          <span>Icon Quality</span>
+          <span>プレビュー</span>
         </button>
         <div id="iconQualityBody" class="collapsible-body" hidden>
         <div class="action-item" data-step="tmp-quality-preview">
           <span class="order-label">任意</span>
           <button id="previewBtn" type="button">比較ページ生成</button>
-          <p>PNG と q50/q60/q70/q80 を並べた一時確認ページを作ります。</p>
+          <label class="field quality-field">
+            <span>プレビュー生成サイズ(px)</span>
+            <input id="previewSizeInput" type="number" min="1" max="512" step="1" value="80">
+          </label>
+          <p>PNG と q50/q60/q70/q80 を並べた一時確認ページを作ります。生成サイズを反映します。</p>
           <span class="action-status">○ 未実行</span>
         </div>
         </div>
@@ -143,13 +149,13 @@
       <header class="preview-header">
         <h2 id="previewTitle">アイコン画質比較</h2>
         <div class="preview-tools">
-          <button id="previewScale1" class="active" type="button">40</button>
           <button id="previewScale2" type="button">2x</button>
           <button id="previewScale3" type="button">3x</button>
           <button id="previewThemeBtn" type="button">light</button>
           <button id="previewCloseBtn" type="button">閉じる</button>
         </div>
       </header>
+      <aside id="previewLanInfo" class="preview-lan-info"></aside>
       <main id="previewContent" class="preview-content"></main>
     </section>
   </div>

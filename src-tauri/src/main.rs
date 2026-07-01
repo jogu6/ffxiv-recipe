@@ -1,12 +1,18 @@
 use serde_json::Value;
 use serde_json::json;
 use std::io::{BufRead, BufReader};
+use std::net::{TcpStream, UdpSocket};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tauri::Emitter;
 
 struct PipelineProcess {
+    pid: Arc<Mutex<Option<u32>>>,
+}
+
+struct PreviewServer {
     pid: Arc<Mutex<Option<u32>>>,
 }
 
@@ -42,7 +48,7 @@ fn run_pipeline_script(
 ) -> Result<String, String> {
     let root = repo_root()?;
     let script = root.join("pipeline").join("tool").join("pipeline-tool.mjs");
-    let mut command_args = vec![script.to_string_lossy().to_string(), command];
+    let mut command_args = vec!["--expose-gc".to_string(), script.to_string_lossy().to_string(), command];
     command_args.extend(args);
     let mut child = Command::new("node")
         .args(command_args)
@@ -143,6 +149,71 @@ fn cancel_pipeline_command(process: tauri::State<PipelineProcess>) -> Result<(),
     }
 }
 
+fn stop_process(pid: u32) -> Result<(), String> {
+    let status = if cfg!(windows) {
+        Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .status()
+            .map_err(|error| error.to_string())?
+    } else {
+        Command::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .status()
+            .map_err(|error| error.to_string())?
+    };
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("Failed to stop process {pid}"))
+    }
+}
+
+fn release_preview_port() -> Result<(), String> {
+    if cfg!(windows) {
+        let script = "Get-NetTCPConnection -LocalPort 4173 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force }";
+        let status = Command::new("powershell")
+            .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map_err(|error| error.to_string())?;
+        if !status.success() {
+            return Err("4173番を使用中のプロセスを停止できませんでした。".to_string());
+        }
+    }
+    Ok(())
+}
+
+fn preview_port_pid() -> Option<u32> {
+    if !cfg!(windows) {
+        return None;
+    }
+    let output = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            "Get-NetTCPConnection -LocalPort 4173 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess"
+        ])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&output.stdout).trim().parse::<u32>().ok()
+}
+
+fn wait_for_preview_port() -> bool {
+    for _ in 0..20 {
+        if TcpStream::connect("127.0.0.1:4173").is_ok() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    false
+}
+
 #[tauri::command]
 fn read_update_state() -> Result<Value, String> {
     let path = repo_root()?
@@ -181,6 +252,16 @@ fn data_url(file: &std::path::Path) -> Result<String, String> {
     Ok(format!("data:{mime};base64,{encoded}"))
 }
 
+fn png_dimensions(file: &std::path::Path) -> Option<(u32, u32)> {
+    let bytes = std::fs::read(file).ok()?;
+    if bytes.len() < 24 || &bytes[0..8] != b"\x89PNG\r\n\x1a\n" {
+        return None;
+    }
+    let width = u32::from_be_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]);
+    let height = u32::from_be_bytes([bytes[20], bytes[21], bytes[22], bytes[23]]);
+    Some((width, height))
+}
+
 #[tauri::command]
 fn read_quality_preview_state() -> Result<Value, String> {
     let root = preview_root()?;
@@ -197,7 +278,14 @@ fn read_quality_preview() -> Result<Value, String> {
     if let Some(items) = rows.as_array_mut() {
         for row in items {
             if let Some(file) = row.get("pngFile").and_then(|value| value.as_str()) {
-                row["pngFile"] = json!(data_url(&root.join(file))?);
+                let path = root.join(file);
+                if row.get("pngWidth").and_then(|value| value.as_u64()).is_none() {
+                    if let Some((width, height)) = png_dimensions(&path) {
+                        row["pngWidth"] = json!(width);
+                        row["pngHeight"] = json!(height);
+                    }
+                }
+                row["pngFile"] = json!(data_url(&path)?);
             }
             if let Some(variants) = row.get_mut("variants").and_then(|value| value.as_array_mut()) {
                 for variant in variants {
@@ -209,6 +297,67 @@ fn read_quality_preview() -> Result<Value, String> {
         }
     }
     Ok(rows)
+}
+
+#[tauri::command]
+fn read_lan_preview_urls() -> Result<Vec<String>, String> {
+    let mut urls = Vec::new();
+    if let Ok(socket) = UdpSocket::bind("0.0.0.0:0") {
+        if socket.connect("8.8.8.8:80").is_ok() {
+            if let Ok(addr) = socket.local_addr() {
+                let ip = addr.ip();
+                if ip.is_ipv4() && !ip.is_loopback() {
+                    urls.push(format!("http://{}:4173/__tmp_icon_quality/", ip));
+                }
+            }
+        }
+    }
+    if urls.is_empty() {
+        urls.push("http://<このPCのIP>:4173/__tmp_icon_quality/".to_string());
+    }
+    Ok(urls)
+}
+
+#[tauri::command]
+fn start_preview_server(server: tauri::State<PreviewServer>) -> Result<Vec<String>, String> {
+    {
+        let pid = server.pid.lock().map_err(|error| error.to_string())?;
+        if pid.is_some() {
+            return read_lan_preview_urls();
+        }
+    }
+
+    let root = repo_root()?;
+    let site = root.join("site");
+    release_preview_port()?;
+    let child = Command::new("py")
+        .args(["-m", "http.server", "4173", "--bind", "0.0.0.0", "--directory"])
+        .arg(site)
+        .current_dir(root)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("プレビュー用ローカルwebサーバーを起動できませんでした: {error}"))?;
+    let child_id = child.id();
+    if !wait_for_preview_port() {
+        let _ = stop_process(child_id);
+        return Err("プレビュー用ローカルwebサーバーが4173番で待受を開始しませんでした。".to_string());
+    }
+    let mut pid = server.pid.lock().map_err(|error| error.to_string())?;
+    *pid = Some(preview_port_pid().unwrap_or(child_id));
+    Ok(read_lan_preview_urls()?)
+}
+
+#[tauri::command]
+fn stop_preview_server(server: tauri::State<PreviewServer>) -> Result<(), String> {
+    let pid = {
+        let mut pid = server.pid.lock().map_err(|error| error.to_string())?;
+        pid.take()
+    };
+    if let Some(pid) = pid {
+        stop_process(pid)?;
+    }
+    Ok(())
 }
 
 fn main() {
@@ -227,7 +376,8 @@ fn main() {
 
     tauri::Builder::default()
         .manage(PipelineProcess { pid: Arc::new(Mutex::new(None)) })
-        .invoke_handler(tauri::generate_handler![run_pipeline_command, cancel_pipeline_command, read_update_state, read_quality_preview_state, read_quality_preview])
+        .manage(PreviewServer { pid: Arc::new(Mutex::new(None)) })
+        .invoke_handler(tauri::generate_handler![run_pipeline_command, cancel_pipeline_command, read_update_state, read_quality_preview_state, read_quality_preview, read_lan_preview_urls, start_preview_server, stop_preview_server])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

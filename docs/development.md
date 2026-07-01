@@ -57,10 +57,10 @@ Run the tests:
 npm run test:e2e
 ```
 
-Playwright starts a local static server with:
+Playwright starts the same local static server used for LAN device checks:
 
 ```powershell
-node .\tools\serve-site.mjs --port 4173
+py -m http.server 4173 --bind 0.0.0.0 --directory site
 ```
 
 ## Formatting

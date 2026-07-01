@@ -198,6 +198,16 @@
     "ItemSearchCategoryName": "クリスタル"
   },
   {
+    "ID": "27",
+    "Name": "同盟記章",
+    "Description": "エオルゼア都市軍事同盟が発行した記章。モブハントを成し遂げた証",
+    "LevelEquip": "1",
+    "ItemUICategory": "63",
+    "ItemSearchCategory": "0",
+    "IconFile": "065024.webp",
+    "ItemUICategoryName": "その他"
+  },
+  {
     "ID": "28",
     "Name": "アラガントームストーン:詩学",
     "Description": "古代アラグ帝国文明の記録媒体と思しき石。詩学について記されているらしい",
@@ -59008,7 +59018,18 @@
     "ItemSearchCategory": "44",
     "IconFile": "025403.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "ザナラーン",
+        "Map": "東ザナラーン",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "13:00-16:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "4803",
@@ -59162,7 +59183,18 @@
     "ItemSearchCategory": "44",
     "IconFile": "025303.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "ラノシア",
+        "Map": "東ラノシア",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "09:00-12:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "4818",
@@ -59389,7 +59421,20 @@
     "ItemSearchCategory": "44",
     "IconFile": "025014.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "クルザス",
+        "Map": "クルザス西部高地",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ],
+        "Chronicle": "草木伝承録:クルザス"
+      }
+    ]
   },
   {
     "ID": "4834",
@@ -61777,7 +61822,18 @@
     "ItemSearchCategory": "47",
     "IconFile": "021212.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ザナラーン",
+        "Map": "東ザナラーン",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "09:00-12:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "5119",
@@ -61799,7 +61855,18 @@
     "ItemSearchCategory": "47",
     "IconFile": "021213.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ザナラーン",
+        "Map": "南ザナラーン",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "04:00-07:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "5121",
@@ -61810,7 +61877,18 @@
     "ItemSearchCategory": "47",
     "IconFile": "021205.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "クルザス",
+        "Map": "クルザス中央高地",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "01:00-04:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "5124",
@@ -62063,7 +62141,18 @@
     "ItemSearchCategory": "47",
     "IconFile": "021453.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ラノシア",
+        "Map": "低地ラノシア",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "18:00-21:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "5147",
@@ -62074,7 +62163,18 @@
     "ItemSearchCategory": "47",
     "IconFile": "021453.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ザナラーン",
+        "Map": "中央ザナラーン",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "04:00-07:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "5148",
@@ -62085,7 +62185,18 @@
     "ItemSearchCategory": "47",
     "IconFile": "021453.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ザナラーン",
+        "Map": "中央ザナラーン",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "04:00-07:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "5149",
@@ -62096,7 +62207,18 @@
     "ItemSearchCategory": "47",
     "IconFile": "021453.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ザナラーン",
+        "Map": "北ザナラーン",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "03:00-06:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "5150",
@@ -62107,7 +62229,18 @@
     "ItemSearchCategory": "47",
     "IconFile": "021453.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ザナラーン",
+        "Map": "北ザナラーン",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "03:00-06:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "5151",
@@ -62118,7 +62251,18 @@
     "ItemSearchCategory": "47",
     "IconFile": "021453.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ラノシア",
+        "Map": "低地ラノシア",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "18:00-21:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "5152",
@@ -62195,7 +62339,18 @@
     "ItemSearchCategory": "47",
     "IconFile": "021251.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "クルザス",
+        "Map": "クルザス中央高地",
+        "Method": "砕岩",
+        "Type": "未知",
+        "Times": [
+          "21:00-00:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "5159",
@@ -62206,7 +62361,19 @@
     "ItemSearchCategory": "47",
     "IconFile": "021456.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "アバラシア",
+        "Map": "アバラシア雲海",
+        "Method": "砕岩",
+        "Type": "未知",
+        "Times": [
+          "10:00-12:00",
+          "22:00-00:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "5160",
@@ -62217,7 +62384,20 @@
     "ItemSearchCategory": "47",
     "IconFile": "021457.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ドラヴァニア",
+        "Map": "低地ドラヴァニア",
+        "Method": "砕岩",
+        "Type": "伝説",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ],
+        "Chronicle": "鉱物伝承録:ドラヴァニア"
+      }
+    ]
   },
   {
     "ID": "5163",
@@ -62228,7 +62408,20 @@
     "ItemSearchCategory": "47",
     "IconFile": "021461.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "クルザス",
+        "Map": "クルザス西部高地",
+        "Method": "砕岩",
+        "Type": "伝説",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ],
+        "Chronicle": "鉱物伝承録:クルザス"
+      }
+    ]
   },
   {
     "ID": "5168",
@@ -63317,7 +63510,20 @@
     "ItemSearchCategory": "47",
     "IconFile": "021463.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "クルザス",
+        "Map": "クルザス西部高地",
+        "Method": "砕岩",
+        "Type": "伝説",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ],
+        "Chronicle": "鉱物伝承録:クルザス"
+      }
+    ]
   },
   {
     "ID": "5228",
@@ -63594,7 +63800,18 @@
     "ItemSearchCategory": "47",
     "IconFile": "021214.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ザナラーン",
+        "Map": "東ザナラーン",
+        "Method": "砕岩",
+        "Type": "未知",
+        "Times": [
+          "05:00-08:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "5274",
@@ -64710,7 +64927,18 @@
     "ItemSearchCategory": "50",
     "IconFile": "021661.webp",
     "ItemUICategoryName": "布材",
-    "ItemSearchCategoryName": "布材"
+    "ItemSearchCategoryName": "布材",
+    "GatheringTimer": [
+      {
+        "Area": "黒衣森",
+        "Map": "黒衣森：東部森林",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "01:00-04:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "5351",
@@ -64876,7 +65104,18 @@
     "ItemSearchCategory": "49",
     "IconFile": "022451.webp",
     "ItemUICategoryName": "木材",
-    "ItemSearchCategoryName": "木材"
+    "ItemSearchCategoryName": "木材",
+    "GatheringTimer": [
+      {
+        "Area": "ラノシア",
+        "Map": "高地ラノシア",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "07:00-10:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "5366",
@@ -65352,7 +65591,20 @@
     "ItemSearchCategory": "49",
     "IconFile": "022403.webp",
     "ItemUICategoryName": "木材",
-    "ItemSearchCategoryName": "木材"
+    "ItemSearchCategoryName": "木材",
+    "GatheringTimer": [
+      {
+        "Area": "ドラヴァニア",
+        "Map": "低地ドラヴァニア",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ],
+        "Chronicle": "草木伝承録:ドラヴァニア"
+      }
+    ]
   },
   {
     "ID": "5393",
@@ -65374,7 +65626,18 @@
     "ItemSearchCategory": "49",
     "IconFile": "022402.webp",
     "ItemUICategoryName": "木材",
-    "ItemSearchCategoryName": "木材"
+    "ItemSearchCategoryName": "木材",
+    "GatheringTimer": [
+      {
+        "Area": "ラノシア",
+        "Map": "中央ラノシア",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "04:00-07:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "5395",
@@ -65385,7 +65648,18 @@
     "ItemSearchCategory": "49",
     "IconFile": "022413.webp",
     "ItemUICategoryName": "木材",
-    "ItemSearchCategoryName": "木材"
+    "ItemSearchCategoryName": "木材",
+    "GatheringTimer": [
+      {
+        "Area": "クルザス",
+        "Map": "クルザス中央高地",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "09:00-12:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "5396",
@@ -67108,7 +67382,18 @@
     "ItemSearchCategory": "53",
     "IconFile": "025001.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "クルザス",
+        "Map": "クルザス中央高地",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "17:00-20:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "5538",
@@ -67196,7 +67481,18 @@
     "ItemSearchCategory": "53",
     "IconFile": "022627.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "黒衣森",
+        "Map": "黒衣森：東部森林",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "05:00-08:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "5546",
@@ -67207,7 +67503,18 @@
     "ItemSearchCategory": "53",
     "IconFile": "022623.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "黒衣森",
+        "Map": "黒衣森：東部森林",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "21:00-00:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "5547",
@@ -67218,7 +67525,18 @@
     "ItemSearchCategory": "53",
     "IconFile": "025001.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "クルザス",
+        "Map": "クルザス中央高地",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "13:00-16:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "5548",
@@ -68510,7 +68828,18 @@
     "ItemSearchCategory": "44",
     "IconFile": "025305.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "ラノシア",
+        "Map": "東ラノシア",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "05:00-08:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "6148",
@@ -68521,7 +68850,18 @@
     "ItemSearchCategory": "44",
     "IconFile": "025209.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "ラノシア",
+        "Map": "東ラノシア",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "13:00-16:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "6149",
@@ -68576,7 +68916,18 @@
     "ItemSearchCategory": "53",
     "IconFile": "022617.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "ラノシア",
+        "Map": "東ラノシア",
+        "Method": "砕岩",
+        "Type": "未知",
+        "Times": [
+          "17:00-20:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "6153",
@@ -90428,7 +90779,18 @@
     "ItemSearchCategory": "47",
     "IconFile": "021203.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ザナラーン",
+        "Map": "北ザナラーン",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "03:00-06:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "7589",
@@ -90439,7 +90801,18 @@
     "ItemSearchCategory": "47",
     "IconFile": "020816.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ザナラーン",
+        "Map": "中央ザナラーン",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "04:00-07:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "7590",
@@ -90450,7 +90823,18 @@
     "ItemSearchCategory": "53",
     "IconFile": "022601.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "黒衣森",
+        "Map": "黒衣森：北部森林",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "03:00-06:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "7591",
@@ -90461,7 +90845,18 @@
     "ItemSearchCategory": "53",
     "IconFile": "025020.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "黒衣森",
+        "Map": "黒衣森：中央森林",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "02:00-05:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "7592",
@@ -90472,7 +90867,18 @@
     "ItemSearchCategory": "44",
     "IconFile": "025317.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "ラノシア",
+        "Map": "中央ラノシア",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "09:00-12:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "7593",
@@ -90483,7 +90889,18 @@
     "ItemSearchCategory": "44",
     "IconFile": "025216.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "ラノシア",
+        "Map": "西ラノシア",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "08:00-11:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "7594",
@@ -90494,7 +90911,18 @@
     "ItemSearchCategory": "44",
     "IconFile": "025206.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "ラノシア",
+        "Map": "低地ラノシア",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "06:00-09:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "7595",
@@ -90505,7 +90933,18 @@
     "ItemSearchCategory": "44",
     "IconFile": "025312.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "ラノシア",
+        "Map": "高地ラノシア",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "07:00-10:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "7596",
@@ -91494,6 +91933,27 @@
     "IconFile": "022802.webp",
     "ItemUICategoryName": "錬金術材",
     "ItemSearchCategoryName": "錬金術材"
+  },
+  {
+    "ID": "7883",
+    "Name": "アレキサンドライト",
+    "Description": "光を変容させる性質があるダークマターの一種",
+    "LevelEquip": "1",
+    "ItemUICategory": "60",
+    "ItemSearchCategory": "0",
+    "IconFile": "021290.webp",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "27",
+          "Name": "同盟記章",
+          "Amount": "50"
+        }
+      ]
+    },
+    "ItemUICategoryName": "触媒"
   },
   {
     "ID": "7885",
@@ -93874,7 +94334,18 @@
     "ItemSearchCategory": "50",
     "IconFile": "021902.webp",
     "ItemUICategoryName": "布材",
-    "ItemSearchCategoryName": "布材"
+    "ItemSearchCategoryName": "布材",
+    "GatheringTimer": [
+      {
+        "Area": "ラノシア",
+        "Map": "西ラノシア",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "08:00-11:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "8025",
@@ -110666,7 +111137,18 @@
     "ItemSearchCategory": "49",
     "IconFile": "022415.webp",
     "ItemUICategoryName": "木材",
-    "ItemSearchCategoryName": "木材"
+    "ItemSearchCategoryName": "木材",
+    "GatheringTimer": [
+      {
+        "Area": "黒衣森",
+        "Map": "黒衣森：中央森林",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "10:00-13:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "9519",
@@ -110677,7 +111159,18 @@
     "ItemSearchCategory": "47",
     "IconFile": "021454.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ラノシア",
+        "Map": "東ラノシア",
+        "Method": "砕岩",
+        "Type": "未知",
+        "Times": [
+          "01:00-04:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "9521",
@@ -112976,7 +113469,18 @@
     "ItemSearchCategory": "47",
     "IconFile": "021215.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ザナラーン",
+        "Map": "北ザナラーン",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "17:00-20:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "10094",
@@ -112998,7 +113502,64 @@
     "ItemSearchCategory": "60",
     "IconFile": "027019.webp",
     "ItemUICategoryName": "雑貨",
-    "ItemSearchCategoryName": "雑貨"
+    "ItemSearchCategoryName": "雑貨",
+    "GatheringTimer": [
+      {
+        "Area": "ラノシア",
+        "Map": "低地ラノシア",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "18:00-21:00"
+        ]
+      },
+      {
+        "Area": "ザナラーン",
+        "Map": "中央ザナラーン",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "04:00-07:00"
+        ]
+      },
+      {
+        "Area": "ザナラーン",
+        "Map": "東ザナラーン",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "09:00-12:00"
+        ]
+      },
+      {
+        "Area": "ザナラーン",
+        "Map": "南ザナラーン",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "04:00-07:00"
+        ]
+      },
+      {
+        "Area": "ザナラーン",
+        "Map": "北ザナラーン",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "03:00-06:00",
+          "17:00-20:00"
+        ]
+      },
+      {
+        "Area": "クルザス",
+        "Map": "クルザス中央高地",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "01:00-04:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "10096",
@@ -113009,7 +113570,18 @@
     "ItemSearchCategory": "53",
     "IconFile": "025002.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "黒衣森",
+        "Map": "黒衣森：東部森林",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "17:00-20:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "10097",
@@ -113031,7 +113603,56 @@
     "ItemSearchCategory": "60",
     "IconFile": "025016.webp",
     "ItemUICategoryName": "雑貨",
-    "ItemSearchCategoryName": "雑貨"
+    "ItemSearchCategoryName": "雑貨",
+    "GatheringTimer": [
+      {
+        "Area": "ラノシア",
+        "Map": "低地ラノシア",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "06:00-09:00"
+        ]
+      },
+      {
+        "Area": "ラノシア",
+        "Map": "西ラノシア",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "08:00-11:00"
+        ]
+      },
+      {
+        "Area": "黒衣森",
+        "Map": "黒衣森：中央森林",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "02:00-05:00"
+        ]
+      },
+      {
+        "Area": "黒衣森",
+        "Map": "黒衣森：東部森林",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "01:00-04:00",
+          "05:00-08:00",
+          "21:00-00:00"
+        ]
+      },
+      {
+        "Area": "ザナラーン",
+        "Map": "東ザナラーン",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "13:00-16:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "10099",
@@ -113042,7 +113663,142 @@
     "ItemSearchCategory": "47",
     "IconFile": "020019.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ラノシア",
+        "Map": "中央ラノシア",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "04:00-07:00",
+          "09:00-12:00"
+        ]
+      },
+      {
+        "Area": "ラノシア",
+        "Map": "低地ラノシア",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "18:00-21:00"
+        ]
+      },
+      {
+        "Area": "ラノシア",
+        "Map": "東ラノシア",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "09:00-12:00"
+        ]
+      },
+      {
+        "Area": "ラノシア",
+        "Map": "高地ラノシア",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "07:00-10:00"
+        ]
+      },
+      {
+        "Area": "黒衣森",
+        "Map": "黒衣森：中央森林",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "06:00-09:00",
+          "10:00-13:00"
+        ]
+      },
+      {
+        "Area": "黒衣森",
+        "Map": "黒衣森：南部森林",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "02:00-05:00"
+        ]
+      },
+      {
+        "Area": "黒衣森",
+        "Map": "黒衣森：北部森林",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "03:00-06:00"
+        ]
+      },
+      {
+        "Area": "ザナラーン",
+        "Map": "中央ザナラーン",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "04:00-07:00"
+        ]
+      },
+      {
+        "Area": "ザナラーン",
+        "Map": "東ザナラーン",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "09:00-12:00"
+        ]
+      },
+      {
+        "Area": "ザナラーン",
+        "Map": "南ザナラーン",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "04:00-07:00"
+        ]
+      },
+      {
+        "Area": "ザナラーン",
+        "Map": "北ザナラーン",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "03:00-06:00",
+          "17:00-20:00"
+        ]
+      },
+      {
+        "Area": "クルザス",
+        "Map": "クルザス中央高地",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "01:00-04:00"
+        ]
+      },
+      {
+        "Area": "クルザス",
+        "Map": "クルザス中央高地",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "09:00-12:00",
+          "13:00-16:00",
+          "17:00-20:00"
+        ]
+      },
+      {
+        "Area": "モードゥナ",
+        "Map": "モードゥナ",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "01:00-04:00",
+          "05:00-08:00",
+          "09:00-12:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "10100",
@@ -113411,6 +114167,11 @@
           "ItemID": "0",
           "Name": "軍票",
           "Amount": "600"
+        },
+        {
+          "ItemID": "27",
+          "Name": "同盟記章",
+          "Amount": "50"
         }
       ]
     },
@@ -113432,6 +114193,11 @@
           "ItemID": "0",
           "Name": "軍票",
           "Amount": "600"
+        },
+        {
+          "ItemID": "27",
+          "Name": "同盟記章",
+          "Amount": "50"
         }
       ]
     },
@@ -113453,6 +114219,11 @@
           "ItemID": "0",
           "Name": "軍票",
           "Amount": "600"
+        },
+        {
+          "ItemID": "27",
+          "Name": "同盟記章",
+          "Amount": "50"
         }
       ]
     },
@@ -113474,6 +114245,11 @@
           "ItemID": "0",
           "Name": "軍票",
           "Amount": "600"
+        },
+        {
+          "ItemID": "27",
+          "Name": "同盟記章",
+          "Amount": "50"
         }
       ]
     },
@@ -113495,6 +114271,11 @@
           "ItemID": "0",
           "Name": "軍票",
           "Amount": "600"
+        },
+        {
+          "ItemID": "27",
+          "Name": "同盟記章",
+          "Amount": "50"
         }
       ]
     },
@@ -113537,6 +114318,11 @@
           "ItemID": "0",
           "Name": "軍票",
           "Amount": "600"
+        },
+        {
+          "ItemID": "27",
+          "Name": "同盟記章",
+          "Amount": "50"
         }
       ]
     },
@@ -113558,10 +114344,78 @@
           "ItemID": "0",
           "Name": "軍票",
           "Amount": "600"
+        },
+        {
+          "ItemID": "27",
+          "Name": "同盟記章",
+          "Amount": "50"
         }
       ]
     },
     "ItemUICategoryName": "食材"
+  },
+  {
+    "ID": "10120",
+    "Name": "絶霊布",
+    "Description": "鉱石の属性拡散を防止するための特殊な梱包用の布",
+    "LevelEquip": "1",
+    "ItemUICategory": "51",
+    "ItemSearchCategory": "0",
+    "IconFile": "021615.webp",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "27",
+          "Name": "同盟記章",
+          "Amount": "50"
+        }
+      ]
+    },
+    "ItemUICategoryName": "布材"
+  },
+  {
+    "ID": "10121",
+    "Name": "竹皮紙",
+    "Description": "高級な香木を保存するために用いられる竹皮紙",
+    "LevelEquip": "1",
+    "ItemUICategory": "50",
+    "ItemSearchCategory": "0",
+    "IconFile": "021005.webp",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "27",
+          "Name": "同盟記章",
+          "Amount": "50"
+        }
+      ]
+    },
+    "ItemUICategoryName": "木材"
+  },
+  {
+    "ID": "10122",
+    "Name": "グレイシャルクリスタル",
+    "Description": "水属性と氷属性の双方を帯びたクリスタル。生鮮食品の保存に最適",
+    "LevelEquip": "1",
+    "ItemUICategory": "54",
+    "ItemSearchCategory": "0",
+    "IconFile": "020002.webp",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "27",
+          "Name": "同盟記章",
+          "Amount": "50"
+        }
+      ]
+    },
+    "ItemUICategoryName": "錬金術材"
   },
   {
     "ID": "10332",
@@ -113620,7 +114474,142 @@
     "ItemSearchCategory": "59",
     "IconFile": "020407.webp",
     "ItemUICategoryName": "触媒",
-    "ItemSearchCategoryName": "触媒"
+    "ItemSearchCategoryName": "触媒",
+    "GatheringTimer": [
+      {
+        "Area": "ラノシア",
+        "Map": "中央ラノシア",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "04:00-07:00",
+          "09:00-12:00"
+        ]
+      },
+      {
+        "Area": "ラノシア",
+        "Map": "低地ラノシア",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "18:00-21:00"
+        ]
+      },
+      {
+        "Area": "ラノシア",
+        "Map": "東ラノシア",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "09:00-12:00"
+        ]
+      },
+      {
+        "Area": "ラノシア",
+        "Map": "高地ラノシア",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "07:00-10:00"
+        ]
+      },
+      {
+        "Area": "黒衣森",
+        "Map": "黒衣森：中央森林",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "06:00-09:00",
+          "10:00-13:00"
+        ]
+      },
+      {
+        "Area": "黒衣森",
+        "Map": "黒衣森：南部森林",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "02:00-05:00"
+        ]
+      },
+      {
+        "Area": "黒衣森",
+        "Map": "黒衣森：北部森林",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "03:00-06:00"
+        ]
+      },
+      {
+        "Area": "ザナラーン",
+        "Map": "中央ザナラーン",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "04:00-07:00"
+        ]
+      },
+      {
+        "Area": "ザナラーン",
+        "Map": "東ザナラーン",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "09:00-12:00"
+        ]
+      },
+      {
+        "Area": "ザナラーン",
+        "Map": "南ザナラーン",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "04:00-07:00"
+        ]
+      },
+      {
+        "Area": "ザナラーン",
+        "Map": "北ザナラーン",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "03:00-06:00",
+          "17:00-20:00"
+        ]
+      },
+      {
+        "Area": "クルザス",
+        "Map": "クルザス中央高地",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "01:00-04:00"
+        ]
+      },
+      {
+        "Area": "クルザス",
+        "Map": "クルザス中央高地",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "09:00-12:00",
+          "13:00-16:00",
+          "17:00-20:00"
+        ]
+      },
+      {
+        "Area": "モードゥナ",
+        "Map": "モードゥナ",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "01:00-04:00",
+          "05:00-08:00",
+          "09:00-12:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "10346",
@@ -146695,7 +147684,20 @@
     "ItemSearchCategory": "47",
     "IconFile": "021225.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ドラヴァニア",
+        "Map": "ドラヴァニア雲海",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "02:00-04:00",
+          "14:00-16:00"
+        ],
+        "Chronicle": "鉱物伝承録:ドラヴァニア"
+      }
+    ]
   },
   {
     "ID": "12537",
@@ -146717,7 +147719,19 @@
     "ItemSearchCategory": "47",
     "IconFile": "021224.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "アバラシア",
+        "Map": "アジス・ラー",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "12539",
@@ -146739,7 +147753,20 @@
     "ItemSearchCategory": "47",
     "IconFile": "021227.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "アバラシア",
+        "Map": "アバラシア雲海",
+        "Method": "砕岩",
+        "Type": "伝説",
+        "Times": [
+          "04:00-06:00",
+          "16:00-18:00"
+        ],
+        "Chronicle": "鉱物伝承録:アバラシア"
+      }
+    ]
   },
   {
     "ID": "12541",
@@ -147750,7 +148777,20 @@
     "ItemSearchCategory": "49",
     "IconFile": "023001.webp",
     "ItemUICategoryName": "木材",
-    "ItemSearchCategoryName": "木材"
+    "ItemSearchCategoryName": "木材",
+    "GatheringTimer": [
+      {
+        "Area": "アバラシア",
+        "Map": "アジス・ラー",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "02:00-04:00",
+          "14:00-16:00"
+        ],
+        "Chronicle": "草木伝承録:アバラシア"
+      }
+    ]
   },
   {
     "ID": "12588",
@@ -149261,7 +150301,20 @@
     "ItemSearchCategory": "53",
     "IconFile": "022627.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "ドラヴァニア",
+        "Map": "ドラヴァニア雲海",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "04:00-06:00",
+          "16:00-18:00"
+        ],
+        "Chronicle": "草木伝承録:ドラヴァニア"
+      }
+    ]
   },
   {
     "ID": "12635",
@@ -151331,7 +152384,19 @@
     "ItemSearchCategory": "44",
     "IconFile": "025208.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "クルザス",
+        "Map": "クルザス西部高地",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "10:00-12:00",
+          "22:00-00:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "12878",
@@ -151403,7 +152468,19 @@
     "ItemSearchCategory": "44",
     "IconFile": "025020.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "クルザス",
+        "Map": "クルザス西部高地",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "10:00-12:00",
+          "22:00-00:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "12883",
@@ -151425,7 +152502,19 @@
     "ItemSearchCategory": "44",
     "IconFile": "025035.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "クルザス",
+        "Map": "クルザス西部高地",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "10:00-12:00",
+          "22:00-00:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "12885",
@@ -151491,7 +152580,19 @@
     "ItemSearchCategory": "44",
     "IconFile": "025305.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "アバラシア",
+        "Map": "アバラシア雲海",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "12890",
@@ -151651,7 +152752,19 @@
     "ItemSearchCategory": "44",
     "IconFile": "025318.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "ドラヴァニア",
+        "Map": "高地ドラヴァニア",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "02:00-04:00",
+          "14:00-16:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "12897",
@@ -151662,7 +152775,19 @@
     "ItemSearchCategory": "44",
     "IconFile": "025319.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "ドラヴァニア",
+        "Map": "低地ドラヴァニア",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "04:00-06:00",
+          "16:00-18:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "12898",
@@ -151673,7 +152798,19 @@
     "ItemSearchCategory": "44",
     "IconFile": "025408.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "ドラヴァニア",
+        "Map": "低地ドラヴァニア",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "04:00-06:00",
+          "16:00-18:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "12899",
@@ -151684,7 +152821,19 @@
     "ItemSearchCategory": "44",
     "IconFile": "025401.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "ドラヴァニア",
+        "Map": "ドラヴァニア雲海",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "12900",
@@ -151695,7 +152844,19 @@
     "ItemSearchCategory": "44",
     "IconFile": "025222.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "クルザス",
+        "Map": "クルザス西部高地",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "08:00-10:00",
+          "20:00-22:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "12901",
@@ -151706,7 +152867,19 @@
     "ItemSearchCategory": "44",
     "IconFile": "022617.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "アバラシア",
+        "Map": "アバラシア雲海",
+        "Method": "砕岩",
+        "Type": "未知",
+        "Times": [
+          "10:00-12:00",
+          "22:00-00:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "12902",
@@ -151717,7 +152890,20 @@
     "ItemSearchCategory": "44",
     "IconFile": "025017.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "アバラシア",
+        "Map": "アバラシア雲海",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ],
+        "Chronicle": "草木伝承録:アバラシア"
+      }
+    ]
   },
   {
     "ID": "12903",
@@ -151728,7 +152914,20 @@
     "ItemSearchCategory": "44",
     "IconFile": "025018.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "クルザス",
+        "Map": "クルザス西部高地",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ],
+        "Chronicle": "草木伝承録:クルザス"
+      }
+    ]
   },
   {
     "ID": "12904",
@@ -151739,7 +152938,20 @@
     "ItemSearchCategory": "44",
     "IconFile": "025306.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "ドラヴァニア",
+        "Map": "低地ドラヴァニア",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "10:00-12:00",
+          "22:00-00:00"
+        ],
+        "Chronicle": "草木伝承録:ドラヴァニア"
+      }
+    ]
   },
   {
     "ID": "12905",
@@ -152376,7 +153588,19 @@
     "ItemSearchCategory": "53",
     "IconFile": "025001.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "ドラヴァニア",
+        "Map": "ドラヴァニア雲海",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "12944",
@@ -152387,7 +153611,19 @@
     "ItemSearchCategory": "53",
     "IconFile": "025001.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "アバラシア",
+        "Map": "アバラシア雲海",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "12945",
@@ -152398,7 +153634,20 @@
     "ItemSearchCategory": "53",
     "IconFile": "022656.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "アバラシア",
+        "Map": "アジス・ラー",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "10:00-12:00",
+          "22:00-00:00"
+        ],
+        "Chronicle": "鉱物伝承録:アバラシア"
+      }
+    ]
   },
   {
     "ID": "12970",
@@ -152409,7 +153658,36 @@
     "ItemSearchCategory": "53",
     "IconFile": "027404.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "ドラヴァニア",
+        "Map": "高地ドラヴァニア",
+        "Method": "草刈",
+        "Type": "刻限",
+        "Times": [
+          "08:00-12:00"
+        ]
+      },
+      {
+        "Area": "ドラヴァニア",
+        "Map": "低地ドラヴァニア",
+        "Method": "草刈",
+        "Type": "刻限",
+        "Times": [
+          "04:00-08:00"
+        ]
+      },
+      {
+        "Area": "ドラヴァニア",
+        "Map": "ドラヴァニア雲海",
+        "Method": "草刈",
+        "Type": "刻限",
+        "Times": [
+          "16:00-20:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "12971",
@@ -152420,7 +153698,27 @@
     "ItemSearchCategory": "44",
     "IconFile": "025015.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "クルザス",
+        "Map": "クルザス西部高地",
+        "Method": "草刈",
+        "Type": "刻限",
+        "Times": [
+          "00:00-04:00"
+        ]
+      },
+      {
+        "Area": "アバラシア",
+        "Map": "アバラシア雲海",
+        "Method": "草刈",
+        "Type": "刻限",
+        "Times": [
+          "20:00-00:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "12972",
@@ -152431,7 +153729,27 @@
     "ItemSearchCategory": "44",
     "IconFile": "025016.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "クルザス",
+        "Map": "クルザス西部高地",
+        "Method": "草刈",
+        "Type": "刻限",
+        "Times": [
+          "00:00-04:00"
+        ]
+      },
+      {
+        "Area": "アバラシア",
+        "Map": "アバラシア雲海",
+        "Method": "草刈",
+        "Type": "刻限",
+        "Times": [
+          "20:00-00:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "12973",
@@ -152442,7 +153760,27 @@
     "ItemSearchCategory": "44",
     "IconFile": "025009.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "クルザス",
+        "Map": "クルザス西部高地",
+        "Method": "草刈",
+        "Type": "刻限",
+        "Times": [
+          "00:00-04:00"
+        ]
+      },
+      {
+        "Area": "アバラシア",
+        "Map": "アバラシア雲海",
+        "Method": "草刈",
+        "Type": "刻限",
+        "Times": [
+          "20:00-00:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "12990",
@@ -158080,6 +159418,11 @@
       "AmountResult": "1",
       "Ingredients": [
         {
+          "ItemID": "27",
+          "Name": "同盟記章",
+          "Amount": "300"
+        },
+        {
           "ItemID": "28",
           "Name": "アラガントームストーン:詩学",
           "Amount": "150"
@@ -158125,6 +159468,27 @@
           "ItemID": "28",
           "Name": "アラガントームストーン:詩学",
           "Amount": "150"
+        }
+      ]
+    },
+    "ItemUICategoryName": "雑貨"
+  },
+  {
+    "ID": "13588",
+    "Name": "謎めいた種子",
+    "Description": "正体不明の種子。珍品として好事家の間で取引されている",
+    "LevelEquip": "1",
+    "ItemUICategory": "61",
+    "ItemSearchCategory": "0",
+    "IconFile": "027459.webp",
+    "Recipe": {
+      "CraftType": "8",
+      "AmountResult": "1",
+      "Ingredients": [
+        {
+          "ItemID": "27",
+          "Name": "同盟記章",
+          "Amount": "300"
         }
       ]
     },
@@ -169974,7 +171338,20 @@
     "ItemSearchCategory": "47",
     "IconFile": "021221.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ドラヴァニア",
+        "Map": "ドラヴァニア雲海",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "02:00-04:00",
+          "14:00-16:00"
+        ],
+        "Chronicle": "鉱物伝承録:ドラヴァニア"
+      }
+    ]
   },
   {
     "ID": "14149",
@@ -170039,7 +171416,20 @@
     "ItemSearchCategory": "47",
     "IconFile": "021473.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "アバラシア",
+        "Map": "アバラシア雲海",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "08:00-10:00",
+          "20:00-22:00"
+        ],
+        "Chronicle": "鉱物伝承録:アバラシア"
+      }
+    ]
   },
   {
     "ID": "14152",
@@ -170104,7 +171494,20 @@
     "ItemSearchCategory": "50",
     "IconFile": "025032.webp",
     "ItemUICategoryName": "布材",
-    "ItemSearchCategoryName": "布材"
+    "ItemSearchCategoryName": "布材",
+    "GatheringTimer": [
+      {
+        "Area": "クルザス",
+        "Map": "クルザス西部高地",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ],
+        "Chronicle": "草木伝承録:クルザス"
+      }
+    ]
   },
   {
     "ID": "14155",
@@ -176623,7 +178026,20 @@
     "ItemSearchCategory": "49",
     "IconFile": "022414.webp",
     "ItemUICategoryName": "木材",
-    "ItemSearchCategoryName": "木材"
+    "ItemSearchCategoryName": "木材",
+    "GatheringTimer": [
+      {
+        "Area": "ドラヴァニア",
+        "Map": "ドラヴァニア雲海",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "08:00-10:00",
+          "20:00-22:00"
+        ],
+        "Chronicle": "草木伝承録:ドラヴァニア"
+      }
+    ]
   },
   {
     "ID": "15097",
@@ -183588,7 +185004,20 @@
     "ItemSearchCategory": "47",
     "IconFile": "021203.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "アバラシア",
+        "Map": "アバラシア雲海",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "08:00-10:00",
+          "20:00-22:00"
+        ],
+        "Chronicle": "鉱物伝承録:アバラシア"
+      }
+    ]
   },
   {
     "ID": "15647",
@@ -183599,7 +185028,20 @@
     "ItemSearchCategory": "53",
     "IconFile": "020018.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "ドラヴァニア",
+        "Map": "ドラヴァニア雲海",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "08:00-10:00",
+          "20:00-22:00"
+        ],
+        "Chronicle": "草木伝承録:ドラヴァニア"
+      }
+    ]
   },
   {
     "ID": "15648",
@@ -192759,7 +194201,20 @@
     "ItemSearchCategory": "50",
     "IconFile": "025032.webp",
     "ItemUICategoryName": "布材",
-    "ItemSearchCategoryName": "布材"
+    "ItemSearchCategoryName": "布材",
+    "GatheringTimer": [
+      {
+        "Area": "アバラシア",
+        "Map": "アジス・ラー",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "04:00-06:00",
+          "16:00-18:00"
+        ],
+        "Chronicle": "草木伝承録:アバラシア"
+      }
+    ]
   },
   {
     "ID": "16722",
@@ -192770,7 +194225,20 @@
     "ItemSearchCategory": "44",
     "IconFile": "025405.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "ドラヴァニア",
+        "Map": "ドラヴァニア雲海",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "10:00-12:00",
+          "22:00-00:00"
+        ],
+        "Chronicle": "草木伝承録:ドラヴァニア"
+      }
+    ]
   },
   {
     "ID": "16723",
@@ -192781,7 +194249,20 @@
     "ItemSearchCategory": "44",
     "IconFile": "025002.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "ドラヴァニア",
+        "Map": "高地ドラヴァニア",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ],
+        "Chronicle": "草木伝承録:ドラヴァニア"
+      }
+    ]
   },
   {
     "ID": "16724",
@@ -192792,7 +194273,20 @@
     "ItemSearchCategory": "47",
     "IconFile": "021209.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "クルザス",
+        "Map": "クルザス西部高地",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "02:00-04:00",
+          "14:00-16:00"
+        ],
+        "Chronicle": "鉱物伝承録:クルザス"
+      }
+    ]
   },
   {
     "ID": "16725",
@@ -192803,7 +194297,20 @@
     "ItemSearchCategory": "47",
     "IconFile": "021227.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "アバラシア",
+        "Map": "アジス・ラー",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ],
+        "Chronicle": "鉱物伝承録:アバラシア"
+      }
+    ]
   },
   {
     "ID": "16726",
@@ -192814,7 +194321,20 @@
     "ItemSearchCategory": "47",
     "IconFile": "021210.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ドラヴァニア",
+        "Map": "低地ドラヴァニア",
+        "Method": "砕岩",
+        "Type": "伝説",
+        "Times": [
+          "08:00-10:00",
+          "20:00-22:00"
+        ],
+        "Chronicle": "鉱物伝承録:ドラヴァニア"
+      }
+    ]
   },
   {
     "ID": "16727",
@@ -233319,7 +234839,19 @@
     "ItemSearchCategory": "44",
     "IconFile": "025311.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "オサード",
+        "Map": "アジムステップ",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "02:00-04:00",
+          "14:00-16:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "19853",
@@ -233374,7 +234906,19 @@
     "ItemSearchCategory": "44",
     "IconFile": "025012.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "ギラバニア",
+        "Map": "ギラバニア湖畔地帯",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "04:00-06:00",
+          "16:00-18:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "19858",
@@ -233407,7 +234951,19 @@
     "ItemSearchCategory": "44",
     "IconFile": "025229.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "オサード",
+        "Map": "ヤンサ",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "10:00-12:00",
+          "22:00-00:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "19861",
@@ -233462,7 +235018,19 @@
     "ItemSearchCategory": "44",
     "IconFile": "025226.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "オサード",
+        "Map": "ヤンサ",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "08:00-10:00",
+          "20:00-22:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "19866",
@@ -234775,7 +236343,19 @@
     "ItemSearchCategory": "53",
     "IconFile": "022617.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "ギラバニア",
+        "Map": "ギラバニア湖畔地帯",
+        "Method": "砕岩",
+        "Type": "未知",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "19908",
@@ -234896,7 +236476,19 @@
     "ItemSearchCategory": "53",
     "IconFile": "025022.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "オサード",
+        "Map": "ヤンサ",
+        "Method": "草刈",
+        "Type": "刻限",
+        "Times": [
+          "16:00-20:00",
+          "20:00-22:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "19917",
@@ -234918,7 +236510,19 @@
     "ItemSearchCategory": "53",
     "IconFile": "025010.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "ギラバニア",
+        "Map": "ギラバニア山岳地帯",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "19919",
@@ -235189,7 +236793,20 @@
     "ItemSearchCategory": "49",
     "IconFile": "022405.webp",
     "ItemUICategoryName": "木材",
-    "ItemSearchCategoryName": "木材"
+    "ItemSearchCategoryName": "木材",
+    "GatheringTimer": [
+      {
+        "Area": "ギラバニア",
+        "Map": "ギラバニア湖畔地帯",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ],
+        "Chronicle": "草木伝承録:ギラバニア"
+      }
+    ]
   },
   {
     "ID": "19935",
@@ -235726,7 +237343,20 @@
     "ItemSearchCategory": "47",
     "IconFile": "021217.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "オサード",
+        "Map": "ヤンサ",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "04:00-06:00",
+          "16:00-18:00"
+        ],
+        "Chronicle": "鉱物伝承録:オサード"
+      }
+    ]
   },
   {
     "ID": "19959",
@@ -235737,7 +237367,20 @@
     "ItemSearchCategory": "47",
     "IconFile": "021205.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ギラバニア",
+        "Map": "ギラバニア山岳地帯",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "10:00-12:00",
+          "22:00-00:00"
+        ],
+        "Chronicle": "鉱物伝承録:ギラバニア"
+      }
+    ]
   },
   {
     "ID": "19960",
@@ -235990,7 +237633,19 @@
     "ItemSearchCategory": "47",
     "IconFile": "021474.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ギラバニア",
+        "Map": "ギラバニア辺境地帯",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "02:00-04:00",
+          "14:00-16:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "19969",
@@ -236012,7 +237667,19 @@
     "ItemSearchCategory": "47",
     "IconFile": "021475.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "オサード",
+        "Map": "紅玉海",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "19971",
@@ -236023,7 +237690,19 @@
     "ItemSearchCategory": "47",
     "IconFile": "021472.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "オサード",
+        "Map": "アジムステップ",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "04:00-06:00",
+          "16:00-18:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "19972",
@@ -236034,7 +237713,19 @@
     "ItemSearchCategory": "47",
     "IconFile": "021252.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "オサード",
+        "Map": "ヤンサ",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "19973",
@@ -236045,7 +237736,19 @@
     "ItemSearchCategory": "47",
     "IconFile": "021471.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ギラバニア",
+        "Map": "ギラバニア山岳地帯",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "08:00-10:00",
+          "20:00-22:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "19974",
@@ -236465,7 +238168,20 @@
     "ItemSearchCategory": "50",
     "IconFile": "021651.webp",
     "ItemUICategoryName": "布材",
-    "ItemSearchCategoryName": "布材"
+    "ItemSearchCategoryName": "布材",
+    "GatheringTimer": [
+      {
+        "Area": "オサード",
+        "Map": "アジムステップ",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ],
+        "Chronicle": "草木伝承録:オサード"
+      }
+    ]
   },
   {
     "ID": "19992",
@@ -236844,7 +238560,18 @@
     "ItemSearchCategory": "47",
     "IconFile": "021463.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "オサード",
+        "Map": "ヤンサ",
+        "Method": "砕岩",
+        "Type": "刻限",
+        "Times": [
+          "20:00-00:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "20011",
@@ -236855,7 +238582,18 @@
     "ItemSearchCategory": "47",
     "IconFile": "021471.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ギラバニア",
+        "Map": "ギラバニア湖畔地帯",
+        "Method": "採掘",
+        "Type": "刻限",
+        "Times": [
+          "00:00-04:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "20013",
@@ -243551,7 +245289,20 @@
     "ItemSearchCategory": "53",
     "IconFile": "022614.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "ギラバニア",
+        "Map": "ギラバニア山岳地帯",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "10:00-12:00",
+          "22:00-00:00"
+        ],
+        "Chronicle": "鉱物伝承録:ギラバニア"
+      }
+    ]
   },
   {
     "ID": "21086",
@@ -243562,7 +245313,20 @@
     "ItemSearchCategory": "50",
     "IconFile": "025037.webp",
     "ItemUICategoryName": "布材",
-    "ItemSearchCategoryName": "布材"
+    "ItemSearchCategoryName": "布材",
+    "GatheringTimer": [
+      {
+        "Area": "オサード",
+        "Map": "アジムステップ",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ],
+        "Chronicle": "草木伝承録:オサード"
+      }
+    ]
   },
   {
     "ID": "21087",
@@ -250042,7 +251806,20 @@
     "ItemSearchCategory": "47",
     "IconFile": "021203.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "オサード",
+        "Map": "紅玉海",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ],
+        "Chronicle": "鉱物伝承録:オサード"
+      }
+    ]
   },
   {
     "ID": "22418",
@@ -250053,7 +251830,20 @@
     "ItemSearchCategory": "47",
     "IconFile": "021213.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "オサード",
+        "Map": "アジムステップ",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "08:00-10:00",
+          "20:00-22:00"
+        ],
+        "Chronicle": "鉱物伝承録:オサード"
+      }
+    ]
   },
   {
     "ID": "22419",
@@ -250064,7 +251854,20 @@
     "ItemSearchCategory": "49",
     "IconFile": "022402.webp",
     "ItemUICategoryName": "木材",
-    "ItemSearchCategoryName": "木材"
+    "ItemSearchCategoryName": "木材",
+    "GatheringTimer": [
+      {
+        "Area": "ギラバニア",
+        "Map": "ギラバニア辺境地帯",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "04:00-06:00",
+          "16:00-18:00"
+        ],
+        "Chronicle": "草木伝承録:ギラバニア"
+      }
+    ]
   },
   {
     "ID": "22420",
@@ -250075,7 +251878,20 @@
     "ItemSearchCategory": "50",
     "IconFile": "021673.webp",
     "ItemUICategoryName": "布材",
-    "ItemSearchCategoryName": "布材"
+    "ItemSearchCategoryName": "布材",
+    "GatheringTimer": [
+      {
+        "Area": "ギラバニア",
+        "Map": "ギラバニア山岳地帯",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "02:00-04:00",
+          "14:00-16:00"
+        ],
+        "Chronicle": "草木伝承録:ギラバニア"
+      }
+    ]
   },
   {
     "ID": "22421",
@@ -257411,7 +259227,20 @@
     "ItemSearchCategory": "47",
     "IconFile": "021228.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "オサード",
+        "Map": "紅玉海",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ],
+        "Chronicle": "鉱物伝承録:オサード"
+      }
+    ]
   },
   {
     "ID": "23180",
@@ -257422,7 +259251,20 @@
     "ItemSearchCategory": "53",
     "IconFile": "022638.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "ギラバニア",
+        "Map": "ギラバニア辺境地帯",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "04:00-06:00",
+          "16:00-18:00"
+        ],
+        "Chronicle": "草木伝承録:ギラバニア"
+      }
+    ]
   },
   {
     "ID": "23181",
@@ -263228,7 +265070,20 @@
     "ItemSearchCategory": "47",
     "IconFile": "021216.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ギラバニア",
+        "Map": "ギラバニア辺境地帯",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ],
+        "Chronicle": "鉱物伝承録:ギラバニア"
+      }
+    ]
   },
   {
     "ID": "24241",
@@ -263239,7 +265094,20 @@
     "ItemSearchCategory": "47",
     "IconFile": "021223.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ギラバニア",
+        "Map": "ギラバニア湖畔地帯",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "10:00-12:00",
+          "22:00-00:00"
+        ],
+        "Chronicle": "鉱物伝承録:ギラバニア"
+      }
+    ]
   },
   {
     "ID": "24242",
@@ -263250,7 +265118,20 @@
     "ItemSearchCategory": "49",
     "IconFile": "022420.webp",
     "ItemUICategoryName": "木材",
-    "ItemSearchCategoryName": "木材"
+    "ItemSearchCategoryName": "木材",
+    "GatheringTimer": [
+      {
+        "Area": "ギラバニア",
+        "Map": "ギラバニア山岳地帯",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "04:00-06:00",
+          "16:00-18:00"
+        ],
+        "Chronicle": "草木伝承録:ギラバニア"
+      }
+    ]
   },
   {
     "ID": "24243",
@@ -263261,7 +265142,20 @@
     "ItemSearchCategory": "50",
     "IconFile": "021652.webp",
     "ItemUICategoryName": "布材",
-    "ItemSearchCategoryName": "布材"
+    "ItemSearchCategoryName": "布材",
+    "GatheringTimer": [
+      {
+        "Area": "オサード",
+        "Map": "ヤンサ",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "02:00-04:00",
+          "14:00-16:00"
+        ],
+        "Chronicle": "草木伝承録:オサード"
+      }
+    ]
   },
   {
     "ID": "24244",
@@ -263593,7 +265487,20 @@
     "ItemSearchCategory": "53",
     "IconFile": "022678.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "オサード",
+        "Map": "アジムステップ",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "08:00-10:00",
+          "20:00-22:00"
+        ],
+        "Chronicle": "鉱物伝承録:オサード"
+      }
+    ]
   },
   {
     "ID": "24256",
@@ -300950,7 +302857,20 @@
     "ItemSearchCategory": "49",
     "IconFile": "022401.webp",
     "ItemUICategoryName": "木材",
-    "ItemSearchCategoryName": "木材"
+    "ItemSearchCategoryName": "木材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "ラケティカ大森林",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "02:00-04:00",
+          "14:00-16:00"
+        ],
+        "Chronicle": "草木伝承録:ノルヴラント"
+      }
+    ]
   },
   {
     "ID": "27689",
@@ -301249,7 +303169,20 @@
     "ItemSearchCategory": "47",
     "IconFile": "021203.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "テンペスト",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "10:00-12:00",
+          "22:00-00:00"
+        ],
+        "Chronicle": "鉱物伝承録:ノルヴラント"
+      }
+    ]
   },
   {
     "ID": "27705",
@@ -301260,7 +303193,20 @@
     "ItemSearchCategory": "47",
     "IconFile": "021232.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "イル・メグ",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "04:00-06:00",
+          "16:00-18:00"
+        ],
+        "Chronicle": "鉱物伝承録:ノルヴラント"
+      }
+    ]
   },
   {
     "ID": "27706",
@@ -301919,7 +303865,19 @@
     "ItemSearchCategory": "47",
     "IconFile": "021476.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "コルシア島",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "02:00-04:00",
+          "14:00-16:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "27727",
@@ -301930,7 +303888,19 @@
     "ItemSearchCategory": "47",
     "IconFile": "021473.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "イル・メグ",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "27728",
@@ -301941,7 +303911,19 @@
     "ItemSearchCategory": "47",
     "IconFile": "021472.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "ラケティカ大森林",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "04:00-06:00",
+          "16:00-18:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "27729",
@@ -301952,7 +303934,19 @@
     "ItemSearchCategory": "47",
     "IconFile": "021471.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "アム・アレーン",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "27730",
@@ -301963,7 +303957,19 @@
     "ItemSearchCategory": "47",
     "IconFile": "021477.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "レイクランド",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "27731",
@@ -301974,7 +303980,19 @@
     "ItemSearchCategory": "47",
     "IconFile": "021231.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "レイクランド",
+        "Method": "採掘",
+        "Type": "未知",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "27732",
@@ -302670,7 +304688,20 @@
     "ItemSearchCategory": "50",
     "IconFile": "021661.webp",
     "ItemUICategoryName": "布材",
-    "ItemSearchCategoryName": "布材"
+    "ItemSearchCategoryName": "布材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "レイクランド",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "08:00-10:00",
+          "20:00-22:00"
+        ],
+        "Chronicle": "草木伝承録:ノルヴラント"
+      }
+    ]
   },
   {
     "ID": "27762",
@@ -304059,7 +306090,19 @@
     "ItemSearchCategory": "44",
     "IconFile": "025204.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "アム・アレーン",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "08:00-10:00",
+          "20:00-22:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "27823",
@@ -304125,7 +306168,19 @@
     "ItemSearchCategory": "44",
     "IconFile": "025206.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "ラケティカ大森林",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "27829",
@@ -304180,7 +306235,19 @@
     "ItemSearchCategory": "44",
     "IconFile": "025353.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "イル・メグ",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "27834",
@@ -304202,7 +306269,19 @@
     "ItemSearchCategory": "44",
     "IconFile": "025305.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "コルシア島",
+        "Method": "伐採",
+        "Type": "未知",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "27836",
@@ -304213,7 +306292,19 @@
     "ItemSearchCategory": "44",
     "IconFile": "025016.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "レイクランド",
+        "Method": "草刈",
+        "Type": "未知",
+        "Times": [
+          "10:00-12:00",
+          "22:00-00:00"
+        ]
+      }
+    ]
   },
   {
     "ID": "27837",
@@ -311819,7 +313910,20 @@
     "ItemSearchCategory": "53",
     "IconFile": "022638.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "ラケティカ大森林",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "02:00-04:00",
+          "14:00-16:00"
+        ],
+        "Chronicle": "草木伝承録:ノルヴラント"
+      }
+    ]
   },
   {
     "ID": "28717",
@@ -311830,7 +313934,20 @@
     "ItemSearchCategory": "47",
     "IconFile": "021455.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "イル・メグ",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "04:00-06:00",
+          "16:00-18:00"
+        ],
+        "Chronicle": "鉱物伝承録:ノルヴラント"
+      }
+    ]
   },
   {
     "ID": "28718",
@@ -327706,7 +329823,20 @@
     "ItemSearchCategory": "47",
     "IconFile": "021227.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "レイクランド",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "02:00-04:00",
+          "14:00-16:00"
+        ],
+        "Chronicle": "鉱物伝承録:ノルヴラント"
+      }
+    ]
   },
   {
     "ID": "29969",
@@ -327739,7 +329869,20 @@
     "ItemSearchCategory": "47",
     "IconFile": "021469.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "テンペスト",
+        "Method": "砕岩",
+        "Type": "伝説",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ],
+        "Chronicle": "鉱物伝承録:ノルヴラント"
+      }
+    ]
   },
   {
     "ID": "29971",
@@ -327772,7 +329915,20 @@
     "ItemSearchCategory": "49",
     "IconFile": "022423.webp",
     "ItemUICategoryName": "木材",
-    "ItemSearchCategoryName": "木材"
+    "ItemSearchCategoryName": "木材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "イル・メグ",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "08:00-10:00",
+          "20:00-22:00"
+        ],
+        "Chronicle": "草木伝承録:ノルヴラント"
+      }
+    ]
   },
   {
     "ID": "29973",
@@ -327805,7 +329961,20 @@
     "ItemSearchCategory": "50",
     "IconFile": "025022.webp",
     "ItemUICategoryName": "布材",
-    "ItemSearchCategoryName": "布材"
+    "ItemSearchCategoryName": "布材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "アム・アレーン",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "04:00-06:00",
+          "16:00-18:00"
+        ],
+        "Chronicle": "草木伝承録:ノルヴラント"
+      }
+    ]
   },
   {
     "ID": "29975",
@@ -327838,7 +330007,20 @@
     "ItemSearchCategory": "53",
     "IconFile": "022604.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "アム・アレーン",
+        "Method": "砕岩",
+        "Type": "伝説",
+        "Times": [
+          "10:00-12:00",
+          "22:00-00:00"
+        ],
+        "Chronicle": "鉱物伝承録:ノルヴラント"
+      }
+    ]
   },
   {
     "ID": "29977",
@@ -327871,7 +330053,20 @@
     "ItemSearchCategory": "53",
     "IconFile": "025038.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "コルシア島",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ],
+        "Chronicle": "草木伝承録:ノルヴラント"
+      }
+    ]
   },
   {
     "ID": "29979",
@@ -332669,7 +334864,20 @@
     "ItemSearchCategory": "53",
     "IconFile": "025036.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "コルシア島",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ],
+        "Chronicle": "草木伝承録:ノルヴラント"
+      }
+    ]
   },
   {
     "ID": "30486",
@@ -332680,7 +334888,20 @@
     "ItemSearchCategory": "47",
     "IconFile": "021227.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "レイクランド",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "02:00-04:00",
+          "14:00-16:00"
+        ],
+        "Chronicle": "鉱物伝承録:ノルヴラント"
+      }
+    ]
   },
   {
     "ID": "30487",
@@ -355666,7 +357887,20 @@
     "ItemSearchCategory": "49",
     "IconFile": "022412.webp",
     "ItemUICategoryName": "木材",
-    "ItemSearchCategoryName": "木材"
+    "ItemSearchCategoryName": "木材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "アム・アレーン",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ],
+        "Chronicle": "草木伝承録:ノルヴラント"
+      }
+    ]
   },
   {
     "ID": "32951",
@@ -355677,7 +357911,20 @@
     "ItemSearchCategory": "47",
     "IconFile": "021225.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "ラケティカ大森林",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "08:00-10:00",
+          "20:00-22:00"
+        ],
+        "Chronicle": "鉱物伝承録:ノルヴラント"
+      }
+    ]
   },
   {
     "ID": "32952",
@@ -355688,7 +357935,20 @@
     "ItemSearchCategory": "47",
     "IconFile": "021232.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "イル・メグ",
+        "Method": "砕岩",
+        "Type": "伝説",
+        "Times": [
+          "02:00-04:00",
+          "14:00-16:00"
+        ],
+        "Chronicle": "鉱物伝承録:ノルヴラント"
+      }
+    ]
   },
   {
     "ID": "32953",
@@ -355699,7 +357959,20 @@
     "ItemSearchCategory": "50",
     "IconFile": "025040.webp",
     "ItemUICategoryName": "布材",
-    "ItemSearchCategoryName": "布材"
+    "ItemSearchCategoryName": "布材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "ラケティカ大森林",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "10:00-12:00",
+          "22:00-00:00"
+        ],
+        "Chronicle": "草木伝承録:ノルヴラント"
+      }
+    ]
   },
   {
     "ID": "32954",
@@ -355710,7 +357983,20 @@
     "ItemSearchCategory": "49",
     "IconFile": "022418.webp",
     "ItemUICategoryName": "木材",
-    "ItemSearchCategoryName": "木材"
+    "ItemSearchCategoryName": "木材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "レイクランド",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ],
+        "Chronicle": "草木伝承録:ノルヴラント"
+      }
+    ]
   },
   {
     "ID": "32955",
@@ -355721,7 +358007,20 @@
     "ItemSearchCategory": "53",
     "IconFile": "022689.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "ノルヴラント",
+        "Map": "コルシア島",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "04:00-06:00",
+          "16:00-18:00"
+        ],
+        "Chronicle": "鉱物伝承録:ノルヴラント"
+      }
+    ]
   },
   {
     "ID": "33027",
@@ -397503,7 +399802,21 @@
     "ItemSearchCategory": "47",
     "IconFile": "021224.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "星外宙域",
+        "Map": "嘆きの海",
+        "Method": "砕岩",
+        "Type": "伝説",
+        "Times": [
+          "02:00-04:00",
+          "14:00-16:00"
+        ],
+        "Chronicle": "鉱物伝承録:星外宙域",
+        "RequiredTechnical": 2990
+      }
+    ]
   },
   {
     "ID": "36168",
@@ -397772,7 +400085,21 @@
     "ItemSearchCategory": "47",
     "IconFile": "021244.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "古代世界",
+        "Map": "エルピス",
+        "Method": "砕岩",
+        "Type": "伝説",
+        "Times": [
+          "04:00-06:00",
+          "16:00-18:00"
+        ],
+        "Chronicle": "鉱物伝承録:古代世界",
+        "RequiredTechnical": 2990
+      }
+    ]
   },
   {
     "ID": "36180",
@@ -398119,7 +400446,21 @@
     "ItemSearchCategory": "49",
     "IconFile": "022405.webp",
     "ItemUICategoryName": "木材",
-    "ItemSearchCategoryName": "木材"
+    "ItemSearchCategoryName": "木材",
+    "GatheringTimer": [
+      {
+        "Area": "古代世界",
+        "Map": "エルピス",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ],
+        "Chronicle": "草木伝承録:古代世界",
+        "RequiredTechnical": 2990
+      }
+    ]
   },
   {
     "ID": "36196",
@@ -398363,7 +400704,21 @@
     "ItemSearchCategory": "50",
     "IconFile": "021682.webp",
     "ItemUICategoryName": "布材",
-    "ItemSearchCategoryName": "布材"
+    "ItemSearchCategoryName": "布材",
+    "GatheringTimer": [
+      {
+        "Area": "イルサバード",
+        "Map": "サベネア島",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "08:00-10:00",
+          "20:00-22:00"
+        ],
+        "Chronicle": "草木伝承録:北洋地域・イルサバード",
+        "RequiredTechnical": 2990
+      }
+    ]
   },
   {
     "ID": "36208",
@@ -398552,7 +400907,42 @@
     "ItemSearchCategory": "44",
     "IconFile": "025024.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "イルサバード",
+        "Map": "サベネア島",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "08:00-10:00",
+          "20:00-22:00"
+        ],
+        "Chronicle": "草木伝承録:北洋地域・イルサバード"
+      },
+      {
+        "Area": "星外宙域",
+        "Map": "ウルティマ・トゥーレ",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "10:00-12:00",
+          "22:00-00:00"
+        ],
+        "Chronicle": "草木伝承録:北洋地域・イルサバード"
+      },
+      {
+        "Area": "古代世界",
+        "Map": "エルピス",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ],
+        "Chronicle": "草木伝承録:古代世界"
+      }
+    ]
   },
   {
     "ID": "36215",
@@ -398563,7 +400953,64 @@
     "ItemSearchCategory": "53",
     "IconFile": "022678.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "イルサバード",
+        "Map": "ガレマルド",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ],
+        "Chronicle": "鉱物伝承録:北洋地域・イルサバード"
+      },
+      {
+        "Area": "星外宙域",
+        "Map": "嘆きの海",
+        "Method": "砕岩",
+        "Type": "伝説",
+        "Times": [
+          "02:00-04:00",
+          "14:00-16:00"
+        ],
+        "Chronicle": "鉱物伝承録:星外宙域"
+      },
+      {
+        "Area": "星外宙域",
+        "Map": "嘆きの海",
+        "Method": "砕岩",
+        "Type": "伝説",
+        "Times": [
+          "02:00-04:00",
+          "14:00-16:00"
+        ],
+        "Chronicle": "鉱物伝承録:古代世界"
+      },
+      {
+        "Area": "古代世界",
+        "Map": "エルピス",
+        "Method": "砕岩",
+        "Type": "伝説",
+        "Times": [
+          "04:00-06:00",
+          "16:00-18:00"
+        ],
+        "Chronicle": "鉱物伝承録:星外宙域"
+      },
+      {
+        "Area": "古代世界",
+        "Map": "エルピス",
+        "Method": "砕岩",
+        "Type": "伝説",
+        "Times": [
+          "04:00-06:00",
+          "16:00-18:00"
+        ],
+        "Chronicle": "鉱物伝承録:古代世界"
+      }
+    ]
   },
   {
     "ID": "36216",
@@ -398585,7 +401032,21 @@
     "ItemSearchCategory": "53",
     "IconFile": "025201.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "星外宙域",
+        "Map": "ウルティマ・トゥーレ",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "10:00-12:00",
+          "22:00-00:00"
+        ],
+        "Chronicle": "草木伝承録:星外宙域",
+        "RequiredTechnical": 2990
+      }
+    ]
   },
   {
     "ID": "36218",
@@ -405259,7 +407720,21 @@
     "ItemSearchCategory": "44",
     "IconFile": "025352.webp",
     "ItemUICategoryName": "食材",
-    "ItemSearchCategoryName": "食材"
+    "ItemSearchCategoryName": "食材",
+    "GatheringTimer": [
+      {
+        "Area": "イルサバード",
+        "Map": "サベネア島",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "08:00-10:00",
+          "20:00-22:00"
+        ],
+        "Chronicle": "草木伝承録:北洋地域・イルサバード",
+        "RequiredTechnical": 3230
+      }
+    ]
   },
   {
     "ID": "37279",
@@ -405270,7 +407745,21 @@
     "ItemSearchCategory": "47",
     "IconFile": "021477.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "イルサバード",
+        "Map": "ガレマルド",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ],
+        "Chronicle": "鉱物伝承録:北洋地域・イルサバード",
+        "RequiredTechnical": 3230
+      }
+    ]
   },
   {
     "ID": "37280",
@@ -412641,7 +415130,21 @@
     "ItemSearchCategory": "47",
     "IconFile": "021474.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "イルサバード",
+        "Map": "ガレマルド",
+        "Method": "砕岩",
+        "Type": "伝説",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ],
+        "Chronicle": "鉱物伝承録:北洋地域・イルサバード",
+        "RequiredTechnical": 3600
+      }
+    ]
   },
   {
     "ID": "37818",
@@ -412652,7 +415155,21 @@
     "ItemSearchCategory": "49",
     "IconFile": "022414.webp",
     "ItemUICategoryName": "木材",
-    "ItemSearchCategoryName": "木材"
+    "ItemSearchCategoryName": "木材",
+    "GatheringTimer": [
+      {
+        "Area": "古代世界",
+        "Map": "エルピス",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "02:00-04:00",
+          "14:00-16:00"
+        ],
+        "Chronicle": "草木伝承録:古代世界",
+        "RequiredTechnical": 3600
+      }
+    ]
   },
   {
     "ID": "37819",
@@ -412663,7 +415180,21 @@
     "ItemSearchCategory": "53",
     "IconFile": "025017.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "イルサバード",
+        "Map": "サベネア島",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ],
+        "Chronicle": "草木伝承録:北洋地域・イルサバード",
+        "RequiredTechnical": 3600
+      }
+    ]
   },
   {
     "ID": "37820",
@@ -412674,7 +415205,21 @@
     "ItemSearchCategory": "47",
     "IconFile": "021205.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "星外宙域",
+        "Map": "嘆きの海",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "08:00-10:00",
+          "20:00-22:00"
+        ],
+        "Chronicle": "鉱物伝承録:星外宙域",
+        "RequiredTechnical": 3600
+      }
+    ]
   },
   {
     "ID": "37821",
@@ -412685,7 +415230,21 @@
     "ItemSearchCategory": "53",
     "IconFile": "025015.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "北洋地域",
+        "Map": "ラヴィリンソス",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "04:00-06:00",
+          "16:00-18:00"
+        ],
+        "Chronicle": "草木伝承録:北洋地域・イルサバード",
+        "RequiredTechnical": 3600
+      }
+    ]
   },
   {
     "ID": "37822",
@@ -412696,7 +415255,21 @@
     "ItemSearchCategory": "53",
     "IconFile": "022634.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "北洋地域",
+        "Map": "ラヴィリンソス",
+        "Method": "砕岩",
+        "Type": "伝説",
+        "Times": [
+          "10:00-12:00",
+          "22:00-00:00"
+        ],
+        "Chronicle": "鉱物伝承録:北洋地域・イルサバード",
+        "RequiredTechnical": 3600
+      }
+    ]
   },
   {
     "ID": "37823",
@@ -420842,7 +423415,21 @@
     "ItemSearchCategory": "47",
     "IconFile": "021472.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "イルサバード",
+        "Map": "ガレマルド",
+        "Method": "砕岩",
+        "Type": "伝説",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ],
+        "Chronicle": "鉱物伝承録:北洋地域・イルサバード",
+        "RequiredTechnical": 3625
+      }
+    ]
   },
   {
     "ID": "38935",
@@ -427907,7 +430494,21 @@
     "ItemSearchCategory": "49",
     "IconFile": "022408.webp",
     "ItemUICategoryName": "木材",
-    "ItemSearchCategoryName": "木材"
+    "ItemSearchCategoryName": "木材",
+    "GatheringTimer": [
+      {
+        "Area": "北洋地域",
+        "Map": "ラヴィリンソス",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "02:00-04:00",
+          "14:00-16:00"
+        ],
+        "Chronicle": "草木伝承録:北洋地域・イルサバード",
+        "RequiredTechnical": 3850
+      }
+    ]
   },
   {
     "ID": "39706",
@@ -427918,7 +430519,21 @@
     "ItemSearchCategory": "47",
     "IconFile": "021227.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "星外宙域",
+        "Map": "ウルティマ・トゥーレ",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "04:00-06:00",
+          "16:00-18:00"
+        ],
+        "Chronicle": "鉱物伝承録:星外宙域",
+        "RequiredTechnical": 3850
+      }
+    ]
   },
   {
     "ID": "39707",
@@ -427929,7 +430544,21 @@
     "ItemSearchCategory": "47",
     "IconFile": "021475.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "古代世界",
+        "Map": "エルピス",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "08:00-10:00",
+          "20:00-22:00"
+        ],
+        "Chronicle": "鉱物伝承録:古代世界",
+        "RequiredTechnical": 3850
+      }
+    ]
   },
   {
     "ID": "39708",
@@ -427940,7 +430569,21 @@
     "ItemSearchCategory": "53",
     "IconFile": "022656.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "イルサバード",
+        "Map": "サベネア島",
+        "Method": "砕岩",
+        "Type": "伝説",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ],
+        "Chronicle": "鉱物伝承録:北洋地域・イルサバード",
+        "RequiredTechnical": 3850
+      }
+    ]
   },
   {
     "ID": "39709",
@@ -427951,7 +430594,21 @@
     "ItemSearchCategory": "53",
     "IconFile": "022696.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "イルサバード",
+        "Map": "ガレマルド",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "10:00-12:00",
+          "22:00-00:00"
+        ],
+        "Chronicle": "草木伝承録:北洋地域・イルサバード",
+        "RequiredTechnical": 3850
+      }
+    ]
   },
   {
     "ID": "39710",
@@ -427962,7 +430619,21 @@
     "ItemSearchCategory": "53",
     "IconFile": "025413.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "星外宙域",
+        "Map": "嘆きの海",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ],
+        "Chronicle": "草木伝承録:星外宙域",
+        "RequiredTechnical": 3850
+      }
+    ]
   },
   {
     "ID": "39711",
@@ -472176,7 +474847,21 @@
     "ItemSearchCategory": "47",
     "IconFile": "021221.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "アンロスト・ワールド",
+        "Map": "リビング・メモリー",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ],
+        "Chronicle": "鉱物伝承録:アレクサンドリア",
+        "RequiredTechnical": 4480
+      }
+    ]
   },
   {
     "ID": "44136",
@@ -472187,7 +474872,21 @@
     "ItemSearchCategory": "47",
     "IconFile": "021223.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "サカ・トラル",
+        "Map": "シャーローニ荒野",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "10:00-12:00",
+          "22:00-00:00"
+        ],
+        "Chronicle": "鉱物伝承録:サカ・トラル（シャーローニ荒野）",
+        "RequiredTechnical": 4480
+      }
+    ]
   },
   {
     "ID": "44137",
@@ -472198,7 +474897,21 @@
     "ItemSearchCategory": "49",
     "IconFile": "022415.webp",
     "ItemUICategoryName": "木材",
-    "ItemSearchCategoryName": "木材"
+    "ItemSearchCategoryName": "木材",
+    "GatheringTimer": [
+      {
+        "Area": "ヨカ・トラル",
+        "Map": "コザマル・カ",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ],
+        "Chronicle": "草木伝承録:ヨカ・トラル",
+        "RequiredTechnical": 4480
+      }
+    ]
   },
   {
     "ID": "44138",
@@ -472209,7 +474922,21 @@
     "ItemSearchCategory": "50",
     "IconFile": "025032.webp",
     "ItemUICategoryName": "布材",
-    "ItemSearchCategoryName": "布材"
+    "ItemSearchCategoryName": "布材",
+    "GatheringTimer": [
+      {
+        "Area": "アンロスト・ワールド",
+        "Map": "リビング・メモリー",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "04:00-06:00",
+          "16:00-18:00"
+        ],
+        "Chronicle": "草木伝承録:アレクサンドリア",
+        "RequiredTechnical": 4480
+      }
+    ]
   },
   {
     "ID": "44139",
@@ -472220,7 +474947,21 @@
     "ItemSearchCategory": "53",
     "IconFile": "022673.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "ヨカ・トラル",
+        "Map": "オルコ・パチャ",
+        "Method": "砕岩",
+        "Type": "伝説",
+        "Times": [
+          "08:00-10:00",
+          "20:00-22:00"
+        ],
+        "Chronicle": "鉱物伝承録:ヨカ・トラル",
+        "RequiredTechnical": 4480
+      }
+    ]
   },
   {
     "ID": "44140",
@@ -472231,7 +474972,21 @@
     "ItemSearchCategory": "53",
     "IconFile": "022697.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "サカ・トラル",
+        "Map": "シャーローニ荒野",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "02:00-04:00",
+          "14:00-16:00"
+        ],
+        "Chronicle": "草木伝承録:サカ・トラル（シャーローニ荒野）",
+        "RequiredTechnical": 4480
+      }
+    ]
   },
   {
     "ID": "44141",
@@ -479211,7 +481966,21 @@
     "ItemSearchCategory": "53",
     "IconFile": "022699.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "アンロスト・ワールド",
+        "Map": "リビング・メモリー",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "04:00-06:00",
+          "16:00-18:00"
+        ],
+        "Chronicle": "草木伝承録:アレクサンドリア",
+        "RequiredTechnical": 4540
+      }
+    ]
   },
   {
     "ID": "44845",
@@ -479222,7 +481991,21 @@
     "ItemSearchCategory": "47",
     "IconFile": "021491.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "アンロスト・ワールド",
+        "Map": "リビング・メモリー",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ],
+        "Chronicle": "鉱物伝承録:アレクサンドリア",
+        "RequiredTechnical": 4540
+      }
+    ]
   },
   {
     "ID": "44846",
@@ -481469,7 +484252,21 @@
     "ItemSearchCategory": "49",
     "IconFile": "022414.webp",
     "ItemUICategoryName": "木材",
-    "ItemSearchCategoryName": "木材"
+    "ItemSearchCategoryName": "木材",
+    "GatheringTimer": [
+      {
+        "Area": "ヨカ・トラル",
+        "Map": "ヤクテル樹海",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ],
+        "Chronicle": "草木伝承録:ヨカ・トラル",
+        "RequiredTechnical": 4740
+      }
+    ]
   },
   {
     "ID": "45969",
@@ -481480,7 +484277,21 @@
     "ItemSearchCategory": "47",
     "IconFile": "021203.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ヨカ・トラル",
+        "Map": "ヤクテル樹海",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "10:00-12:00",
+          "22:00-00:00"
+        ],
+        "Chronicle": "鉱物伝承録:ヨカ・トラル",
+        "RequiredTechnical": 4740
+      }
+    ]
   },
   {
     "ID": "45970",
@@ -481491,7 +484302,21 @@
     "ItemSearchCategory": "47",
     "IconFile": "021471.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "ヨカ・トラル",
+        "Map": "コザマル・カ",
+        "Method": "砕岩",
+        "Type": "伝説",
+        "Times": [
+          "08:00-10:00",
+          "20:00-22:00"
+        ],
+        "Chronicle": "鉱物伝承録:ヨカ・トラル",
+        "RequiredTechnical": 4740
+      }
+    ]
   },
   {
     "ID": "45971",
@@ -481502,7 +484327,21 @@
     "ItemSearchCategory": "53",
     "IconFile": "027501.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "サカ・トラル",
+        "Map": "シャーローニ荒野",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "04:00-06:00",
+          "16:00-18:00"
+        ],
+        "Chronicle": "草木伝承録:サカ・トラル（シャーローニ荒野）",
+        "RequiredTechnical": 4740
+      }
+    ]
   },
   {
     "ID": "45972",
@@ -481513,7 +484352,21 @@
     "ItemSearchCategory": "53",
     "IconFile": "025011.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "サカ・トラル",
+        "Map": "ヘリテージファウンド",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ],
+        "Chronicle": "草木伝承録:アレクサンドリア",
+        "RequiredTechnical": 4740
+      }
+    ]
   },
   {
     "ID": "45973",
@@ -481524,7 +484377,21 @@
     "ItemSearchCategory": "47",
     "IconFile": "021492.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "サカ・トラル",
+        "Map": "ヘリテージファウンド",
+        "Method": "砕岩",
+        "Type": "伝説",
+        "Times": [
+          "02:00-04:00",
+          "14:00-16:00"
+        ],
+        "Chronicle": "鉱物伝承録:アレクサンドリア",
+        "RequiredTechnical": 4740
+      }
+    ]
   },
   {
     "ID": "45974",
@@ -488828,7 +491695,21 @@
     "ItemSearchCategory": "53",
     "IconFile": "022687.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "ヨカ・トラル",
+        "Map": "ヤクテル樹海",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ],
+        "Chronicle": "草木伝承録:ヨカ・トラル",
+        "RequiredTechnical": 4960
+      }
+    ]
   },
   {
     "ID": "46244",
@@ -488839,7 +491720,21 @@
     "ItemSearchCategory": "47",
     "IconFile": "021472.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "サカ・トラル",
+        "Map": "ヘリテージファウンド",
+        "Method": "砕岩",
+        "Type": "伝説",
+        "Times": [
+          "02:00-04:00",
+          "14:00-16:00"
+        ],
+        "Chronicle": "鉱物伝承録:アレクサンドリア",
+        "RequiredTechnical": 4960
+      }
+    ]
   },
   {
     "ID": "46246",
@@ -510378,7 +513273,21 @@
     "ItemSearchCategory": "49",
     "IconFile": "022427.webp",
     "ItemUICategoryName": "木材",
-    "ItemSearchCategoryName": "木材"
+    "ItemSearchCategoryName": "木材",
+    "GatheringTimer": [
+      {
+        "Area": "アンロスト・ワールド",
+        "Map": "リビング・メモリー",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "08:00-10:00",
+          "20:00-22:00"
+        ],
+        "Chronicle": "草木伝承録:アレクサンドリア",
+        "RequiredTechnical": 5090
+      }
+    ]
   },
   {
     "ID": "49208",
@@ -510389,7 +513298,21 @@
     "ItemSearchCategory": "47",
     "IconFile": "021206.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "サカ・トラル",
+        "Map": "ヘリテージファウンド",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "10:00-12:00",
+          "22:00-00:00"
+        ],
+        "Chronicle": "鉱物伝承録:アレクサンドリア",
+        "RequiredTechnical": 5090
+      }
+    ]
   },
   {
     "ID": "49209",
@@ -510400,7 +513323,21 @@
     "ItemSearchCategory": "47",
     "IconFile": "021475.webp",
     "ItemUICategoryName": "石材",
-    "ItemSearchCategoryName": "石材"
+    "ItemSearchCategoryName": "石材",
+    "GatheringTimer": [
+      {
+        "Area": "サカ・トラル",
+        "Map": "シャーローニ荒野",
+        "Method": "砕岩",
+        "Type": "伝説",
+        "Times": [
+          "00:00-02:00",
+          "12:00-14:00"
+        ],
+        "Chronicle": "鉱物伝承録:サカ・トラル（シャーローニ荒野）",
+        "RequiredTechnical": 5090
+      }
+    ]
   },
   {
     "ID": "49210",
@@ -510411,7 +513348,21 @@
     "ItemSearchCategory": "53",
     "IconFile": "022709.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "ヨカ・トラル",
+        "Map": "コザマル・カ",
+        "Method": "伐採",
+        "Type": "伝説",
+        "Times": [
+          "04:00-06:00",
+          "16:00-18:00"
+        ],
+        "Chronicle": "草木伝承録:ヨカ・トラル",
+        "RequiredTechnical": 5090
+      }
+    ]
   },
   {
     "ID": "49211",
@@ -510422,7 +513373,21 @@
     "ItemSearchCategory": "53",
     "IconFile": "025033.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "ヨカ・トラル",
+        "Map": "オルコ・パチャ",
+        "Method": "草刈",
+        "Type": "伝説",
+        "Times": [
+          "06:00-08:00",
+          "18:00-20:00"
+        ],
+        "Chronicle": "草木伝承録:ヨカ・トラル",
+        "RequiredTechnical": 5090
+      }
+    ]
   },
   {
     "ID": "49212",
@@ -510433,7 +513398,21 @@
     "ItemSearchCategory": "53",
     "IconFile": "022678.webp",
     "ItemUICategoryName": "錬金術材",
-    "ItemSearchCategoryName": "錬金術材"
+    "ItemSearchCategoryName": "錬金術材",
+    "GatheringTimer": [
+      {
+        "Area": "アンロスト・ワールド",
+        "Map": "リビング・メモリー",
+        "Method": "採掘",
+        "Type": "伝説",
+        "Times": [
+          "02:00-04:00",
+          "14:00-16:00"
+        ],
+        "Chronicle": "鉱物伝承録:アレクサンドリア",
+        "RequiredTechnical": 5090
+      }
+    ]
   },
   {
     "ID": "49213",
