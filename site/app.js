@@ -1,4 +1,4 @@
-const DATA_CACHE_VERSION = 'ff14recipe-data-7.50-6eb38953';
+const DATA_CACHE_VERSION = 'ff14recipe-data-7.50-383fe0ae';
 const DATA_FILE = `./data/Item.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 const TIPS_FILE = './data/tips.md';
 const ABOUT_URL = 'https://jogu6.github.io/ffxiv-recipe-about/';
