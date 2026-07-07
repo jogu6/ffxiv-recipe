@@ -43,7 +43,7 @@
   .app-title-icon { width: 22.5px; height: 22.5px; flex-shrink: 0; }
   header h1 { font-size: 15px; color: var(--accent); font-weight: bold; white-space: nowrap; }
   #appVersion { font-size: 11px; color: var(--muted); white-space: nowrap; }
-  #loadStatus { font-size: 12px; color: var(--muted); }
+  #loadStatus { font-size: 12px; color: var(--muted); white-space: nowrap; }
   #loadingOverlay {
     display: none;
     position: fixed;
@@ -190,7 +190,7 @@
     transition: max-height 180ms ease, visibility 0s linear 180ms;
   }
   #favoriteLists.open {
-    max-height: 260px;
+    max-height: var(--favorite-lists-max-height, 260px);
     overflow-y: auto;
     visibility: visible;
     pointer-events: auto;
@@ -603,6 +603,13 @@
     white-space: normal;
   }
   li.fav-item-row .reorder-handle { margin-left: auto; }
+  #recipeList li > .gathering-timer-btn {
+    margin-left: auto;
+  }
+  #recipeList li > .gathering-timer-btn + .uses-list-btn,
+  #recipeList li > .gathering-timer-btn + .reorder-handle {
+    margin-left: 0;
+  }
   li.fav-item-row .favorite-list-icon,
   li.fav-item-row .reorder-handle { padding-left: 1px; padding-right: 1px; }
   li.reorder-enabled {
@@ -1201,7 +1208,7 @@
   .tree-node .node-row:hover { background: var(--hover-bg); }
   .toggle { font-size: 11px; color: var(--muted); width: 12px; display: inline-block; text-align: center; flex-shrink: 0; }
   .node-name { font-size: 14px; }
-  .node-qty { font-size: 14px; color: var(--accent); }
+  .node-qty { font-size: 14px; color: var(--accent); white-space: nowrap; flex-shrink: 0; }
 
   .node-main {
     display: flex;
@@ -1286,9 +1293,8 @@
   }
   .pin-btn:hover { transform: scale(1.2); }
   .pin-btn.inactive { filter: grayscale(1) opacity(0.4); }
-  .gathering-timer-btn {
-    width: 28px;
-    height: 28px;
+  .gathering-timer-btn,
+  .intermediate-material-tree-btn {
     margin-left: 2px;
     flex-shrink: 0;
     border: 1px solid var(--border);
@@ -1296,17 +1302,14 @@
     background: var(--bg);
     color: var(--text);
     cursor: pointer;
+    font-size: 17px;
     line-height: 1;
-    display: grid;
-    place-items: center;
+    padding: 5px 7px;
+    white-space: nowrap;
   }
-  .gathering-timer-btn:hover { border-color: var(--accent); background: var(--active-bg); }
+  .gathering-timer-btn:hover,
+  .intermediate-material-tree-btn:hover { border-color: var(--accent); }
   .gathering-timer-btn + .intermediate-material-tree-btn { margin-left: 0; }
-  .material-supplement-row .gathering-timer-btn {
-    width: 22px;
-    height: 22px;
-    font-size: 12px;
-  }
 
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: var(--bg); }
@@ -1337,11 +1340,6 @@
     border: 1px solid rgba(200, 168, 75, 0.24);
     border-radius: 4px;
     background: rgba(200, 168, 75, 0.08);
-  }
-  .result-root-summary .node-icon,
-  .material-tree-root-summary .node-icon {
-    width: 48px;
-    height: 48px;
   }
   .favorite-material-root-or {
     color: var(--muted);
@@ -1471,7 +1469,14 @@
     max-width: 460px;
     position: relative;
   }
-  #settingsDialog h2 { font-size: 14px; color: var(--accent); margin-bottom: 16px; }
+  #settingsDialog h2 { font-size: 14px; color: var(--accent); margin: 0; }
+  .settings-title-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
   .settings-top-actions {
     display: flex;
     align-items: center;
@@ -1781,6 +1786,10 @@
     color: var(--muted);
     font-size: 14px;
   }
+  .gathering-type,
+  .gathering-note-highlight {
+    color: var(--soft-text);
+  }
   .gathering-times {
     display: grid;
     gap: 5px;
@@ -1797,7 +1806,8 @@
     align-items: center;
     gap: 5px;
   }
-  .gathering-time-et {
+  .gathering-time-et,
+  .gathering-time-lt {
     display: inline-grid;
     place-items: center;
     min-width: 22px;
@@ -1812,6 +1822,15 @@
   .gathering-time-text {
     white-space: nowrap;
   }
+  .gathering-countdown {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+  }
+  .gathering-countdown-label.waiting { color: #8fc7ff; }
+  .gathering-countdown-label.active { color: #9fdb82; }
+  .gathering-countdown-time { color: var(--text); }
   #materialTreeOverlay { z-index: 360; }
   #materialTreeOverlay.open { display: flex; }
   #materialTreeDialog {
@@ -2046,7 +2065,7 @@
       font-size: 22px;
     }
     .tree-node .node-row {
-      align-items: flex-start;
+      align-items: center;
       white-space: normal;
     }
     .node-main {
@@ -2071,10 +2090,10 @@
       flex: 0 1 auto;
     }
     .gathering-timer-btn {
-      margin-left: auto;
+      margin-left: 2px;
     }
     .intermediate-material-tree-btn {
-      margin-left: auto;
+      margin-left: 2px;
     }
     .gathering-timer-btn + .intermediate-material-tree-btn {
       margin-left: 0;

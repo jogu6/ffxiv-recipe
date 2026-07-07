@@ -17,8 +17,9 @@ const LICENSE_NOTICE_FILE = './docs/license-notice.md';
 const PRIVACY_POLICY_FILE = './docs/privacy-policy.md';
 const CONTACT_URL = 'https://discord.gg/eZP5temK6e';
 const REQUEST_COUNT_MAX = 999;
-const MIN_LOADING_OVERLAY_MS = 2000;
+const MIN_LOADING_OVERLAY_MS = 2500;
 const loadingOverlayStartedAt = Date.now();
+const EORZEA_TIME_MULTIPLIER = 144 / 7;
 const {
   calculateCraft,
   calculateRequirements,
@@ -153,6 +154,7 @@ let expandedFavoriteListActionsId = null;
 let expandedFavoriteMaterialActions = false;
 let favoriteMaterialCalcMode = 'sum';
 const expandedFavoriteCountRows = new Set();
+let gatheringTimerIntervalId = null;
 let canSaveViewState = false;
 let suppressViewStateSave = false;
 
@@ -939,12 +941,23 @@ function toggleFav() {
   elements.searchClearBtn.classList.remove('visible');
   closeSearchHistory();
   renderFavoriteLists();
+  updateFavoriteListsMaxHeight();
   elements.favoriteLists.classList.toggle('open');
 }
 
 function closeFavoriteLists() {
   elements.favoriteLists.classList.remove('open');
   expandedFavoriteListActionsId = null;
+}
+
+function updateFavoriteListsMaxHeight() {
+  const list = elements.favoriteLists;
+  if (!list) return;
+  const top = list.getBoundingClientRect().top;
+  const rootStyle = getComputedStyle(document.documentElement);
+  const footerSpace = Number.parseFloat(rootStyle.getPropertyValue('--footer-space')) || 0;
+  const available = Math.max(0, Math.floor(window.innerHeight - top - footerSpace - 8));
+  list.style.setProperty('--favorite-lists-max-height', `${available}px`);
 }
 
 function selectFavoriteList(listId) {
@@ -1157,10 +1170,10 @@ function createFavoriteMaterialsRow() {
   anyOneHelp.className = 'favorite-material-help-btn';
   anyOneHelp.type = 'button';
   anyOneHelp.textContent = '?';
-  anyOneHelp.setAttribute('aria-label', 'お気に入り素材リスト操作の説明');
+  anyOneHelp.setAttribute('aria-label', '拡張機能について');
   anyOneHelp.addEventListener('click', event => {
     event.stopPropagation();
-    openMarkdownNotice('お気に入り素材リストの操作', `### 並び替え
+    openMarkdownNotice('拡張機能について', `### 並び替え
 
 お気に入りリスト内のアイテム順を変更します。素材リストの計算内容は変わりません。
 
@@ -1171,9 +1184,9 @@ function createFavoriteMaterialsRow() {
 個数指定中に使える操作:
 
 - **全て1個**  
-  対象アイテムの個数をまとめて1個にします。
+  お気に入りリスト内全アイテムの個数をまとめて1個にします。
 - **全て0個**  
-  対象アイテムの個数をまとめて0個にします。
+  お気に入りリスト内全アイテムの個数をまとめて0個にします。
 
 ### どれでも1つ
 
@@ -1182,9 +1195,9 @@ function createFavoriteMaterialsRow() {
 どれでも1つ中に使える操作:
 
 - **全てOn**  
-  対象アイテムをまとめてチェックします。
+  お気に入りリスト内全アイテムをまとめてチェックします。
 - **全てOff**  
-  対象アイテムのチェックをまとめて外します。`);
+  お気に入りリスト内全アイテムのチェックをまとめて外します。`);
   });
 
   const setAllCounts = value => {
@@ -1584,6 +1597,8 @@ function makeFavLi(name, index) {
   });
   if (!countsEnabled) li.insertBefore(pin, label);
 
+  const gatheringButton = createGatheringTimerButton(name);
+  if (gatheringButton) li.appendChild(gatheringButton);
   if (!recipes[name]) li.appendChild(createUsesListButton(name, li, false));
 
   if (favoriteItemReorderEnabled) {
@@ -1681,6 +1696,8 @@ function makeFavLi(name, index) {
 function makeRecipeLi(name) {
   const li = createItemListRow(name);
   li.classList.toggle('selected', selectedRecipe === name);
+  const gatheringButton = createGatheringTimerButton(name);
+  if (gatheringButton) li.appendChild(gatheringButton);
 
   li.addEventListener('click', () => {
     rememberCurrentSearch();
@@ -1692,6 +1709,8 @@ function makeRecipeLi(name) {
 
 function makeIngredientLi(name) {
   const li = createItemListRow(name, 'ingredient-row');
+  const gatheringButton = createGatheringTimerButton(name);
+  if (gatheringButton) li.appendChild(gatheringButton);
   li.appendChild(createUsesListButton(name, li, true));
   li.addEventListener('click', () => {
     rememberCurrentSearch();
@@ -1948,7 +1967,6 @@ function updatePatchStatus(maxPatch) {
   elements.loadStatus.textContent = maxPatch > 0
     ? `patch ${String(maxPatch).slice(0, -2)}.${String(maxPatch).slice(-2)} 対応`
     : '';
-  hideLoadingOverlay();
 }
 
 function showLoadError(error) {
@@ -1990,6 +2008,7 @@ async function init() {
       else clearMobilePanels();
       saveViewState();
     }
+    hideLoadingOverlay();
   } catch (e) {
     showLoadError(e);
   }
@@ -3117,7 +3136,83 @@ function gatheringMethodClass(method) {
   return method === '採掘' || method === '砕岩' ? 'gathering-method-mining' : 'gathering-method-botany';
 }
 
+function parseGatheringTimeRange(timeRange) {
+  const match = String(timeRange).match(/^(\d{2}):(\d{2})-(\d{2}):(\d{2})$/);
+  if (!match) return null;
+  const start = Number(match[1]) * 60 + Number(match[2]);
+  let end = Number(match[3]) * 60 + Number(match[4]);
+  if (end <= start) end += 1440;
+  return { start, end };
+}
+
+function currentEorzeaMinutes(now = Date.now()) {
+  return (now * EORZEA_TIME_MULTIPLIER) / 60000;
+}
+
+function formatCountdown(ms) {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}m${String(seconds).padStart(2, '0')}s`;
+}
+
+function gatheringTimeStatus(timeRange, now = Date.now()) {
+  const range = parseGatheringTimeRange(timeRange);
+  if (!range) return null;
+  const etNow = currentEorzeaMinutes(now);
+  const etDay = Math.floor(etNow / 1440);
+  const candidates = [etDay - 1, etDay, etDay + 1].map(day => ({
+    start: day * 1440 + range.start,
+    end: day * 1440 + range.end
+  }));
+  const active = candidates.find(candidate => etNow >= candidate.start && etNow < candidate.end);
+  const targetEt = active
+    ? active.end
+    : candidates.filter(candidate => candidate.start > etNow).sort((a, b) => a.start - b.start)[0]?.start;
+  if (!Number.isFinite(targetEt)) return null;
+  const remainingMs = ((targetEt - etNow) * 60000) / EORZEA_TIME_MULTIPLIER;
+  return {
+    active: Boolean(active),
+    remaining: formatCountdown(remainingMs)
+  };
+}
+
+function updateGatheringTimeStatuses() {
+  elements.gatheringContent.querySelectorAll('.gathering-time[data-et-range]').forEach(timeChip => {
+    const status = gatheringTimeStatus(timeChip.dataset.etRange);
+    const label = timeChip.querySelector('.gathering-countdown-label');
+    const remaining = timeChip.querySelector('.gathering-countdown-time');
+    if (!status || !label || !remaining) return;
+    label.textContent = status.active ? '終了まで' : '開始まで';
+    label.classList.toggle('active', status.active);
+    label.classList.toggle('waiting', !status.active);
+    remaining.textContent = status.remaining;
+  });
+}
+
+function stopGatheringTimerUpdates() {
+  if (gatheringTimerIntervalId === null) return;
+  window.clearInterval(gatheringTimerIntervalId);
+  gatheringTimerIntervalId = null;
+}
+
+function startGatheringTimerUpdates() {
+  stopGatheringTimerUpdates();
+  if (!elements.gatheringOverlay.classList.contains('open') || document.hidden) return;
+  updateGatheringTimeStatuses();
+  gatheringTimerIntervalId = window.setInterval(updateGatheringTimeStatuses, 1000);
+}
+
+function createGatheringNote(label, highlightText, suffix) {
+  const note = createTextElement('div', 'gathering-note', '');
+  if (label) note.append(label);
+  note.appendChild(createTextElement('span', 'gathering-note-highlight', highlightText));
+  if (suffix) note.append(suffix);
+  return note;
+}
+
 function showGatheringDialog(name) {
+  stopGatheringTimerUpdates();
   const entries = itemMaster[name]?.gatheringTimer || [];
   elements.gatheringTitle.textContent = `採集情報: ${name}`;
   elements.gatheringContent.replaceChildren();
@@ -3147,16 +3242,23 @@ function showGatheringDialog(name) {
       head.appendChild(createTextElement('span', `badge gathering-method ${gatheringMethodClass(entry.Method)}`, entry.Method));
       head.appendChild(createTextElement('span', 'gathering-type', entry.Type));
       block.appendChild(head);
-      if (entry.Chronicle) block.appendChild(createTextElement('div', 'gathering-note', `${entry.Chronicle} が必要`));
+      if (entry.Chronicle) block.appendChild(createGatheringNote('', entry.Chronicle, ' が必要'));
       if (Number.isFinite(Number(entry.RequiredTechnical))) {
-        block.appendChild(createTextElement('div', 'gathering-note', `必要技術力: ${formatNumber(Number(entry.RequiredTechnical))} 以上`));
+        block.appendChild(createGatheringNote('必要技術力: ', formatNumber(Number(entry.RequiredTechnical)), ' 以上'));
       }
       const times = createTextElement('div', 'gathering-times', '');
       for (const time of entry.Times || []) {
         const timeChip = createTextElement('span', 'gathering-time', '');
+        timeChip.dataset.etRange = time;
         timeChip.append(
           createTextElement('span', 'gathering-time-et', 'ET'),
-          createTextElement('span', 'gathering-time-text', time)
+          createTextElement('span', 'gathering-time-text', time),
+          createTextElement('span', 'gathering-countdown', '')
+        );
+        timeChip.querySelector('.gathering-countdown').append(
+          createTextElement('span', 'gathering-countdown-label', '開始まで'),
+          createTextElement('span', 'gathering-time-lt', 'LT'),
+          createTextElement('span', 'gathering-countdown-time', '--:--')
         );
         times.appendChild(timeChip);
       }
@@ -3165,10 +3267,12 @@ function showGatheringDialog(name) {
     }
   }
   elements.gatheringOverlay.classList.add('open');
+  startGatheringTimerUpdates();
 }
 
 function closeGatheringDialog() {
   elements.gatheringOverlay.classList.remove('open');
+  stopGatheringTimerUpdates();
 }
 
 function createTreeMain(name, producedQty, subInfo, badge) {
@@ -3621,6 +3725,14 @@ function bindEvents() {
   elements.gatheringCloseBtn.addEventListener('click', closeGatheringDialog);
   elements.gatheringOverlay.addEventListener('click', event => {
     if (event.target === elements.gatheringOverlay) closeGatheringDialog();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stopGatheringTimerUpdates();
+    else startGatheringTimerUpdates();
+  });
+  window.addEventListener('pagehide', stopGatheringTimerUpdates);
+  window.addEventListener('resize', () => {
+    if (elements.favoriteLists.classList.contains('open')) updateFavoriteListsMaxHeight();
   });
   elements.usesBtn.addEventListener('click', () => showUsesPanel(selectedRecipe));
   elements.updateReloadBtn.addEventListener('click', () => location.reload());

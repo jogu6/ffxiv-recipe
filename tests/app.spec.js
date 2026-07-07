@@ -4,6 +4,7 @@ async function openApp(page, width = 900, height = 700) {
   await page.setViewportSize({ width, height });
   await page.goto('/');
   await expect(page.locator('#loadStatus')).toContainText(/patch/);
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
 }
 
 async function searchFor(page, value) {
@@ -155,7 +156,7 @@ test('intermediate materials form a collapsible tree and open an independent mat
   await expect(page.locator('#materialTreeOverlay')).toHaveClass(/open/);
   await expect(page.locator('#materialTreeTitle')).toHaveText('素材ツリー');
   await expect(page.locator('.material-tree-root-summary')).toContainText('バスタードソード');
-  await expect(page.locator('.material-tree-root-summary .node-icon')).toHaveCSS('width', '48px');
+  await expect(page.locator('.material-tree-root-summary .node-icon')).toHaveCSS('width', '40px');
   await expect(page.locator('#materialTreeContent > .tree-node').first()).not.toContainText('バスタードソード');
   await expect(page.locator('#materialTreeContent')).toContainText('ブロンズインゴット');
   await expect(page.locator('#materialTreeContent .pin-btn')).toHaveCount(0);
@@ -270,13 +271,14 @@ test('materials list sorts normal items before crystals and shows supplement ico
     '必要なシャード/クリスタル/クラスター',
     '必要な交換貨幣'
   ]);
+  const crystalsHeader = page.locator('.materials-section-header').filter({ hasText: '必要なシャード/クリスタル/クラスター' });
+  await expect(crystalsHeader.locator('xpath=following-sibling::*[1]')).toHaveClass(/collapsed/);
   const text = await page.locator('.materials-list').innerText();
   await page.locator('.materials-section-header').filter({ hasText: '必要な交換貨幣' }).click();
   const summaryText = await page.locator('.materials-summary-row').innerText();
   expect(text.indexOf('ゴールデンイール')).toBeGreaterThanOrEqual(0);
   expect(text.indexOf('紫電の霊砂')).toBeGreaterThan(text.indexOf('ゴールデンイール'));
-  expect(text).not.toContain('ファイアクラスター');
-  await page.locator('.materials-section-header').filter({ hasText: '必要なシャード/クリスタル/クラスター' }).click();
+  await crystalsHeader.click();
   const expandedText = await page.locator('.materials-list').innerText();
   expect(expandedText.indexOf('ファイアクラスター')).toBeGreaterThan(expandedText.indexOf('紫電の霊砂'));
   expect(summaryText).toContain('ギャザラースクリップ:橙貨');
@@ -606,6 +608,7 @@ test('reorders favorite items locally and changes the exported share code order'
   const beforeCode = await page.locator('#exportCode').inputValue();
   await page.locator('#settingsCloseBtn').click();
 
+  await page.locator('.favorite-material-curtain-toggle').click();
   await page.locator('#recipeList .favorite-materials-row').getByText('並び替え').click();
   await expect(page.locator('#recipeList li.fav-item-row .reorder-handle')).toHaveCount(2);
   await expect(page.locator('#recipeList li.fav-item-row').first()).toHaveCSS('user-select', 'none');
@@ -751,7 +754,7 @@ test('favorite list count mode excludes zero-count items from materials', async 
   await expect(page.locator('.favorite-material-root-summary')).toHaveCount(1);
   await expect(page.locator('.favorite-material-root-summary')).toContainText('カッパーリング');
   await expect(page.locator('.favorite-material-root-summary')).not.toContainText('アリペブレ');
-  await expect(page.locator('.favorite-material-root-summary .node-icon')).toHaveCSS('width', '48px');
+  await expect(page.locator('.favorite-material-root-summary .node-icon')).toHaveCSS('width', '40px');
   await expect(page.locator('.materials-list')).toContainText(/カッパーインゴット\s*× 1/);
   await expect(page.locator('.materials-list')).not.toContainText('ゴールデンイール');
 
@@ -765,10 +768,11 @@ test('favorite list count mode excludes zero-count items from materials', async 
   const storedAnyOneTargets = await page.evaluate(() => localStorage.getItem('ff14_favorite_item_counts_v1'));
   expect(storedAnyOneTargets).toContain('anyOneTargets');
   await page.locator('.favorite-material-help-btn').click();
-  await expect(page.locator('#confirmMsg')).toContainText('1個以上指定したアイテム');
-  await expect(page.locator('#confirmMsg')).toContainText('セット数分');
-  await expect(page.locator('#confirmMsg')).toContainText('全てを制作する素材リストではありません');
-  await page.locator('#confirmNo').click();
+  await expect(page.locator('#licenseTitle')).toContainText('拡張機能について');
+  await expect(page.locator('#licenseText')).toContainText('お気に入りリスト内全アイテム');
+  await expect(page.locator('#licenseText')).toContainText('セット数分');
+  await expect(page.locator('#licenseText')).toContainText('全てを制作する素材リストではありません');
+  await page.locator('#licenseCloseBtn').click();
   await expect(page.locator('#countInput')).toBeVisible();
   await expect(page.locator('#countInput')).toBeEnabled();
   await page.locator('#countInput').fill('2');
