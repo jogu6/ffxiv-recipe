@@ -221,7 +221,7 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .log-panel { min-height: 0; display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
 .log-header { padding: 8px 10px; border-bottom: 1px solid var(--border); }
 .log-header button { min-height: 26px; padding: 3px 8px; font-size: 12px; }
-pre {
+.log-view {
   overflow: auto;
   padding: 10px;
   font-family: Consolas, "Courier New", monospace;
@@ -229,6 +229,9 @@ pre {
   line-height: 1.5;
   color: var(--soft-text);
   white-space: pre-wrap;
+}
+.log-line {
+  min-height: 1.5em;
 }
 
 .modal-overlay {
@@ -295,11 +298,6 @@ button.primary:hover { background: #d5b95a; color: #1a1a1a; }
 .preview-tools { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .preview-tools button { min-height: 30px; text-align: center; }
 .preview-tools button.active { background: var(--accent); color: #1a1a1a; border-color: var(--accent); }
-.preview-lan-info { padding: 0 12px 10px; }
-.preview-lan-box { display:grid; gap:6px; border:1px solid var(--border); background:#1b1b1b; border-radius:6px; padding:10px; color:var(--muted); font-size:12px; }
-.preview-lan-box strong { color:var(--accent); }
-.preview-lan-box code { white-space:normal; overflow-wrap:anywhere; color:#e0e0e0; }
-.preview-lan-box a { color:#8fc7ff; overflow-wrap:anywhere; }
 .preview-content { overflow: auto; padding: 12px; display: grid; gap: 12px; }
 .preview-row { background:#252525; border:1px solid #3a3a3a; border-radius:8px; padding:12px; }
 .preview-row h3 { font-size:14px; margin-bottom:6px; }

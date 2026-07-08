@@ -41,7 +41,8 @@ npm run pipeline:gui:build
 The release binary is `src-tauri/target/release/makeRecipe.exe`. The GUI has three collapsible
 sections: CSV, Build, and Icon Quality. CSV is open on startup; opening one of the three sections
 closes the others. Long operations ask for confirmation and stream progress/log output while they
-run.
+run. The "全実行" button runs CSV validation, candidate generation, icon generation, Lodestone
+info publishing, and publish in order.
 
 ## Build steps
 
@@ -55,11 +56,43 @@ pipeline/tool/pipeline-tool.mjs build
   -> pipeline/intermediate/06-public-items.json
 ```
 
-Build a public candidate, then verify and publish it atomically:
+Build a public candidate, add Lodestone info, then verify and publish it atomically:
 
 ```bash
 node pipeline/tool/pipeline-tool.mjs build
+node pipeline/tool/pipeline-tool.mjs publish-lodestone-info --delay 100
 node pipeline/tool/pipeline-tool.mjs publish
+```
+
+Run the full local pipeline without the GUI:
+
+```bash
+node pipeline/tool/pipeline-tool.mjs run
+```
+
+This runs CSV validation, candidate generation, icon generation, Lodestone info publishing, and
+publish in order. The default Lodestone access delay is 100 ms. The default icon access delay is
+500 ms.
+
+Run only the Lodestone-derived shop, crafting, and equipment step:
+
+```bash
+node pipeline/tool/pipeline-tool.mjs publish-lodestone-info --delay 100
+```
+
+The Lodestone info command keeps strict item-name matching, caches fetched HTML under
+`pipeline/cache/lodestone-shops/`, removes player-state dependent shops, and writes only the app
+data fields:
+
+```json
+{
+  "ShopInfo": {
+    "price": 9,
+    "shops": [{ "shopName": "素材屋 エンゲランド", "area": "リムサ・ロミンサ：下甲板層", "x": 8.6, "y": 11.8 }]
+  },
+  "CraftInfo": [{ "job": "鍛冶師", "level": 1 }],
+  "EquipmentInfo": { "itemLevel": 9, "jobs": "全クラス", "equipLevel": 9 }
+}
 ```
 
 Check or download remote CSV files:
@@ -102,7 +135,8 @@ node pipeline/tool/pipeline-tool.mjs tmp-quality-preview --qualities 50,60,70,80
 The Tauri GUI reuses an existing comparison page when the current `Item.json`, fixed q50/q60/q70/q80
 set, and sample count match the saved manifest. When reusable preview data exists, the button is
 shown as "比較ページ表示"; otherwise it is shown as "比較ページ生成". The preview opens as an
-in-app floating view using app-managed preview data, not a raw `file://` page.
+in-app floating view using app-managed preview data. The GUI does not start a local preview web
+server.
 
 Launch the pipeline GUI:
 

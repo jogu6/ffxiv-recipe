@@ -107,7 +107,12 @@
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
   }
-  .search-wrap { position: relative; }
+  .search-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .search-wrap { position: relative; flex: 1 1 auto; min-width: 0; }
   #searchBox {
     background: var(--bg);
     border: 1px solid var(--border);
@@ -118,6 +123,12 @@
     width: 100%;
   }
   #searchBox:focus { outline: none; border-color: var(--accent); }
+  #searchBox:disabled {
+    color: var(--muted);
+    background: #202020;
+    cursor: not-allowed;
+    opacity: 0.65;
+  }
   #searchClearBtn {
     display: none;
     position: absolute;
@@ -135,6 +146,118 @@
   }
   #searchClearBtn.visible { display: block; }
   #searchClearBtn:hover { color: var(--text); }
+  #equipmentSearchToggle {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 29px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg);
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+  }
+  #equipmentSearchToggle:hover,
+  #equipmentSearchToggle.active {
+    border-color: var(--accent);
+    background: var(--active-bg);
+  }
+  .equipment-search-panel {
+    display: grid;
+    gap: 6px;
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: max-height 180ms ease, opacity 180ms ease, margin-top 180ms ease;
+  }
+  .equipment-search-panel.open {
+    max-height: 360px;
+    margin-top: 6px;
+    opacity: 1;
+  }
+  .equipment-search-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    border-radius: 4px;
+    background: rgba(201, 170, 72, 0.045);
+    padding: 6px;
+  }
+  .equipment-search-grid label {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .equipment-search-grid select,
+  .equipment-search-grid input {
+    width: 100%;
+    min-width: 0;
+    height: 28px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg);
+    color: var(--text);
+    padding: 4px 6px;
+    font-size: 12px;
+  }
+  .equipment-search-grid input {
+    color: var(--accent);
+    text-align: center;
+    font-weight: bold;
+    appearance: textfield;
+  }
+  .equipment-search-grid input::-webkit-inner-spin-button,
+  .equipment-search-grid input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .equipment-level-control {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr) 28px;
+    gap: 3px;
+  }
+  .equipment-level-control button,
+  .equipment-search-actions button,
+  #saveEquipmentSearchBtn {
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .equipment-level-control button:hover,
+  .equipment-search-actions button:hover,
+  #saveEquipmentSearchBtn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--active-bg);
+  }
+  .equipment-search-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .equipment-search-actions button,
+  #saveEquipmentSearchBtn {
+    min-height: 30px;
+    padding: 5px 8px;
+  }
+  #equipmentSearchBtn {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  #equipmentSearchBtn:disabled,
+  #saveEquipmentSearchBtn:disabled {
+    border-color: var(--border);
+    color: var(--muted);
+    cursor: default;
+    opacity: 0.55;
+    background: var(--bg);
+  }
 
   #searchHistory {
     position: absolute;
@@ -210,6 +333,10 @@
   #favoriteLists li:last-child { border-bottom: none; }
   #favoriteLists li:hover { background: var(--hover-bg); }
   #favoriteLists li.active { background: var(--active-bg); color: var(--accent); }
+  #favoriteLists li.material-selected-favorite-list .favorite-list-name {
+    color: #f1d67a;
+    font-weight: 700;
+  }
   #favoriteLists li.recent-favorite-list {
     border-left: 3px solid var(--accent);
     background: #242214;
@@ -267,11 +394,19 @@
     line-height: 1;
   }
   .favorite-list-curtain-toggle:hover { background: var(--active-bg); }
+  .favorite-list-material-checkbox {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    margin: 0 6px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
   .favorite-list-curtain-actions {
     display: flex;
     align-items: center;
     gap: 21px;
-    margin-left: 21px;
+    margin-left: 6px;
   }
   .favorite-list-action {
     width: 100%;
@@ -559,6 +694,37 @@
   }
   #favBtn:hover { border-color: var(--accent); color: var(--accent); }
   #favBtn.active { border-color: var(--accent); color: var(--accent); background: var(--active-bg); }
+  .checked-favorite-materials-actions {
+    display: grid;
+    gap: 4px;
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: max-height 180ms ease, opacity 180ms ease;
+  }
+  .checked-favorite-materials-actions.visible {
+    max-height: 96px;
+    opacity: 1;
+  }
+  #checkedFavoriteMaterialsBtn,
+  #clearFavoriteMaterialChecksBtn {
+    width: 100%;
+    margin-top: 4px;
+    background: var(--bg);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    padding: 6px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    line-height: 1.35;
+    cursor: pointer;
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
+  #checkedFavoriteMaterialsBtn:hover,
+  #clearFavoriteMaterialChecksBtn:hover {
+    background: var(--active-bg);
+  }
 
   #recipeList {
     flex: 1;
@@ -591,6 +757,22 @@
     justify-content: center;
     line-height: 1.25;
   }
+  .item-list-label {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    line-height: 1.25;
+  }
+  .item-list-badges {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 3px;
+    min-width: 0;
+  }
   .favorite-item-job {
     align-self: flex-start;
     width: fit-content;
@@ -603,13 +785,7 @@
     white-space: normal;
   }
   li.fav-item-row .reorder-handle { margin-left: auto; }
-  #recipeList li > .gathering-timer-btn {
-    margin-left: auto;
-  }
-  #recipeList li > .gathering-timer-btn + .uses-list-btn,
-  #recipeList li > .gathering-timer-btn + .reorder-handle {
-    margin-left: 0;
-  }
+  li.fav-item-row .item-action-buttons + .reorder-handle { margin-left: 2px; }
   li.fav-item-row .favorite-list-icon,
   li.fav-item-row .reorder-handle { padding-left: 1px; padding-right: 1px; }
   li.reorder-enabled {
@@ -928,7 +1104,6 @@
     transition: height 180ms ease, padding 180ms ease, border-width 180ms ease !important;
   }
   .intermediate-material-tree-btn {
-    margin-left: 2px;
     flex-shrink: 0;
     border: 1px solid var(--border);
     border-radius: 4px;
@@ -1252,6 +1427,7 @@
   .badge-hunt     { background: #301010; color: var(--hunt); }
   .badge-buy      { background: #201030; color: var(--buy); }
   .badge-exchange { background: #102020; color: #5bd5c8; }
+  .badge-equipment { background: #222b1a; color: #9fdb82; }
   .gathering-method-mining { background: #102030; color: #77b7ff; }
   .gathering-method-botany { background: #102a18; color: #79d98a; }
   .node-children {
@@ -1294,8 +1470,8 @@
   .pin-btn:hover { transform: scale(1.2); }
   .pin-btn.inactive { filter: grayscale(1) opacity(0.4); }
   .gathering-timer-btn,
+  .shop-info-btn,
   .intermediate-material-tree-btn {
-    margin-left: 2px;
     flex-shrink: 0;
     border: 1px solid var(--border);
     border-radius: 4px;
@@ -1308,8 +1484,15 @@
     white-space: nowrap;
   }
   .gathering-timer-btn:hover,
+  .shop-info-btn:hover,
   .intermediate-material-tree-btn:hover { border-color: var(--accent); }
-  .gathering-timer-btn + .intermediate-material-tree-btn { margin-left: 0; }
+  .item-action-buttons {
+    margin-left: 2px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
 
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: var(--bg); }
@@ -1326,7 +1509,13 @@
     box-shadow: inset 0 0 5px 2px rgba(0,0,0,0.6);
   }
   .node-icon { vertical-align: middle; }
-  .list-name { overflow-wrap: break-word; word-break: break-all; white-space: normal; }
+  .list-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: break-word;
+    word-break: break-all;
+    white-space: normal;
+  }
   .result-root-summary,
   .material-tree-root-summary {
     margin-bottom: 6px;
@@ -1398,6 +1587,7 @@
   #textInputOverlay,
   #favoriteTargetOverlay,
   #gatheringOverlay,
+  #shopOverlay,
   #materialTreeOverlay {
     display: none;
     position: fixed;
@@ -1414,6 +1604,7 @@
   #textInputDialog,
   #favoriteTargetDialog,
   #gatheringDialog,
+  #shopDialog,
   #materialTreeDialog {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -1831,6 +2022,79 @@
   .gathering-countdown-label.waiting { color: #8fc7ff; }
   .gathering-countdown-label.active { color: #9fdb82; }
   .gathering-countdown-time { color: var(--text); }
+  #shopOverlay {
+    z-index: 365;
+  }
+  #shopOverlay.open { display: flex; }
+  #shopDialog {
+    width: max-content;
+    min-width: min(300px, calc(100vw - 24px));
+    max-width: min(440px, calc(100vw - 24px));
+    max-height: calc(100dvh - 24px);
+    display: flex;
+    flex-direction: column;
+  }
+  .shop-dialog-header {
+    display: block;
+    margin-bottom: 10px;
+  }
+  #shopTitle {
+    display: block;
+    color: var(--accent);
+    font-weight: bold;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  #shopPriceHeader {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  #shopContent {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr);
+    min-height: 0;
+    overflow: hidden;
+    padding-right: 2px;
+  }
+  .shop-price-section,
+  .shop-list-section {
+    display: grid;
+    gap: 8px;
+  }
+  .shop-list-section {
+    min-height: 0;
+    overflow: auto;
+    padding-right: 2px;
+  }
+  .shop-price-section h3,
+  .shop-list-section h3 {
+    margin: 0;
+    color: var(--accent);
+    font-size: 15px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 4px;
+  }
+  .shop-price {
+    font-size: 16px;
+    color: var(--soft-text);
+    font-weight: 700;
+  }
+  .shop-entry {
+    display: grid;
+    gap: 3px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px;
+  }
+  .shop-name { color: var(--soft-text); font-weight: 700; }
+  .shop-location { color: var(--muted); font-size: 13px; }
+  .favorite-list-root-name {
+    color: var(--soft-text);
+    font-weight: 700;
+    overflow-wrap: anywhere;
+  }
   #materialTreeOverlay { z-index: 360; }
   #materialTreeOverlay.open { display: flex; }
   #materialTreeDialog {
@@ -2037,13 +2301,14 @@
       flex: 1;
       min-height: 0;
       height: 100%;
-      overflow-y: auto;
-      scrollbar-gutter: stable;
+      scrollbar-gutter: auto;
     }
-    #recipeList,
-    #usesList,
-    #treeContainer {
-      scrollbar-gutter: stable;
+    .panel-left.mobile-visible,
+    .panel-middle.mobile-visible {
+      overflow-y: hidden;
+    }
+    .panel-right.mobile-visible {
+      overflow-y: auto;
     }
     #recipeList { min-height: 0; }
     #usesBackBtn { display: none; }
@@ -2089,23 +2354,11 @@
     #materialTreeContent .node-main {
       flex: 0 1 auto;
     }
-    .gathering-timer-btn {
-      margin-left: 2px;
-    }
-    .intermediate-material-tree-btn {
-      margin-left: 2px;
-    }
-    .gathering-timer-btn + .intermediate-material-tree-btn {
-      margin-left: 0;
-    }
     .material-content {
       flex: 1 1 auto;
     }
-    #materialTreeContent .gathering-timer-btn {
-      margin-left: 2px;
-    }
-    #materialTreeContent .intermediate-material-tree-btn {
-      margin-left: 2px;
+    .item-action-buttons {
+      margin-left: auto;
     }
     #materialTreeContent .node-title,
     #materialTreeContent .node-sub-info,

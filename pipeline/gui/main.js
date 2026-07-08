@@ -10,6 +10,7 @@ const SIZE_KEY = 'ffxiv-pipeline-window-size';
 const QUALITY_KEY = 'ffxiv-pipeline-webp-quality';
 const ICON_SIZE_KEY = 'ffxiv-pipeline-webp-size';
 const ICON_DELAY_KEY = 'ffxiv-pipeline-icon-delay';
+const LODESTONE_DELAY_KEY = 'ffxiv-pipeline-lodestone-delay';
 const PREVIEW_SIZE_KEY = 'ffxiv-pipeline-preview-size';
 
 const elements = {
@@ -20,6 +21,7 @@ const elements = {
   validateCsvBtn: document.getElementById('validateCsvBtn'),
   buildBtn: document.getElementById('buildBtn'),
   publishBtn: document.getElementById('publishBtn'),
+  lodestoneInfoBtn: document.getElementById('lodestoneInfoBtn'),
   iconsBtn: document.getElementById('iconsBtn'),
   verifyBtn: document.getElementById('verifyBtn'),
   runBtn: document.getElementById('runBtn'),
@@ -35,6 +37,8 @@ const elements = {
   qualityInput: document.getElementById('qualityInput'),
   iconSizeInput: document.getElementById('iconSizeInput'),
   iconDelayInput: document.getElementById('iconDelayInput'),
+  lodestoneDelayInput: document.getElementById('lodestoneDelayInput'),
+  lodestoneForceInput: document.getElementById('lodestoneForceInput'),
   progressTitle: document.getElementById('progressTitle'),
   progressPercent: document.getElementById('progressPercent'),
   progressBar: document.getElementById('progressBar'),
@@ -51,7 +55,6 @@ const elements = {
   previewContent: document.getElementById('previewContent'),
   previewCloseBtn: document.getElementById('previewCloseBtn'),
   previewThemeBtn: document.getElementById('previewThemeBtn'),
-  previewLanInfo: document.getElementById('previewLanInfo'),
   previewSizeInput: document.getElementById('previewSizeInput'),
   previewScale2: document.getElementById('previewScale2'),
   previewScale3: document.getElementById('previewScale3')
@@ -60,8 +63,9 @@ const elements = {
 const stepDefs = [
   { command: 'validate-csv', order: '1', label: 'CSV検証', description: '必須ヘッダーと token-items.csv の形式を確認します。' },
   { command: 'build', order: '2', label: '候補生成', description: '公開候補 JSON を作成します。Item.json はまだ置き換えません。' },
-  { command: 'publish', order: '3', label: '公開反映', description: '現在の Item.json を自動保護し、比較に通った候補で置き換えます。' },
-  { command: 'icons', order: '4', label: 'アイコン生成', description: 'Lodestone NQ 画像を優先し、指定サイズの WebP アイコンを生成します。' },
+  { command: 'icons', order: '3', label: 'アイコン生成', description: 'Lodestone NQ 画像を優先し、指定サイズの WebP アイコンを生成します。' },
+  { command: 'publish-lodestone-info', order: '4', label: 'Lodestone情報反映', description: '店、製作、装備情報をLodestoneから取得して公開候補JSONへ反映します。' },
+  { command: 'publish', order: '5', label: '公開反映', description: '現在の Item.json を自動保護し、比較に通った候補で置き換えます。' },
   { command: 'verify', order: '確認', label: 'Item.json比較', description: '比較だけを実行します。site/data/Item.json は変更しません。' },
   { command: 'check-updates', order: '任意', label: '更新チェック', description: '公式 CSV の更新有無と前回チェック日時を確認します。' },
   { command: 'download-csv', order: '任意', label: 'CSV取得', description: '更新または不足した公式 CSV を取得します。' },
@@ -71,6 +75,7 @@ const recommendedSequence = [
   { command: 'validate-csv' },
   { command: 'build' },
   { command: 'icons', args: () => ['--quality', elements.qualityInput.value, '--size', elements.iconSizeInput.value, '--delay', elements.iconDelayInput.value, '--item-json', 'pipeline/intermediate/06-public-items.json'] },
+  { command: 'publish-lodestone-info', args: lodestoneInfoArgs },
   { command: 'publish' }
 ];
 const accordionSections = [];
@@ -81,9 +86,11 @@ let pendingConfirm = null;
 let cancellationRequested = false;
 let canResume = false;
 let pipelineOutputReady = Promise.resolve();
-let logText = '';
-let pendingLogText = '';
+let pendingLogLines = [];
 let logFlushTimer = 0;
+let etaModel = null;
+let etaCountdownTimer = 0;
+let etaEstimate = null;
 
 function createAdaptiveThrottle() {
   return {
@@ -107,6 +114,42 @@ function resetAdaptiveThrottle(throttle) {
   throttle.lastChangeAt = 0;
   throttle.burstCount = 0;
   throttle.throttled = false;
+}
+
+function resetEtaModel() {
+  etaModel = {
+    command: '',
+    samples: 0,
+    networkSamples: 0,
+    cacheSamples: 0,
+    skipSamples: 0,
+    networkMs: 0,
+    cacheMs: 0,
+    skipMs: 0
+  };
+  etaEstimate = null;
+  stopEtaCountdown();
+}
+
+function stopEtaCountdown() {
+  if (!etaCountdownTimer) return;
+  window.clearInterval(etaCountdownTimer);
+  etaCountdownTimer = 0;
+}
+
+function renderEtaEstimate() {
+  if (!etaEstimate) {
+    elements.etaText.textContent = 'ETA -';
+    return;
+  }
+  const remaining = Math.max(0, etaEstimate.seconds - ((Date.now() - etaEstimate.at) / 1000));
+  elements.etaText.textContent = formatEta(remaining);
+}
+
+function setEtaEstimate(seconds) {
+  etaEstimate = Number.isFinite(seconds) ? { seconds, at: Date.now() } : null;
+  renderEtaEstimate();
+  if (!etaCountdownTimer && etaEstimate) etaCountdownTimer = window.setInterval(renderEtaEstimate, 1000);
 }
 
 function clampNumber(value, min, max, fallback) {
@@ -142,9 +185,9 @@ function shouldFlushAdaptive(throttle, signature, { force = false } = {}) {
 }
 
 function flushLog({ force = false } = {}) {
-  if (!pendingLogText) return;
-  const nextText = logText + pendingLogText;
-  if (!shouldFlushAdaptive(logThrottle, nextText, { force })) {
+  if (pendingLogLines.length === 0) return;
+  const signature = `${elements.log.childElementCount}:${pendingLogLines.length}`;
+  if (!shouldFlushAdaptive(logThrottle, signature, { force })) {
     if (!logFlushTimer) {
       logFlushTimer = window.setTimeout(() => {
         logFlushTimer = 0;
@@ -157,15 +200,23 @@ function flushLog({ force = false } = {}) {
     window.clearTimeout(logFlushTimer);
     logFlushTimer = 0;
   }
-  logText = nextText;
-  pendingLogText = '';
   const wasAtBottom = elements.log.scrollHeight - elements.log.scrollTop - elements.log.clientHeight < 4;
-  elements.log.textContent = logText;
+  const fragment = document.createDocumentFragment();
+  for (const line of pendingLogLines) {
+    const row = document.createElement('div');
+    row.className = 'log-line';
+    row.textContent = line;
+    fragment.append(row);
+  }
+  pendingLogLines = [];
+  elements.log.append(fragment);
   if (wasAtBottom) elements.log.scrollTop = elements.log.scrollHeight;
 }
 
 function appendLog(text) {
-  pendingLogText += text.endsWith('\n') ? text : `${text}\n`;
+  const lines = String(text).replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  if (lines.at(-1) === '') lines.pop();
+  pendingLogLines.push(...lines);
   flushLog();
 }
 
@@ -176,7 +227,15 @@ function setButtonsDisabled(disabled) {
   elements.qualityInput.disabled = disabled;
   elements.iconSizeInput.disabled = disabled;
   elements.iconDelayInput.disabled = disabled;
+  elements.lodestoneDelayInput.disabled = disabled;
+  elements.lodestoneForceInput.disabled = disabled;
   updateProgressActions();
+}
+
+function lodestoneInfoArgs() {
+  const args = ['--delay', elements.lodestoneDelayInput.value];
+  if (elements.lodestoneForceInput.checked) args.push('--force');
+  return args;
 }
 
 function updateProgressActions() {
@@ -225,9 +284,10 @@ function markStep(name, state) {
 
 function resetProgress(title) {
   resetAdaptiveThrottle(progressThrottle);
+  resetEtaModel();
   currentRun = { startedAt: Date.now(), lastTick: 0, title, basePercent: 0, weightPercent: 100 };
   elements.progressTitle.textContent = title;
-  elements.etaText.textContent = 'ETA -';
+  setEtaEstimate(NaN);
   setProgress(0, '開始');
 }
 
@@ -241,12 +301,68 @@ function updateTimedProgress(completed, total, detail) {
   const elapsed = (now - currentRun.startedAt) / 1000;
   const eta = completed > 0 ? ((total - completed) * elapsed) / completed : NaN;
   setProgress(percent, detail);
-  elements.etaText.textContent = formatEta(eta);
+  setEtaEstimate(eta);
+}
+
+function parseEtaProgress(line) {
+  if (!line.startsWith('__ETA__ ')) return null;
+  try {
+    return JSON.parse(line.slice(8));
+  } catch {
+    return null;
+  }
+}
+
+function updateEtaProgress(payload) {
+  if (!currentRun || payload?.command !== 'publish-lodestone-info') return;
+  const completed = Number(payload.completed);
+  const total = Number(payload.total);
+  const elapsedMs = Number(payload.elapsedMs);
+  const fetches = Number(payload.fetches);
+  const skipped = Number(payload.skipped || 0);
+  if (!Number.isFinite(completed) || !Number.isFinite(total) || total <= 0 || !Number.isFinite(elapsedMs)) return;
+  if (!etaModel || etaModel.command !== payload.command) {
+    resetEtaModel();
+    etaModel.command = payload.command;
+  }
+  etaModel.samples += 1;
+  if (skipped > 0) {
+    etaModel.skipSamples += 1;
+    etaModel.skipMs += elapsedMs;
+  } else if (fetches > 0) {
+    etaModel.networkSamples += 1;
+    etaModel.networkMs += elapsedMs;
+  } else {
+    etaModel.cacheSamples += 1;
+    etaModel.cacheMs += elapsedMs;
+  }
+  const localPercent = (completed / total) * 100;
+  const percent = (currentRun.basePercent || 0) + localPercent * ((currentRun.weightPercent || 100) / 100);
+  const detail = `Lodestone ${completed}/${total}`;
+  const signature = JSON.stringify({ completed, total, detail, etaSamples: etaModel.samples });
+  const shouldRender = shouldFlushAdaptive(progressThrottle, signature, { force: completed >= total });
+  if (!shouldRender) return;
+  currentRun.lastTick = Date.now();
+  setProgress(percent, detail);
+  if (etaModel.samples < 5) {
+    setEtaEstimate(NaN);
+    return;
+  }
+  const remaining = Math.max(0, total - completed);
+  const networkRatio = etaModel.networkSamples / etaModel.samples;
+  const skipRatio = etaModel.skipSamples / etaModel.samples;
+  const cacheRatio = Math.max(0, 1 - networkRatio - skipRatio);
+  const avgNetwork = etaModel.networkSamples ? etaModel.networkMs / etaModel.networkSamples : 0;
+  const avgCache = etaModel.cacheSamples ? etaModel.cacheMs / etaModel.cacheSamples : 0;
+  const avgSkip = etaModel.skipSamples ? etaModel.skipMs / etaModel.skipSamples : 0;
+  setEtaEstimate((remaining * ((networkRatio * avgNetwork) + (cacheRatio * avgCache) + (skipRatio * avgSkip))) / 1000);
 }
 
 function parseProgress(line) {
   const iconMatch = line.match(/^(?:icons|アイコン|比較) (\d+)\/(\d+)/);
   if (iconMatch) return { completed: Number(iconMatch[1]), total: Number(iconMatch[2]), detail: line };
+  const lodestoneMatch = line.match(/^Lodestone\s+(\d+)\/(\d+):\s+/);
+  if (lodestoneMatch) return { completed: Number(lodestoneMatch[1]), total: Number(lodestoneMatch[2]), detail: line };
   const createdMatch = line.match(/^created .* \((\d+)\)/);
   if (createdMatch) return null;
   return null;
@@ -288,7 +404,7 @@ async function runCommand(command, args = [], options = {}) {
       return false;
     }
     setProgress(100, '完了');
-    elements.etaText.textContent = 'ETA 0s';
+    setEtaEstimate(0);
     markStep(command, 'done');
     elements.statusText.textContent = '完了';
     if (command === 'check-updates') await loadUpdateState();
@@ -301,6 +417,7 @@ async function runCommand(command, args = [], options = {}) {
     return false;
   } finally {
     flushLog({ force: true });
+    stopEtaCountdown();
     running = false;
     activeCommand = '';
     setButtonsDisabled(false);
@@ -316,7 +433,6 @@ async function openQualityPreview() {
     elements.previewContent.append(loading);
     elements.previewOverlay.classList.add('open');
     elements.previewOverlay.setAttribute('aria-hidden', 'false');
-    startPreviewServerForModal();
     renderQualityPreview(await invoke('read_quality_preview'));
   } catch (error) {
     elements.previewContent.textContent = '';
@@ -358,36 +474,6 @@ function previewCell(label, file, size, baseSize, note = '') {
   return cell;
 }
 
-function renderPreviewLanInfo(urls = [], status = 'LAN確認中') {
-  elements.previewLanInfo.textContent = '';
-  const box = textEl('div', 'preview-lan-box');
-  box.append(textEl('strong', '', status));
-  box.append(textEl('code', '', 'py -m http.server 4173 --bind 0.0.0.0 --directory site'));
-  for (const url of urls || []) {
-    const link = textEl('a', '', url);
-    link.href = url;
-    box.append(link);
-  }
-  if (!urls.length) {
-    box.append(textEl('span', '', 'http://<このPCのIP>:4173/__tmp_icon_quality/'));
-  }
-  elements.previewLanInfo.append(box);
-}
-
-async function startPreviewServerForModal() {
-  renderPreviewLanInfo([], 'LAN確認サーバー起動中');
-  try {
-    const urls = await Promise.race([
-      invoke('start_preview_server'),
-      new Promise((_, reject) => window.setTimeout(() => reject(new Error('プレビュー用サーバー起動確認がタイムアウトしました')), 5000))
-    ]);
-    renderPreviewLanInfo(urls, 'LAN確認中');
-  } catch (error) {
-    renderPreviewLanInfo([], 'LAN確認サーバー未確認');
-    appendLog(`プレビュー用ローカルwebサーバーを確認できませんでした: ${String(error)}`);
-  }
-}
-
 function renderQualityPreview(rows) {
   elements.previewContent.textContent = '';
   if (!Array.isArray(rows) || rows.length === 0) {
@@ -415,8 +501,6 @@ function closeQualityPreview() {
   elements.previewOverlay.classList.remove('open');
   elements.previewOverlay.setAttribute('aria-hidden', 'true');
   elements.previewContent.textContent = '';
-  elements.previewLanInfo.textContent = '';
-  invoke('stop_preview_server').catch(error => appendLog(`プレビュー用ローカルwebサーバーを停止できませんでした: ${String(error)}`));
 }
 
 async function refreshPreviewButton() {
@@ -448,6 +532,7 @@ async function runSequence(commands) {
         basePercent: (index / commands.length) * 100,
         weightPercent: 100 / commands.length
       };
+      resetEtaModel();
       elements.progressTitle.textContent = item.command;
       markStep(item.command, 'running');
       appendLog(`[開始] ${stepDefs.find(step => step.command === item.command)?.label || item.command}`);
@@ -478,10 +563,10 @@ async function runSequence(commands) {
       }
       markStep(item.command, 'done');
       setProgress(((index + 1) / commands.length) * 100, item.command);
-      elements.etaText.textContent = formatEta(((commands.length - index - 1) * (Date.now() - startedAt)) / 1000 / (index + 1));
+      setEtaEstimate(((commands.length - index - 1) * (Date.now() - startedAt)) / 1000 / (index + 1));
     }
     setProgress(100, '完了');
-    elements.etaText.textContent = 'ETA 0s';
+    setEtaEstimate(0);
     elements.statusText.textContent = '完了';
   } catch (error) {
     appendLog(String(error));
@@ -490,6 +575,7 @@ async function runSequence(commands) {
     elements.statusText.textContent = cancellationRequested ? '中断' : '失敗';
   } finally {
     flushLog({ force: true });
+    stopEtaCountdown();
     running = false;
     activeCommand = '';
     setButtonsDisabled(false);
@@ -538,7 +624,8 @@ async function restoreWindowSize() {
 function bindEvents() {
   elements.qualityInput.value = localStorage.getItem(QUALITY_KEY) || '80';
   elements.iconSizeInput.value = localStorage.getItem(ICON_SIZE_KEY) || '80';
-  elements.iconDelayInput.value = localStorage.getItem(ICON_DELAY_KEY) || '1000';
+  elements.iconDelayInput.value = localStorage.getItem(ICON_DELAY_KEY) || '500';
+  elements.lodestoneDelayInput.value = localStorage.getItem(LODESTONE_DELAY_KEY) || '100';
   elements.previewSizeInput.value = localStorage.getItem(PREVIEW_SIZE_KEY) || '80';
   elements.qualityInput.addEventListener('change', () => {
     elements.qualityInput.value = String(clampNumber(elements.qualityInput.value, 1, 100, 80));
@@ -549,8 +636,12 @@ function bindEvents() {
     localStorage.setItem(ICON_SIZE_KEY, elements.iconSizeInput.value);
   });
   elements.iconDelayInput.addEventListener('change', () => {
-    elements.iconDelayInput.value = String(clampNumber(elements.iconDelayInput.value, 0, 60000, 1000));
+    elements.iconDelayInput.value = String(clampNumber(elements.iconDelayInput.value, 0, 60000, 500));
     localStorage.setItem(ICON_DELAY_KEY, elements.iconDelayInput.value);
+  });
+  elements.lodestoneDelayInput.addEventListener('change', () => {
+    elements.lodestoneDelayInput.value = String(clampNumber(elements.lodestoneDelayInput.value, 0, 60000, 100));
+    localStorage.setItem(LODESTONE_DELAY_KEY, elements.lodestoneDelayInput.value);
   });
   elements.previewSizeInput.addEventListener('change', () => {
     elements.previewSizeInput.value = String(clampNumber(elements.previewSizeInput.value, 1, 512, 80));
@@ -558,13 +649,12 @@ function bindEvents() {
     elements.previewBtn.textContent = '比較ページ生成';
   });
   elements.clearLogBtn.addEventListener('click', () => {
-    logText = '';
-    pendingLogText = '';
+    pendingLogLines = [];
     if (logFlushTimer) {
       window.clearTimeout(logFlushTimer);
       logFlushTimer = 0;
     }
-    elements.log.textContent = '';
+    elements.log.replaceChildren();
   });
   bindSectionToggles([
     { toggle: elements.csvToggle, body: elements.csvBody },
@@ -589,6 +679,10 @@ function bindEvents() {
     'アイコン生成には時間がかかり、不足分は Lodestone または XIVAPI から取得します。実行しますか？',
     () => runCommand('icons', ['--quality', elements.qualityInput.value, '--size', elements.iconSizeInput.value, '--delay', elements.iconDelayInput.value], { title: 'アイコン生成' })
   ));
+  elements.lodestoneInfoBtn.addEventListener('click', () => confirmAndRun(
+    'Lodestoneから店、製作、装備情報を取得して公開候補JSONに反映します。公開データはまだ置き換えません。時間がかかります。実行しますか？',
+    () => runCommand('publish-lodestone-info', lodestoneInfoArgs(), { title: 'Lodestone情報反映' })
+  ));
   elements.verifyBtn.addEventListener('click', () => runCommand('verify', [], { title: 'Item.json比較' }));
   elements.previewBtn.addEventListener('click', () => confirmAndRun(
     elements.previewBtn.textContent === '比較ページ表示'
@@ -606,7 +700,7 @@ function bindEvents() {
     }
   ));
   elements.runBtn.addEventListener('click', () => confirmAndRun(
-    '全実行はデータ生成、公開反映、アイコン生成を行います。時間がかかる場合があります。実行しますか？',
+    '全実行はデータ生成、アイコン生成、Lodestone情報反映、公開反映を行います。時間がかかる場合があります。実行しますか？',
     () => runSequence(recommendedSequence)
   ));
   elements.resumeBtn.addEventListener('click', () => confirmAndRun(
@@ -760,6 +854,11 @@ function blockBrowserNavigation() {
 pipelineOutputReady = listen('pipeline-output', event => {
   const line = String(event.payload || '');
   if (!line) return;
+  const etaProgress = parseEtaProgress(line);
+  if (etaProgress) {
+    updateEtaProgress(etaProgress);
+    return;
+  }
   appendLog(line);
   const progress = parseProgress(line);
   if (progress) updateTimedProgress(progress.completed, progress.total, progress.detail);

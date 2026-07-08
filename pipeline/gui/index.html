@@ -29,6 +29,9 @@
           <p>公式 CSV の更新有無を確認し、前回チェック日時を保存します。</p>
           <span class="action-status">○ 未実行</span>
         </div>
+        <dl class="meta-list">
+          <div><dt>前回チェック</dt><dd id="lastChecked">-</dd></div>
+        </dl>
         <div class="action-item" data-step="download-csv">
           <span class="order-label">任意</span>
           <button id="downloadCsvBtn" type="button">CSV取得</button>
@@ -47,19 +50,30 @@
           <p>CSV から公開候補 JSON を作ります。まだ公開データは置き換えません。</p>
           <span class="action-status">○ 未実行</span>
         </div>
-        <div class="action-item" data-step="publish">
-          <span class="order-label">3</span>
-          <button id="publishBtn" type="button">公開反映</button>
-          <p>現在の Item.json を自動保護し、比較に通った候補で site/data/Item.json を置き換えます。</p>
+        <div class="action-item" data-step="publish-lodestone-info">
+          <span class="order-label">4</span>
+          <button id="lodestoneInfoBtn" type="button">Lodestone情報反映</button>
+          <label class="field quality-field">
+            <span>アクセス間隔(ms)</span>
+            <input id="lodestoneDelayInput" type="number" min="0" max="60000" step="100" value="100">
+          </label>
+          <label class="field quality-field">
+            <span>強制再取得</span>
+            <input id="lodestoneForceInput" type="checkbox">
+          </label>
+          <p>店、製作、装備情報をLodestoneから取得し、公開候補JSONに反映します。条件付きショップは除外します。</p>
           <span class="action-status">○ 未実行</span>
         </div>
-        <dl class="meta-list">
-          <div><dt>前回チェック</dt><dd id="lastChecked">-</dd></div>
-        </dl>
+        <div class="action-item" data-step="publish">
+          <span class="order-label">5</span>
+          <button id="publishBtn" type="button">公開反映</button>
+          <p>現在の Item.json を自動保護し、候補データを site/data/Item.json に統合します。</p>
+          <span class="action-status">○ 未実行</span>
+        </div>
         <div class="action-item">
           <span class="order-label">一括</span>
           <button id="runBtn" type="button">全実行</button>
-          <p>CSV検証、データ生成、公開反映、アイコン生成を順番に実行します。</p>
+          <p>CSV検証、データ生成、アイコン生成、Lodestone情報反映、公開反映を順番に実行します。</p>
         </div>
         </div>
       </section>
@@ -71,7 +85,7 @@
         </button>
         <div id="buildBody" class="collapsible-body" hidden>
         <div class="action-item" data-step="icons">
-          <span class="order-label">4</span>
+          <span class="order-label">3</span>
           <button id="iconsBtn" type="button">アイコン生成</button>
           <label class="field quality-field">
             <span>Quality</span>
@@ -83,7 +97,7 @@
           </label>
           <label class="field quality-field">
             <span>アクセス間隔(ms)</span>
-            <input id="iconDelayInput" type="number" min="0" max="60000" step="100" value="1000">
+            <input id="iconDelayInput" type="number" min="0" max="60000" step="100" value="500">
           </label>
           <p>Lodestone NQ 画像を優先し、指定サイズの WebP アイコンを生成します。元 PNG はキャッシュします。</p>
           <span class="action-status">○ 未実行</span>
@@ -139,7 +153,7 @@
           <h2>Log</h2>
           <button id="clearLogBtn" type="button">クリア</button>
         </div>
-        <pre id="log"></pre>
+        <div id="log" class="log-view" role="log" aria-live="polite"></div>
       </section>
     </section>
   </main>
@@ -155,7 +169,6 @@
           <button id="previewCloseBtn" type="button">閉じる</button>
         </div>
       </header>
-      <aside id="previewLanInfo" class="preview-lan-info"></aside>
       <main id="previewContent" class="preview-content"></main>
     </section>
   </div>

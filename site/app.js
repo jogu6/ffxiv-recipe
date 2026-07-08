@@ -1,4 +1,4 @@
-const DATA_CACHE_VERSION = 'ff14recipe-data-7.50-383fe0ae';
+const DATA_CACHE_VERSION = 'ff14recipe-data-7.50-3abb3360';
 const DATA_FILE = `./data/Item.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 const TIPS_FILE = './data/tips.md';
 const ABOUT_URL = 'https://jogu6.github.io/ffxiv-recipe-about/';
@@ -7,6 +7,7 @@ const LS_FAV_LISTS = 'ff14_favorite_lists_v2';
 const LS_FAV_COUNTS = 'ff14_favorite_item_counts_v1';
 const LS_SEARCH_HISTORY = 'ff14_search_history';
 const LS_VIEW_STATE = 'ff14_view_state_v1';
+const SS_SKIP_RESTORE_ONCE = 'ff14_skip_restore_once';
 const SEARCH_HISTORY_LIMIT = 30;
 const FAVORITE_NAME_MAX = 50;
 const RECENT_LIST_ID = 'SYSTEM_RECENT_ITEMS';
@@ -54,8 +55,22 @@ const elements = {
   resultHeader: document.querySelector('.result-header'),
   searchBox: document.getElementById('searchBox'),
   searchClearBtn: document.getElementById('searchClearBtn'),
+  equipmentSearchToggle: document.getElementById('equipmentSearchToggle'),
+  equipmentSearchPanel: document.getElementById('equipmentSearchPanel'),
+  equipmentJobSelect: document.getElementById('equipmentJobSelect'),
+  equipmentLevelInput: document.getElementById('equipmentLevelInput'),
+  equipmentLevelDownBtn: document.getElementById('equipmentLevelDownBtn'),
+  equipmentLevelUpBtn: document.getElementById('equipmentLevelUpBtn'),
+  equipmentItemLevelSelect: document.getElementById('equipmentItemLevelSelect'),
+  equipmentSlotSelect: document.getElementById('equipmentSlotSelect'),
+  equipmentSearchBtn: document.getElementById('equipmentSearchBtn'),
+  equipmentSearchResetBtn: document.getElementById('equipmentSearchResetBtn'),
+  saveEquipmentSearchBtn: document.getElementById('saveEquipmentSearchBtn'),
   searchHistory: document.getElementById('searchHistory'),
   favBtn: document.getElementById('favBtn'),
+  checkedFavoriteMaterialsActions: document.getElementById('checkedFavoriteMaterialsActions'),
+  checkedFavoriteMaterialsBtn: document.getElementById('checkedFavoriteMaterialsBtn'),
+  clearFavoriteMaterialChecksBtn: document.getElementById('clearFavoriteMaterialChecksBtn'),
   favoriteLists: document.getElementById('favoriteLists'),
   recipeList: document.getElementById('recipeList'),
   mobileTipsMsg: document.getElementById('mobileTipsMsg'),
@@ -121,7 +136,12 @@ const elements = {
   gatheringOverlay: document.getElementById('gatheringOverlay'),
   gatheringTitle: document.getElementById('gatheringTitle'),
   gatheringContent: document.getElementById('gatheringContent'),
-  gatheringCloseBtn: document.getElementById('gatheringCloseBtn')
+  gatheringCloseBtn: document.getElementById('gatheringCloseBtn'),
+  shopOverlay: document.getElementById('shopOverlay'),
+  shopTitle: document.getElementById('shopTitle'),
+  shopPriceHeader: document.getElementById('shopPriceHeader'),
+  shopContent: document.getElementById('shopContent'),
+  shopCloseBtn: document.getElementById('shopCloseBtn')
 };
 
 // Application state and indexes
@@ -141,6 +161,10 @@ let listMode = 'none';
 let resultViewMode = 'tree';
 let resultSourceMode = 'recipe';
 let selectedUsesItem = null;
+let equipmentSearchOpen = false;
+let equipmentSearchResults = [];
+let equipmentLevelToItemLevels = new Map();
+let maxEquipmentLevel = 1;
 let favoriteMaterialsRingCounts = {};
 let favoriteItemCountStore = { version: 1, lists: {} };
 let pendingConfirmAction = null;
@@ -152,6 +176,7 @@ let favoriteItemReorderEnabled = false;
 let materialTreeRecipe = null;
 let expandedFavoriteListActionsId = null;
 let expandedFavoriteMaterialActions = false;
+let favoriteMaterialsListIds = [];
 let favoriteMaterialCalcMode = 'sum';
 const expandedFavoriteCountRows = new Set();
 let gatheringTimerIntervalId = null;
@@ -164,6 +189,106 @@ const materialSectionState = new Map();
 const intermediateTreeState = new Map();
 const CRYSTAL_ELEMENT_ORDER = ['ファイア', 'アイス', 'ウィンド', 'アース', 'ライトニング', 'ウォーター'];
 const CRYSTAL_KIND_ORDER = ['シャード', 'クリスタル', 'クラスター'];
+const EQUIPMENT_JOB_OPTIONS = [
+  '剣術士', '斧術士', '格闘士', '槍術士', '双剣士', '弓術士',
+  '幻術士', '呪術士', '巴術士',
+  'ナイト', '戦士', '暗黒騎士', 'ガンブレイカー',
+  'モンク', '竜騎士', 'リーパー', '侍',
+  '忍者', '吟遊詩人', '機工士', '踊り子', 'ヴァイパー',
+  '白魔道士', '学者', '占星術師', '賢者',
+  '黒魔道士', '召喚士', '赤魔道士', 'ピクトマンサー', '青魔道士',
+  '魔獣使い',
+  '木工師', '鍛冶師', '甲冑師', '彫金師', '革細工師', '裁縫師', '錬金術師', '調理師',
+  '採掘師', '園芸師', '漁師'
+];
+const EQUIPMENT_SLOT_OPTIONS = [
+  ['all', '全部'],
+  ['weapon', '武器'],
+  ['shield', '盾'],
+  ['mainTool', '主道具'],
+  ['offTool', '副道具'],
+  ['head', '頭'],
+  ['body', '胴'],
+  ['hands', '手'],
+  ['legs', '脚'],
+  ['feet', '足'],
+  ['ears', '耳'],
+  ['neck', '首'],
+  ['wrists', '腕'],
+  ['ring', '指']
+];
+const EQUIPMENT_SLOT_ORDER = EQUIPMENT_SLOT_OPTIONS.slice(1).map(([key]) => key);
+const EQUIPMENT_CATEGORY_TO_SLOT = {
+  盾: 'shield',
+  頭防具: 'head',
+  胴防具: 'body',
+  手防具: 'hands',
+  脚防具: 'legs',
+  足防具: 'feet',
+  耳飾り: 'ears',
+  首飾り: 'neck',
+  腕輪: 'wrists',
+  指輪: 'ring',
+  格闘武器: 'weapon',
+  片手剣: 'weapon',
+  両手斧: 'weapon',
+  両手槍: 'weapon',
+  弓: 'weapon',
+  両手幻具: 'weapon',
+  片手幻具: 'weapon',
+  両手呪具: 'weapon',
+  片手呪具: 'weapon',
+  魔道書: 'weapon',
+  '魔道書(学者専用)': 'weapon',
+  双剣: 'weapon',
+  両手剣: 'weapon',
+  銃: 'weapon',
+  天球儀: 'weapon',
+  刀: 'weapon',
+  細剣: 'weapon',
+  ガンブレード: 'weapon',
+  投擲武器: 'weapon',
+  賢具: 'weapon',
+  両手鎌: 'weapon',
+  二刀流武器: 'weapon',
+  筆: 'weapon'
+};
+const EQUIPMENT_JOB_GROUPS = {
+  ファイター: new Set(['剣術士','斧術士','格闘士','槍術士','双剣士','弓術士','ナイト','戦士','暗黒騎士','ガンブレイカー','モンク','竜騎士','リーパー','侍','忍者','吟遊詩人','機工士','踊り子','ヴァイパー','魔獣使い']),
+  ソーサラー: new Set(['幻術士','呪術士','巴術士','白魔道士','学者','占星術師','賢者','黒魔道士','召喚士','赤魔道士','ピクトマンサー','青魔道士']),
+  クラフター: new Set(['木工師','鍛冶師','甲冑師','彫金師','革細工師','裁縫師','錬金術師','調理師']),
+  ギャザラー: new Set(['採掘師','園芸師','漁師'])
+};
+const EQUIPMENT_JOB_PRIORITY_STAT = {
+  剣術士: 'VIT', 斧術士: 'VIT', ナイト: 'VIT', 戦士: 'VIT', 暗黒騎士: 'VIT', ガンブレイカー: 'VIT',
+  格闘士: 'STR', 槍術士: 'STR', モンク: 'STR', 竜騎士: 'STR', リーパー: 'STR', 侍: 'STR', 魔獣使い: 'STR',
+  双剣士: 'DEX', 弓術士: 'DEX', 忍者: 'DEX', 吟遊詩人: 'DEX', 機工士: 'DEX', 踊り子: 'DEX', ヴァイパー: 'DEX',
+  幻術士: 'MND', 白魔道士: 'MND', 学者: 'MND', 占星術師: 'MND', 賢者: 'MND',
+  呪術士: 'INT', 巴術士: 'INT', 黒魔道士: 'INT', 召喚士: 'INT', 赤魔道士: 'INT', ピクトマンサー: 'INT', 青魔道士: 'INT'
+};
+const EQUIPMENT_JOB_CLASS_ALIASES = {
+  ナイト: ['剣術士'],
+  戦士: ['斧術士'],
+  モンク: ['格闘士'],
+  竜騎士: ['槍術士'],
+  忍者: ['双剣士'],
+  吟遊詩人: ['弓術士'],
+  白魔道士: ['幻術士'],
+  黒魔道士: ['呪術士'],
+  召喚士: ['巴術士'],
+  学者: ['巴術士']
+};
+const EQUIPMENT_CLASS_JOB_ALIASES = {
+  剣術士: ['ナイト'],
+  斧術士: ['戦士'],
+  格闘士: ['モンク'],
+  槍術士: ['竜騎士'],
+  双剣士: ['忍者'],
+  弓術士: ['吟遊詩人'],
+  幻術士: ['白魔道士'],
+  呪術士: ['黒魔道士'],
+  巴術士: ['召喚士', '学者']
+};
 
 function isMobile() {
   return window.innerWidth <= MOBILE_BREAKPOINT;
@@ -215,6 +340,24 @@ function removeStoredItem(key) {
   localStorage.removeItem(key);
 }
 
+function consumeSkipRestoreOnce() {
+  try {
+    if (sessionStorage.getItem(SS_SKIP_RESTORE_ONCE) !== '1') return false;
+    sessionStorage.removeItem(SS_SKIP_RESTORE_ONCE);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function markSkipRestoreOnce() {
+  try {
+    sessionStorage.setItem(SS_SKIP_RESTORE_ONCE, '1');
+  } catch {
+    // ignore
+  }
+}
+
 function currentMobilePanel() {
   if (!isMobile()) return '';
   return elements.mobileBackBtn.dataset.panel || 'left';
@@ -244,7 +387,16 @@ function saveViewState() {
       mobilePanel: currentMobilePanel()
     },
     favoriteMaterials: {
+      listIds: favoriteMaterialsListIds,
       ringCounts: favoriteMaterialsRingCounts
+    },
+    equipmentSearch: {
+      open: equipmentSearchOpen,
+      job: elements.equipmentJobSelect.value,
+      equipLevel: equipmentLevelValue(),
+      itemLevel: selectedEquipmentItemLevel(),
+      slot: elements.equipmentSlotSelect.value,
+      resultIds: equipmentSearchResults.map(itemIdForName).filter(Boolean)
     },
     materials: {
       sections: Object.fromEntries(materialSectionState)
@@ -272,25 +424,48 @@ function restoreViewState() {
       ? state.input.active
       : '';
     const favoriteList = findFavoriteList(state.selected?.favoriteListId);
+    const restoredFavoriteMaterialIds = Array.isArray(state.favoriteMaterials?.listIds)
+      ? state.favoriteMaterials.listIds.filter(id => {
+        const list = findFavoriteList(id);
+        return list && !isRecentList(list);
+      })
+      : [];
     const recipe = recipes[state.selected?.recipe] ? state.selected.recipe : '';
     const usesItem = usedIn[state.selected?.usesItem] ? state.selected.usesItem : '';
+    const restoredEquipmentIds = Array.isArray(state.equipmentSearch?.resultIds)
+      ? normalizeItemIds(state.equipmentSearch.resultIds)
+      : [];
+    equipmentSearchResults = restoredEquipmentIds.map(itemNameForId).filter(Boolean);
+    setEquipmentSearchOpen(Boolean(state.equipmentSearch?.open));
+    if (EQUIPMENT_JOB_OPTIONS.includes(state.equipmentSearch?.job)) {
+      elements.equipmentJobSelect.value = state.equipmentSearch.job;
+    }
+    elements.equipmentLevelInput.value = String(toNumeric(state.equipmentSearch?.equipLevel, maxEquipmentLevel));
+    updateEquipmentItemLevelOptions(toNumeric(state.equipmentSearch?.itemLevel, 0));
+    if (EQUIPMENT_SLOT_OPTIONS.some(([slot]) => slot === state.equipmentSearch?.slot)) {
+      elements.equipmentSlotSelect.value = state.equipmentSearch.slot;
+    }
+    updateEquipmentSearchButtons();
 
     elements.searchBox.value = search;
-    elements.searchClearBtn.classList.toggle('visible', search.trim() !== '');
+    if (equipmentSearchOpen) elements.searchBox.value = '';
+    elements.searchClearBtn.classList.toggle('visible', elements.searchBox.value.trim() !== '');
     favoriteStore.selectedListId = favoriteList?.id || null;
 
     if (state.view?.listMode === 'fav' && favoriteList) listMode = 'fav';
+    else if (state.view?.listMode === 'equipment' && equipmentSearchResults.length > 0) listMode = 'equipment';
     else listMode = search.trim() ? 'search' : 'none';
 
     selectedRecipe = recipe || null;
     selectedUsesItem = usesItem || null;
     elements.countInput.value = count || '1';
     readRequestedCount(elements.countInput);
-    setResultSourceMode(
-      state.view?.sourceMode === 'favorite-materials' && favoriteList && !isRecentList(favoriteList)
-        ? 'favorite-materials'
-        : 'recipe'
-    );
+    const restoreFavoriteMaterials = state.view?.sourceMode === 'favorite-materials'
+      && (restoredFavoriteMaterialIds.length >= 2 || (favoriteList && !isRecentList(favoriteList)));
+    favoriteMaterialsListIds = restoreFavoriteMaterials && restoredFavoriteMaterialIds.length >= 2
+      ? restoredFavoriteMaterialIds
+      : [];
+    setResultSourceMode(restoreFavoriteMaterials ? 'favorite-materials' : 'recipe');
     favoriteMaterialsRingCounts = normalizeFavoriteMaterialsRingCounts(state.favoriteMaterials?.ringCounts);
     materialSectionState.clear();
     Object.entries(normalizeMaterialSectionState(state.materials?.sections))
@@ -444,10 +619,52 @@ function updateFavoriteButtonState() {
   elements.favBtn.classList.toggle('active', Boolean(list));
   elements.favBtn.textContent = list ? `📌 ${list.name}` : '📌 お気に入り';
   elements.favBtn.title = list ? list.name : 'お気に入り';
+  updateCheckedFavoriteMaterialsButton();
 }
 
 function getFavoriteListRecipeNames(list = getDisplayedFavoriteList()) {
   return list ? list.itemIds.map(itemNameForId).filter(name => name && recipes[name]) : [];
+}
+
+function getMaterialSelectedFavoriteLists() {
+  return favoriteStore.lists.filter(list => !isRecentList(list) && list.materialSelected);
+}
+
+function hasMaterialSelectedFavoriteLists() {
+  return getMaterialSelectedFavoriteLists().length > 0;
+}
+
+function clearMaterialSelectedFavoriteLists() {
+  let changed = false;
+  favoriteStore.lists.forEach(list => {
+    if (!isRecentList(list) && list.materialSelected) {
+      list.materialSelected = false;
+      changed = true;
+    }
+  });
+  if (!changed) return false;
+  favoriteMaterialsListIds = [];
+  saveFavorites();
+  renderFavoriteLists();
+  updateCheckedFavoriteMaterialsButton();
+  return true;
+}
+
+function updateCheckedFavoriteMaterialsButton() {
+  if (!elements.checkedFavoriteMaterialsActions) return;
+  elements.checkedFavoriteMaterialsActions.classList.toggle('visible', hasMaterialSelectedFavoriteLists());
+  if (elements.favoriteLists?.classList.contains('open')) updateFavoriteListsMaxHeight();
+}
+
+function getActiveFavoriteMaterialLists() {
+  if (favoriteMaterialsListIds.length >= 2) {
+    const selected = favoriteMaterialsListIds
+      .map(findFavoriteList)
+      .filter(list => list && !isRecentList(list));
+    if (selected.length >= 2) return selected;
+  }
+  const displayed = getDisplayedFavoriteList();
+  return displayed ? [displayed] : [];
 }
 
 function isRingRecipe(name) {
@@ -475,7 +692,8 @@ function createFavoriteList(name, itemIds = []) {
   const list = {
     id: createFavoriteListId(),
     name: uniqueFavoriteListName(name),
-    itemIds: normalizeItemIds(itemIds)
+    itemIds: normalizeItemIds(itemIds),
+    materialSelected: false
   };
   favoriteStore.lists.push(list);
   favoriteStore.selectedListId = list.id;
@@ -490,7 +708,8 @@ function loadFavorites() {
     ? stored.lists.map(list => ({
         id: typeof list.id === 'string' ? list.id : createFavoriteListId(),
         name: normalizeFavoriteListName(list.name),
-        itemIds: normalizeItemIds(list.itemIds)
+        itemIds: normalizeItemIds(list.itemIds),
+        materialSelected: Boolean(list.materialSelected) && !isRecentList(list)
       }))
     : [];
   const storedRecent = storedLists.find(isRecentList);
@@ -687,9 +906,323 @@ function closeSearchHistory() {
   elements.searchHistory.classList.remove('open');
 }
 
+function equipmentSlotForItem(master) {
+  const category = master?.uiCategoryName || '';
+  if (EQUIPMENT_CATEGORY_TO_SLOT[category]) return EQUIPMENT_CATEGORY_TO_SLOT[category];
+  if (category.endsWith('道具(主道具)')) return 'mainTool';
+  if (category.endsWith('道具(副道具)')) return 'offTool';
+  return '';
+}
+
+function isEquipmentSearchTarget(master) {
+  return Boolean(master?.equipmentInfo && equipmentSlotForItem(master));
+}
+
+function equipmentItemLevel(master) {
+  return toNumeric(master?.equipmentInfo?.itemLevel, 0);
+}
+
+function equipmentEquipLevel(master) {
+  return toNumeric(master?.equipmentInfo?.equipLevel, 0);
+}
+
+function equipmentStats(master) {
+  return master?.equipmentInfo?.stats || {};
+}
+
+function equipmentJobs(master) {
+  return Array.isArray(master?.equipmentInfo?.jobs) ? master.equipmentInfo.jobs : [];
+}
+
+function equipmentJobKind(job) {
+  if (EQUIPMENT_JOB_GROUPS.クラフター.has(job)) return 'craft';
+  if (EQUIPMENT_JOB_GROUPS.ギャザラー.has(job)) return 'gather';
+  if (EQUIPMENT_JOB_GROUPS.ファイター.has(job) || EQUIPMENT_JOB_GROUPS.ソーサラー.has(job)) return 'battle';
+  return '';
+}
+
+function isEquipmentAccessorySlot(slot) {
+  return slot === 'ring' || slot === 'ears' || slot === 'neck' || slot === 'wrists';
+}
+
+function hasEquipmentPrimaryStats(master) {
+  const stats = equipmentStats(master);
+  return ['STR', 'DEX', 'VIT', 'INT', 'MND'].some(key => toNumeric(stats[key], 0) > 0);
+}
+
+function strongestEquipmentStat(master) {
+  const stats = equipmentStats(master);
+  const entries = ['VIT', 'STR', 'DEX', 'MND', 'INT'].map(key => [key, toNumeric(stats[key], 0)]);
+  const max = Math.max(...entries.map(([, value]) => value));
+  if (max <= 0) return '';
+  const strongest = entries.filter(([, value]) => value === max).map(([key]) => key);
+  return strongest.length === 1 ? strongest[0] : '';
+}
+
+function equipmentMatchesAllClasses(master, job) {
+  const jobKind = equipmentJobKind(job);
+  const priorityStat = EQUIPMENT_JOB_PRIORITY_STAT[job];
+  if (jobKind !== 'battle' || !priorityStat) return false;
+  if (!hasEquipmentPrimaryStats(master)) return false;
+  const slot = equipmentSlotForItem(master);
+  if (isEquipmentAccessorySlot(slot)) {
+    if (priorityStat === 'VIT') return strongestEquipmentStat(master) === 'VIT';
+    return toNumeric(equipmentStats(master)[priorityStat], 0) > 0;
+  }
+  return toNumeric(equipmentStats(master)[priorityStat], 0) > 0;
+}
+
+function equipmentMatchesJob(master, job) {
+  const jobs = equipmentJobs(master);
+  const aliases = [...(EQUIPMENT_JOB_CLASS_ALIASES[job] || []), ...(EQUIPMENT_CLASS_JOB_ALIASES[job] || [])];
+  if (jobs.includes(job) || aliases.some(alias => jobs.includes(alias))) return true;
+  if (jobs.includes('全クラス')) return equipmentMatchesAllClasses(master, job);
+  if (jobs.some(group => EQUIPMENT_JOB_GROUPS[group]?.has(job))) {
+    const stat = EQUIPMENT_JOB_PRIORITY_STAT[job];
+    const slot = equipmentSlotForItem(master);
+    if (!stat || !isEquipmentAccessorySlot(slot)) return true;
+    const strongest = strongestEquipmentStat(master);
+    return !strongest || strongest === stat;
+  }
+  return false;
+}
+
+function equipmentSortKey(name) {
+  const master = itemMaster[name] || {};
+  return [
+    EQUIPMENT_SLOT_ORDER.indexOf(equipmentSlotForItem(master)),
+    -equipmentEquipLevel(master),
+    -equipmentItemLevel(master),
+    name
+  ];
+}
+
+function sortEquipmentNames(names) {
+  return [...names].sort((a, b) => {
+    const ak = equipmentSortKey(a);
+    const bk = equipmentSortKey(b);
+    for (let i = 0; i < ak.length; i += 1) {
+      if (ak[i] < bk[i]) return -1;
+      if (ak[i] > bk[i]) return 1;
+    }
+    return 0;
+  });
+}
+
+function buildEquipmentSearchIndexes() {
+  equipmentLevelToItemLevels = new Map();
+  maxEquipmentLevel = 1;
+  Object.values(itemMaster).forEach(master => {
+    if (!isEquipmentSearchTarget(master)) return;
+    const equipLevel = equipmentEquipLevel(master);
+    const itemLevel = equipmentItemLevel(master);
+    if (equipLevel <= 0 || itemLevel <= 0) return;
+    maxEquipmentLevel = Math.max(maxEquipmentLevel, equipLevel);
+    if (!equipmentLevelToItemLevels.has(equipLevel)) equipmentLevelToItemLevels.set(equipLevel, new Set());
+    equipmentLevelToItemLevels.get(equipLevel).add(itemLevel);
+  });
+}
+
+function setupEquipmentSearchControls() {
+  if (!elements.equipmentSearchToggle) return;
+  elements.equipmentJobSelect.replaceChildren(
+    ...EQUIPMENT_JOB_OPTIONS.map(job => {
+      const option = document.createElement('option');
+      option.value = job;
+      option.textContent = job;
+      return option;
+    })
+  );
+  elements.equipmentSlotSelect.replaceChildren(
+    ...EQUIPMENT_SLOT_OPTIONS.map(([value, label]) => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      return option;
+    })
+  );
+  elements.equipmentLevelInput.min = '1';
+  elements.equipmentLevelInput.max = String(maxEquipmentLevel);
+  elements.equipmentLevelInput.value = String(maxEquipmentLevel);
+  updateEquipmentItemLevelOptions();
+  updateEquipmentSearchButtons();
+}
+
+function equipmentLevelValue() {
+  return Math.max(1, Math.min(maxEquipmentLevel, toNumeric(elements.equipmentLevelInput.value, maxEquipmentLevel)));
+}
+
+function equipmentLevelInputValue() {
+  const value = elements.equipmentLevelInput.value.trim();
+  if (value === '') return 0;
+  const number = parseInt(value, 10);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function selectedEquipmentItemLevel() {
+  return toNumeric(elements.equipmentItemLevelSelect.value, 0);
+}
+
+function updateEquipmentItemLevelOptions(preferredItemLevel = selectedEquipmentItemLevel()) {
+  const rawLevel = equipmentLevelInputValue();
+  if (rawLevel <= 0) {
+    elements.equipmentItemLevelSelect.replaceChildren();
+    updateEquipmentSearchButtons();
+    saveViewState();
+    return;
+  }
+  const level = Math.max(1, Math.min(maxEquipmentLevel, rawLevel));
+  const job = elements.equipmentJobSelect.value;
+  const itemLevelSet = new Set();
+  EQUIPMENT_SLOT_ORDER.forEach(slot => {
+    for (let candidateLevel = level; candidateLevel >= 1; candidateLevel -= 1) {
+      const matches = findEquipmentMatchesAtLevel(candidateLevel, 0, job, slot);
+      if (matches.length === 0) continue;
+      itemLevelSet.add(Math.max(...matches.map(name => equipmentItemLevel(itemMaster[name]))));
+      break;
+    }
+  });
+  const itemLevels = [...itemLevelSet]
+    .sort((a, b) => b - a);
+  elements.equipmentItemLevelSelect.replaceChildren(
+    ...itemLevels.map(itemLevel => {
+      const option = document.createElement('option');
+      option.value = String(itemLevel);
+      option.textContent = String(itemLevel);
+      return option;
+    })
+  );
+  const preferred = String(preferredItemLevel);
+  if (itemLevels.some(itemLevel => String(itemLevel) === preferred)) {
+    elements.equipmentItemLevelSelect.value = preferred;
+  }
+  updateEquipmentSearchButtons();
+  saveViewState();
+}
+
+function commitEquipmentLevelInput() {
+  elements.equipmentLevelInput.value = String(equipmentLevelValue());
+  updateEquipmentItemLevelOptions();
+}
+
+function updateEquipmentSearchButtons() {
+  const rawLevel = equipmentLevelInputValue();
+  const ready = Boolean(
+    elements.equipmentJobSelect.value
+    && rawLevel >= 1
+    && rawLevel <= maxEquipmentLevel
+    && selectedEquipmentItemLevel()
+    && elements.equipmentSlotSelect.value
+  );
+  elements.equipmentSearchBtn.disabled = !ready;
+  elements.saveEquipmentSearchBtn.disabled = equipmentSearchResults.length === 0;
+}
+
+function setEquipmentSearchOpen(open) {
+  if (!elements.equipmentSearchToggle) return;
+  equipmentSearchOpen = open;
+  if (open) {
+    elements.searchBox.value = '';
+    elements.searchClearBtn.classList.remove('visible');
+    closeSearchHistory();
+  }
+  elements.searchBox.disabled = open;
+  elements.equipmentSearchPanel.classList.toggle('open', open);
+  elements.equipmentSearchToggle.classList.toggle('active', open);
+  elements.equipmentSearchToggle.textContent = open ? '▲' : '▼';
+  elements.equipmentSearchToggle.setAttribute('aria-expanded', String(open));
+  saveViewState();
+}
+
+function resetEquipmentSearch() {
+  elements.searchBox.value = '';
+  elements.searchClearBtn.classList.remove('visible');
+  elements.equipmentJobSelect.selectedIndex = 0;
+  elements.equipmentLevelInput.value = String(maxEquipmentLevel);
+  elements.equipmentSlotSelect.value = 'all';
+  updateEquipmentItemLevelOptions();
+  equipmentSearchResults = [];
+  listMode = 'none';
+  selectedRecipe = null;
+  closeUsesPanel();
+  resetRightPanelViewState();
+  renderList();
+  renderResultView();
+  updateFavoriteButtonState();
+  updateEquipmentSearchButtons();
+}
+
+function findEquipmentMatchesAtLevel(level, itemLevel, job, slot) {
+  return Object.keys(itemMaster).filter(name => {
+    const master = itemMaster[name];
+    if (!isEquipmentSearchTarget(master)) return false;
+    if (equipmentEquipLevel(master) !== level) return false;
+    if (itemLevel && level === equipmentLevelValue() && equipmentItemLevel(master) !== itemLevel) return false;
+    if (slot !== 'all' && equipmentSlotForItem(master) !== slot) return false;
+    return equipmentMatchesJob(master, job);
+  });
+}
+
+function runEquipmentSearch() {
+  const job = elements.equipmentJobSelect.value;
+  const requestedLevel = equipmentLevelValue();
+  const requestedItemLevel = selectedEquipmentItemLevel();
+  const selectedSlot = elements.equipmentSlotSelect.value;
+  const slots = selectedSlot === 'all' ? EQUIPMENT_SLOT_ORDER : [selectedSlot];
+  const results = [];
+
+  slots.forEach(slot => {
+    for (let level = requestedLevel; level >= 1; level -= 1) {
+      const matches = findEquipmentMatchesAtLevel(level, requestedItemLevel, job, slot);
+      if (matches.length === 0) continue;
+      const maxItemLevel = Math.max(...matches.map(name => equipmentItemLevel(itemMaster[name])));
+      results.push(...matches.filter(name => equipmentItemLevel(itemMaster[name]) === maxItemLevel));
+      break;
+    }
+  });
+
+  equipmentSearchResults = sortEquipmentNames([...new Set(results)]);
+  listMode = 'equipment';
+  favoriteStore.selectedListId = null;
+  selectedRecipe = null;
+  closeUsesPanel();
+  resetRightPanelViewState();
+  elements.searchClearBtn.classList.remove('visible');
+  closeSearchHistory();
+  renderFavoriteLists();
+  updateFavoriteButtonState();
+  renderList();
+  renderResultView();
+  updateEquipmentSearchButtons();
+}
+
+function defaultEquipmentFavoriteListName() {
+  return `${elements.equipmentJobSelect.value}:装備Lv${equipmentLevelValue()}:IL${selectedEquipmentItemLevel()}`;
+}
+
+function saveEquipmentSearchAsFavorite() {
+  if (equipmentSearchResults.length === 0) return;
+  const itemIds = equipmentSearchResults.map(itemIdForName).filter(Boolean);
+  showTextInput('お気に入りリスト名', defaultEquipmentFavoriteListName(), value => {
+    const list = createFavoriteList(value, itemIds);
+    selectFavoriteList(list.id);
+  });
+}
+
 function showConfirm(msg, onYes) {
   elements.confirmMsg.classList.remove('markdown-content');
   elements.confirmMsg.textContent = msg;
+  pendingConfirmAction = onYes;
+  elements.confirmOverlay.classList.remove('info');
+  elements.confirmYes.textContent = 'はい';
+  elements.confirmNo.textContent = 'いいえ';
+  elements.confirmYes.classList.remove('hidden');
+  elements.confirmOverlay.classList.add('open');
+}
+
+function showConfirmContent(content, onYes) {
+  elements.confirmMsg.classList.remove('markdown-content');
+  elements.confirmMsg.replaceChildren(content);
   pendingConfirmAction = onYes;
   elements.confirmOverlay.classList.remove('info');
   elements.confirmYes.textContent = 'はい';
@@ -919,6 +1452,7 @@ function cancelReorderDrag() {
 
 function onSearch() {
   const q = elements.searchBox.value.trim();
+  equipmentSearchResults = [];
   resetFavoriteOperationModes();
   leaveFavoriteMaterialsMode();
   elements.searchClearBtn.classList.toggle('visible', q !== '');
@@ -931,8 +1465,7 @@ function onSearch() {
 }
 
 function clearSearch() {
-  elements.searchBox.value = '';
-  onSearch();
+  resetEquipmentSearch();
   elements.searchBox.focus();
 }
 
@@ -953,11 +1486,23 @@ function closeFavoriteLists() {
 function updateFavoriteListsMaxHeight() {
   const list = elements.favoriteLists;
   if (!list) return;
-  const top = list.getBoundingClientRect().top;
-  const rootStyle = getComputedStyle(document.documentElement);
-  const footerSpace = Number.parseFloat(rootStyle.getPropertyValue('--footer-space')) || 0;
-  const available = Math.max(0, Math.floor(window.innerHeight - top - footerSpace - 8));
-  list.style.setProperty('--favorite-lists-max-height', `${available}px`);
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+  const listRect = list.getBoundingClientRect();
+  const actions = elements.checkedFavoriteMaterialsActions;
+  let listTop = listRect.top;
+  if (actions?.classList.contains('visible')) {
+    const actionsRect = actions.getBoundingClientRect();
+    const actionsStyle = window.getComputedStyle(actions);
+    const targetActionsHeight = Math.min(
+      actions.scrollHeight,
+      Number.parseFloat(actionsStyle.maxHeight) || actions.scrollHeight
+    );
+    listTop += Math.max(0, targetActionsHeight - actionsRect.height);
+  }
+  const bottomPadding = 12;
+  const availableHeight = Math.max(0, viewportHeight - listTop - bottomPadding);
+  const maxHeight = Math.floor(Math.min(viewportHeight * 0.7, availableHeight));
+  list.style.setProperty('--favorite-lists-max-height', `${maxHeight}px`);
 }
 
 function selectFavoriteList(listId) {
@@ -992,6 +1537,7 @@ function deleteFavoriteList(listId) {
   showConfirm(`「${list.name}」を\n削除しますか？`, () => {
     const wasDisplayed = getDisplayedFavoriteList()?.id === listId;
     favoriteStore.lists = favoriteStore.lists.filter(entry => entry.id !== listId);
+    favoriteMaterialsListIds = favoriteMaterialsListIds.filter(id => id !== listId);
     if (favoriteStore.selectedListId === listId) {
       favoriteStore.selectedListId = null;
     }
@@ -1079,7 +1625,7 @@ function createFavoriteMaterialsRow() {
     : '素材リスト';
   materialButton.addEventListener('click', event => {
     event.stopPropagation();
-    openFavoriteMaterialsMode();
+    requestFavoriteMaterialsMode();
   });
 
   const curtain = document.createElement('div');
@@ -1281,6 +1827,7 @@ function renderFavoriteLists() {
       const li = document.createElement('li');
       const recent = isRecentList(list);
       li.classList.toggle('recent-favorite-list', recent);
+      li.classList.toggle('material-selected-favorite-list', Boolean(list.materialSelected) && !recent);
       if (!recent) {
         li.classList.add('reorder-enabled');
         li.dataset.reorderIndex = String(normalIndex);
@@ -1325,6 +1872,29 @@ function renderFavoriteLists() {
         });
       });
 
+      const materialSelect = document.createElement('input');
+      materialSelect.className = 'favorite-list-material-checkbox';
+      materialSelect.type = 'checkbox';
+      materialSelect.checked = Boolean(list.materialSelected);
+      materialSelect.title = '複数素材リストに含める';
+      materialSelect.setAttribute('aria-label', `「${list.name}」を複数素材リストに含める`);
+      materialSelect.addEventListener('click', event => {
+        event.stopPropagation();
+      });
+      materialSelect.addEventListener('change', event => {
+        event.stopPropagation();
+        list.materialSelected = materialSelect.checked;
+        saveFavorites();
+        renderFavoriteLists();
+        updateCheckedFavoriteMaterialsButton();
+        renderList();
+        if (resultSourceMode === 'favorite-materials' && favoriteMaterialsListIds.length >= 2) {
+          favoriteMaterialsListIds = getMaterialSelectedFavoriteLists().map(entry => entry.id);
+          if (favoriteMaterialsListIds.length < 2) leaveFavoriteMaterialsMode();
+          renderResultView();
+        }
+      });
+
       const curtain = document.createElement('div');
       const expanded = expandedFavoriteListActionsId === list.id;
       curtain.className = 'favorite-list-curtain';
@@ -1360,7 +1930,7 @@ function renderFavoriteLists() {
       const actions = document.createElement('div');
       actions.className = 'favorite-list-curtain-actions';
       actions.append(renameBtn, deleteBtn, reorderBtn);
-      curtain.append(curtainToggle, actions);
+      curtain.append(curtainToggle, materialSelect, actions);
 
       li.append(name, curtain);
       li.addEventListener('click', () => selectFavoriteList(list.id));
@@ -1369,6 +1939,7 @@ function renderFavoriteLists() {
   }
 
   elements.favoriteLists.replaceChildren(frag);
+  updateCheckedFavoriteMaterialsButton();
 }
 
 function closeFavoriteTarget() {
@@ -1456,6 +2027,8 @@ function getDisplayList() {
       const list = getSelectedFavoriteList();
       return list ? list.itemIds.map(itemNameForId).filter(Boolean) : [];
     }
+    case 'equipment':
+      return equipmentSearchResults;
     default:
       return [];
   }
@@ -1478,6 +2051,38 @@ function createItemIcon(iconPath, className = 'list-icon') {
   return image;
 }
 
+function createItemDisplayLabel(name, { favorite = false } = {}) {
+  const master = itemMaster[name] || {};
+  const wrapper = document.createElement('span');
+  wrapper.className = favorite ? 'favorite-item-label item-list-label' : 'item-list-label';
+  const badges = document.createElement('span');
+  badges.className = 'item-list-badges';
+
+  if (CRAFT_JOBS_SET.has(master.method) && master.craftLevel > 0) {
+    const badge = createTextElement(
+      'span',
+      `${favorite ? 'favorite-item-job ' : ''}badge ${methodBadgeClass(master.method)}`,
+      `${master.method}Lv${master.craftLevel}`
+    );
+    badges.appendChild(badge);
+  }
+  if (isEquipmentSearchTarget(master)) {
+    badges.append(
+      createTextElement('span', 'badge badge-equipment', `装備Lv${equipmentEquipLevel(master)}`),
+      createTextElement('span', 'badge badge-equipment', `IL${equipmentItemLevel(master)}`)
+    );
+  }
+
+  const nameElement = createTextElement(
+    'span',
+    favorite ? 'favorite-item-name list-name' : 'list-name',
+    name
+  );
+  if (badges.childElementCount > 0) wrapper.appendChild(badges);
+  wrapper.appendChild(nameElement);
+  return wrapper;
+}
+
 function createItemListRow(name, className = '') {
   const row = document.createElement('li');
   row.className = className;
@@ -1485,7 +2090,7 @@ function createItemListRow(name, className = '') {
 
   const icon = createItemIcon(itemMaster[name]?.icon);
   if (icon) row.appendChild(icon);
-  row.appendChild(createTextElement('span', 'list-name', name));
+  row.appendChild(createItemDisplayLabel(name, { favorite: className.split(/\s+/).includes('fav-item-row') }));
   return row;
 }
 
@@ -1539,6 +2144,8 @@ function renderList() {
     frag.appendChild(createEmptyListItem('お気に入りはありません'));
   } else if (names.length === 0) {
     frag.appendChild(createEmptyListItem('該当するレシピがありません'));
+  } else if (listMode === 'fav' && hasMaterialSelectedFavoriteLists()) {
+    // Checked favorite lists use the dedicated combined-materials button under the favorite selector.
   } else {
     if (listMode === 'fav' && getDisplayedFavoriteList()) {
       const materialsRow = createFavoriteMaterialsRow();
@@ -1546,12 +2153,13 @@ function renderList() {
     }
     names.forEach((name, index) => {
       if (listMode === 'fav') frag.appendChild(makeFavLi(name, index));
+      else if (listMode === 'equipment') frag.appendChild(makeEquipmentLi(name));
       else if (recipes[name]) frag.appendChild(makeRecipeLi(name));
       else frag.appendChild(makeIngredientLi(name));
     });
   }
 
-  if (listMode === 'fav' && getDisplayedFavoriteList()) {
+  if (listMode === 'fav' && getDisplayedFavoriteList() && !hasMaterialSelectedFavoriteLists()) {
     frag.appendChild(createFavoriteSaveRow());
   }
 
@@ -1571,21 +2179,7 @@ function makeFavLi(name, index) {
   const anyOneChecked = favoriteAnyOneTarget(itemId);
   li.classList.toggle('favorite-count-zero', countsEnabled && (anyOneMode ? !anyOneChecked : itemCount === 0));
 
-  const nameElement = li.querySelector('.list-name');
-  let label = nameElement;
-  if (recipes[name]) {
-    label = document.createElement('span');
-    label.className = 'favorite-item-label';
-    label.append(
-      createTextElement(
-        'span',
-        `favorite-item-job badge ${methodBadgeClass(itemMaster[name]?.method)}`,
-        itemMaster[name]?.method || '製作情報なし'
-      ),
-      createTextElement('span', 'favorite-item-name', name)
-    );
-    nameElement.replaceWith(label);
-  }
+  const label = li.querySelector('.item-list-label') || li.querySelector('.list-name');
 
   const pin = document.createElement('button');
   pin.className = 'pin-btn';
@@ -1597,9 +2191,12 @@ function makeFavLi(name, index) {
   });
   if (!countsEnabled) li.insertBefore(pin, label);
 
-  const gatheringButton = createGatheringTimerButton(name);
-  if (gatheringButton) li.appendChild(gatheringButton);
-  if (!recipes[name]) li.appendChild(createUsesListButton(name, li, false));
+  appendItemActionButtons(
+    li,
+    createShopInfoButton(name),
+    createGatheringTimerButton(name),
+    !recipes[name] ? createUsesListButton(name, li, false) : null
+  );
 
   if (favoriteItemReorderEnabled) {
     li.classList.add('reorder-enabled');
@@ -1686,6 +2283,7 @@ function makeFavLi(name, index) {
     if (countsEnabled) return;
     if (recipes[name]) selectRecipeByName(name);
     else {
+      clearMaterialSelectedFavoriteLists();
       markRecipeListSelection(li);
       showUsesPanel(name);
     }
@@ -1696,8 +2294,7 @@ function makeFavLi(name, index) {
 function makeRecipeLi(name) {
   const li = createItemListRow(name);
   li.classList.toggle('selected', selectedRecipe === name);
-  const gatheringButton = createGatheringTimerButton(name);
-  if (gatheringButton) li.appendChild(gatheringButton);
+  appendItemActionButtons(li, createShopInfoButton(name), createGatheringTimerButton(name));
 
   li.addEventListener('click', () => {
     rememberCurrentSearch();
@@ -1709,14 +2306,23 @@ function makeRecipeLi(name) {
 
 function makeIngredientLi(name) {
   const li = createItemListRow(name, 'ingredient-row');
-  const gatheringButton = createGatheringTimerButton(name);
-  if (gatheringButton) li.appendChild(gatheringButton);
-  li.appendChild(createUsesListButton(name, li, true));
+  appendItemActionButtons(
+    li,
+    createShopInfoButton(name),
+    createGatheringTimerButton(name),
+    createUsesListButton(name, li, true)
+  );
   li.addEventListener('click', () => {
     rememberCurrentSearch();
+    clearMaterialSelectedFavoriteLists();
     markRecipeListSelection(li);
     showUsesPanel(name);
   });
+  return li;
+}
+
+function makeEquipmentLi(name) {
+  const li = recipes[name] ? makeRecipeLi(name) : makeIngredientLi(name);
   return li;
 }
 
@@ -1728,6 +2334,7 @@ function createUsesListButton(name, row, rememberSearch) {
   usesButton.addEventListener('click', event => {
     event.stopPropagation();
     if (rememberSearch) rememberCurrentSearch();
+    clearMaterialSelectedFavoriteLists();
     markRecipeListSelection(row);
     showUsesPanel(name);
   });
@@ -1794,6 +2401,7 @@ function returnToList() {
 function selectRecipe(name, li) {
   recordViewedItem(name);
   resetFavoriteOperationModes();
+  clearMaterialSelectedFavoriteLists();
   if (selectedRecipe !== name || resultSourceMode === 'favorite-materials') resetCountInput();
   selectedRecipe = name;
   selectedUsesItem = null;
@@ -1811,6 +2419,7 @@ function selectRecipe(name, li) {
 function selectRecipeByName(name) {
   recordViewedItem(name);
   resetFavoriteOperationModes();
+  clearMaterialSelectedFavoriteLists();
   if (selectedRecipe !== name || resultSourceMode === 'favorite-materials') resetCountInput();
   selectedRecipe = name;
   selectedUsesItem = null;
@@ -1881,11 +2490,15 @@ function buildItemAndRecipeMasters(rawList, idToItem) {
         method: CRAFT_TYPE_NAME[recipe.CraftType] || 'クラフト',
         icon: iconPath(item),
         craftType,
+        craftLevel: toNumeric(item.CraftInfo?.[0]?.level, 0),
         id: item.ID,
         numericId: toNumeric(item.ID),
         uiCategory: toNumeric(item.ItemUICategory),
         uiCategoryName: item.ItemUICategoryName || '',
-        gatheringTimer: item.GatheringTimer || []
+        gatheringTimer: item.GatheringTimer || [],
+        shopInfo: item.ShopInfo || null,
+        equipmentInfo: item.EquipmentInfo || null,
+        craftInfo: item.CraftInfo || []
       };
       recipes[name] = {
         yield: toNumeric(recipe.AmountResult, 1),
@@ -1908,7 +2521,9 @@ function buildItemAndRecipeMasters(rawList, idToItem) {
         numericId: toNumeric(item.ID),
         uiCategory: toNumeric(item.ItemUICategory),
         uiCategoryName: item.ItemUICategoryName || '',
-        gatheringTimer: item.GatheringTimer || []
+        gatheringTimer: item.GatheringTimer || [],
+        shopInfo: item.ShopInfo || null,
+        equipmentInfo: item.EquipmentInfo || null
       };
     }
   });
@@ -1924,7 +2539,9 @@ function buildItemAndRecipeMasters(rawList, idToItem) {
         numericId: toNumeric(ingredient.ItemID),
         uiCategory: toNumeric(idToItem[ingredient.ItemID]?.ItemUICategory),
         uiCategoryName: idToItem[ingredient.ItemID]?.ItemUICategoryName || '',
-        gatheringTimer: idToItem[ingredient.ItemID]?.GatheringTimer || []
+        gatheringTimer: idToItem[ingredient.ItemID]?.GatheringTimer || [],
+        shopInfo: idToItem[ingredient.ItemID]?.ShopInfo || null,
+        equipmentInfo: idToItem[ingredient.ItemID]?.EquipmentInfo || null
       };
     });
   });
@@ -1960,6 +2577,7 @@ function buildApplicationData(rawList) {
   });
   const maxPatch = buildItemAndRecipeMasters(rawList, idToItem);
   buildRecipeIndexes();
+  buildEquipmentSearchIndexes();
   return maxPatch;
 }
 
@@ -1988,6 +2606,7 @@ function hideLoadingOverlay() {
 async function init() {
   updatePopupButtonVisibility();
   loadFavorites();
+  updateCheckedFavoriteMaterialsButton();
   loadSearchHistory();
   await loadTips();
 
@@ -2000,8 +2619,9 @@ async function init() {
       status => `Item.json が見つかりません (${status})`
     );
     updatePatchStatus(buildApplicationData(rawList));
+    setupEquipmentSearchControls();
     canSaveViewState = true;
-    if (!restoreViewState()) {
+    if (consumeSkipRestoreOnce() || !restoreViewState()) {
       renderList();
       renderResultView();
       if (isMobile()) showMobilePanel('left');
@@ -2092,6 +2712,13 @@ function setResultSourceMode(mode) {
 }
 
 function getFavoriteMaterialRingNames(list = getDisplayedFavoriteList()) {
+  if (favoriteMaterialsListIds.length >= 2) {
+    return [...new Set(
+      getActiveFavoriteMaterialLists()
+        .flatMap(entry => getFavoriteListRecipeNames(entry))
+        .filter(isRingRecipe)
+    )].sort(compareItemNames);
+  }
   return getFavoriteListRecipeNames(list).filter(isRingRecipe).sort(compareItemNames);
 }
 
@@ -2102,9 +2729,36 @@ function ensureFavoriteMaterialsRingCounts() {
   );
 }
 
-function openFavoriteMaterialsMode() {
-  if (!getDisplayedFavoriteList()) return;
+function requestFavoriteMaterialsMode() {
+  const selectedLists = getMaterialSelectedFavoriteLists();
+  if (selectedLists.length >= 2) {
+    openFavoriteMaterialsMode({ listIds: selectedLists.map(list => list.id) });
+    return;
+  }
+  openFavoriteMaterialsMode();
+}
+
+function openCheckedFavoriteMaterialsMode() {
+  const selectedLists = getMaterialSelectedFavoriteLists();
+  if (selectedLists.length === 0) return;
+  if (selectedLists.length === 1) {
+    favoriteStore.selectedListId = selectedLists[0].id;
+    saveFavorites();
+    listMode = 'fav';
+    updateFavoriteButtonState();
+    closeFavoriteLists();
+    resetTreeSelection();
+    openFavoriteMaterialsMode();
+    return;
+  }
+  openFavoriteMaterialsMode({ listIds: selectedLists.map(list => list.id) });
+}
+
+function openFavoriteMaterialsMode({ listIds = [] } = {}) {
+  const multiIds = listIds.filter(id => findFavoriteList(id) && !isRecentList(id));
+  if (multiIds.length < 2 && !getDisplayedFavoriteList()) return;
   if (resultSourceMode !== 'favorite-materials') resetCountInput();
+  favoriteMaterialsListIds = multiIds.length >= 2 ? multiIds : [];
   selectedRecipe = null;
   setResultSourceMode('favorite-materials');
   setResultViewMode('materials');
@@ -2122,13 +2776,15 @@ function leaveFavoriteMaterialsMode() {
   if (resultSourceMode !== 'favorite-materials') return;
   setResultSourceMode('recipe');
   favoriteMaterialsRingCounts = {};
+  favoriteMaterialsListIds = [];
 }
 
 function updateResultHeader() {
   const count = readRequestedCount(elements.countInput);
   if (resultSourceMode === 'favorite-materials') {
-    const listName = getDisplayedFavoriteList()?.name || '';
-    const hideCountInput = favoriteCountEnabled() && !favoriteAnyOneMode();
+    const activeLists = getActiveFavoriteMaterialLists();
+    const hasFavoriteMaterials = activeLists.length > 0;
+    const hideCountInput = favoriteMaterialsListIds.length < 2 && favoriteCountEnabled() && !favoriteAnyOneMode();
     elements.countLabel.textContent = 'セット数:';
     elements.resultTitle.textContent = '';
     elements.usesBtn.classList.remove('visible');
@@ -2136,9 +2792,9 @@ function updateResultHeader() {
     elements.materialsViewBtn.classList.remove('hidden');
     elements.materialsViewBtn.classList.add('active');
     elements.materialsViewBtn.disabled = true;
-    elements.resultViewSwitch.classList.toggle('hidden', !listName);
+    elements.resultViewSwitch.classList.toggle('hidden', !hasFavoriteMaterials);
     elements.resultViewSwitch.classList.add('favorite-materials-only');
-    elements.resultHeader.classList.toggle('hidden', !listName);
+    elements.resultHeader.classList.toggle('hidden', !hasFavoriteMaterials);
     elements.resultHeader.classList.toggle('hide-count-input', hideCountInput);
     elements.countInput.disabled = hideCountInput;
     elements.resultHeader.querySelectorAll('.count-control button')
@@ -2167,7 +2823,7 @@ function renderResultView() {
   clearRenderedTree();
   updateResultHeader();
 
-  if (resultSourceMode === 'favorite-materials' && !getDisplayedFavoriteList()) {
+  if (resultSourceMode === 'favorite-materials' && getActiveFavoriteMaterialLists().length === 0) {
     showTips();
     setResultSourceMode('recipe');
     updateResultHeader();
@@ -2191,8 +2847,11 @@ function resetToStartupView() {
   suppressViewStateSave = true;
   leaveFavoriteMaterialsMode();
   resetFavoriteOperationModes();
+  clearMaterialSelectedFavoriteLists();
   selectedRecipe = null;
   selectedUsesItem = null;
+  equipmentSearchResults = [];
+  setEquipmentSearchOpen(false);
   prevPanel = 'left';
   listMode = 'none';
   setResultViewMode('tree');
@@ -2552,7 +3211,7 @@ function mergeMaterialItems(items) {
 }
 
 function renderFavoriteRingControls(container) {
-  if (favoriteCountEnabled()) return;
+  if (favoriteMaterialsListIds.length < 2 && favoriteCountEnabled()) return;
   const ringNames = getFavoriteMaterialRingNames();
   if (ringNames.length === 0) return;
 
@@ -2646,6 +3305,17 @@ function intermediateTreeFromRequirements(result) {
 function getFavoriteMaterialRoots() {
   ensureFavoriteMaterialsRingCounts();
   const setCount = readRequestedCount(elements.countInput);
+  const activeLists = getActiveFavoriteMaterialLists();
+  if (favoriteMaterialsListIds.length >= 2) {
+    const roots = new Map();
+    activeLists.forEach(list => {
+      getFavoriteListRecipeNames(list).forEach(name => {
+        const multiplier = isRingRecipe(name) ? (favoriteMaterialsRingCounts[name] || 1) : 1;
+        roots.set(name, (roots.get(name) || 0) + setCount * multiplier);
+      });
+    });
+    return [...roots.entries()].map(([name, qty]) => ({ name, qty }));
+  }
   const list = getDisplayedFavoriteList();
   const useItemCounts = favoriteCountEnabled(list);
   return getFavoriteListRecipeNames(list).map(name => {
@@ -2661,7 +3331,7 @@ function getFavoriteMaterialRoots() {
 
 function getCurrentMaterialRequirements() {
   const count = readRequestedCount(elements.countInput);
-  if (resultSourceMode === 'favorite-materials' && favoriteAnyOneMode()) {
+  if (resultSourceMode === 'favorite-materials' && favoriteAnyOneMode() && favoriteMaterialsListIds.length < 2) {
     const roots = getFavoriteMaterialRoots();
     const results = roots.map(root => calculateMaterialRequirements([{ name: root.name, qty: root.qty }]));
     return mergeMaxRequirementResults(results);
@@ -2688,8 +3358,16 @@ function renderMaterialsList() {
   });
 
   if (resultSourceMode === 'favorite-materials') {
-    renderFavoriteRingControls(elements.treeContainer);
-    if (favoriteCountEnabled()) {
+    const activeLists = getActiveFavoriteMaterialLists();
+    if (favoriteMaterialsListIds.length >= 2) {
+      activeLists.forEach(list => {
+        elements.treeContainer.appendChild(createFavoriteListRootSummary(list));
+      });
+      renderFavoriteRingControls(elements.treeContainer);
+    } else {
+      renderFavoriteRingControls(elements.treeContainer);
+    }
+    if (favoriteMaterialsListIds.length < 2 && favoriteCountEnabled()) {
       getFavoriteMaterialRoots().forEach((root, index) => {
         if (favoriteAnyOneMode() && index > 0) {
           elements.treeContainer.appendChild(createTextElement('div', 'favorite-material-root-or', 'もしくは'));
@@ -2704,7 +3382,7 @@ function renderMaterialsList() {
   }
 
   const contextKey = resultSourceMode === 'favorite-materials'
-    ? `favorite:${getDisplayedFavoriteList()?.id || ''}`
+    ? `favorite:${favoriteMaterialsListIds.length >= 2 ? favoriteMaterialsListIds.join(',') : getDisplayedFavoriteList()?.id || ''}`
     : `recipe:${selectedRecipe || ''}`;
   const appendSectionHeader = (title, initiallyCollapsed, bodyRows) => {
     if (bodyRows.length === 0) return;
@@ -2762,8 +3440,11 @@ function renderMaterialsList() {
             if (supplementIcon) entryRow.appendChild(supplementIcon);
             appendSupplementName(entryRow, entry, 'material-supplement-name');
             entryRow.appendChild(createTextElement('span', 'material-supplement-qty', `× ${formatNumber(entry.qty)}`));
-            const supplementGatheringButton = createGatheringTimerButton(entry.name);
-            if (supplementGatheringButton) entryRow.appendChild(supplementGatheringButton);
+            appendItemActionButtons(
+              entryRow,
+              createShopInfoButton(entry.name),
+              createGatheringTimerButton(entry.name)
+            );
           }
           supplement.appendChild(entryRow);
         });
@@ -2771,8 +3452,7 @@ function renderMaterialsList() {
       }
 
       li.appendChild(content);
-      const gatheringButton = createGatheringTimerButton(row.name);
-      if (gatheringButton) li.appendChild(gatheringButton);
+      appendItemActionButtons(li, createShopInfoButton(row.name), createGatheringTimerButton(row.name));
     } else {
       li.appendChild(createMaterialChoiceContent(row));
     }
@@ -2837,8 +3517,6 @@ function renderMaterialsList() {
     }
 
     rowElement.appendChild(content);
-    const gatheringButton = createGatheringTimerButton(row.name);
-    if (gatheringButton) rowElement.appendChild(gatheringButton);
     const treeButton = document.createElement('button');
     treeButton.type = 'button';
     treeButton.className = 'intermediate-material-tree-btn';
@@ -2849,7 +3527,12 @@ function renderMaterialsList() {
       event.stopPropagation();
       openMaterialTree(row.name, row.qty);
     });
-    rowElement.appendChild(treeButton);
+    appendItemActionButtons(
+      rowElement,
+      createShopInfoButton(row.name),
+      createGatheringTimerButton(row.name),
+      treeButton
+    );
     li.appendChild(rowElement);
 
     if (hasChildren) {
@@ -3030,8 +3713,17 @@ function createResultRootSummary(name, neededQty, className = 'result-root-summa
       createTreeBadge(master.method, false)
     )
   );
-  const gatheringButton = createGatheringTimerButton(name);
-  if (gatheringButton) row.appendChild(gatheringButton);
+  appendItemActionButtons(row, createShopInfoButton(name), createGatheringTimerButton(name));
+  wrapper.appendChild(row);
+  return wrapper;
+}
+
+function createFavoriteListRootSummary(list) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'result-root-summary favorite-material-root-summary favorite-list-root-summary';
+  const row = document.createElement('div');
+  row.className = 'node-row';
+  row.appendChild(createTextElement('div', 'tree-main favorite-list-root-name', list.name));
   wrapper.appendChild(row);
   return wrapper;
 }
@@ -3130,6 +3822,35 @@ function createGatheringTimerButton(name) {
     showGatheringDialog(name);
   });
   return button;
+}
+
+function hasShopInfo(name) {
+  return (itemMaster[name]?.shopInfo?.shops || []).length > 0;
+}
+
+function createShopInfoButton(name) {
+  if (!hasShopInfo(name)) return null;
+  const button = document.createElement('button');
+  button.className = 'shop-info-btn';
+  button.type = 'button';
+  button.textContent = '🛒';
+  button.title = `${name}の店情報`;
+  button.setAttribute('aria-label', `${name}の店情報`);
+  button.addEventListener('click', event => {
+    event.stopPropagation();
+    showShopDialog(name);
+  });
+  return button;
+}
+
+function appendItemActionButtons(parent, ...buttons) {
+  const visibleButtons = buttons.filter(Boolean);
+  if (!visibleButtons.length) return null;
+  const actions = document.createElement('span');
+  actions.className = 'item-action-buttons';
+  actions.append(...visibleButtons);
+  parent.appendChild(actions);
+  return actions;
 }
 
 function gatheringMethodClass(method) {
@@ -3275,6 +3996,45 @@ function closeGatheringDialog() {
   stopGatheringTimerUpdates();
 }
 
+function showShopDialog(name) {
+  const shopInfo = itemMaster[name]?.shopInfo;
+  const shops = shopInfo?.shops || [];
+  elements.shopTitle.textContent = `店情報: ${name}`;
+  elements.shopPriceHeader.replaceChildren();
+  elements.shopContent.replaceChildren();
+  if (!shops.length) {
+    elements.shopContent.appendChild(createTextElement('p', 'shop-empty', '店情報はありません。'));
+  } else {
+    const price = Number(shopInfo.price);
+    if (Number.isFinite(price)) {
+      const priceBlock = createTextElement('section', 'shop-price-section', '');
+      priceBlock.append(
+        createTextElement('h3', '', '販売価格'),
+        createTextElement('div', 'shop-price', `${formatNumber(price)}ギル`)
+      );
+      elements.shopPriceHeader.appendChild(priceBlock);
+    }
+    const listSection = createTextElement('section', 'shop-list-section', '');
+    listSection.appendChild(createTextElement('h3', '', '販売場所'));
+    shops.forEach(shop => {
+      const entry = createTextElement('div', 'shop-entry', '');
+      const hasCoordinates = Number.isFinite(Number(shop.x)) && Number.isFinite(Number(shop.y));
+      const location = hasCoordinates ? `${shop.area || ''} X:${shop.x} Y:${shop.y}` : `${shop.area || ''}`;
+      entry.append(
+        createTextElement('div', 'shop-name', shop.shopName || 'ショップ'),
+        createTextElement('div', 'shop-location', location)
+      );
+      listSection.appendChild(entry);
+    });
+    elements.shopContent.appendChild(listSection);
+  }
+  elements.shopOverlay.classList.add('open');
+}
+
+function closeShopDialog() {
+  elements.shopOverlay.classList.remove('open');
+}
+
 function createTreeMain(name, producedQty, subInfo, badge) {
   const title = document.createElement('span');
   title.className = 'node-title';
@@ -3386,8 +4146,7 @@ function buildNode(
       createTreeBadge(master.method, hideCraftBadge)
     )
   );
-  const gatheringButton = createGatheringTimerButton(name);
-  if (gatheringButton) row.appendChild(gatheringButton);
+  appendItemActionButtons(row, createShopInfoButton(name), createGatheringTimerButton(name));
   node.appendChild(row);
 
   if (!hasChildren) return node;
@@ -3646,7 +4405,12 @@ function openPopup() {
 
 // Event wiring and application startup
 function handleDocumentPointerDown(event) {
-  if (event.target !== elements.searchBox && !elements.searchHistory.contains(event.target)) {
+  if (
+    event.target !== elements.searchBox
+    && event.target !== elements.equipmentSearchToggle
+    && !elements.searchHistory.contains(event.target)
+    && !elements.equipmentSearchPanel?.contains(event.target)
+  ) {
     closeSearchHistory();
   }
   if (event.target !== elements.favBtn && !elements.favoriteLists.contains(event.target)) {
@@ -3681,7 +4445,40 @@ function bindEvents() {
     if (event.key === 'Escape') closeSearchHistory();
   });
   elements.searchClearBtn.addEventListener('click', clearSearch);
+  // 装備検索は一時的に無効化
+  if (elements.equipmentSearchToggle) {
+    elements.equipmentSearchToggle.addEventListener('click', () => setEquipmentSearchOpen(!equipmentSearchOpen));
+    elements.equipmentJobSelect.addEventListener('change', updateEquipmentItemLevelOptions);
+    elements.equipmentLevelInput.addEventListener('input', updateEquipmentItemLevelOptions);
+    elements.equipmentLevelInput.addEventListener('blur', commitEquipmentLevelInput);
+    elements.equipmentLevelDownBtn.addEventListener('click', () => {
+      elements.equipmentLevelInput.value = String(equipmentLevelValue() - 1);
+      updateEquipmentItemLevelOptions();
+    });
+    elements.equipmentLevelUpBtn.addEventListener('click', () => {
+      elements.equipmentLevelInput.value = String(equipmentLevelValue() + 1);
+      updateEquipmentItemLevelOptions();
+    });
+    elements.equipmentItemLevelSelect.addEventListener('change', () => {
+      updateEquipmentSearchButtons();
+      saveViewState();
+    });
+    elements.equipmentSlotSelect.addEventListener('change', () => {
+      updateEquipmentSearchButtons();
+      saveViewState();
+    });
+    elements.equipmentSearchBtn.addEventListener('click', runEquipmentSearch);
+    elements.equipmentSearchResetBtn.addEventListener('click', resetEquipmentSearch);
+    elements.saveEquipmentSearchBtn.addEventListener('click', saveEquipmentSearchAsFavorite);
+  }
   elements.favBtn.addEventListener('click', toggleFav);
+  elements.checkedFavoriteMaterialsBtn.addEventListener('click', openCheckedFavoriteMaterialsMode);
+  elements.clearFavoriteMaterialChecksBtn.addEventListener('click', () => {
+    clearMaterialSelectedFavoriteLists();
+    leaveFavoriteMaterialsMode();
+    renderList();
+    renderResultView();
+  });
   elements.usesBackBtn.addEventListener('click', returnToList);
   elements.backBtn.addEventListener('click', goBack);
   elements.mobileBackBtn.addEventListener('click', () => {
@@ -3726,6 +4523,10 @@ function bindEvents() {
   elements.gatheringOverlay.addEventListener('click', event => {
     if (event.target === elements.gatheringOverlay) closeGatheringDialog();
   });
+  elements.shopCloseBtn.addEventListener('click', closeShopDialog);
+  elements.shopOverlay.addEventListener('click', event => {
+    if (event.target === elements.shopOverlay) closeShopDialog();
+  });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) stopGatheringTimerUpdates();
     else startGatheringTimerUpdates();
@@ -3735,7 +4536,10 @@ function bindEvents() {
     if (elements.favoriteLists.classList.contains('open')) updateFavoriteListsMaxHeight();
   });
   elements.usesBtn.addEventListener('click', () => showUsesPanel(selectedRecipe));
-  elements.updateReloadBtn.addEventListener('click', () => location.reload());
+  elements.updateReloadBtn.addEventListener('click', () => {
+    markSkipRestoreOnce();
+    location.reload();
+  });
   elements.confirmYes.addEventListener('click', confirmPendingAction);
   elements.confirmNo.addEventListener('click', closeConfirm);
   elements.settingsOverlay.addEventListener('click', event => {

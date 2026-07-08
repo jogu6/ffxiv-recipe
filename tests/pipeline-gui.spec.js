@@ -79,8 +79,8 @@ async function invokes(page) {
 test('pipeline GUI shows operation descriptions without test-only buttons', async ({ page }) => {
   await openPipelineGui(page);
 
-  await expect(page.locator('.action-item', { hasText: '全実行' })).toContainText('CSV検証、候補生成、公開反映、アイコン生成');
-  await expect(page.locator('.action-item[data-step="publish"]')).toContainText('比較に通った候補で site/data/Item.json を置き換えます。');
+  await expect(page.locator('.action-item', { hasText: '全実行' })).toContainText('CSV検証、データ生成、アイコン生成、Lodestone情報反映、公開反映');
+  await expect(page.locator('.action-item[data-step="publish"]')).toContainText('候補データを site/data/Item.json に統合します。');
   await expect(page.locator('.log-panel')).toBeVisible();
   await expect(page.locator('.side-panel #resumeBtn')).toHaveCount(0);
   await expect(page.locator('.side-panel #cancelBtn')).toHaveCount(0);
@@ -101,7 +101,6 @@ test('pipeline GUI shows operation descriptions without test-only buttons', asyn
 test('pipeline GUI confirms long operations before invoking Tauri', async ({ page }) => {
   await openPipelineGui(page);
 
-  await page.locator('#buildToggle').click();
   await page.locator('#buildBtn').click();
   await expect(page.locator('#confirmOverlay')).toHaveClass(/open/);
   await page.locator('#confirmCancelBtn').click();
@@ -125,6 +124,8 @@ test('pipeline GUI runs the recommended sequence with WebP quality', async ({ pa
   await page.locator('#buildToggle').click();
   await page.locator('#qualityInput').fill('70');
   await page.locator('#qualityInput').blur();
+  await page.locator('#csvToggle').click();
+  await page.locator('#lodestoneForceInput').check();
   await page.locator('#runBtn').click();
   await page.locator('#confirmOkBtn').click();
 
@@ -133,9 +134,24 @@ test('pipeline GUI runs the recommended sequence with WebP quality', async ({ pa
   expect(runCalls.map(call => call.payload)).toEqual([
     { command: 'validate-csv', args: [] },
     { command: 'build', args: [] },
-    { command: 'publish', args: [] },
-    { command: 'icons', args: ['--quality', '70'] }
+    { command: 'icons', args: ['--quality', '70', '--size', '80', '--delay', '500', '--item-json', 'pipeline/intermediate/06-public-items.json'] },
+    { command: 'publish-lodestone-info', args: ['--delay', '100', '--force'] },
+    { command: 'publish', args: [] }
   ]);
+});
+
+test('pipeline GUI can force Lodestone info refresh without changing cache behavior', async ({ page }) => {
+  await openPipelineGui(page);
+
+  await page.locator('#lodestoneForceInput').check();
+  await page.locator('#lodestoneInfoBtn').click();
+  await page.locator('#confirmOkBtn').click();
+
+  const runCalls = (await invokes(page)).filter(call => call.command === 'run_pipeline_command');
+  expect(runCalls.at(-1).payload).toEqual({
+    command: 'publish-lodestone-info',
+    args: ['--delay', '100', '--force']
+  });
 });
 
 test('pipeline GUI defaults icon generation to q80 Lodestone output', async ({ page }) => {

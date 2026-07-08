@@ -496,6 +496,50 @@ test('limits the protected recent-items list to one hundred entries', async ({ p
   await expect(page.locator('#recipeList li.fav-item-row')).toHaveCount(100);
 });
 
+test('shows shop info button and dialog for items with ShopInfo', async ({ page }) => {
+  await page.route('**/data/Item.json*', async route => {
+    const response = await route.fetch();
+    const items = await response.json();
+    const target = items.find(item => item.Name === 'アリペブレ');
+    target.ShopInfo = {
+      price: 4,
+      shops: [{
+        shopName: '素材屋 テスト',
+        area: 'リムサ・ロミンサ：下甲板層',
+        x: 8.6,
+        y: 11.8
+      }]
+    };
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify(items)
+    });
+  });
+  await openApp(page);
+  await searchFor(page, 'アリペブレ');
+  await page.getByText('アリペブレ', { exact: true }).first().click();
+  await page.locator('.result-root-summary .shop-info-btn').click();
+  await expect(page.locator('#shopOverlay')).toHaveClass(/open/);
+  await expect(page.locator('#shopTitle')).toContainText('店情報: アリペブレ');
+  await expect(page.locator('#shopPriceHeader')).toContainText('販売価格');
+  await expect(page.locator('#shopPriceHeader')).toContainText('4ギル');
+  await expect(page.locator('#shopContent')).toContainText('素材屋 テスト');
+  await expect(page.locator('#shopContent')).toContainText('リムサ・ロミンサ：下甲板層 X:8.6 Y:11.8');
+});
+
+test('update reload skips saved view restoration once', async ({ page }) => {
+  await openApp(page);
+  await searchFor(page, 'アリペブレ');
+  await page.getByText('アリペブレ', { exact: true }).first().click();
+  await expect(page.locator('.result-root-summary')).toContainText('アリペブレ');
+  await page.evaluate(() => sessionStorage.setItem('ff14_skip_restore_once', '1'));
+  await page.reload();
+  await expect(page.locator('#loadStatus')).toContainText(/patch/);
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await expect(page.locator('#searchBox')).toHaveValue('');
+  await expect(page.locator('.result-root-summary')).toHaveCount(0);
+});
+
 test('favorites and shares an ingredient while preserving search results', async ({ page }) => {
   await openApp(page);
   await searchFor(page, '山羊乳');
@@ -866,6 +910,295 @@ test('mobile pin turns active after adding to a favorite list', async ({ page })
   await expect(materialsButton).toHaveClass(/active/);
   await page.locator('#mobileBackBtn').click();
   await expect(page.locator('#recipeList .favorite-materials-row').getByText('素材リスト')).not.toHaveClass(/active/);
+});
+
+test('mobile panels align list actions and scroll on the intended element', async ({ page }) => {
+  await openApp(page, 423, 780);
+  await searchFor(page, '岩塩');
+
+  const saltRow = page.locator('#recipeList li').filter({ has: page.getByText('岩塩', { exact: true }) }).first();
+  const leftRowBox = await saltRow.boundingBox();
+  const actionBox = await saltRow.locator('.item-action-buttons').boundingBox();
+  expect(leftRowBox).toBeTruthy();
+  expect(actionBox).toBeTruthy();
+  expect((leftRowBox.x + leftRowBox.width) - (actionBox.x + actionBox.width)).toBeLessThanOrEqual(16);
+
+  const leftMetrics = await page.locator('#panelLeft').evaluate(panel => {
+    const list = panel.querySelector('#recipeList');
+    return {
+      panelOverflowY: getComputedStyle(panel).overflowY,
+      listOverflowY: getComputedStyle(list).overflowY,
+      widthDiff: Math.abs(panel.clientWidth - list.offsetWidth)
+    };
+  });
+  expect(leftMetrics.panelOverflowY).toBe('hidden');
+  expect(leftMetrics.listOverflowY).toBe('auto');
+  expect(leftMetrics.widthDiff).toBeLessThanOrEqual(1);
+
+  await saltRow.locator('.uses-list-btn').click();
+  const middleMetrics = await page.locator('#panelMiddle').evaluate(panel => {
+    const list = panel.querySelector('#usesList');
+    return {
+      panelOverflowY: getComputedStyle(panel).overflowY,
+      listOverflowY: getComputedStyle(list).overflowY,
+      widthDiff: Math.abs(panel.clientWidth - list.offsetWidth)
+    };
+  });
+  expect(middleMetrics.panelOverflowY).toBe('hidden');
+  expect(middleMetrics.listOverflowY).toBe('auto');
+  expect(middleMetrics.widthDiff).toBeLessThanOrEqual(1);
+
+  await page.locator('#mobileBackBtn').click();
+  await page.setViewportSize({ width: 423, height: 520 });
+  await searchFor(page, 'バスタードソード');
+  await page.getByText('バスタードソード', { exact: true }).first().click();
+  const rightMetrics = await page.locator('#panelRight').evaluate(panel => {
+    panel.scrollTop = 100;
+    return {
+      overflowY: getComputedStyle(panel).overflowY,
+      scrollTop: panel.scrollTop,
+      scrollHeight: panel.scrollHeight,
+      clientHeight: panel.clientHeight
+    };
+  });
+  expect(rightMetrics.overflowY).toBe('auto');
+  expect(rightMetrics.scrollHeight).toBeGreaterThan(rightMetrics.clientHeight);
+  expect(rightMetrics.scrollTop).toBeGreaterThan(0);
+});
+
+test('combined favorite materials opens directly without confirmation dialog', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('ff14_favorite_lists_v2', JSON.stringify({
+      version: 2,
+      selectedListId: 'list-defense',
+      lists: [
+        {
+          id: 'list-defense',
+          name: 'コートリーブーツ・ディフェンダー',
+          itemIds: [1602],
+          materialSelected: true
+        },
+        {
+          id: 'list-healer',
+          name: 'コートリーブーツ・ヒーラー',
+          itemIds: [4422],
+          materialSelected: true
+        }
+      ]
+    }));
+  });
+
+  await openApp(page, 423, 780);
+  await page.locator('#checkedFavoriteMaterialsBtn').click();
+  await expect(page.locator('#confirmOverlay')).not.toHaveClass(/open/);
+  await expect(page.locator('.favorite-list-root-summary').filter({ hasText: 'コートリーブーツ・ディフェンダー' })).toBeVisible();
+  await expect(page.locator('.favorite-list-root-summary').filter({ hasText: 'コートリーブーツ・ヒーラー' })).toBeVisible();
+});
+
+test('checked favorite lists use a dedicated combined materials entry and reset on main navigation', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('ff14_favorite_lists_v2', JSON.stringify({
+      version: 2,
+      selectedListId: 'list-defense',
+      lists: [
+        {
+          id: 'list-defense',
+          name: 'コートリーブーツ・ディフェンダー',
+          itemIds: [1602],
+          materialSelected: true
+        },
+        {
+          id: 'list-healer',
+          name: 'コートリーブーツ・ヒーラー',
+          itemIds: [4422],
+          materialSelected: true
+        }
+      ]
+    }));
+  });
+
+  await openApp(page, 423, 780);
+  await expect(page.locator('#checkedFavoriteMaterialsActions')).toHaveClass(/visible/);
+  await expect(page.locator('#checkedFavoriteMaterialsBtn')).toBeVisible();
+  await expect(page.locator('#clearFavoriteMaterialChecksBtn')).toBeVisible();
+  const actionColor = await page.locator('#checkedFavoriteMaterialsBtn').evaluate(el => getComputedStyle(el).color);
+  await expect(page.locator('#clearFavoriteMaterialChecksBtn')).toHaveCSS('color', actionColor);
+  await expect(page.locator('#checkedFavoriteMaterialsBtn')).toContainText('※チェックしたお気に入りリストの合算素材リスト');
+
+  await page.locator('#checkedFavoriteMaterialsBtn').click();
+  await expect(page.locator('#confirmOverlay')).not.toHaveClass(/open/);
+  await expect(page.locator('.favorite-list-root-summary').filter({ hasText: 'コートリーブーツ・ディフェンダー' })).toBeVisible();
+  await expect(page.locator('.favorite-list-root-summary').filter({ hasText: 'コートリーブーツ・ヒーラー' })).toBeVisible();
+
+  await page.locator('#appTitle').click();
+  await expect(page.locator('#checkedFavoriteMaterialsActions')).not.toHaveClass(/visible/);
+  await page.locator('#favBtn').click();
+  await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
+  await expect(page.locator('#favoriteLists .favorite-list-material-checkbox:checked')).toHaveCount(0);
+
+  await page.locator('#favoriteLists .favorite-list-material-checkbox').first().check();
+  await expect(page.locator('#checkedFavoriteMaterialsActions')).toHaveClass(/visible/);
+  await page.locator('#clearFavoriteMaterialChecksBtn').click();
+  await expect(page.locator('#checkedFavoriteMaterialsActions')).not.toHaveClass(/visible/);
+  await expect(page.locator('#favoriteLists .favorite-list-material-checkbox:checked')).toHaveCount(0);
+
+  if (!await page.locator('#favoriteLists').evaluate(list => list.classList.contains('open'))) {
+    await page.locator('#favBtn').click();
+    await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
+  }
+  await page.locator('#favoriteLists .favorite-list-material-checkbox').first().check();
+  await expect(page.locator('#checkedFavoriteMaterialsActions')).toHaveClass(/visible/);
+  await searchFor(page, 'バスタードソード');
+  await page.getByText('バスタードソード', { exact: true }).first().click();
+  await expect(page.locator('#checkedFavoriteMaterialsActions')).not.toHaveClass(/visible/);
+  await page.locator('#mobileBackBtn').click();
+  await page.locator('#favBtn').click();
+  await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
+  await expect(page.locator('#favoriteLists .favorite-list-material-checkbox:checked')).toHaveCount(0);
+});
+
+test('combined favorite materials supports ring count toggles and restores them', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('ff14_favorite_lists_v2', JSON.stringify({
+      version: 2,
+      selectedListId: 'list-ring-a',
+      lists: [
+        {
+          id: 'list-ring-a',
+          name: '指輪A',
+          itemIds: [4422],
+          materialSelected: true
+        },
+        {
+          id: 'list-ring-b',
+          name: '指輪B',
+          itemIds: [4422],
+          materialSelected: true
+        }
+      ]
+    }));
+  });
+
+  await openApp(page, 423, 780);
+  await page.locator('#checkedFavoriteMaterialsBtn').click();
+  await expect(page.locator('.favorite-ring-controls')).toContainText('カッパーリング');
+  const listBox = await page.locator('.favorite-list-root-summary').last().boundingBox();
+  const ringBox = await page.locator('.favorite-ring-controls').boundingBox();
+  expect(listBox).toBeTruthy();
+  expect(ringBox).toBeTruthy();
+  expect(ringBox.y).toBeGreaterThanOrEqual(listBox.y + listBox.height - 1);
+  await page.locator('.favorite-ring-toggle button').filter({ hasText: '2つ' }).click();
+  await expect(page.locator('.favorite-ring-toggle button').filter({ hasText: '2つ' })).toHaveClass(/active/);
+  await expect(page.locator('.materials-list')).toContainText(/銅鉱\s*×\s*12/);
+
+  await page.reload();
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await expect(page.locator('.favorite-ring-controls')).toContainText('カッパーリング');
+  await expect(page.locator('.favorite-ring-toggle button').filter({ hasText: '2つ' })).toHaveClass(/active/);
+  await expect(page.locator('.materials-list')).toContainText(/銅鉱\s*×\s*12/);
+});
+
+test('favorite dropdown max height stays within the viewport with checked-list buttons', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('ff14_favorite_lists_v2', JSON.stringify({
+      version: 2,
+      selectedListId: null,
+      lists: Array.from({ length: 40 }, (_, index) => ({
+        id: `list-${index}`,
+        name: `お気に入りリスト${index + 1}`,
+        itemIds: [1602],
+        materialSelected: index < 2
+      }))
+    }));
+  });
+
+  await openApp(page, 423, 780);
+  await page.locator('#favBtn').click();
+  await page.waitForTimeout(250);
+  const dropdown = await page.locator('#favoriteLists').evaluate(list => {
+    const rect = list.getBoundingClientRect();
+    return {
+      bottom: rect.bottom,
+      maxHeight: Number.parseFloat(getComputedStyle(list).maxHeight)
+    };
+  });
+  expect(dropdown.bottom).toBeLessThanOrEqual(780 - 10);
+  const maxHeight = dropdown.maxHeight;
+  expect(maxHeight).toBeLessThanOrEqual(Math.floor(780 * 0.7) + 2);
+  expect(maxHeight).toBeGreaterThan(250);
+});
+
+test('equipment search lists target gear and saves results as a favorite list', async ({ page }) => {
+  await openApp(page);
+
+  await page.locator('#equipmentSearchToggle').click();
+  await expect(page.locator('#equipmentSearchToggle')).toHaveText('▲');
+  await expect(page.locator('#searchBox')).toBeDisabled();
+  await expect(page.locator('#equipmentJobSelect')).toContainText('剣術士');
+  await page.locator('#equipmentJobSelect').selectOption('ナイト');
+  await page.locator('#equipmentLevelInput').fill('100');
+  await page.locator('#equipmentLevelInput').dispatchEvent('input');
+  await page.locator('#equipmentItemLevelSelect').selectOption('770');
+  await page.locator('#equipmentSearchBtn').click();
+
+  await expect(page.locator('#recipeList')).toContainText('コートリーラヴァー・ソード');
+  await expect(page.locator('#recipeList')).toContainText('コートリーラヴァー・ディフェンダーリング');
+  await expect(page.locator('#saveEquipmentSearchBtn')).toBeEnabled();
+
+  await page.locator('#saveEquipmentSearchBtn').click();
+  await expect(page.locator('#textInputField')).toHaveValue('ナイト:装備Lv100:IL770');
+  await page.locator('#textInputOkBtn').click();
+  await expect(page.locator('#favBtn')).toContainText('ナイト:装備Lv100:IL770');
+  await expect(page.locator('#recipeList')).toContainText('コートリーラヴァー・ソード');
+});
+
+test('equipment search item levels update by job and restore after reload', async ({ page }) => {
+  await openApp(page);
+
+  await page.locator('#equipmentSearchToggle').click();
+  await page.locator('#equipmentJobSelect').selectOption('竜騎士');
+  await page.locator('#equipmentLevelInput').fill('100');
+  await page.locator('#equipmentLevelInput').dispatchEvent('input');
+  await expect(page.locator('#equipmentItemLevelSelect')).toHaveValue('770');
+
+  await page.locator('#equipmentJobSelect').selectOption('木工師');
+  await expect(page.locator('#equipmentItemLevelSelect')).toHaveValue('750');
+  await expect(page.locator('#equipmentItemLevelSelect option[value="770"]')).toHaveCount(0);
+  await page.locator('#equipmentSearchBtn').click();
+  await expect(page.locator('#recipeList')).toContainText('ゴールデンサム・ソー');
+
+  await page.reload();
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await expect(page.locator('#equipmentSearchPanel')).toHaveClass(/open/);
+  await expect(page.locator('#searchBox')).toBeDisabled();
+  await expect(page.locator('#equipmentJobSelect')).toHaveValue('木工師');
+  await expect(page.locator('#equipmentLevelInput')).toHaveValue('100');
+  await expect(page.locator('#equipmentItemLevelSelect')).toHaveValue('750');
+  await expect(page.locator('#recipeList')).toContainText('ゴールデンサム・ソー');
+});
+
+test('equipment search excludes bait from web search targets', async ({ page }) => {
+  await openApp(page);
+
+  await page.locator('#equipmentSearchToggle').click();
+  await page.locator('#equipmentJobSelect').selectOption('漁師');
+  await page.locator('#equipmentLevelInput').fill('5');
+  await page.locator('#equipmentLevelInput').dispatchEvent('input');
+
+  await expect(page.locator('#equipmentItemLevelSelect option[value="5"]')).toHaveCount(0);
+  await expect(page.locator('#equipmentSearchBtn')).toBeDisabled();
+});
+
+test('equipment search does not mix all-class crafter gear into battle class results', async ({ page }) => {
+  await openApp(page);
+
+  await page.locator('#equipmentSearchToggle').click();
+  await page.locator('#equipmentJobSelect').selectOption('幻術士');
+  await page.locator('#equipmentLevelInput').fill('40');
+  await page.locator('#equipmentLevelInput').dispatchEvent('input');
+
+  await expect(page.locator('#equipmentItemLevelSelect option[value="43"]')).toHaveCount(0);
+  await expect(page.locator('#equipmentItemLevelSelect')).not.toContainText('43');
 });
 
 test('title returns to the startup view', async ({ page }) => {

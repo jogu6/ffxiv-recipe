@@ -28,12 +28,49 @@
 <div class="main">
   <div class="panel-left" id="panelLeft">
     <div class="panel-left-header">
-      <div class="search-wrap">
-        <input type="text" id="searchBox" placeholder="絞り込み...">
-        <button id="searchClearBtn" type="button" title="検索をクリア" aria-label="検索をクリア">×</button>
+      <div class="search-row">
+        <div class="search-wrap">
+          <input type="text" id="searchBox" placeholder="絞り込み...">
+          <button id="searchClearBtn" type="button" title="検索をクリア" aria-label="検索をクリア">×</button>
+        </div>
+        <!-- 装備検索は一時的に非表示 -->
+        <!-- <button id="equipmentSearchToggle" type="button" title="装備検索" aria-expanded="false">▼</button> -->
+      </div>
+      <div id="equipmentSearchPanel" class="equipment-search-panel">
+        <div class="equipment-search-grid">
+          <label>
+            <span>ジョブ</span>
+            <select id="equipmentJobSelect"></select>
+          </label>
+          <label>
+            <span>装備レベル</span>
+            <div class="equipment-level-control">
+              <button id="equipmentLevelDownBtn" type="button">－</button>
+              <input id="equipmentLevelInput" type="number" min="1" inputmode="numeric">
+              <button id="equipmentLevelUpBtn" type="button">＋</button>
+            </div>
+          </label>
+          <label>
+            <span>アイテムレベル</span>
+            <select id="equipmentItemLevelSelect"></select>
+          </label>
+          <label>
+            <span>部位</span>
+            <select id="equipmentSlotSelect"></select>
+          </label>
+        </div>
+        <div class="equipment-search-actions">
+          <button id="equipmentSearchBtn" type="button">検索</button>
+          <button id="equipmentSearchResetBtn" type="button">リセット</button>
+        </div>
+        <button id="saveEquipmentSearchBtn" type="button">検索結果をお気に入り登録</button>
       </div>
       <ul id="searchHistory"></ul>
       <button id="favBtn" title="お気に入り">📌 お気に入り</button>
+      <div id="checkedFavoriteMaterialsActions" class="checked-favorite-materials-actions">
+        <button id="checkedFavoriteMaterialsBtn" type="button">※チェックしたお気に入りリストの合算素材リスト</button>
+        <button id="clearFavoriteMaterialChecksBtn" type="button">チェックを全て外す</button>
+      </div>
       <ul id="favoriteLists"></ul>
     </div>
     <ul id="recipeList"></ul>
@@ -73,7 +110,7 @@
     </div>
   </div>
 </div>
-<div class="footer">Data: XIVAPI / © SQUARE ENIX / X: <a href="https://x.com/ff14_recipe" target="_blank" rel="noopener">@ff14_recipe</a></div>
+<div class="footer">© SQUARE ENIX / Data: XIVAPI / X: <a href="https://x.com/ff14_recipe" target="_blank" rel="noopener">@ff14_recipe</a></div>
 <div id="loadingOverlay" class="open" role="status" aria-live="polite">
   <div class="loading-card">
     <div class="loading-title">データ読み込み中...</div>
@@ -176,6 +213,19 @@
     <div id="gatheringContent"></div>
     <div class="settings-close">
       <button class="confirm-btn no" id="gatheringCloseBtn" type="button">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<div id="shopOverlay">
+  <div id="shopDialog">
+    <div class="shop-dialog-header">
+      <span id="shopTitle"></span>
+      <div id="shopPriceHeader"></div>
+    </div>
+    <div id="shopContent"></div>
+    <div class="settings-close">
+      <button class="confirm-btn no" id="shopCloseBtn" type="button">閉じる</button>
     </div>
   </div>
 </div>
