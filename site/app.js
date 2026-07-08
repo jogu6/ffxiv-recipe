@@ -390,14 +390,6 @@ function saveViewState() {
       listIds: favoriteMaterialsListIds,
       ringCounts: favoriteMaterialsRingCounts
     },
-    equipmentSearch: {
-      open: equipmentSearchOpen,
-      job: elements.equipmentJobSelect.value,
-      equipLevel: equipmentLevelValue(),
-      itemLevel: selectedEquipmentItemLevel(),
-      slot: elements.equipmentSlotSelect.value,
-      resultIds: equipmentSearchResults.map(itemIdForName).filter(Boolean)
-    },
     materials: {
       sections: Object.fromEntries(materialSectionState)
     }
@@ -432,28 +424,14 @@ function restoreViewState() {
       : [];
     const recipe = recipes[state.selected?.recipe] ? state.selected.recipe : '';
     const usesItem = usedIn[state.selected?.usesItem] ? state.selected.usesItem : '';
-    const restoredEquipmentIds = Array.isArray(state.equipmentSearch?.resultIds)
-      ? normalizeItemIds(state.equipmentSearch.resultIds)
-      : [];
-    equipmentSearchResults = restoredEquipmentIds.map(itemNameForId).filter(Boolean);
-    setEquipmentSearchOpen(Boolean(state.equipmentSearch?.open));
-    if (EQUIPMENT_JOB_OPTIONS.includes(state.equipmentSearch?.job)) {
-      elements.equipmentJobSelect.value = state.equipmentSearch.job;
-    }
-    elements.equipmentLevelInput.value = String(toNumeric(state.equipmentSearch?.equipLevel, maxEquipmentLevel));
-    updateEquipmentItemLevelOptions(toNumeric(state.equipmentSearch?.itemLevel, 0));
-    if (EQUIPMENT_SLOT_OPTIONS.some(([slot]) => slot === state.equipmentSearch?.slot)) {
-      elements.equipmentSlotSelect.value = state.equipmentSearch.slot;
-    }
-    updateEquipmentSearchButtons();
+    equipmentSearchResults = [];
+    setEquipmentSearchOpen(false);
 
     elements.searchBox.value = search;
-    if (equipmentSearchOpen) elements.searchBox.value = '';
     elements.searchClearBtn.classList.toggle('visible', elements.searchBox.value.trim() !== '');
     favoriteStore.selectedListId = favoriteList?.id || null;
 
     if (state.view?.listMode === 'fav' && favoriteList) listMode = 'fav';
-    else if (state.view?.listMode === 'equipment' && equipmentSearchResults.length > 0) listMode = 'equipment';
     else listMode = search.trim() ? 'search' : 'none';
 
     selectedRecipe = recipe || null;
