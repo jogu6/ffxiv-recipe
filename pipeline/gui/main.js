@@ -71,7 +71,7 @@ const stepDefs = [
   { command: 'validate-csv', order: '1', label: 'CSV検証', description: '必須ヘッダーと token-items.csv の形式を確認します。' },
   { command: 'build', order: '2', label: '候補生成', description: '公開候補 JSON を作成します。Item.json はまだ置き換えません。' },
   { command: 'icons', order: '3', label: 'アイコン生成', description: 'Lodestone NQ 画像を優先し、指定サイズの WebP アイコンを生成します。' },
-  { command: 'publish-lodestone-info', order: '4', label: 'Lodestone情報反映', description: '店、製作、装備情報をLodestoneから取得して公開候補JSONへ反映します。' },
+  { command: 'publish-lodestone-info', order: '4', label: 'Lodestone情報反映', description: 'Lodestone情報とハウジング・友好部族ショップ情報を公開候補JSONへ反映します。' },
   { command: 'equipment-role-groups', order: '確認', label: '推奨ロール確認', description: '判定不能な広域装備の推奨ロールを指定します。' },
   { command: 'publish', order: '5', label: '公開反映', description: '現在の Item.json を自動保護し、比較に通った候補で置き換えます。' },
   { command: 'verify', order: '確認', label: 'Item.json比較', description: '比較だけを実行します。site/data/Item.json は変更しません。' },
@@ -893,7 +893,7 @@ function bindEvents() {
     () => runCommand('icons', ['--quality', elements.qualityInput.value, '--size', elements.iconSizeInput.value, '--delay', elements.iconDelayInput.value], { title: 'アイコン生成' })
   ));
   elements.lodestoneInfoBtn.addEventListener('click', () => confirmAndRun(
-    'Lodestoneから店、製作、装備情報を取得して公開候補JSONに反映します。公開データはまだ置き換えません。時間がかかります。実行しますか？',
+    'Lodestone情報とハウジング・友好部族ショップ情報を公開候補JSONに反映します。公開データはまだ置き換えません。時間がかかります。実行しますか？',
     () => runCommand('publish-lodestone-info', lodestoneInfoArgs(), { title: 'Lodestone情報反映' })
   ));
   elements.equipmentRoleBtn.addEventListener('click', openEquipmentRoleDialog);

@@ -457,7 +457,7 @@ test('keeps a protected recent-items list with recipes and reverse-looked-up mat
   await expect(recentRows.nth(0)).toContainText('山羊乳');
   await expect(recentRows.nth(1)).toContainText('アリペブレ');
   await expect(page.locator('#recipeList').getByText('並び替え')).toHaveCount(0);
-  await expect(page.locator('#recipeList').getByText('素材リスト')).toHaveCount(0);
+  await expect(page.locator('#recipeList').getByText('素材リストを表示')).toHaveCount(0);
 
   await recentRows.nth(0).click();
   await expect(page.locator('#usesTitle')).toContainText('山羊乳');
@@ -559,7 +559,11 @@ test('shows shop info button and dialog for items with ShopInfo', async ({ page 
         shopName: '素材屋 テスト',
         area: 'リムサ・ロミンサ：下甲板層',
         x: 8.6,
-        y: 11.8
+        y: 11.8,
+        requiredRank: '1: 中立'
+      }, {
+        shopName: '通常ショップ テスト',
+        area: 'グリダニア：新市街'
       }]
     };
     await route.fulfill({
@@ -577,6 +581,8 @@ test('shows shop info button and dialog for items with ShopInfo', async ({ page 
   await expect(page.locator('#shopPriceHeader')).toContainText('4ギル');
   await expect(page.locator('#shopContent')).toContainText('素材屋 テスト');
   await expect(page.locator('#shopContent')).toContainText('リムサ・ロミンサ：下甲板層 X:8.6 Y:11.8');
+  await expect(page.locator('#shopContent')).toContainText('必要友好ランク：1: 中立');
+  await expect(page.locator('.shop-required-rank')).toHaveCount(1);
 });
 
 test('purchased intermediate keeps rows visible and marks its unused materials', async ({ page }) => {
@@ -591,15 +597,26 @@ test('purchased intermediate keeps rows visible and marks its unused materials',
   await purchasedNode.locator('.shop-info-btn').click();
   const option = page.getByLabel('この中間素材は購入💰して用意する');
   await expect(option).not.toBeChecked();
+  await expect(option).toHaveCSS('appearance', 'none');
+  await expect(option).toHaveCSS('width', '22px');
+  await expect(option).toHaveCSS('height', '22px');
+  await expect(option).toHaveCSS('background-color', 'rgb(26, 26, 26)');
+  const fireShardRow = page.locator('.materials-list li').filter({ hasText: 'ファイアシャード' });
+  const earthShardRow = page.locator('.materials-list li').filter({ hasText: 'アースシャード' });
+  await expect(fireShardRow.locator('.material-qty')).toHaveText('× 2');
+  await expect(earthShardRow.locator('.material-qty')).toHaveText('× 2');
   await page.locator('#treeContainer').evaluate(element => { element.scrollTop = 120; });
   const scrollBeforePurchase = await page.locator('#treeContainer').evaluate(element => element.scrollTop);
   await option.check();
+  await expect(option).toHaveCSS('background-color', 'rgb(200, 168, 75)');
   await expect.poll(() => page.locator('#treeContainer').evaluate(element => element.scrollTop)).toBe(scrollBeforePurchase);
   await page.locator('#shopCloseBtn').click();
 
   await expect(purchasedNode).toHaveClass(/purchase-selected/);
   await expect(purchasedNode.locator('.purchase-status')).toHaveCount(0);
   await expect(purchasedNode.locator('.shop-info-btn')).toHaveText('💰🛒');
+  await expect(fireShardRow.locator('.material-qty')).toHaveText('× 1');
+  await expect(earthShardRow.locator('.material-qty')).toHaveText('× 1');
   const lowerIntermediate = page.locator('.intermediate-tree-row .material-name').filter({ hasText: /^メープル材$/ })
     .locator('xpath=ancestor::li[contains(@class,"intermediate-tree-node")]');
   await expect(lowerIntermediate).toHaveClass(/purchase-unneeded/);
@@ -835,7 +852,7 @@ test('shows favorite list materials mode with set count and ring toggles', async
   }));
   expect(favoriteItemFontSizes.job).toBe(favoriteItemFontSizes.name);
   await expect(page.locator('.result-header')).toBeHidden();
-  await page.locator('#recipeList').getByText('素材リスト').click();
+  await page.locator('#recipeList').getByText('素材リストを表示').click();
   await page.locator('#countIncrease5Btn').click();
 
   await expect(page.locator('#countLabel')).toHaveText('セット数:');
@@ -882,7 +899,7 @@ test('favorite list count mode excludes zero-count items from materials', async 
 
   await page.locator('#favBtn').click();
   await page.locator('#favoriteLists').getByText('個数確認').click();
-  await page.locator('#recipeList').getByText('素材リスト').click();
+  await page.locator('#recipeList').getByText('素材リストを表示').click();
   await page.locator('.favorite-ring-toggle button').filter({ hasText: '2つ' }).click();
   await expect(page.locator('.favorite-ring-toggle button').filter({ hasText: '2つ' })).toHaveClass(/active/);
   await page.locator('#settingsBtn').click();
@@ -906,17 +923,17 @@ test('favorite list count mode excludes zero-count items from materials', async 
   await aripebreRow.locator('.favorite-item-count-controls input').fill('0');
   await aripebreRow.locator('.favorite-item-count-controls input').dispatchEvent('change');
   await expect(aripebreRow).toHaveClass(/favorite-count-zero/);
-  await expect(page.locator('#recipeList').getByText('素材リスト(1/2)')).toBeVisible();
+  await expect(page.locator('#recipeList').getByText('素材リストを表示(1/2)')).toBeVisible();
   await page.locator('#recipeList li.fav-item-row').filter({ hasText: 'カッパーリング' }).click();
   await expect(page.locator('#countLabel')).toHaveText('セット数:');
-  await expect(page.locator('#recipeList .favorite-materials-row').getByText('素材リスト(1/2)')).toHaveClass(/active/);
+  await expect(page.locator('#recipeList .favorite-materials-row').getByText('素材リストを表示(1/2)')).toHaveClass(/active/);
   await page.locator('#settingsBtn').click();
   await page.locator('#exportListToggle').click();
   await page.locator('#exportListChoices').getByText('個数確認').click();
   await expect(page.locator('#exportCode')).toHaveValue(shareCodeBeforeCounts);
   await page.locator('#settingsCloseBtn').click();
 
-  await page.locator('#recipeList').getByText('素材リスト(1/2)').click();
+  await page.locator('#recipeList').getByText('素材リストを表示(1/2)').click();
   await expect(page.locator('.favorite-ring-controls')).toHaveCount(0);
   await expect(page.locator('.favorite-material-root-summary')).toHaveCount(1);
   await expect(page.locator('.favorite-material-root-summary')).toContainText('カッパーリング');
@@ -946,7 +963,7 @@ test('favorite list count mode excludes zero-count items from materials', async 
   await page.locator('#countInput').dispatchEvent('input');
   await page.locator('#countInput').blur();
   await expect(page.locator('#countInput')).toHaveValue('2');
-  await page.locator('#recipeList').getByText('素材リスト').click();
+  await page.locator('#recipeList').getByText('素材リストを表示').click();
   await expect(page.locator('.favorite-material-root-summary')).toHaveCount(2);
   await expect(page.locator('.favorite-material-root-or')).toHaveCount(1);
   await expect(page.locator('.favorite-material-root-or')).toHaveText('もしくは');
@@ -967,7 +984,7 @@ test('mobile favorite ring controls keep the count toggle on one right-aligned r
   await page.locator('#mobileBackBtn').click();
   await page.locator('#favBtn').click();
   await page.locator('#favoriteLists').getByText('指輪確認').click();
-  await page.locator('#recipeList').getByText('素材リスト').click();
+  await page.locator('#recipeList').getByText('素材リストを表示').click();
 
   const rowBox = await page.locator('.favorite-ring-row').first().boundingBox();
   const nameBox = await page.locator('.favorite-ring-name').first().boundingBox();
@@ -1033,11 +1050,11 @@ test('mobile pin turns active after adding to a favorite list', async ({ page })
   await page.locator('#favoriteLists').getByText('スマホ確認').click();
   await expect(page.locator('#recipeList')).toHaveCSS('overflow-y', 'auto');
   await expect(page.locator('#panelLeft')).toHaveCSS('min-height', '0px');
-  const materialsButton = page.locator('#recipeList .favorite-materials-row').getByText('素材リスト');
+  const materialsButton = page.locator('#recipeList .favorite-materials-row').getByText('素材リストを表示');
   await materialsButton.click();
   await expect(materialsButton).toHaveClass(/active/);
   await page.locator('#mobileBackBtn').click();
-  await expect(page.locator('#recipeList .favorite-materials-row').getByText('素材リスト')).not.toHaveClass(/active/);
+  await expect(page.locator('#recipeList .favorite-materials-row').getByText('素材リストを表示')).not.toHaveClass(/active/);
 });
 
 test('mobile panels align list actions and scroll on the intended element', async ({ page }) => {

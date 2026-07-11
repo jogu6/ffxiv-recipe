@@ -9,6 +9,7 @@ import {
   equipmentRoleDecision,
   findUnresolvedEquipmentRoleGroups,
   isConditionalLodestoneShop,
+  mergeFriendlyTribeShopInfo,
   mergeHousingShopInfo,
   mergePublishItems,
   nextLodestoneSearchUrl,
@@ -59,6 +60,29 @@ test('mergeHousingShopInfo adds housing shops without coordinates', () => {
   });
   assert.deepEqual(result, { matched: 1, shopAdded: 1, unmatched: 0, priceMismatch: 0 });
   assert.deepEqual(items[0].ShopInfo.shops[1], { shopName: '素材屋', area: 'ハウジング雇用NPC' });
+});
+
+test('mergeFriendlyTribeShopInfo adds rank-gated shops', () => {
+  const items = [{ ID: 1, Name: 'バーチ樹液' }];
+  const result = mergeFriendlyTribeShopInfo(items, {
+    'バーチ樹液': {
+      price: 468,
+      shops: [{
+        shopName: 'バヌバヌ族 商人のルナバヌ',
+        area: 'アバラシア雲海',
+        requiredRank: '1: 中立'
+      }]
+    }
+  });
+  assert.deepEqual(result, { matched: 1, shopAdded: 1, unmatched: 0, priceMismatch: 0 });
+  assert.deepEqual(items[0].ShopInfo, {
+    price: 468,
+    shops: [{
+      shopName: 'バヌバヌ族 商人のルナバヌ',
+      area: 'アバラシア雲海',
+      requiredRank: '1: 中立'
+    }]
+  });
 });
 
 test('extractLodestoneShopInfo reads gil price once and shop rows without exposing URLs', () => {

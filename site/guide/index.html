@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#1a1a1a">
+  <title>FF14 レシピ素材ツリー｜使い方ガイド</title>
+  <meta name="description" content="FF14 レシピ素材ツリーの機能と、検索・素材確認・逆引き・お気に入り・共有の使い方を画面付きで紹介します。">
+  <link rel="icon" href="../assets/app-icons/favicon.png" type="image/png">
+  <link rel="stylesheet" href="assets/guide.css">
+  <link rel="stylesheet" href="assets/guide-features.css">
+</head>
+<body>
+  <header class="page-heading">
+    <div class="heading-row">
+      <h1><img src="../assets/app-icons/favicon.png" alt="">FF14 レシピ素材ツリー 使い方ガイド</h1>
+      <button class="license-button" id="licenseBtn" type="button">LICENSE</button>
+    </div>
+    <p>作りたいアイテムから必要素材を調べ、複数の制作予定もひとまとめにできる非公式Webアプリです。</p>
+    <a class="app-open-button" href="../"><img src="../assets/app-icons/favicon.png" alt="">アプリを開く</a>
+  </header>
+
+  <main class="guide-layout">
+    <nav class="toc" aria-labelledby="toc-title">
+      <button class="toc-toggle" type="button" aria-expanded="true" aria-controls="toc-list"><span id="toc-title">目次</span><span class="toc-arrow">▲</span></button>
+      <ol id="toc-list">
+        <li><a href="#overview">このアプリでできること</a></li>
+        <li><a href="#search">アイテムを検索する</a></li>
+        <li><a href="#equipment">装備を条件検索する</a></li>
+        <li><a href="#materials">必要素材と個数を確認する</a></li>
+        <li><a href="#tree-tools">ツリー内の素材を操作する</a></li>
+        <li><a href="#reverse">素材から使用先を逆引きする</a></li>
+        <li><a href="#favorites">お気に入りをまとめる</a></li>
+        <li><a href="#favorite-tools">お気に入りを編集・計算する</a></li>
+        <li><a href="#combined">複数リストを合算する</a></li>
+        <li><a href="#share">保存・共有する</a></li>
+        <li><a href="#window">小窓・PWAで使う</a></li>
+        <li><a href="#mobile">スマートフォンで使う</a></li>
+        <li><a href="#notes">注意事項</a></li>
+      </ol>
+    </nav>
+
+    <div class="post-list">
+      <section class="post" id="overview">
+        <p class="eyebrow">まずはここから</p><h2>このアプリでできること</h2>
+        <div class="feature-grid"><div><b>レシピを展開</b><span>中間素材を含む制作工程をツリーで確認</span></div><div><b>素材を合算</b><span>必要な素材と個数を一覧で確認</span></div><div><b>使用先を逆引き</b><span>その素材から作れるアイテムを検索</span></div><div><b>予定をまとめる</b><span>お気に入りリストを保存・共有</span></div></div>
+      </section>
+
+      <section class="post" id="search">
+        <p class="step">STEP 1</p><h2>アイテムを検索する</h2>
+        <ol class="instructions"><li>左上の「絞り込み」にアイテム名の一部を入力します。</li><li>候補から作りたいアイテムを選びます。</li><li>右側にレシピツリーが表示されます。</li></ol>
+        <div class="image-grid"><figure class="image-frame"><img src="assets/images/01-search.webp" data-mobile-src="assets/images/mobile-01-search.webp" alt="検索欄にアイテム名を入力し、候補とレシピツリーを表示した画面" loading="lazy"><button class="zoom-button" type="button" aria-label="画像を拡大">⌕</button><figcaption><span class="desktop-only">①検索 → ②候補を選択 → ③レシピを確認</span><span class="mobile-only">①検索 → ②候補をタップ。レシピ画面からは「戻る」で検索へ戻れます。</span></figcaption></figure></div>
+        <p class="hint">名前が分からない装備は、検索欄右の「▼」からジョブ・レベル・部位で絞り込めます。</p>
+      </section>
+
+      <section class="post" id="equipment">
+        <h2>装備を条件検索する</h2><p>検索欄右の「▼」を開き、ジョブ・装備レベル・アイテムレベル・部位を指定します。「検索結果をお気に入り登録」で候補を一括保存できます。</p>
+        <div class="image-grid"><figure class="image-frame"><img src="assets/images/07-equipment-search.webp" data-mobile-src="assets/images/mobile-07-equipment-search.webp" alt="装備検索パネルを開いた画面" loading="lazy"><button class="zoom-button" type="button" aria-label="画像を拡大">⌕</button><figcaption>「リセット」で条件を初期化できます。ジョブに応じた推奨ロールも候補に表示されます。</figcaption></figure></div>
+      </section>
+
+      <section class="post" id="materials">
+        <p class="step">STEP 2</p><h2>必要素材と個数を確認する</h2>
+        <ol class="instructions"><li>「個数」で制作したい数を指定します。</li><li>「素材リスト」を選ぶと、末端素材が合算表示されます。</li><li>「レシピツリー」で制作工程へ戻れます。</li></ol>
+        <div class="image-grid"><figure class="image-frame"><img src="assets/images/02-materials.webp" data-mobile-src="assets/images/mobile-02-materials.webp" alt="制作個数を3にして素材リストへ切り替えた画面" loading="lazy"><button class="zoom-button" type="button" aria-label="画像を拡大">⌕</button><figcaption>個数を変えると、必要数も自動で再計算されます。</figcaption></figure></div>
+      </section>
+
+      <section class="post" id="tree-tools">
+        <h2>ツリー内の素材を操作する</h2>
+        <div class="function-list"><div><b>枝の開閉</b><span>「▼／▶」で中間素材の内訳を開閉します。</span></div><div><b>中間素材の個別ツリー</b><span>中間素材名を選ぶと、独立した素材ツリーと個数指定を開きます。</span></div><div><b>制作／購入の切替</b><span>カートボタンで中間素材を購入扱いにし、配下を計算対象から外せます。</span></div><div><b>採集・ショップ情報</b><span>対応するアイコンから採集場所、店名、価格を確認します。</span></div><div><b>交換アイテム</b><span>通貨・交換品と必要数を表示し、「もしくは」の選択肢を維持します。</span></div><div><b>制作順と使用内訳</b><span>素材リストでは推奨制作順と、各中間素材がどこで必要かを確認できます。</span></div></div>
+      </section>
+
+      <section class="post" id="reverse">
+        <p class="step">STEP 3</p><h2>素材から使用先を逆引きする</h2>
+        <p>素材を選んで「使用先」を押すと、その素材を使うレシピを一覧できます。余った素材の使い道を探すときに便利です。</p>
+        <div class="image-grid"><figure class="image-frame"><img src="assets/images/03-used-in.webp" data-mobile-src="assets/images/mobile-03-used-in.webp" alt="素材の使用先を一覧表示した画面" loading="lazy"><button class="zoom-button" type="button" aria-label="画像を拡大">⌕</button><figcaption>一覧から選ぶと、そのアイテムのレシピへ移動します。</figcaption></figure></div>
+        <p class="hint">検索したアイテムと、開いた素材・レシピは「検索履歴」に最大100件保存されます。検索欄の「×」で現在の絞り込みを消せます。</p>
+      </section>
+
+      <section class="post" id="favorites">
+        <p class="step">STEP 4</p><h2>お気に入りをまとめる</h2>
+        <ol class="instructions"><li>検索結果やツリーの「📌」を押します。</li><li>新しいリストを作るか、追加先を選びます。</li><li>「お気に入り」からリストを開き、「素材リストを表示」で全アイテム分を合算します。</li></ol>
+        <div class="image-grid">
+          <figure class="image-frame"><img src="assets/images/04-favorites.webp" data-mobile-src="assets/images/mobile-04-favorites.webp" alt="お気に入りリストを開いた画面" loading="lazy"><button class="zoom-button" type="button" aria-label="画像を拡大">⌕</button><figcaption>制作予定を用途ごとにリスト分けできます。</figcaption></figure>
+          <figure class="image-frame"><img src="assets/images/05-favorite-materials.webp" data-mobile-src="assets/images/mobile-05-favorite-materials.webp" alt="お気に入り全体の素材リストを表示した画面" loading="lazy"><button class="zoom-button" type="button" aria-label="画像を拡大">⌕</button><figcaption>複数アイテムに共通する素材もまとめて計算します。</figcaption></figure>
+        </div>
+      </section>
+
+      <section class="post" id="favorite-tools">
+        <h2>お気に入りを編集・計算する</h2>
+        <div class="function-list"><div><b>名前変更・削除</b><span>リスト右端の操作カーテンから実行します。</span></div><div><b>並べ替え</b><span>リストまたは登録アイテムをドラッグして順番を変更します。</span></div><div><b>個数指定</b><span>アイテムごとに制作数を設定し、0個の品を計算から除外できます。</span></div><div><b>どれでも1つ</b><span>候補のうちどれか1品を作る場合の素材を比較できます。</span></div><div><b>指輪の個数</b><span>指輪ごとに0・1・2個を切り替えられます。</span></div><div><b>素材リスト</b><span>共通素材を合算し、余りや中間素材の使用内訳も表示します。</span></div></div>
+      </section>
+
+      <section class="post" id="combined">
+        <h2>複数のお気に入りリストを合算する</h2><ol class="instructions"><li>お気に入りを開き、合算したいリストのチェックを入れます。</li><li>2つ以上選ぶと「チェックしたお気に入りリストの合算素材リスト」が表示されます。</li><li>不要になったら「チェックを全て外す」で解除します。</li></ol>
+        <div class="image-grid"><figure class="image-frame"><img src="assets/images/08-combined-lists.webp" data-mobile-src="assets/images/mobile-08-combined-lists.webp" alt="複数のお気に入りリストを素材合算対象にした画面" loading="lazy"><button class="zoom-button" type="button" aria-label="画像を拡大">⌕</button><figcaption>リストをまたいだ共通素材も一度に合算します。</figcaption></figure></div>
+      </section>
+
+      <section class="post" id="share">
+        <p class="step">STEP 5</p><h2>保存・共有する</h2>
+        <p>お気に入りはブラウザー内に自動保存されます。別端末への移行や仲間との共有には「⚙ 設定」のシェアコードを使います。</p>
+        <ol class="instructions"><li>「⚙ 設定」を開き、共有するリストを選びます。</li><li>表示されたコードをコピーします。</li><li>受け取る側はコードを貼り付けて「取り込む」を押します。</li></ol>
+        <div class="image-grid"><figure class="image-frame"><img src="assets/images/06-share.webp" data-mobile-src="assets/images/mobile-06-share.webp" alt="設定画面でシェアコードを表示した画面" loading="lazy"><button class="zoom-button" type="button" aria-label="画像を拡大">⌕</button><figcaption>機種変更前のバックアップにも利用できます。</figcaption></figure></div>
+      </section>
+
+      <section class="post" id="window"><h2>小窓・PWAで使う</h2><div class="function-list"><div><b>小窓で開く</b><span>PCの「⧉ 小窓で開く」で、制作中も置きやすい別ウィンドウを開きます。</span></div><div><b>ホーム画面に追加</b><span>ブラウザーのメニューから追加するとPWAとして起動できます。iPhone／iPadはSafariを使用してください。</span></div><div><b>状態の復元</b><span>再読み込み後も、選択中の画面や検索条件を可能な範囲で復元します。</span></div><div><b>更新通知</b><span>新しいアプリが利用可能になると再読み込みボタンが表示されます。</span></div></div></section>
+
+      <section class="post" id="mobile">
+        <h2>スマートフォンで使う</h2><p>このガイドをスマートフォン幅で開くと、掲載画像もすべて実際のスマホ用画面へ切り替わります。アプリでは「戻る」で検索結果・使用先・レシピを行き来します。端末をPC幅との境界をまたいで回転・変更した場合は、安全のため初期画面へ戻ります。</p>
+      </section>
+      <section class="post" id="notes">
+        <h2>注意事項・設定</h2><ul><li>お気に入りはブラウザーのデータを消すと失われます。大切なリストはシェアコードを控えてください。</li><li>収録アイテムは制作計算に必要なものを中心にしています。</li><li>「⚙ 設定」からプライバシーポリシー、LICENSE、Discordの報告・お問い合わせ先を開けます。</li><li>本ツールは非公式で、SQUARE ENIXの承認・提携を受けたものではありません。</li></ul>
+      </section>
+    </div>
+  </main>
+
+  <div id="licenseOverlay" aria-hidden="true"><div id="licenseDialog" role="dialog" aria-modal="true" aria-labelledby="licenseTitle"><h2 id="licenseTitle">LICENSE / NOTICE</h2><div id="licenseText"><p>The MIT License applies only to the original application source code and project tooling in this repository.</p><p>FINAL FANTASY XIV images, names, item and recipe data, trademarks, and other game-derived materials are owned by SQUARE ENIX.</p><p>This project is unofficial and is not affiliated with, sponsored by, approved by, or endorsed by SQUARE ENIX.</p></div><button class="license-close" id="licenseCloseBtn" type="button">閉じる</button></div></div>
+  <footer>© SQUARE ENIX / Data: XIVAPI / X: <a href="https://x.com/ff14_recipe" target="_blank" rel="noopener">@ff14_recipe</a></footer>
+  <button class="top-button" type="button" aria-label="ページ上部へ戻る">↑</button>
+  <div class="image-viewer" aria-hidden="true"><div class="image-viewer-toolbar"><button class="image-viewer-close" type="button">閉じる</button></div><div class="image-viewer-stage"><img class="image-viewer-img" alt=""></div></div>
+  <script src="assets/guide.js"></script>
+</body>
+</html>

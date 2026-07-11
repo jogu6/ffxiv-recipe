@@ -41,6 +41,7 @@ const localCsvNames = ['token-items.csv'];
 const gatheringAreaPath = path.join(inputRoot, 'gathering_area.json');
 const gatheringTimerPath = path.join(inputRoot, 'gathering_timer.json');
 const housingShopsPath = path.join(inputRoot, 'housing-shops.json');
+const friendlyTribeShopsPath = path.join(inputRoot, 'friendly-tribe-shops.json');
 const equipmentRoleOverridesPath = path.join(inputRoot, 'equipment-role-overrides.json');
 const lodestoneItemUrlsPath = path.join(stateRoot, 'lodestone-item-urls.json');
 const defaultIconQuality = 80;
@@ -1812,6 +1813,51 @@ export function mergeHousingShopInfo(items, housingShops = readJson(housingShops
   return { matched, shopAdded, unmatched, priceMismatch };
 }
 
+export function mergeFriendlyTribeShopInfo(items, friendlyTribeShops = readJson(friendlyTribeShopsPath, {})) {
+  const byName = new Map(items.map(item => [String(item.Name || ''), item]));
+  let matched = 0;
+  let shopAdded = 0;
+  let priceMismatch = 0;
+  let unmatched = 0;
+  for (const [name, info] of Object.entries(friendlyTribeShops || {})) {
+    const item = byName.get(name);
+    if (!item) {
+      unmatched += 1;
+      continue;
+    }
+    const shops = Array.isArray(info?.shops) ? info.shops : [];
+    if (!shops.length) continue;
+    matched += 1;
+    item.ShopInfo ||= { price: info.price, shops: [] };
+    const currentPrice = Number(item.ShopInfo.price);
+    const nextPrice = Number(info.price);
+    if (!Number.isFinite(currentPrice) && Number.isFinite(nextPrice)) item.ShopInfo.price = nextPrice;
+    else if (Number.isFinite(currentPrice) && Number.isFinite(nextPrice) && currentPrice !== nextPrice) {
+      priceMismatch += 1;
+      log(`友好部族ショップ価格警告: ${name} 既存=${currentPrice} 追加=${nextPrice}`);
+    }
+    if (!Array.isArray(item.ShopInfo.shops)) item.ShopInfo.shops = [];
+    for (const shop of shops) {
+      const normalized = {
+        shopName: String(shop.shopName || '').trim(),
+        area: String(shop.area || '').trim(),
+        requiredRank: String(shop.requiredRank || '').trim()
+      };
+      if (!normalized.shopName || !normalized.area || !normalized.requiredRank) continue;
+      const exists = item.ShopInfo.shops.some(existing =>
+        String(existing.shopName || '') === normalized.shopName
+        && String(existing.area || '') === normalized.area
+        && String(existing.requiredRank || '') === normalized.requiredRank
+      );
+      if (exists) continue;
+      item.ShopInfo.shops.push(normalized);
+      shopAdded += 1;
+    }
+  }
+  log(`友好部族ショップ情報: 一致 ${matched}件、店舗追加 ${shopAdded}件、未一致 ${unmatched}件、価格差 ${priceMismatch}件`);
+  return { matched, shopAdded, unmatched, priceMismatch };
+}
+
 export async function publishLodestoneInfo({
   target = publicCandidatePath,
   delayMs = defaultLodestoneInfoDelayMs,
@@ -1886,12 +1932,16 @@ export async function publishLodestoneInfo({
     ? mergeHousingShopInfo(items)
     : { matched: 0, shopAdded: 0, unmatched: 0, priceMismatch: 0 };
   if (!fs.existsSync(housingShopsPath)) log('ハウジングショップ情報: housing-shops.json が無いためスキップしました');
+  const friendlyTribeResult = fs.existsSync(friendlyTribeShopsPath)
+    ? mergeFriendlyTribeShopInfo(items)
+    : { matched: 0, shopAdded: 0, unmatched: 0, priceMismatch: 0 };
+  if (!fs.existsSync(friendlyTribeShopsPath)) log('友好部族ショップ情報: friendly-tribe-shops.json が無いためスキップしました');
   writeJsonAtomic(lodestoneItemUrlsPath, itemUrls);
   const roleResult = applyEquipmentRoleOverrides(items);
   log(`装備推奨ロール情報: 自動 ${roleResult.automatic}件、手動対象 ${roleResult.groups}グループ、手動反映 ${roleResult.applied}件、未指定 ${roleResult.missing}グループ`);
   writeJsonAtomic(target, items);
   if (path.resolve(target) === publicItemJsonPath) {
-    updateDataCacheVersion({ itemJsonPath: target, salt: `lodestone-info-${processed}-${shopMatched}-${craftMatched}-${equipmentMatched}-${equipmentStatsMatched}-${failed}-${housingResult.shopAdded}`, reason: 'lodestone-info' });
+    updateDataCacheVersion({ itemJsonPath: target, salt: `lodestone-info-${processed}-${shopMatched}-${craftMatched}-${equipmentMatched}-${equipmentStatsMatched}-${failed}-${housingResult.shopAdded}-${friendlyTribeResult.shopAdded}`, reason: 'lodestone-info' });
   } else {
     log('公開Item.json以外が対象のため、データキャッシュ版の更新をスキップしました');
   }

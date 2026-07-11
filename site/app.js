@@ -1,4 +1,4 @@
-const DATA_CACHE_VERSION = 'ff14recipe-data-7.50-dc0bb2d1';
+const DATA_CACHE_VERSION = 'ff14recipe-data-7.50-4492adda';
 const DATA_FILE = `./data/Item.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 const TIPS_FILE = './data/tips.md';
 const ABOUT_URL = 'https://jogu6.github.io/ffxiv-recipe-about/';
@@ -282,6 +282,7 @@ const CRAFT_JOB_ABBREVIATIONS = {
 };
 const EQUIPMENT_JOB_ABBREVIATIONS = Object.fromEntries(EQUIPMENT_JOB_OPTIONS.map(job => [job, job.replace(/士$|師$|道士$/u, '').slice(0, 1)]));
 EQUIPMENT_JOB_ABBREVIATIONS['吟遊詩人'] = '詩';
+EQUIPMENT_JOB_ABBREVIATIONS['魔獣使い'] = '獣';
 const EQUIPMENT_JOB_ORDER = new Map(EQUIPMENT_JOB_OPTIONS.map((job, index) => [job, index]));
 function isMobile() {
   return window.innerWidth <= MOBILE_BREAKPOINT;
@@ -1797,8 +1798,8 @@ function createFavoriteMaterialsRow() {
   materialButton.classList.toggle('active', resultSourceMode === 'favorite-materials');
   materialButton.type = 'button';
   materialButton.textContent = countState.enabled && activeCount < recipeCount
-    ? `素材リスト(${activeCount}/${recipeCount})`
-    : '素材リスト';
+    ? `素材リストを表示(${activeCount}/${recipeCount})`
+    : '素材リストを表示';
   materialButton.addEventListener('click', event => {
     event.stopPropagation();
     requestFavoriteMaterialsMode();
@@ -3713,13 +3714,24 @@ function renderMaterialsList() {
   const requirementsAfterPurchases = purchasedIntermediateNames.size
     ? getCurrentMaterialRequirements(purchasedIntermediateNames)
     : requirements;
-  const rows = materialRowsFromRequirements(requirements);
-  const intermediateRows = orderedIntermediateRows(requirements);
+  const originalRows = materialRowsFromRequirements(requirements);
+  const recalculatedRows = materialRowsFromRequirements(requirementsAfterPurchases);
+  const recalculatedRowsByKey = new Map(
+    recalculatedRows.map(row => [`${row.type}:${row.name}`, row])
+  );
+  const rows = originalRows.map(row => recalculatedRowsByKey.get(`${row.type}:${row.name}`) || row);
+  const originalIntermediateRows = orderedIntermediateRows(requirements);
+  const recalculatedIntermediateRowsByName = new Map(
+    orderedIntermediateRows(requirementsAfterPurchases).map(row => [row.name, row])
+  );
+  const intermediateRows = originalIntermediateRows.map(
+    row => recalculatedIntermediateRowsByName.get(row.name) || row
+  );
   const categorizedRows = categorizeMaterialRows(rows);
   const list = document.createElement('ul');
   list.className = 'materials-list';
   const exchangeSummary = createSupplementSummaryState();
-  rows.forEach(row => {
+  recalculatedRows.forEach(row => {
     if (row.type === 'item' && row.supplements?.length) {
       accumulateSupplementSummary(exchangeSummary, row.supplements);
     }
@@ -4423,6 +4435,9 @@ function showShopDialog(name, { allowIntermediatePurchase = false } = {}) {
         createTextElement('div', 'shop-name', shop.shopName || 'ショップ'),
         createTextElement('div', 'shop-location', location)
       );
+      if (shop.requiredRank) {
+        entry.appendChild(createTextElement('div', 'shop-required-rank', `必要友好ランク：${shop.requiredRank}`));
+      }
       listSection.appendChild(entry);
     });
     elements.shopContent.appendChild(listSection);

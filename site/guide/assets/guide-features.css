@@ -1,0 +1,25 @@
+.function-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.function-list div {
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface2);
+}
+
+.function-list b { color: var(--accent); }
+.function-list span { color: var(--muted); font-size: 12px; }
+.mobile-only { display: none; }
+
+@media (max-width: 720px) {
+  .function-list { grid-template-columns: 1fr; }
+  .desktop-only { display: none; }
+  .mobile-only { display: inline; }
+}

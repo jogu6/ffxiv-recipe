@@ -138435,7 +138435,17 @@
     "IconFile": "025305.webp",
     "ItemUICategoryName": "食材",
     "ItemSearchCategoryName": "食材",
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:38.314Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:38.314Z",
+    "ShopInfo": {
+      "price": 28,
+      "shops": [
+        {
+          "shopName": "サハギン族のよろず屋",
+          "area": "西ラノシア",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "4812",
@@ -138730,6 +138740,11 @@
           "area": "グリダニア：旧市街",
           "x": 9.4,
           "y": 7.7
+        },
+        {
+          "shopName": "サハギン族のよろず屋",
+          "area": "西ラノシア",
+          "requiredRank": "1: 中立"
         }
       ]
     },
@@ -138934,6 +138949,11 @@
           "area": "ウルダハ：ザル回廊",
           "x": 8.9,
           "y": 13.6
+        },
+        {
+          "shopName": "コボルド族のよろず屋",
+          "area": "外地ラノシア",
+          "requiredRank": "1: 中立"
         }
       ]
     },
@@ -139037,7 +139057,17 @@
     "IconFile": "025010.webp",
     "ItemUICategoryName": "食材",
     "ItemSearchCategoryName": "食材",
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:38.830Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:38.830Z",
+    "ShopInfo": {
+      "price": 111,
+      "shops": [
+        {
+          "shopName": "サハギン族のよろず屋",
+          "area": "西ラノシア",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "4838",
@@ -139191,7 +139221,17 @@
         "level": 1
       }
     ],
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:39.015Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:39.015Z",
+    "ShopInfo": {
+      "price": 2,
+      "shops": [
+        {
+          "shopName": "サハギン族のよろず屋",
+          "area": "西ラノシア",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "4848",
@@ -139413,7 +139453,17 @@
         "level": 7
       }
     ],
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:39.140Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:39.140Z",
+    "ShopInfo": {
+      "price": 2,
+      "shops": [
+        {
+          "shopName": "サハギン族のよろず屋",
+          "area": "西ラノシア",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "4854",
@@ -139568,7 +139618,17 @@
         "level": 11
       }
     ],
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:39.242Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:39.242Z",
+    "ShopInfo": {
+      "price": 8,
+      "shops": [
+        {
+          "shopName": "サハギン族のよろず屋",
+          "area": "西ラノシア",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "4858",
@@ -140160,6 +140220,11 @@
           "area": "ウルダハ：ザル回廊",
           "x": 8.9,
           "y": 13.6
+        },
+        {
+          "shopName": "コボルド族のよろず屋",
+          "area": "外地ラノシア",
+          "requiredRank": "1: 中立"
         }
       ]
     },
@@ -140969,6 +141034,11 @@
           "area": "シロガネ",
           "x": 10.2,
           "y": 10.5
+        },
+        {
+          "shopName": "アマルジャ族のよろず屋",
+          "area": "南ザナラーン",
+          "requiredRank": "1: 中立"
         }
       ]
     },
@@ -141026,7 +141096,17 @@
         "level": 26
       }
     ],
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:40.948Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:40.948Z",
+    "ShopInfo": {
+      "price": 258,
+      "shops": [
+        {
+          "shopName": "アマルジャ族のよろず屋",
+          "area": "南ザナラーン",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "5059",
@@ -141432,7 +141512,17 @@
         "level": 34
       }
     ],
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:41.199Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:41.199Z",
+    "ShopInfo": {
+      "price": 514,
+      "shops": [
+        {
+          "shopName": "アマルジャ族のよろず屋",
+          "area": "南ザナラーン",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "5066",
@@ -141709,6 +141799,11 @@
           "area": "シロガネ",
           "x": 10.2,
           "y": 10.5
+        },
+        {
+          "shopName": "アマルジャ族のよろず屋",
+          "area": "南ザナラーン",
+          "requiredRank": "1: 中立"
         }
       ]
     },
@@ -141753,7 +141848,17 @@
         "level": 27
       }
     ],
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:41.403Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:41.403Z",
+    "ShopInfo": {
+      "price": 610,
+      "shops": [
+        {
+          "shopName": "アマルジャ族のよろず屋",
+          "area": "南ザナラーン",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "5074",
@@ -141963,7 +142068,17 @@
         "level": 28
       }
     ],
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:41.540Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:41.540Z",
+    "ShopInfo": {
+      "price": 389,
+      "shops": [
+        {
+          "shopName": "アマルジャ族のよろず屋",
+          "area": "南ザナラーン",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "5084",
@@ -142177,7 +142292,17 @@
         "level": 35
       }
     ],
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:41.686Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:41.686Z",
+    "ShopInfo": {
+      "price": 617,
+      "shops": [
+        {
+          "shopName": "アマルジャ族のよろず屋",
+          "area": "南ザナラーン",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "5090",
@@ -142443,7 +142568,17 @@
         "level": 27
       }
     ],
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:41.841Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:41.841Z",
+    "ShopInfo": {
+      "price": 313,
+      "shops": [
+        {
+          "shopName": "アマルジャ族のよろず屋",
+          "area": "南ザナラーン",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "5094",
@@ -142560,7 +142695,17 @@
         "level": 37
       }
     ],
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:41.942Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:41.942Z",
+    "ShopInfo": {
+      "price": 583,
+      "shops": [
+        {
+          "shopName": "アマルジャ族のよろず屋",
+          "area": "南ザナラーン",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "5104",
@@ -146659,7 +146804,17 @@
         "level": 24
       }
     ],
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:44.966Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:44.966Z",
+    "ShopInfo": {
+      "price": 169,
+      "shops": [
+        {
+          "shopName": "シルフ族のよろず屋",
+          "area": "黒衣森：東部森林",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "5327",
@@ -146694,7 +146849,17 @@
         "level": 33
       }
     ],
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:44.993Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:44.993Z",
+    "ShopInfo": {
+      "price": 411,
+      "shops": [
+        {
+          "shopName": "シルフ族のよろず屋",
+          "area": "黒衣森：東部森林",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "5328",
@@ -147068,7 +147233,17 @@
         "level": 32
       }
     ],
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:45.206Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:45.206Z",
+    "ShopInfo": {
+      "price": 186,
+      "shops": [
+        {
+          "shopName": "シルフ族のよろず屋",
+          "area": "黒衣森：東部森林",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "5337",
@@ -147580,7 +147755,17 @@
     "IconFile": "021904.webp",
     "ItemUICategoryName": "布材",
     "ItemSearchCategoryName": "布材",
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:45.696Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:45.696Z",
+    "ShopInfo": {
+      "price": 259,
+      "shops": [
+        {
+          "shopName": "シルフ族のよろず屋",
+          "area": "黒衣森：東部森林",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "5361",
@@ -147912,6 +148097,11 @@
           "area": "シロガネ",
           "x": 10.2,
           "y": 10.5
+        },
+        {
+          "shopName": "イクサル族のよろず屋",
+          "area": "黒衣森：北部森林",
+          "requiredRank": "1: 中立"
         }
       ]
     },
@@ -147982,6 +148172,11 @@
           "area": "シロガネ",
           "x": 10.2,
           "y": 10.5
+        },
+        {
+          "shopName": "イクサル族のよろず屋",
+          "area": "黒衣森：北部森林",
+          "requiredRank": "1: 中立"
         }
       ]
     },
@@ -148026,7 +148221,17 @@
         "level": 25
       }
     ],
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:45.957Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:45.957Z",
+    "ShopInfo": {
+      "price": 219,
+      "shops": [
+        {
+          "shopName": "イクサル族のよろず屋",
+          "area": "黒衣森：北部森林",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "5372",
@@ -148107,7 +148312,17 @@
         "level": 32
       }
     ],
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:46.120Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:46.120Z",
+    "ShopInfo": {
+      "price": 470,
+      "shops": [
+        {
+          "shopName": "イクサル族のよろず屋",
+          "area": "黒衣森：北部森林",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "5374",
@@ -148720,7 +148935,17 @@
     "IconFile": "022416.webp",
     "ItemUICategoryName": "木材",
     "ItemSearchCategoryName": "木材",
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:46.585Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:46.585Z",
+    "ShopInfo": {
+      "price": 60,
+      "shops": [
+        {
+          "shopName": "イクサル族のよろず屋",
+          "area": "黒衣森：北部森林",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "5409",
@@ -148732,7 +148957,17 @@
     "IconFile": "022416.webp",
     "ItemUICategoryName": "木材",
     "ItemSearchCategoryName": "木材",
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:46.605Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:46.605Z",
+    "ShopInfo": {
+      "price": 238,
+      "shops": [
+        {
+          "shopName": "イクサル族のよろず屋",
+          "area": "黒衣森：北部森林",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "5414",
@@ -148969,7 +149204,17 @@
     "IconFile": "022206.webp",
     "ItemUICategoryName": "骨材",
     "ItemSearchCategoryName": "骨材",
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:46.757Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:46.757Z",
+    "ShopInfo": {
+      "price": 238,
+      "shops": [
+        {
+          "shopName": "コボルド族のよろず屋",
+          "area": "外地ラノシア",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "5437",
@@ -150276,6 +150521,11 @@
           "area": "クリスタリウム",
           "x": 9,
           "y": 12.3
+        },
+        {
+          "shopName": "コボルド族のよろず屋",
+          "area": "外地ラノシア",
+          "requiredRank": "1: 中立"
         }
       ]
     },
@@ -150297,7 +150547,17 @@
     "IconFile": "022612.webp",
     "ItemUICategoryName": "錬金術材",
     "ItemSearchCategoryName": "錬金術材",
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:47.666Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:47.666Z",
+    "ShopInfo": {
+      "price": 216,
+      "shops": [
+        {
+          "shopName": "コボルド族のよろず屋",
+          "area": "外地ラノシア",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "5491",
@@ -150354,7 +150614,17 @@
     "IconFile": "022601.webp",
     "ItemUICategoryName": "錬金術材",
     "ItemSearchCategoryName": "錬金術材",
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:47.733Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:47.733Z",
+    "ShopInfo": {
+      "price": 73,
+      "shops": [
+        {
+          "shopName": "コボルド族のよろず屋",
+          "area": "外地ラノシア",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "5494",
@@ -151595,7 +151865,17 @@
     "IconFile": "022613.webp",
     "ItemUICategoryName": "錬金術材",
     "ItemSearchCategoryName": "錬金術材",
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:48.502Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:48.502Z",
+    "ShopInfo": {
+      "price": 103,
+      "shops": [
+        {
+          "shopName": "グナース族 アキンド",
+          "area": "高地ドラヴァニア",
+          "requiredRank": "3: 友好"
+        }
+      ]
+    }
   },
   {
     "ID": "5528",
@@ -151607,7 +151887,17 @@
     "IconFile": "021001.webp",
     "ItemUICategoryName": "錬金術材",
     "ItemSearchCategoryName": "錬金術材",
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:48.521Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:48.521Z",
+    "ShopInfo": {
+      "price": 82,
+      "shops": [
+        {
+          "shopName": "コボルド族のよろず屋",
+          "area": "外地ラノシア",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "5530",
@@ -151986,7 +152276,17 @@
     "IconFile": "025202.webp",
     "ItemUICategoryName": "錬金術材",
     "ItemSearchCategoryName": "錬金術材",
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:48.877Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:48.877Z",
+    "ShopInfo": {
+      "price": 128,
+      "shops": [
+        {
+          "shopName": "コボルド族のよろず屋",
+          "area": "外地ラノシア",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "5550",
@@ -152080,6 +152380,11 @@
           "area": "リムサ・ロミンサ：上甲板層",
           "x": 11.3,
           "y": 8.1
+        },
+        {
+          "shopName": "コボルド族のよろず屋",
+          "area": "外地ラノシア",
+          "requiredRank": "1: 中立"
         }
       ]
     },
@@ -152127,6 +152432,11 @@
           "area": "ウルダハ：ザル回廊",
           "x": 8.9,
           "y": 13.6
+        },
+        {
+          "shopName": "コボルド族のよろず屋",
+          "area": "外地ラノシア",
+          "requiredRank": "1: 中立"
         }
       ]
     },
@@ -153763,7 +154073,17 @@
     "IconFile": "024453.webp",
     "ItemUICategoryName": "食材",
     "ItemSearchCategoryName": "食材",
-    "LodestoneInfoCheckedAt": "2026-07-10T20:28:50.083Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:28:50.083Z",
+    "ShopInfo": {
+      "price": 84,
+      "shops": [
+        {
+          "shopName": "サハギン族のよろず屋",
+          "area": "西ラノシア",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "6150",
@@ -172614,7 +172934,17 @@
     "IconFile": "021608.webp",
     "ItemUICategoryName": "布材",
     "ItemSearchCategoryName": "布材",
-    "LodestoneInfoCheckedAt": "2026-07-10T20:29:03.199Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:29:03.199Z",
+    "ShopInfo": {
+      "price": 693,
+      "shops": [
+        {
+          "shopName": "シルフ族のよろず屋",
+          "area": "黒衣森：東部森林",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "7029",
@@ -182517,7 +182847,17 @@
     "IconFile": "025220.webp",
     "ItemUICategoryName": "雑貨",
     "ItemSearchCategoryName": "雑貨",
-    "LodestoneInfoCheckedAt": "2026-07-10T20:29:08.408Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:29:08.408Z",
+    "ShopInfo": {
+      "price": 348,
+      "shops": [
+        {
+          "shopName": "グナース族 アキンド",
+          "area": "高地ドラヴァニア",
+          "requiredRank": "3: 友好"
+        }
+      ]
+    }
   },
   {
     "ID": "7897",
@@ -182529,7 +182869,17 @@
     "IconFile": "025210.webp",
     "ItemUICategoryName": "雑貨",
     "ItemSearchCategoryName": "雑貨",
-    "LodestoneInfoCheckedAt": "2026-07-10T20:29:08.428Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:29:08.428Z",
+    "ShopInfo": {
+      "price": 348,
+      "shops": [
+        {
+          "shopName": "グナース族 アキンド",
+          "area": "高地ドラヴァニア",
+          "requiredRank": "3: 友好"
+        }
+      ]
+    }
   },
   {
     "ID": "7898",
@@ -182541,7 +182891,17 @@
     "IconFile": "025205.webp",
     "ItemUICategoryName": "雑貨",
     "ItemSearchCategoryName": "雑貨",
-    "LodestoneInfoCheckedAt": "2026-07-10T20:29:08.449Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:29:08.449Z",
+    "ShopInfo": {
+      "price": 348,
+      "shops": [
+        {
+          "shopName": "グナース族 アキンド",
+          "area": "高地ドラヴァニア",
+          "requiredRank": "3: 友好"
+        }
+      ]
+    }
   },
   {
     "ID": "7900",
@@ -182553,7 +182913,17 @@
     "IconFile": "025209.webp",
     "ItemUICategoryName": "雑貨",
     "ItemSearchCategoryName": "雑貨",
-    "LodestoneInfoCheckedAt": "2026-07-10T20:29:08.471Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:29:08.471Z",
+    "ShopInfo": {
+      "price": 348,
+      "shops": [
+        {
+          "shopName": "グナース族 アキンド",
+          "area": "高地ドラヴァニア",
+          "requiredRank": "3: 友好"
+        }
+      ]
+    }
   },
   {
     "ID": "7916",
@@ -278779,6 +279149,11 @@
           "area": "イディルシャイア",
           "x": 5.9,
           "y": 7.3
+        },
+        {
+          "shopName": "グナース族 アキンド",
+          "area": "高地ドラヴァニア",
+          "requiredRank": "3: 友好"
         }
       ]
     },
@@ -278897,6 +279272,11 @@
           "area": "イディルシャイア",
           "x": 5.9,
           "y": 7.3
+        },
+        {
+          "shopName": "グナース族 アキンド",
+          "area": "高地ドラヴァニア",
+          "requiredRank": "3: 友好"
         }
       ]
     },
@@ -278999,6 +279379,11 @@
           "area": "イディルシャイア",
           "x": 5.9,
           "y": 7.3
+        },
+        {
+          "shopName": "グナース族 アキンド",
+          "area": "高地ドラヴァニア",
+          "requiredRank": "3: 友好"
         }
       ]
     },
@@ -279111,6 +279496,11 @@
           "area": "イディルシャイア",
           "x": 5.9,
           "y": 7.3
+        },
+        {
+          "shopName": "グナース族 アキンド",
+          "area": "高地ドラヴァニア",
+          "requiredRank": "3: 友好"
         }
       ]
     },
@@ -279469,7 +279859,17 @@
     "IconFile": "021219.webp",
     "ItemUICategoryName": "石材",
     "ItemSearchCategoryName": "石材",
-    "LodestoneInfoCheckedAt": "2026-07-10T20:29:56.594Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:29:56.594Z",
+    "ShopInfo": {
+      "price": 807,
+      "shops": [
+        {
+          "shopName": "モーグリ族 大食いのモグムリ",
+          "area": "ドラヴァニア雲海",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "12533",
@@ -279481,7 +279881,17 @@
     "IconFile": "021220.webp",
     "ItemUICategoryName": "石材",
     "ItemSearchCategoryName": "石材",
-    "LodestoneInfoCheckedAt": "2026-07-10T20:29:56.614Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:29:56.614Z",
+    "ShopInfo": {
+      "price": 879,
+      "shops": [
+        {
+          "shopName": "モーグリ族 大食いのモグムリ",
+          "area": "ドラヴァニア雲海",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "12534",
@@ -279578,7 +279988,17 @@
     "IconFile": "021226.webp",
     "ItemUICategoryName": "石材",
     "ItemSearchCategoryName": "石材",
-    "LodestoneInfoCheckedAt": "2026-07-10T20:29:56.731Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:29:56.731Z",
+    "ShopInfo": {
+      "price": 843,
+      "shops": [
+        {
+          "shopName": "モーグリ族 大食いのモグムリ",
+          "area": "ドラヴァニア雲海",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "12540",
@@ -280893,7 +281313,17 @@
     "IconFile": "022417.webp",
     "ItemUICategoryName": "木材",
     "ItemSearchCategoryName": "木材",
-    "LodestoneInfoCheckedAt": "2026-07-10T20:29:57.822Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:29:57.822Z",
+    "ShopInfo": {
+      "price": 980,
+      "shops": [
+        {
+          "shopName": "バヌバヌ族 商人のルナバヌ",
+          "area": "アバラシア雲海",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "12587",
@@ -281965,7 +282395,17 @@
         "level": 32
       }
     ],
-    "LodestoneInfoCheckedAt": "2026-07-10T20:29:58.473Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:29:58.473Z",
+    "ShopInfo": {
+      "price": 400,
+      "shops": [
+        {
+          "shopName": "グナース族 アキンド",
+          "area": "高地ドラヴァニア",
+          "requiredRank": "3: 友好"
+        }
+      ]
+    }
   },
   {
     "ID": "12612",
@@ -282997,7 +283437,17 @@
     "IconFile": "025029.webp",
     "ItemUICategoryName": "錬金術材",
     "ItemSearchCategoryName": "錬金術材",
-    "LodestoneInfoCheckedAt": "2026-07-10T20:29:59.128Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:29:59.128Z",
+    "ShopInfo": {
+      "price": 703,
+      "shops": [
+        {
+          "shopName": "モーグリ族 大食いのモグムリ",
+          "area": "ドラヴァニア雲海",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "12641",
@@ -283528,7 +283978,17 @@
     "IconFile": "029060.webp",
     "ItemUICategoryName": "水産物",
     "ItemSearchCategoryName": "水産物",
-    "LodestoneInfoCheckedAt": "2026-07-10T20:29:59.720Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:29:59.720Z",
+    "ShopInfo": {
+      "price": 1378,
+      "shops": [
+        {
+          "shopName": "モーグリ族 大食いのモグムリ",
+          "area": "ドラヴァニア雲海",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "12808",
@@ -285660,7 +286120,17 @@
     "IconFile": "022642.webp",
     "ItemUICategoryName": "食材",
     "ItemSearchCategoryName": "食材",
-    "LodestoneInfoCheckedAt": "2026-07-10T20:30:00.843Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:30:00.843Z",
+    "ShopInfo": {
+      "price": 468,
+      "shops": [
+        {
+          "shopName": "バヌバヌ族 商人のルナバヌ",
+          "area": "アバラシア雲海",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "12892",
@@ -286791,6 +287261,11 @@
           "area": "イシュガルド：上層",
           "x": 7.3,
           "y": 10.6
+        },
+        {
+          "shopName": "モーグリ族 大食いのモグムリ",
+          "area": "ドラヴァニア雲海",
+          "requiredRank": "1: 中立"
         }
       ]
     },
@@ -314411,7 +314886,17 @@
     "IconFile": "022416.webp",
     "ItemUICategoryName": "木材",
     "ItemSearchCategoryName": "木材",
-    "LodestoneInfoCheckedAt": "2026-07-10T20:30:11.373Z"
+    "LodestoneInfoCheckedAt": "2026-07-10T20:30:11.373Z",
+    "ShopInfo": {
+      "price": 2245,
+      "shops": [
+        {
+          "shopName": "モーグリ族 大食いのモグムリ",
+          "area": "ドラヴァニア雲海",
+          "requiredRank": "1: 中立"
+        }
+      ]
+    }
   },
   {
     "ID": "14161",
