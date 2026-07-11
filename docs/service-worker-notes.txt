@@ -1,5 +1,10 @@
-﻿index.html 更新時は、sw.js の一行目のバージョンも上げること
-(キャッシュが新たに作られる)
+Service Worker cache maintenance
 
-// 例: v1 → v2 に変えてデプロイ
-const CACHE_VERSION = 'ff14recipe-v2';
+- Bump APP_CACHE_VERSION in site/sw.js whenever a deployed app-shell file changes, including
+  index.html, styles.css, calculation.js, app.js, legal documents, the manifest, or app icons.
+- DATA_CACHE_VERSION is separate. Keep it synchronized with the matching constant at the top of
+  site/app.js whenever Item.json or public item icons change.
+- Item.json and item icons use cache-first behavior. Other app files use network-first behavior.
+- tips.md is fetched with no-store and is never cached by the Service Worker.
+- Changing APP_CACHE_VERSION installs a new app cache. Activation removes obsolete caches whose
+  names begin with ff14recipe-.

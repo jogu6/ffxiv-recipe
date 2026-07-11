@@ -5,6 +5,9 @@ import {
   extractLodestoneEquipmentInfo,
   extractLodestoneRecipePaths,
   extractLodestoneShopInfo,
+  applyEquipmentRoleOverrides,
+  equipmentRoleDecision,
+  findUnresolvedEquipmentRoleGroups,
   isConditionalLodestoneShop,
   mergeHousingShopInfo,
   mergePublishItems,
@@ -152,7 +155,7 @@ test('extractLodestoneCraftInfo ignores masterbook menu entries', () => {
 });
 
 test('extractLodestoneEquipmentInfo reads item level, equip level, jobs, and primary stats', () => {
-  const html = '<section>ITEM LEVEL 9 物理防御力 魔法防御力 0 0 ファイター ソーサラー Lv 9～ Bonuses STR +1 DEX +2 VIT +3 INT +4 MND +5 クリティカル +6</section>';
+  const html = '<section>ITEM LEVEL 9 <div class="db-view__item_spec"><div class="clearfix"><div class="db-view__item_spec__name db-view__item_spec__name--armor">物理防御力</div><div class="db-view__item_spec__name db-view__item_spec__name--last">魔法防御力</div></div><div class="clearfix sys_nq_element"><div><strong>12</strong></div><div><strong>8</strong></div></div><div class="clearfix sys_hq_element"><strong>13</strong><strong>9</strong></div></div> ファイター ソーサラー Lv 9～ Bonuses STR +1 DEX +2 VIT +3 INT +4 MND +5 クリティカル +6</section>';
   assert.deepEqual(extractLodestoneEquipmentInfo(html), {
     itemLevel: 9,
     jobs: ['ファイター', 'ソーサラー'],
@@ -162,9 +165,22 @@ test('extractLodestoneEquipmentInfo reads item level, equip level, jobs, and pri
       DEX: 2,
       VIT: 3,
       INT: 4,
-      MND: 5
-    }
+      MND: 5,
+      不屈: 0,
+      信仰: 0,
+      スキルスピード: 0,
+      スペルスピード: 0
+    },
+    performance: { physicalDamage: 0, magicalDamage: 0, physicalDefense: 12, magicalDefense: 8 }
   });
+});
+
+test('extractLodestoneEquipmentInfo reads base classes only from the item equipment specification', () => {
+  const html = `
+    <nav>剣術士 斧術士 格闘士 槍術士 双剣士 弓術士 幻術士 呪術士 巴術士</nav>
+    <section>ITEM LEVEL 10 剣術士 ナイト Lv 10～ Bonuses STR +2 VIT +2</section>
+  `;
+  assert.deepEqual(extractLodestoneEquipmentInfo(html)?.jobs, ['剣術士', 'ナイト']);
 });
 
 test('extractLodestoneEquipmentInfo records zero primary stats when none are present', () => {
@@ -178,8 +194,21 @@ test('extractLodestoneEquipmentInfo records zero primary stats when none are pre
       DEX: 0,
       VIT: 0,
       INT: 0,
-      MND: 0
-    }
+      MND: 0,
+      不屈: 0,
+      信仰: 0,
+      スキルスピード: 0,
+      スペルスピード: 0
+    },
+    performance: { physicalDamage: 0, magicalDamage: 0, physicalDefense: 0, magicalDefense: 0 }
+  });
+});
+
+test('extractLodestoneEquipmentInfo reads role and speed stats', () => {
+  const html = '<section>ITEM LEVEL 90 全クラス Lv 50～ Bonuses VIT +20 不屈 +12 信仰 +11 スキルスピード +10 スペルスピード +9</section>';
+  assert.deepEqual(extractLodestoneEquipmentInfo(html)?.stats, {
+    STR: 0, DEX: 0, VIT: 20, INT: 0, MND: 0,
+    不屈: 12, 信仰: 11, スキルスピード: 10, スペルスピード: 9
   });
 });
 
@@ -194,14 +223,242 @@ test('extractLodestoneEquipmentInfo does not absorb stats as job text', () => {
       DEX: 0,
       VIT: 18,
       INT: 0,
-      MND: 13
-    }
+      MND: 13,
+      不屈: 0,
+      信仰: 0,
+      スキルスピード: 0,
+      スペルスピード: 0
+    },
+    performance: { physicalDamage: 0, magicalDamage: 0, physicalDefense: 0, magicalDefense: 0 }
+  });
+});
+
+test('extractLodestoneEquipmentInfo reads physical and magical weapon performance', () => {
+  const html = '<section>ITEM LEVEL 100 <div class="db-view__item_spec"><div class="clearfix"><div class="db-view__item_spec__name">物理基本性能</div><div class="db-view__item_spec__name">魔法基本性能</div><div class="db-view__item_spec__name">攻撃間隔</div></div><div class="clearfix sys_nq_element"><div><strong>101</strong></div><div><strong>77</strong></div><div><strong>3</strong></div></div></div> ナイト Lv 50～ Bonuses STR +10</section>';
+  assert.deepEqual(extractLodestoneEquipmentInfo(html)?.performance, {
+    physicalDamage: 101,
+    magicalDamage: 77,
+    physicalDefense: 0,
+    magicalDefense: 0
   });
 });
 
 test('extractLodestoneEquipmentInfo ignores non-equipment pages', () => {
   assert.equal(extractLodestoneEquipmentInfo('<main>ITEM Lv の高い順 製作Lv 1-5</main>'), null);
   assert.equal(extractLodestoneEquipmentInfo('<main>ITEM LEVEL 5 食事効果 VIT +1 効果時間 30:00</main>'), null);
+});
+
+test('equipmentRoleDecision resolves broad equipment by name and stats', () => {
+  assert.deepEqual(equipmentRoleDecision({
+    Name: 'ミスライトディフェンダーネックレス',
+    ItemUICategoryName: '首飾り',
+    EquipmentInfo: {
+      jobs: ['ファイター', 'ソーサラー'],
+      equipLevel: 51,
+      stats: { STR: 22, DEX: 0, VIT: 23, INT: 0, MND: 0 }
+    }
+  }), {
+    status: 'resolved',
+    role: 'tank',
+    candidates: ['tank', 'healer', 'striker_slayer', 'scout_ranger', 'caster'],
+    reason: 'name'
+  });
+
+  assert.deepEqual(equipmentRoleDecision({
+    Name: 'スピネルリング',
+    ItemUICategoryName: '指輪',
+    EquipmentInfo: {
+      jobs: ['全クラス'],
+      equipLevel: 49,
+      stats: { STR: 0, DEX: 5, VIT: 7, INT: 0, MND: 0 }
+    }
+  }), {
+    status: 'resolved',
+    role: 'scout_ranger',
+    candidates: ['scout_ranger'],
+    reason: 'stats'
+  });
+});
+
+test('equipmentRoleDecision returns unresolved candidates for ambiguous broad equipment', () => {
+  assert.deepEqual(equipmentRoleDecision({
+    Name: 'アストラルリング',
+    ItemUICategoryName: '指輪',
+    EquipmentInfo: {
+      jobs: ['全クラス'],
+      equipLevel: 50,
+      stats: { STR: 0, DEX: 0, VIT: 10, INT: 9, MND: 9 }
+    }
+  }), {
+    status: 'unresolved',
+    candidates: ['healer', 'caster'],
+    reason: 'stats'
+  });
+
+  assert.deepEqual(equipmentRoleDecision({
+    Name: 'ラプトルリストバンド',
+    ItemUICategoryName: '腕輪',
+    EquipmentInfo: {
+      jobs: ['全クラス'],
+      equipLevel: 48,
+      stats: { STR: 5, DEX: 5, VIT: 6, INT: 0, MND: 0 }
+    }
+  }), {
+    status: 'unresolved',
+    candidates: ['tank', 'striker_slayer', 'scout_ranger'],
+    reason: 'stats'
+  });
+});
+
+test('equipmentRoleDecision uses role-specific and speed stats without over-resolving', () => {
+  assert.deepEqual(equipmentRoleDecision({
+    Name: '広域装備A',
+    EquipmentInfo: {
+      jobs: ['全クラス'],
+      stats: { STR: 5, DEX: 5, VIT: 6, INT: 5, MND: 5, 不屈: 4 }
+    }
+  }), {
+    status: 'resolved', role: 'tank', candidates: ['tank'], reason: 'role-stat'
+  });
+  assert.deepEqual(equipmentRoleDecision({
+    Name: '広域装備B',
+    EquipmentInfo: {
+      jobs: ['全クラス'],
+      stats: { STR: 5, DEX: 5, VIT: 6, INT: 5, MND: 5, スキルスピード: 4 }
+    }
+  }), {
+    status: 'unresolved',
+    candidates: ['tank', 'striker_slayer', 'scout_ranger'],
+    reason: 'stats'
+  });
+  assert.deepEqual(equipmentRoleDecision({
+    Name: '広域装備C',
+    EquipmentInfo: {
+      jobs: ['全クラス'],
+      stats: { STR: 5, DEX: 5, VIT: 6, INT: 5, MND: 5, スペルスピード: 4 }
+    }
+  }), {
+    status: 'unresolved', candidates: ['healer', 'caster'], reason: 'speed-stat'
+  });
+});
+
+test('equipmentRoleDecision excludes equipment without useful primary stats', () => {
+  assert.deepEqual(equipmentRoleDecision({
+    Name: 'ブロンズバックラー',
+    ItemUICategoryName: '盾',
+    EquipmentInfo: {
+      jobs: ['全クラス'],
+      equipLevel: 1,
+      stats: { STR: 0, DEX: 0, VIT: 0, INT: 0, MND: 0 }
+    }
+  }), {
+    status: 'excluded',
+    candidates: [],
+    reason: 'no-primary-stats'
+  });
+});
+
+test('findUnresolvedEquipmentRoleGroups groups unresolved equipment by level and common token', () => {
+  const groups = findUnresolvedEquipmentRoleGroups([
+    {
+      ID: 1,
+      Name: 'アストラルリング',
+      ItemUICategoryName: '指輪',
+      EquipmentInfo: { jobs: ['全クラス'], equipLevel: 50, stats: { VIT: 10, INT: 9, MND: 9 } }
+    },
+    {
+      ID: 2,
+      Name: 'アストラルチョーカー',
+      ItemUICategoryName: '首飾り',
+      EquipmentInfo: { jobs: ['全クラス'], equipLevel: 50, stats: { VIT: 10, INT: 9, MND: 9 } }
+    }
+  ]);
+  assert.equal(groups.length, 1);
+  assert.deepEqual(groups[0], {
+    key: '50:0:アストラル:VIT=10,INT=9,MND=9',
+    equipLevel: 50,
+    itemLevel: 0,
+    commonToken: 'アストラル',
+    statSignature: 'VIT=10,INT=9,MND=9',
+    candidates: ['healer', 'caster', 'sorcerer'],
+    items: [
+      { id: 1, name: 'アストラルリング', category: '指輪', iconFile: '', stats: { VIT: 10, INT: 9, MND: 9 }, candidates: ['healer', 'caster'] },
+      { id: 2, name: 'アストラルチョーカー', category: '首飾り', iconFile: '', stats: { VIT: 10, INT: 9, MND: 9 }, candidates: ['healer', 'caster'] }
+    ]
+  });
+});
+
+test('findUnresolvedEquipmentRoleGroups separates item levels and preserves significant names', () => {
+  const makeItem = (id, name, equipLevel, itemLevel) => ({
+    ID: id,
+    Name: name,
+    ItemUICategoryName: '耳飾り',
+    IconFile: `${id}.webp`,
+    EquipmentInfo: {
+      jobs: ['全クラス'], equipLevel, itemLevel,
+      stats: { STR: 4, DEX: 4, VIT: 5, INT: 0, MND: 0 }
+    }
+  });
+  const groups = findUnresolvedEquipmentRoleGroups([
+    makeItem(1, 'ミスリルイヤーカフス', 40, 40),
+    makeItem(2, 'スフェーンリング', 28, 28),
+    makeItem(3, 'スフェーンイヤリング', 28, 29),
+    makeItem(4, 'ミスリルサークレット(ルベライト)', 38, 38)
+  ]);
+  assert.equal(groups.length, 4);
+  assert.equal(groups.find(group => group.items[0].id === 1)?.commonToken, 'ミスリルイヤーカフス');
+  assert.equal(groups.find(group => group.items[0].id === 4)?.commonToken, 'ミスリルサークレット(ルベライト)');
+  assert.notEqual(
+    groups.find(group => group.items[0].id === 2)?.key,
+    groups.find(group => group.items[0].id === 3)?.key
+  );
+});
+
+test('equipmentRoleDecision resolves equal physical and magical stat families', () => {
+  assert.equal(equipmentRoleDecision({
+    Name: 'ブラスゴルゲット',
+    EquipmentInfo: { jobs: ['全クラス'], stats: { STR: 1, DEX: 1, VIT: 1, INT: 0, MND: 0 } }
+  }).role, 'fighter');
+  assert.equal(equipmentRoleDecision({
+    Name: 'ホワイトコーラルアルミラ',
+    EquipmentInfo: { jobs: ['全クラス'], stats: { STR: 2, DEX: 0, VIT: 2, INT: 0, MND: 0 } }
+  }).role, 'fighter');
+  assert.equal(equipmentRoleDecision({
+    Name: 'ブラスリストレット',
+    EquipmentInfo: { jobs: ['全クラス'], stats: { STR: 0, DEX: 0, VIT: 1, INT: 1, MND: 1 } }
+  }).role, 'sorcerer');
+  assert.equal(equipmentRoleDecision({
+    Name: '物理試験装備',
+    EquipmentInfo: { jobs: ['全クラス'], stats: { STR: 3, DEX: 3, VIT: 0, INT: 0, MND: 0 } }
+  }).role, 'fighter');
+  assert.equal(equipmentRoleDecision({
+    Name: '魔法試験装備',
+    EquipmentInfo: { jobs: ['全クラス'], stats: { STR: 0, DEX: 0, VIT: 0, INT: 3, MND: 3 } }
+  }).role, 'sorcerer');
+});
+
+test('applyEquipmentRoleOverrides writes automatically resolved roles', () => {
+  const items = [{
+    ID: 1,
+    Name: 'ブラスゴルゲット',
+    EquipmentInfo: { jobs: ['全クラス'], stats: { STR: 1, DEX: 1, VIT: 1, INT: 0, MND: 0 } }
+  }];
+  const result = applyEquipmentRoleOverrides(items, {});
+  assert.equal(result.automatic, 1);
+  assert.equal(items[0].EquipmentInfo.recommendedRole, 'fighter');
+});
+
+test('findUnresolvedEquipmentRoleGroups separates different stat signatures', () => {
+  const makeItem = (id, name, stats) => ({
+    ID: id,
+    Name: name,
+    EquipmentInfo: { jobs: ['全クラス'], equipLevel: 30, itemLevel: 30, stats }
+  });
+  const groups = findUnresolvedEquipmentRoleGroups([
+    makeItem(1, '試験リング', { VIT: 5, STR: 4, DEX: 4 }),
+    makeItem(2, '試験イヤリング', { VIT: 5, STR: 3, DEX: 3 })
+  ]);
+  assert.equal(groups.length, 2);
 });
 
 test('extractLodestoneRecipePaths is limited to the item recipe section', () => {

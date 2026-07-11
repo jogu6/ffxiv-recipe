@@ -263,6 +263,76 @@ fn read_quality_preview() -> Result<Value, String> {
     Ok(rows)
 }
 
+#[tauri::command]
+fn read_equipment_role_groups() -> Result<Value, String> {
+    let output = run_pipeline_script(None, None, "equipment-role-groups".to_string(), Vec::new())?;
+    let mut groups: Value = serde_json::from_str(&output).map_err(|error| error.to_string())?;
+    let icon_root = repo_root()?.join("site").join("assets").join("item-icons");
+    if let Some(group_rows) = groups.as_array_mut() {
+        for group in group_rows {
+            let Some(items) = group.get_mut("items").and_then(|value| value.as_array_mut()) else {
+                continue;
+            };
+            for item in items {
+                let Some(icon_file) = item.get("iconFile").and_then(|value| value.as_str()) else {
+                    continue;
+                };
+                if icon_file.len() < 3 {
+                    continue;
+                }
+                let icon_path = icon_root.join(&icon_file[..3]).join(icon_file);
+                if icon_path.is_file() {
+                    item["iconDataUrl"] = json!(data_url(&icon_path)?);
+                }
+            }
+        }
+    }
+    Ok(groups)
+}
+
+#[tauri::command]
+fn read_equipment_role_summary() -> Result<Value, String> {
+    let output = run_pipeline_script(None, None, "equipment-role-summary".to_string(), Vec::new())?;
+    serde_json::from_str(&output).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn save_equipment_role_overrides(overrides: Value) -> Result<(), String> {
+    let path = repo_root()?
+        .join("pipeline")
+        .join("input")
+        .join("equipment-role-overrides.json");
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    let text = serde_json::to_string_pretty(&overrides).map_err(|error| error.to_string())?;
+    std::fs::write(path, format!("{text}\n")).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    if !url.starts_with("https://jp.finalfantasyxiv.com/lodestone/") {
+        return Err("許可されていないURLです".to_string());
+    }
+    let mut command = if cfg!(windows) {
+        let mut command = Command::new("rundll32");
+        command.args(["url.dll,FileProtocolHandler", &url]);
+        command
+    } else if cfg!(target_os = "macos") {
+        let mut command = Command::new("open");
+        command.arg(&url);
+        command
+    } else {
+        let mut command = Command::new("xdg-open");
+        command.arg(&url);
+        command
+    };
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+    command.spawn().map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 fn main() {
     if std::env::args().any(|arg| arg == "--pipeline-smoke") {
         match run_pipeline_script(None, None, "smoke-test".to_string(), Vec::new()) {
@@ -285,7 +355,7 @@ fn main() {
                 let _ = stop_pipeline_process(&process);
             }
         })
-        .invoke_handler(tauri::generate_handler![run_pipeline_command, cancel_pipeline_command, read_update_state, read_quality_preview_state, read_quality_preview])
+        .invoke_handler(tauri::generate_handler![run_pipeline_command, cancel_pipeline_command, read_update_state, read_quality_preview_state, read_quality_preview, read_equipment_role_groups, read_equipment_role_summary, save_equipment_role_overrides, open_external_url])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

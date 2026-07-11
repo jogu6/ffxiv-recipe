@@ -64,6 +64,13 @@
           <p>店、製作、装備情報をLodestoneから取得し、公開候補JSONに反映します。条件付きショップは除外します。</p>
           <span class="action-status">○ 未実行</span>
         </div>
+        <div class="action-item" data-step="equipment-role-groups">
+          <span class="order-label">確認</span>
+          <button id="equipmentRoleBtn" type="button">推奨ロール確認</button>
+          <p>Lodestone情報反映後、判定不能な広域装備の推奨ロールを指定します。保存後、次回のLodestone情報反映で候補JSONへ反映されます。</p>
+          <span class="action-status">○ 未実行</span>
+          <span id="equipmentRoleCount" class="equipment-role-count">指定状況を読み込み中...</span>
+        </div>
         <div class="action-item" data-step="publish">
           <span class="order-label">5</span>
           <button id="publishBtn" type="button">公開反映</button>
@@ -173,13 +180,29 @@
     </section>
   </div>
 
-  <div id="confirmOverlay" class="modal-overlay" aria-hidden="true">
+  <div id="confirmOverlay" class="modal-overlay confirm-overlay" aria-hidden="true">
     <section class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
       <h2 id="confirmTitle">確認</h2>
       <p id="confirmMessage"></p>
       <div class="modal-actions">
-        <button id="confirmCancelBtn" type="button">キャンセル</button>
         <button id="confirmOkBtn" class="primary" type="button">実行</button>
+        <button id="confirmCancelBtn" type="button">キャンセル</button>
+      </div>
+    </section>
+  </div>
+
+  <div id="equipmentRoleOverlay" class="modal-overlay equipment-role-overlay" aria-hidden="true">
+    <section class="modal equipment-role-modal" role="dialog" aria-modal="true" aria-labelledby="equipmentRoleTitle">
+      <header class="equipment-role-header">
+        <div>
+          <h2 id="equipmentRoleTitle">推奨ロール確認</h2>
+          <p id="equipmentRoleSummary">読み込み中...</p>
+        </div>
+        <button id="equipmentRoleCloseBtn" type="button">閉じる</button>
+      </header>
+      <div id="equipmentRoleList" class="equipment-role-list"></div>
+      <div class="modal-actions">
+        <button id="equipmentRoleSaveBtn" class="primary" type="button">保存</button>
       </div>
     </section>
   </div>

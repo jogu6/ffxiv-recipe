@@ -46,10 +46,12 @@ npm run lint:md
 
 Playwright tests cover key browser behavior, including:
 
-- LICENSE / NOTICE dialog opens and closes
-- `+5` and `-5` count buttons update the selected recipe count
-- `使用先` buttons use the expected accent style
-- Crossing the 600px responsive breakpoint resets the screen to the startup view
+- recipe trees, material lists, intermediate ordering, and usage details
+- favorites, combined material lists, ring counts, sharing, and restored view state
+- shop and gathering dialogs, purchased intermediates, and mobile status display
+- equipment search filters, role matching, per-slot fallback, and result saving
+- desktop/mobile layout, scrolling, loading interaction blocking, and the 600px breakpoint
+- pipeline GUI contracts and browser-visible operation flows
 
 Run the tests:
 
@@ -62,6 +64,11 @@ Playwright starts the same local static server used for LAN device checks:
 ```powershell
 py -m http.server 4173 --bind 0.0.0.0 --directory site
 ```
+
+The site keeps favorites, search history, favorite item counts, and restorable view state in
+`localStorage`. A version-update reload deliberately discards restorable view state once. Tests
+that cross the 600px responsive breakpoint must account for the intentional reset to the startup
+view.
 
 ## Formatting
 

@@ -32,10 +32,25 @@ fs.readFileSync(requireFile('data/tips.md'), 'utf8');
 JSON.parse(fs.readFileSync(requireFile('manifest.webmanifest'), 'utf8'));
 
 const missingIcons = [];
+const invalidEquipmentPerformance = [];
 for (const item of items) {
+  if (item.EquipmentInfo) {
+    const performance = item.EquipmentInfo.performance;
+    const physicalDamage = Number(performance?.physicalDamage || 0);
+    const magicalDamage = Number(performance?.magicalDamage || 0);
+    if (!performance || (physicalDamage > 0 && magicalDamage > 0)) {
+      invalidEquipmentPerformance.push(item.Name || item.ID);
+    }
+  }
   if (!item.IconFile) continue;
   const relativePath = path.join('assets', 'item-icons', item.IconFile.slice(0, 3), item.IconFile);
   if (!fs.existsSync(path.join(siteRoot, relativePath))) missingIcons.push(relativePath);
+}
+
+if (invalidEquipmentPerformance.length > 0) {
+  throw new Error(
+    `Invalid equipment performance data: ${invalidEquipmentPerformance.slice(0, 10).join(', ')}`
+  );
 }
 
 if (missingIcons.length > 0) {

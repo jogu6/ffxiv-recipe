@@ -22,6 +22,8 @@ ItemSearchCategory.csv
 token-items.csv
 gathering_area.json
 gathering_timer.json
+housing-shops.json
+equipment-role-overrides.json
 ```
 
 ## GUI workflow
@@ -39,10 +41,13 @@ npm run pipeline:gui:build
 ```
 
 The release binary is `src-tauri/target/release/makeRecipe.exe`. The GUI has three collapsible
-sections: CSV, Build, and Icon Quality. CSV is open on startup; opening one of the three sections
-closes the others. Long operations ask for confirmation and stream progress/log output while they
-run. The "全実行" button runs CSV validation, candidate generation, icon generation, Lodestone
-info publishing, and publish in order.
+sections: CSV and data generation, build checks, and icon quality. The first section is open on
+startup; opening another section closes the current one. Long operations ask for confirmation,
+stream progress without repeatedly rebuilding the full log, estimate uncached work separately,
+and support safe cancellation from both the cancel button and window close. The "全実行" button
+runs CSV validation, candidate generation, icon generation, Lodestone information, and public
+publishing in order. Publishing is an explicit final step; earlier operations do not replace the
+public `Item.json`.
 
 ## Build steps
 
@@ -74,15 +79,18 @@ This runs CSV validation, candidate generation, icon generation, Lodestone info 
 publish in order. The default Lodestone access delay is 100 ms. The default icon access delay is
 500 ms.
 
-Run only the Lodestone-derived shop, crafting, and equipment step:
+Run only the Lodestone-derived shop, crafting, equipment, stats, and performance step:
 
 ```bash
 node pipeline/tool/pipeline-tool.mjs publish-lodestone-info --delay 100
 ```
 
-The Lodestone info command keeps strict item-name matching, caches fetched HTML under
-`pipeline/cache/lodestone-shops/`, removes player-state dependent shops, and writes only the app
-data fields:
+The Lodestone command keeps strict exact-name matching, follows all result pages, caches fetched
+HTML under `pipeline/cache/lodestone-shops/`, and reuses cached HTML without an access delay.
+`--force` bypasses completed-item skipping but does not bypass the HTML cache. Player-state
+dependent shops are excluded. `housing-shops.json` is merged after Lodestone processing when the
+file exists. Equipment roles are inferred where unambiguous and then supplemented from
+`equipment-role-overrides.json`.
 
 ```json
 {
@@ -91,9 +99,28 @@ data fields:
     "shops": [{ "shopName": "素材屋 エンゲランド", "area": "リムサ・ロミンサ：下甲板層", "x": 8.6, "y": 11.8 }]
   },
   "CraftInfo": [{ "job": "鍛冶師", "level": 1 }],
-  "EquipmentInfo": { "itemLevel": 9, "jobs": "全クラス", "equipLevel": 9 }
+  "EquipmentInfo": {
+    "itemLevel": 9,
+    "jobs": ["全クラス"],
+    "equipLevel": 9,
+    "stats": { "STR": 1, "DEX": 1, "VIT": 1, "INT": 1, "MND": 1 },
+    "performance": {
+      "physicalDamage": 0,
+      "magicalDamage": 0,
+      "physicalDefense": 8,
+      "magicalDefense": 8
+    },
+    "recommendedRole": "fighter"
+  }
 }
 ```
+
+After Lodestone processing, use the GUI's "推奨ロール確認" view for unresolved broad equipment.
+Groups are keyed by equipment level, item level, slot, compatible stat signature, and related item
+names. The view shows icons, stats, current counts, and direct Lodestone links. Assigned groups are
+collapsed on the next open; unresolved groups remain expanded. Saving writes the local-only
+override JSON, and the next Lodestone information run applies it to the candidate. Not every group
+must be assigned before saving.
 
 Check or download remote CSV files:
 
@@ -147,11 +174,13 @@ npm run pipeline:gui
 ## Reference and logs
 
 - `pipeline/reference/csv-headers/`: numbered CSV column references
-- `pipeline/state/`: update check and resumable run state
+- `pipeline/state/`: update check, resumable run state, icon state, and resolved Lodestone item URLs
 - `pipeline/reports/`: generated quality reports
 - `pipeline/logs/`: download errors and pipeline logs retained for investigation
-- `pipeline/intermediate/items-truncated.json`: retained historical/manual intermediate output; it is not part of the automated build chain
 
-Files under `pipeline/input/`, `pipeline/intermediate/`, `pipeline/reference/csv-headers/`, and `pipeline/logs/` are local-only and are not tracked in Git.
+Files under `pipeline/input/`, `pipeline/intermediate/`, `pipeline/reference/csv-headers/`, and
+`pipeline/logs/` are local-only and are not tracked in Git. The web app reads only
+`site/data/Item.json` at runtime; auxiliary JSON inputs are merged during development rather than
+fetched by the deployed app.
 
 Missing item icon files under `site/assets/item-icons/` are allowed. The app hides broken icon images and continues to work.

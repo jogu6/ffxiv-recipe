@@ -5,6 +5,7 @@ import test from 'node:test';
 const guiSource = fs.readFileSync('pipeline/gui/main.js', 'utf8');
 const guiHtml = fs.readFileSync('pipeline/gui/index.html', 'utf8');
 const rustSource = fs.readFileSync('src-tauri/src/main.rs', 'utf8');
+const pipelineSource = fs.readFileSync('pipeline/tool/pipeline-tool.mjs', 'utf8');
 
 test('GUI Tauri invokes are registered by Rust', () => {
   const invokedCommands = new Set(
@@ -43,6 +44,13 @@ test('GUI full run applies Lodestone info before publishing Item.json', () => {
   assert.ok(sequenceMatch, 'recommendedSequence was not found');
   const commands = [...sequenceMatch[1].matchAll(/command: '([^']+)'/g)].map(match => match[1]);
   assert.deepEqual(commands, ['validate-csv', 'build', 'icons', 'publish-lodestone-info', 'publish']);
+});
+
+test('Item.json publish applies saved and automatic equipment roles', () => {
+  const publishMatch = pipelineSource.match(/export function publishItemJson\([\s\S]*?\n}\n\nexport function publishGatheringTimer/);
+  assert.ok(publishMatch, 'publishItemJson was not found');
+  assert.match(publishMatch[0], /applyEquipmentRoleOverrides\(candidateItems\)/);
+  assert.match(publishMatch[0], /writeJsonAtomic\(candidate, candidateItems\)/);
 });
 
 test('GUI shows last checked time directly after update check', () => {

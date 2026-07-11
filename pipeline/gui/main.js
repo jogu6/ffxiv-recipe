@@ -21,6 +21,8 @@ const elements = {
   validateCsvBtn: document.getElementById('validateCsvBtn'),
   buildBtn: document.getElementById('buildBtn'),
   publishBtn: document.getElementById('publishBtn'),
+  equipmentRoleBtn: document.getElementById('equipmentRoleBtn'),
+  equipmentRoleCount: document.getElementById('equipmentRoleCount'),
   lodestoneInfoBtn: document.getElementById('lodestoneInfoBtn'),
   iconsBtn: document.getElementById('iconsBtn'),
   verifyBtn: document.getElementById('verifyBtn'),
@@ -57,7 +59,12 @@ const elements = {
   previewThemeBtn: document.getElementById('previewThemeBtn'),
   previewSizeInput: document.getElementById('previewSizeInput'),
   previewScale2: document.getElementById('previewScale2'),
-  previewScale3: document.getElementById('previewScale3')
+  previewScale3: document.getElementById('previewScale3'),
+  equipmentRoleOverlay: document.getElementById('equipmentRoleOverlay'),
+  equipmentRoleSummary: document.getElementById('equipmentRoleSummary'),
+  equipmentRoleList: document.getElementById('equipmentRoleList'),
+  equipmentRoleCloseBtn: document.getElementById('equipmentRoleCloseBtn'),
+  equipmentRoleSaveBtn: document.getElementById('equipmentRoleSaveBtn')
 };
 
 const stepDefs = [
@@ -65,6 +72,7 @@ const stepDefs = [
   { command: 'build', order: '2', label: '候補生成', description: '公開候補 JSON を作成します。Item.json はまだ置き換えません。' },
   { command: 'icons', order: '3', label: 'アイコン生成', description: 'Lodestone NQ 画像を優先し、指定サイズの WebP アイコンを生成します。' },
   { command: 'publish-lodestone-info', order: '4', label: 'Lodestone情報反映', description: '店、製作、装備情報をLodestoneから取得して公開候補JSONへ反映します。' },
+  { command: 'equipment-role-groups', order: '確認', label: '推奨ロール確認', description: '判定不能な広域装備の推奨ロールを指定します。' },
   { command: 'publish', order: '5', label: '公開反映', description: '現在の Item.json を自動保護し、比較に通った候補で置き換えます。' },
   { command: 'verify', order: '確認', label: 'Item.json比較', description: '比較だけを実行します。site/data/Item.json は変更しません。' },
   { command: 'check-updates', order: '任意', label: '更新チェック', description: '公式 CSV の更新有無と前回チェック日時を確認します。' },
@@ -91,6 +99,21 @@ let logFlushTimer = 0;
 let etaModel = null;
 let etaCountdownTimer = 0;
 let etaEstimate = null;
+let equipmentRoleGroups = [];
+let equipmentRoleOverrides = {};
+let equipmentRoleCollapsedKeys = new Set();
+let equipmentRoleSavedSnapshot = '{}';
+const equipmentRoleRefreshCommands = new Set(['build', 'publish-lodestone-info', 'publish']);
+
+const EQUIPMENT_ROLE_LABELS = {
+  tank: 'タンク',
+  healer: 'ヒーラー',
+  striker_slayer: 'ストライカー&スレイヤー',
+  scout_ranger: 'スカウト&レンジャー',
+  caster: 'キャスター',
+  fighter: 'ファイター',
+  sorcerer: 'ソーサラー'
+};
 
 function createAdaptiveThrottle() {
   return {
@@ -408,6 +431,7 @@ async function runCommand(command, args = [], options = {}) {
     markStep(command, 'done');
     elements.statusText.textContent = '完了';
     if (command === 'check-updates') await loadUpdateState();
+    if (equipmentRoleRefreshCommands.has(command)) await refreshEquipmentRoleCount();
     return true;
   } catch (error) {
     appendLog(String(error));
@@ -503,6 +527,194 @@ function closeQualityPreview() {
   elements.previewContent.textContent = '';
 }
 
+function roleLabel(role) {
+  return EQUIPMENT_ROLE_LABELS[role] || role;
+}
+
+function updateEquipmentRoleSummary() {
+  const total = equipmentRoleGroups.length;
+  const selected = equipmentRoleGroups.filter(group => equipmentRoleOverrides[group.key]).length;
+  const unselected = total - selected;
+  elements.equipmentRoleSummary.textContent = total
+    ? `指定済み ${selected} / 未指定 ${unselected} / 全${total}グループ`
+    : '指定が必要な装備はありません。';
+  elements.equipmentRoleSaveBtn.textContent = '保存';
+  elements.equipmentRoleSaveBtn.disabled = false;
+  if (elements.equipmentRoleCount) {
+    elements.equipmentRoleCount.textContent = total
+      ? `指定済み ${selected} / 未指定 ${unselected}`
+      : '指定対象なし';
+  }
+}
+
+function renderEquipmentRoleGroups() {
+  elements.equipmentRoleList.replaceChildren();
+  if (equipmentRoleGroups.length === 0) {
+    elements.equipmentRoleList.append(textEl('p', 'preview-message', '指定が必要な装備はありません。'));
+    updateEquipmentRoleSummary();
+    return;
+  }
+  for (const group of equipmentRoleGroups) {
+    const section = document.createElement('section');
+    section.className = 'equipment-role-group';
+    section.classList.toggle('collapsed', equipmentRoleCollapsedKeys.has(group.key));
+    const header = document.createElement('div');
+    header.className = 'equipment-role-group-header';
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'equipment-role-toggle';
+    toggle.textContent = equipmentRoleCollapsedKeys.has(group.key) ? '▶' : '▼';
+    const title = document.createElement('div');
+    title.className = 'equipment-role-title';
+    title.textContent = `Lv${group.equipLevel} / IL${group.itemLevel} / ${group.commonToken} / ${group.items.length}件`;
+    const status = document.createElement('span');
+    status.className = 'equipment-role-status';
+    status.textContent = equipmentRoleOverrides[group.key] ? roleLabel(equipmentRoleOverrides[group.key]) : '未指定';
+    header.append(toggle, title, status);
+
+    const body = document.createElement('div');
+    body.className = 'equipment-role-body';
+    const options = document.createElement('div');
+    options.className = 'equipment-role-options';
+    for (const role of ['', ...(group.candidates || [])]) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = role ? roleLabel(role) : '未指定';
+      button.classList.toggle('active', (equipmentRoleOverrides[group.key] || '') === role);
+      button.addEventListener('click', () => {
+        const scrollTop = elements.equipmentRoleList.scrollTop;
+        if (role) equipmentRoleOverrides[group.key] = role;
+        else {
+          delete equipmentRoleOverrides[group.key];
+          equipmentRoleCollapsedKeys.delete(group.key);
+        }
+        renderEquipmentRoleGroups();
+        elements.equipmentRoleList.scrollTop = scrollTop;
+      });
+      options.append(button);
+    }
+    const items = document.createElement('div');
+    items.className = 'equipment-role-items';
+    for (const item of group.items || []) {
+      const row = document.createElement('div');
+      row.className = 'equipment-role-item';
+      const icon = document.createElement('img');
+      icon.className = 'equipment-role-item-icon';
+      icon.alt = '';
+      if (item.iconDataUrl) icon.src = item.iconDataUrl;
+      const itemName = document.createElement('span');
+      itemName.className = 'equipment-role-item-name';
+      itemName.textContent = `${item.name}（${item.category || '-'}）`;
+      const itemInfo = document.createElement('span');
+      itemInfo.className = 'equipment-role-item-info';
+      const stats = document.createElement('span');
+      stats.className = 'equipment-role-item-stats';
+      stats.textContent = Object.entries(item.stats || {})
+        .filter(([, value]) => Number(value) > 0)
+        .map(([name, value]) => `${name} +${value}`)
+        .join(' / ');
+      itemInfo.append(itemName);
+      if (stats.textContent) itemInfo.append(stats);
+      row.append(icon, itemInfo);
+      const link = document.createElement('button');
+      link.type = 'button';
+      link.className = 'equipment-role-link';
+      link.textContent = 'Lodestone';
+      link.disabled = !item.lodestoneUrl;
+      link.addEventListener('click', () => {
+        if (item.lodestoneUrl) invoke('open_external_url', { url: item.lodestoneUrl });
+      });
+      row.append(link);
+      items.append(row);
+    }
+    body.append(options, items);
+    const toggleGroup = () => {
+      section.classList.toggle('collapsed');
+      if (section.classList.contains('collapsed')) {
+        equipmentRoleCollapsedKeys.add(group.key);
+        toggle.textContent = '▶';
+      } else {
+        equipmentRoleCollapsedKeys.delete(group.key);
+        toggle.textContent = '▼';
+      }
+    };
+    header.addEventListener('click', event => {
+      if (event.target.closest('button')) return;
+      toggleGroup();
+    });
+    toggle.addEventListener('click', toggleGroup);
+    section.append(header, body);
+    elements.equipmentRoleList.append(section);
+  }
+  updateEquipmentRoleSummary();
+}
+
+async function openEquipmentRoleDialog() {
+  if (running) return;
+  markStep('equipment-role-groups', 'running');
+  elements.equipmentRoleOverlay.classList.add('open');
+  elements.equipmentRoleOverlay.setAttribute('aria-hidden', 'false');
+  elements.equipmentRoleList.replaceChildren(textEl('p', 'preview-message', '読み込み中...'));
+  elements.equipmentRoleSummary.textContent = '読み込み中...';
+  try {
+    equipmentRoleGroups = await invoke('read_equipment_role_groups');
+    equipmentRoleOverrides = Object.fromEntries(
+      equipmentRoleGroups
+        .filter(group => group.selectedRole)
+        .map(group => [group.key, group.selectedRole])
+    );
+    equipmentRoleSavedSnapshot = JSON.stringify(equipmentRoleOverrides);
+    equipmentRoleCollapsedKeys = new Set(
+      equipmentRoleGroups
+        .filter(group => group.selectedRole)
+        .map(group => group.key)
+    );
+    renderEquipmentRoleGroups();
+    markStep('equipment-role-groups', 'done');
+  } catch (error) {
+    elements.equipmentRoleList.replaceChildren(textEl('p', 'preview-message', `読み込みに失敗しました: ${String(error)}`));
+    elements.equipmentRoleSummary.textContent = '読み込み失敗';
+    markStep('equipment-role-groups', 'failed');
+  }
+}
+
+async function closeEquipmentRoleDialog({ force = false } = {}) {
+  if (!force && JSON.stringify(equipmentRoleOverrides) !== equipmentRoleSavedSnapshot) {
+    if (!(await showConfirm(
+      '推奨ロールの変更が保存されていません。保存せずに閉じると、今回の変更内容は失われます。保存せずに閉じますか？',
+      { okLabel: 'はい', cancelLabel: 'いいえ' }
+    ))) return;
+  }
+  elements.equipmentRoleOverlay.classList.remove('open');
+  elements.equipmentRoleOverlay.setAttribute('aria-hidden', 'true');
+}
+
+async function saveEquipmentRoleOverrides() {
+  try {
+    await invoke('save_equipment_role_overrides', { overrides: equipmentRoleOverrides });
+    equipmentRoleSavedSnapshot = JSON.stringify(equipmentRoleOverrides);
+    updateEquipmentRoleSummary();
+    await refreshEquipmentRoleCount();
+    await closeEquipmentRoleDialog({ force: true });
+    appendLog('推奨ロール指定を保存しました');
+    markStep('equipment-role-groups', 'done');
+  } catch (error) {
+    appendLog(`推奨ロール指定の保存に失敗しました: ${String(error)}`);
+    markStep('equipment-role-groups', 'failed');
+  }
+}
+
+async function refreshEquipmentRoleCount() {
+  try {
+    const summary = await invoke('read_equipment_role_summary');
+    if (elements.equipmentRoleCount) {
+      elements.equipmentRoleCount.textContent = `指定済み ${summary.selected} / 未指定 ${summary.unselected}`;
+    }
+  } catch {
+    if (elements.equipmentRoleCount) elements.equipmentRoleCount.textContent = '指定状況を取得できませんでした';
+  }
+}
+
 async function refreshPreviewButton() {
   try {
     const state = await invoke('read_quality_preview_state');
@@ -562,6 +774,7 @@ async function runSequence(commands) {
         return;
       }
       markStep(item.command, 'done');
+      if (equipmentRoleRefreshCommands.has(item.command)) await refreshEquipmentRoleCount();
       setProgress(((index + 1) / commands.length) * 100, item.command);
       setEtaEstimate(((commands.length - index - 1) * (Date.now() - startedAt)) / 1000 / (index + 1));
     }
@@ -683,6 +896,7 @@ function bindEvents() {
     'Lodestoneから店、製作、装備情報を取得して公開候補JSONに反映します。公開データはまだ置き換えません。時間がかかります。実行しますか？',
     () => runCommand('publish-lodestone-info', lodestoneInfoArgs(), { title: 'Lodestone情報反映' })
   ));
+  elements.equipmentRoleBtn.addEventListener('click', openEquipmentRoleDialog);
   elements.verifyBtn.addEventListener('click', () => runCommand('verify', [], { title: 'Item.json比較' }));
   elements.previewBtn.addEventListener('click', () => confirmAndRun(
     elements.previewBtn.textContent === '比較ページ表示'
@@ -714,6 +928,8 @@ function bindEvents() {
     if (event.target === elements.confirmOverlay) resolveConfirmCancel();
   });
   elements.previewCloseBtn.addEventListener('click', closeQualityPreview);
+  elements.equipmentRoleCloseBtn.addEventListener('click', closeEquipmentRoleDialog);
+  elements.equipmentRoleSaveBtn.addEventListener('click', saveEquipmentRoleOverrides);
   elements.previewOverlay.addEventListener('click', event => {
     if (event.target === elements.previewOverlay) closeQualityPreview();
   });
@@ -799,8 +1015,10 @@ async function confirmAndRun(message, action) {
   action();
 }
 
-function showConfirm(message) {
+function showConfirm(message, { okLabel = '実行', cancelLabel = 'キャンセル' } = {}) {
   elements.confirmMessage.textContent = message;
+  elements.confirmOkBtn.textContent = okLabel;
+  elements.confirmCancelBtn.textContent = cancelLabel;
   elements.confirmOverlay.classList.add('open');
   elements.confirmOverlay.setAttribute('aria-hidden', 'false');
   elements.confirmOkBtn.focus();
@@ -874,3 +1092,4 @@ updateProgressActions();
 restoreWindowSize();
 loadUpdateState();
 refreshPreviewButton();
+refreshEquipmentRoleCount();

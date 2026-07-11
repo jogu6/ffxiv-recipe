@@ -41,6 +41,8 @@ const localCsvNames = ['token-items.csv'];
 const gatheringAreaPath = path.join(inputRoot, 'gathering_area.json');
 const gatheringTimerPath = path.join(inputRoot, 'gathering_timer.json');
 const housingShopsPath = path.join(inputRoot, 'housing-shops.json');
+const equipmentRoleOverridesPath = path.join(inputRoot, 'equipment-role-overrides.json');
+const lodestoneItemUrlsPath = path.join(stateRoot, 'lodestone-item-urls.json');
 const defaultIconQuality = 80;
 const defaultIconDelayMs = 500;
 const defaultLodestoneInfoDelayMs = 100;
@@ -55,12 +57,45 @@ const lodestoneOgImagePattern = /<meta\s+property=["']og:image["']\s+content=["'
 const lodestoneOgTitlePattern = /<meta\s+property=["']og:title["']\s+content=["']([^"']+)["']/i;
 const lodestoneConditionalShopText = 'このショップはプレイヤーの特定条件によって販売されるアイテムが異なります';
 const lodestonePrimaryStatNames = ['STR', 'DEX', 'VIT', 'INT', 'MND'];
+const lodestoneRoleStatNames = ['不屈', '信仰', 'スキルスピード', 'スペルスピード'];
+const lodestoneEquipmentStatNames = [...lodestonePrimaryStatNames, ...lodestoneRoleStatNames];
+const equipmentRoleCodes = ['tank', 'healer', 'striker_slayer', 'scout_ranger', 'caster'];
+const equipmentAggregateRoleCodes = ['fighter', 'sorcerer'];
+const equipmentOverrideRoleCodes = [...equipmentRoleCodes, ...equipmentAggregateRoleCodes];
+const equipmentRoleByStat = {
+  VIT: 'tank',
+  MND: 'healer',
+  STR: 'striker_slayer',
+  DEX: 'scout_ranger',
+  INT: 'caster'
+};
+const equipmentBroadJobRoles = {
+  全クラス: equipmentRoleCodes,
+  ファイター: ['tank', 'striker_slayer', 'scout_ranger'],
+  ソーサラー: ['healer', 'caster']
+};
+const equipmentNameRoleRules = [
+  { role: 'tank', pattern: /(ディフェンダー|ディフェンス)/ },
+  { role: 'healer', pattern: /(ヒーラー|ヒール)/ },
+  { role: 'caster', pattern: /(キャスター|キャスト)/ },
+  { role: 'striker_slayer', pattern: /(ストライカー|ストライク|スレイヤー|スレイ|アタッカー|アタック)/ },
+  { role: 'scout_ranger', pattern: /(レンジャー|レンジ|スカウト|スカウティング)/ }
+];
 const lodestoneEquipmentJobPattern = [
   '全クラス',
   'ファイター',
   'ソーサラー',
   'クラフター',
   'ギャザラー',
+  '剣術士',
+  '斧術士',
+  '格闘士',
+  '槍術士',
+  '双剣士',
+  '弓術士',
+  '幻術士',
+  '呪術士',
+  '巴術士',
   'ナイト',
   '戦士',
   '暗黒騎士',
@@ -806,6 +841,37 @@ export function isConditionalLodestoneShop(shopHtml) {
   return normalizeHtmlText(shopHtml).includes(lodestoneConditionalShopText);
 }
 
+const lodestoneEquipmentPerformanceLabels = {
+  '物理基本性能': 'physicalDamage',
+  '魔法基本性能': 'magicalDamage',
+  '物理防御力': 'physicalDefense',
+  '魔法防御力': 'magicalDefense'
+};
+
+function extractLodestoneEquipmentPerformance(detailHtml) {
+  const performance = Object.fromEntries(
+    Object.values(lodestoneEquipmentPerformanceLabels).map(name => [name, 0])
+  );
+  const html = String(detailHtml || '');
+  const specIndex = html.indexOf('db-view__item_spec');
+  const nqIndex = specIndex >= 0 ? html.indexOf('sys_nq_element', specIndex) : -1;
+  if (specIndex < 0 || nqIndex < 0) return performance;
+
+  const hqIndex = html.indexOf('sys_hq_element', nqIndex);
+  const valueEnd = hqIndex >= 0 ? hqIndex : Math.min(html.length, nqIndex + 4000);
+  const labels = [...html.slice(specIndex, nqIndex).matchAll(
+    /<div\b[^>]*class=["'][^"']*db-view__item_spec__name[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi
+  )].map(match => normalizeHtmlText(match[1]));
+  const values = [...html.slice(nqIndex, valueEnd).matchAll(/<strong\b[^>]*>([0-9,]+)<\/strong>/gi)]
+    .map(match => Number(match[1].replace(/,/g, '')));
+
+  labels.forEach((label, index) => {
+    const key = lodestoneEquipmentPerformanceLabels[label];
+    if (key && Number.isFinite(values[index])) performance[key] = values[index];
+  });
+  return performance;
+}
+
 export function extractLodestoneEquipmentInfo(detailHtml) {
   const text = normalizeHtmlText(detailHtml);
   const itemLevelMatch = text.match(/ITEM LEVEL\s+([0-9]+)/);
@@ -822,13 +888,281 @@ export function extractLodestoneEquipmentInfo(detailHtml) {
   const info = { itemLevel: Number(itemLevelMatch[1]) };
   info.jobs = [...new Set(jobs)];
   info.equipLevel = Number(equipLevelMatch[1]);
-  const stats = Object.fromEntries(lodestonePrimaryStatNames.map(name => [name, 0]));
-  for (const stat of lodestonePrimaryStatNames) {
+  const stats = Object.fromEntries(lodestoneEquipmentStatNames.map(name => [name, 0]));
+  for (const stat of lodestoneEquipmentStatNames) {
     const statMatch = specText.match(new RegExp(`(?:^|\\s)${stat}\\s*\\+\\s*([0-9]+)(?=\\s|$)`));
     if (statMatch) stats[stat] = Number(statMatch[1]);
   }
   info.stats = stats;
+  info.performance = extractLodestoneEquipmentPerformance(detailHtml);
   return info;
+}
+
+function equipmentPrimaryStats(equipmentInfo = {}) {
+  const stats = equipmentInfo.stats || {};
+  return lodestonePrimaryStatNames.map(stat => ({
+    stat,
+    value: Number(stats[stat] || 0)
+  }));
+}
+
+function uniqueRoleCodes(roles) {
+  const roleSet = new Set(roles);
+  return equipmentRoleCodes.filter(role => roleSet.has(role));
+}
+
+function equipmentBroadRoleCandidates(equipmentInfo = {}) {
+  const jobs = Array.isArray(equipmentInfo.jobs) ? equipmentInfo.jobs : [];
+  return uniqueRoleCodes(jobs.flatMap(job => equipmentBroadJobRoles[job] || []));
+}
+
+function equipmentRoleByName(name, candidates = equipmentRoleCodes) {
+  const text = String(name || '');
+  for (const rule of equipmentNameRoleRules) {
+    if (candidates.includes(rule.role) && rule.pattern.test(text)) return rule.role;
+  }
+  return '';
+}
+
+function equipmentAggregateRoleByStats(equipmentInfo = {}, candidates = equipmentRoleCodes) {
+  const stats = equipmentInfo.stats || {};
+  const vit = Number(stats.VIT || 0);
+  const physical = ['STR', 'DEX'].map(stat => Number(stats[stat] || 0)).filter(value => value > 0);
+  const magical = ['INT', 'MND'].map(stat => Number(stats[stat] || 0)).filter(value => value > 0);
+  const physicalMatches = vit > 0
+    ? physical.length > 0 && physical.every(value => value === vit)
+    : physical.length === 2 && physical[0] === physical[1];
+  const magicalMatches = vit > 0
+    ? magical.length > 0 && magical.every(value => value === vit)
+    : magical.length === 2 && magical[0] === magical[1];
+  if (physicalMatches && !magical.length
+    && candidates.some(role => ['tank', 'striker_slayer', 'scout_ranger'].includes(role))) return 'fighter';
+  if (magicalMatches && !physical.length
+    && candidates.some(role => ['healer', 'caster'].includes(role))) return 'sorcerer';
+  return '';
+}
+
+function statRolesWithinCandidates(stats, candidates) {
+  return uniqueRoleCodes(stats
+    .filter(entry => entry.value > 0)
+    .map(entry => equipmentRoleByStat[entry.stat])
+    .filter(role => candidates.includes(role)));
+}
+
+function equipmentRoleCandidatesByStats(equipmentInfo = {}, candidates = equipmentRoleCodes) {
+  const stats = equipmentPrimaryStats(equipmentInfo);
+  const positive = stats.filter(entry => entry.value > 0);
+  if (!positive.length) return [];
+
+  const maxValue = Math.max(...positive.map(entry => entry.value));
+  const topStats = positive.filter(entry => entry.value === maxValue);
+  const topRoles = statRolesWithinCandidates(topStats, candidates);
+  if (topRoles.length === 1 && topRoles[0] !== 'tank') return topRoles;
+  if (topRoles.length > 1 && !topRoles.includes('tank')) return topRoles;
+
+  const lowerValues = [...new Set(positive.map(entry => entry.value).filter(value => value < maxValue))]
+    .sort((a, b) => b - a);
+  if (topRoles.includes('tank') && lowerValues.length) {
+    const secondStats = positive.filter(entry => entry.value === lowerValues[0]);
+    const secondRoles = statRolesWithinCandidates(secondStats, candidates)
+      .filter(role => role !== 'tank');
+    if (secondRoles.length) {
+      const keepTank = secondRoles.includes('striker_slayer');
+      return uniqueRoleCodes([...(keepTank ? ['tank'] : []), ...secondRoles]);
+    }
+  }
+  return topRoles;
+}
+
+export function equipmentRoleDecision(item) {
+  const equipmentInfo = item?.EquipmentInfo;
+  if (!equipmentInfo) return { status: 'excluded', candidates: [], reason: 'no-equipment-info' };
+
+  let candidates = equipmentBroadRoleCandidates(equipmentInfo);
+  if (!candidates.length) return { status: 'excluded', candidates: [], reason: 'not-broad-equipment' };
+
+  const roleStatCandidates = [];
+  if (Number(equipmentInfo?.stats?.['不屈'] || 0) > 0 && candidates.includes('tank')) roleStatCandidates.push('tank');
+  if (Number(equipmentInfo?.stats?.['信仰'] || 0) > 0 && candidates.includes('healer')) roleStatCandidates.push('healer');
+  if (roleStatCandidates.length === 1) {
+    return { status: 'resolved', role: roleStatCandidates[0], candidates: roleStatCandidates, reason: 'role-stat' };
+  }
+  if (roleStatCandidates.length > 1) {
+    return { status: 'unresolved', candidates: uniqueRoleCodes(roleStatCandidates), reason: 'role-stat' };
+  }
+
+  const speedCandidates = [];
+  let speedRestricted = false;
+  if (Number(equipmentInfo?.stats?.['スキルスピード'] || 0) > 0) {
+    speedCandidates.push('tank', 'striker_slayer', 'scout_ranger');
+  }
+  if (Number(equipmentInfo?.stats?.['スペルスピード'] || 0) > 0) {
+    speedCandidates.push('healer', 'caster');
+  }
+  if (speedCandidates.length) {
+    candidates = candidates.filter(role => speedCandidates.includes(role));
+    speedRestricted = true;
+    if (candidates.length === 1) {
+      return { status: 'resolved', role: candidates[0], candidates, reason: 'speed-stat' };
+    }
+  }
+
+  const stats = equipmentPrimaryStats(equipmentInfo);
+  if (!stats.some(entry => entry.value > 0)) {
+    return { status: 'excluded', candidates: [], reason: 'no-primary-stats' };
+  }
+
+  const nameRole = equipmentRoleByName(item?.Name, candidates);
+  if (nameRole) return { status: 'resolved', role: nameRole, candidates, reason: 'name' };
+
+  const aggregateRole = equipmentAggregateRoleByStats(equipmentInfo, candidates);
+  if (aggregateRole) return { status: 'resolved', role: aggregateRole, candidates, reason: 'aggregate-stats' };
+
+  const statCandidates = equipmentRoleCandidatesByStats(equipmentInfo, candidates);
+  if (statCandidates.length === 1) {
+    return { status: 'resolved', role: statCandidates[0], candidates: statCandidates, reason: 'stats' };
+  }
+  if (statCandidates.length > 1) {
+    return { status: 'unresolved', candidates: statCandidates, reason: 'stats' };
+  }
+  return { status: 'unresolved', candidates, reason: speedRestricted ? 'speed-stat' : 'unknown' };
+}
+
+function equipmentCommonToken(name) {
+  const text = String(name || '').trim();
+  const parenthesized = text.match(/^(.+?)[（(]([^）)]+)[）)]$/u);
+  if (parenthesized) return `${parenthesized[1]}(${parenthesized[2]})`;
+  const withoutSuffix = text
+    .replace(/・オブ・.+$/u, '')
+    .replace(/・(リング|チョーカー|ネックレス|ブレスレット|バングル|イヤリング|ピアス|リストレット|リストバンド|アルミラ|ゴルゲット|イヤーカフス|イヤースクリュー)$/u, '')
+    .replace(/(リング|チョーカー|ネックレス|ブレスレット|バングル|イヤリング|ピアス|リストレット|リストバンド|アルミラ|ゴルゲット|イヤーカフス|イヤースクリュー)$/u, '');
+  return withoutSuffix || text;
+}
+
+function equipmentStatSignature(equipmentInfo = {}) {
+  const stats = equipmentInfo.stats || {};
+  const knownOrder = new Map(lodestoneEquipmentStatNames.map((name, index) => [name, index]));
+  return Object.entries(stats)
+    .filter(([, value]) => Number(value) > 0)
+    .sort(([a], [b]) => (knownOrder.get(a) ?? 999) - (knownOrder.get(b) ?? 999) || a.localeCompare(b, 'ja'))
+    .map(([name, value]) => `${name}=${Number(value)}`)
+    .join(',');
+}
+
+function equipmentSelectableRoles(candidates) {
+  const roles = uniqueRoleCodes(candidates);
+  const selectable = [...roles];
+  if (roles.filter(role => ['tank', 'striker_slayer', 'scout_ranger'].includes(role)).length >= 2) {
+    selectable.push('fighter');
+  }
+  if (roles.filter(role => ['healer', 'caster'].includes(role)).length >= 2) {
+    selectable.push('sorcerer');
+  }
+  return equipmentOverrideRoleCodes.filter(role => selectable.includes(role));
+}
+
+export function findUnresolvedEquipmentRoleGroups(items) {
+  const groups = new Map();
+  for (const item of items || []) {
+    const decision = equipmentRoleDecision(item);
+    if (decision.status !== 'unresolved') continue;
+    const equipLevel = Number(item?.EquipmentInfo?.equipLevel || 0);
+    const itemLevel = Number(item?.EquipmentInfo?.itemLevel || 0);
+    const commonToken = equipmentCommonToken(item?.Name);
+    const statSignature = equipmentStatSignature(item?.EquipmentInfo);
+    const key = `${equipLevel}:${itemLevel}:${commonToken}:${statSignature}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        key,
+        equipLevel,
+        itemLevel,
+        commonToken,
+        statSignature,
+        candidates: [...decision.candidates],
+        items: []
+      });
+    } else {
+      groups.get(key).candidates = groups.get(key).candidates.filter(role => decision.candidates.includes(role));
+    }
+    groups.get(key).items.push({
+      id: item.ID,
+      name: item.Name,
+      category: item.ItemUICategoryName || '',
+      iconFile: item.IconFile || '',
+      stats: { ...(item?.EquipmentInfo?.stats || {}) },
+      candidates: [...decision.candidates]
+    });
+  }
+  for (const group of groups.values()) {
+    if (group.items.length === 1) {
+      group.commonToken = group.items[0].name;
+      group.key = `${group.equipLevel}:${group.itemLevel}:${group.commonToken}:${group.statSignature}`;
+    }
+    group.candidates = equipmentSelectableRoles(group.candidates);
+  }
+  return [...groups.values()].filter(group => group.candidates.length).sort((a, b) =>
+    a.equipLevel - b.equipLevel
+    || a.itemLevel - b.itemLevel
+    || a.commonToken.localeCompare(b.commonToken, 'ja')
+    || a.key.localeCompare(b.key)
+  );
+}
+
+export function applyEquipmentRoleOverrides(items, overrides = readJson(equipmentRoleOverridesPath, {})) {
+  const groups = findUnresolvedEquipmentRoleGroups(items);
+  const byId = new Map((items || []).map(item => [String(item.ID), item]));
+  let automatic = 0;
+  let applied = 0;
+  let missing = 0;
+  for (const item of items || []) {
+    if (!item?.EquipmentInfo) continue;
+    const decision = equipmentRoleDecision(item);
+    if (decision.status === 'resolved') {
+      item.EquipmentInfo.recommendedRole = decision.role;
+      automatic += 1;
+    } else {
+      delete item.EquipmentInfo.recommendedRole;
+    }
+  }
+  for (const group of groups) {
+    const role = String(overrides?.[group.key] || '');
+    if (!equipmentOverrideRoleCodes.includes(role) || !group.candidates.includes(role)) {
+      missing += 1;
+      continue;
+    }
+    for (const entry of group.items) {
+      const item = byId.get(String(entry.id));
+      if (!item?.EquipmentInfo) continue;
+      item.EquipmentInfo.recommendedRole = role;
+      applied += 1;
+    }
+  }
+  return { groups: groups.length, automatic, applied, missing };
+}
+
+export function equipmentRoleGroupsForGui({
+  itemJsonPath = publicCandidatePath,
+  overrides = readJson(equipmentRoleOverridesPath, {}),
+  urls = readJson(lodestoneItemUrlsPath, {})
+} = {}) {
+  const items = readJson(itemJsonPath, []);
+  return findUnresolvedEquipmentRoleGroups(items).map(group => ({
+    ...group,
+    selectedRole: equipmentOverrideRoleCodes.includes(overrides?.[group.key]) ? overrides[group.key] : '',
+    items: group.items.map(item => ({
+      ...item,
+      lodestoneUrl: urls?.[String(item.id)] || ''
+    }))
+  }));
+}
+
+export function equipmentRoleSummary({
+  itemJsonPath = publicCandidatePath,
+  overrides = readJson(equipmentRoleOverridesPath, {})
+} = {}) {
+  const groups = findUnresolvedEquipmentRoleGroups(readJson(itemJsonPath, []));
+  const selected = groups.filter(group => equipmentOverrideRoleCodes.includes(overrides?.[group.key])).length;
+  return { total: groups.length, selected, unselected: groups.length - selected };
 }
 
 export function extractLodestoneRecipePaths(detailHtml) {
@@ -1313,6 +1647,8 @@ export function publishItemJson({
   if (!fs.existsSync(candidate)) throw new Error(`Missing publish candidate: ${candidate}`);
   const candidateItems = readJson(candidate, null);
   if (!Array.isArray(candidateItems)) throw new Error(`Candidate is not an item array: ${candidate}`);
+  const roleResult = applyEquipmentRoleOverrides(candidateItems);
+  log(`公開候補の装備推奨ロール情報: 自動 ${roleResult.automatic}件、手動反映 ${roleResult.applied}件、未指定 ${roleResult.missing}グループ`);
   const targetItems = fs.existsSync(target) ? readJson(target, null) : [];
   if (!Array.isArray(targetItems)) throw new Error(`Target Item.json is not an item array: ${target}`);
   const publishItems = targetItems.length ? mergePublishItems(targetItems, candidateItems) : candidateItems;
@@ -1324,6 +1660,7 @@ export function publishItemJson({
     log(`確認済み差分として続行します: ${error.message}`);
   }
   protectItemJson({ source: target, target: expectedItemJsonPath });
+  writeJsonAtomic(candidate, candidateItems);
   writeJsonAtomic(target, publishItems);
   updateDataCacheVersion({ itemJsonPath: target, salt: hashIconFiles(publishItems.map(item => item.IconFile).filter(Boolean)), reason: 'publish' });
   updateRunState({ command: 'publish', status: 'completed', finalOutput: path.relative(repositoryRoot, target) });
@@ -1394,7 +1731,7 @@ async function filterUnconditionalShops(shops, delayMs) {
 
 async function applyLodestoneInfoToItem(item, delayMs) {
   assertNotCancelled();
-  const { detailHtml } = await resolveLodestoneItemDetail(item, delayMs, { cache: true });
+  const { detailUrl, detailHtml } = await resolveLodestoneItemDetail(item, delayMs, { cache: true });
 
   const shopInfo = extractLodestoneShopInfo(detailHtml);
   const shops = shopInfo ? await filterUnconditionalShops(shopInfo.shops, delayMs) : [];
@@ -1412,15 +1749,23 @@ async function applyLodestoneInfoToItem(item, delayMs) {
   item.LodestoneInfoCheckedAt = nowIso();
 
   return {
+    detailUrl,
     shopSales: shops.length,
     craftInfo: craftInfo.length,
     equipmentInfo: Boolean(equipmentInfo),
-    equipmentStats: Boolean(equipmentInfo?.stats && Object.values(equipmentInfo.stats).some(value => Number(value) > 0))
+    equipmentStats: Boolean(equipmentInfo?.stats && Object.values(equipmentInfo.stats).some(value => Number(value) > 0)),
+    equipmentPerformance: Boolean(equipmentInfo?.performance && Object.values(equipmentInfo.performance).some(value => Number(value) > 0))
   };
 }
 
 function hasExistingLodestoneInfo(item) {
   if (item?.EquipmentInfo && !item.EquipmentInfo.stats) return false;
+  if (item?.EquipmentInfo?.stats
+    && lodestoneEquipmentStatNames.some(stat => !Object.hasOwn(item.EquipmentInfo.stats, stat))) return false;
+  if (item?.EquipmentInfo && !item.EquipmentInfo.performance) return false;
+  if (item?.EquipmentInfo?.performance
+    && Object.values(lodestoneEquipmentPerformanceLabels)
+      .some(name => !Object.hasOwn(item.EquipmentInfo.performance, name))) return false;
   return Boolean(item?.LodestoneInfoCheckedAt || item?.ShopInfo || item?.CraftInfo || item?.EquipmentInfo);
 }
 
@@ -1488,8 +1833,10 @@ export async function publishLodestoneInfo({
   let craftMatched = 0;
   let equipmentMatched = 0;
   let equipmentStatsMatched = 0;
+  let equipmentPerformanceMatched = 0;
   let failed = 0;
   let skipped = 0;
+  const itemUrls = readJson(lodestoneItemUrlsPath, {});
   lodestoneEtaStats = { fetch: 0, cache: 0 };
   cancellationEnabled = true;
   try {
@@ -1508,11 +1855,13 @@ export async function publishLodestoneInfo({
           continue;
         }
         const result = await applyLodestoneInfoToItem(item, delayMs);
+        if (result.detailUrl) itemUrls[String(item.ID)] = result.detailUrl;
         if (result.shopSales > 0) shopMatched += 1;
         if (result.craftInfo > 0) craftMatched += 1;
         if (result.equipmentInfo) equipmentMatched += 1;
         if (result.equipmentStats) equipmentStatsMatched += 1;
-        log(`Lodestone ${processed}/${limitedItems.length}: ${item.ID} ${item.Name} 店${result.shopSales} 製作${result.craftInfo} 装備${result.equipmentInfo ? 1 : 0} ステータス${result.equipmentStats ? 1 : 0}`);
+        if (result.equipmentPerformance) equipmentPerformanceMatched += 1;
+        log(`Lodestone ${processed}/${limitedItems.length}: ${item.ID} ${item.Name} 店${result.shopSales} 製作${result.craftInfo} 装備${result.equipmentInfo ? 1 : 0} ステータス${result.equipmentStats ? 1 : 0} 基本性能${result.equipmentPerformance ? 1 : 0}`);
       } catch (error) {
         failed += 1;
         log(`Lodestone警告 ${processed}/${limitedItems.length}: ${item.ID} ${item.Name}: ${error.message}`);
@@ -1537,6 +1886,9 @@ export async function publishLodestoneInfo({
     ? mergeHousingShopInfo(items)
     : { matched: 0, shopAdded: 0, unmatched: 0, priceMismatch: 0 };
   if (!fs.existsSync(housingShopsPath)) log('ハウジングショップ情報: housing-shops.json が無いためスキップしました');
+  writeJsonAtomic(lodestoneItemUrlsPath, itemUrls);
+  const roleResult = applyEquipmentRoleOverrides(items);
+  log(`装備推奨ロール情報: 自動 ${roleResult.automatic}件、手動対象 ${roleResult.groups}グループ、手動反映 ${roleResult.applied}件、未指定 ${roleResult.missing}グループ`);
   writeJsonAtomic(target, items);
   if (path.resolve(target) === publicItemJsonPath) {
     updateDataCacheVersion({ itemJsonPath: target, salt: `lodestone-info-${processed}-${shopMatched}-${craftMatched}-${equipmentMatched}-${equipmentStatsMatched}-${failed}-${housingResult.shopAdded}`, reason: 'lodestone-info' });
@@ -1544,7 +1896,7 @@ export async function publishLodestoneInfo({
     log('公開Item.json以外が対象のため、データキャッシュ版の更新をスキップしました');
   }
   updateRunState({ command: 'publish-lodestone-info', status: 'completed', finalOutput: path.relative(repositoryRoot, target) });
-  log(`Lodestone情報を候補反映しました 処理 ${processed}件、スキップ ${skipped}件、店 ${shopMatched}件、製作 ${craftMatched}件、装備 ${equipmentMatched}件、ステータス ${equipmentStatsMatched}件、失敗 ${failed}件`);
+  log(`Lodestone情報を候補反映しました 処理 ${processed}件、スキップ ${skipped}件、店 ${shopMatched}件、製作 ${craftMatched}件、装備 ${equipmentMatched}件、ステータス ${equipmentStatsMatched}件、基本性能 ${equipmentPerformanceMatched}件、失敗 ${failed}件`);
 }
 
 export function smokeTest({ root = fs.mkdtempSync(path.join(os.tmpdir(), 'ffxiv-pipeline-smoke-')) } = {}) {
@@ -2084,6 +2436,10 @@ function printHelp() {
   publish-gathering         既存Item.jsonへ採集情報だけを反映
   publish-lodestone-info [--name アイテム名] [--limit 件数] [--delay 100] [--target path] [--force]
                             Lodestone由来の店/製作/装備情報を公開候補JSONへ反映
+  equipment-role-groups [--item-json path]
+                            手動指定が必要な装備推奨ロール一覧をJSONで出力
+  equipment-role-summary [--item-json path]
+                            手動指定の指定済み・未指定件数をJSONで出力
   icons [--quality 80] [--size 80] [--delay 500] [--item-json path]
                             Lodestone NQ PNGキャッシュから指定Item.jsonのWebPアイコン生成
   icon-preview [--size 80] アイコン画質比較プレビューを生成
@@ -2126,6 +2482,18 @@ export async function main(argv = process.argv.slice(2)) {
     name: args.name ? String(args.name) : '',
     force: Boolean(args.force)
   });
+  if (command === 'equipment-role-groups') {
+    process.stdout.write(`${JSON.stringify(equipmentRoleGroupsForGui({
+      itemJsonPath: args['item-json'] ? path.resolve(String(args['item-json'])) : publicCandidatePath
+    }), null, 2)}\n`);
+    return;
+  }
+  if (command === 'equipment-role-summary') {
+    process.stdout.write(`${JSON.stringify(equipmentRoleSummary({
+      itemJsonPath: args['item-json'] ? path.resolve(String(args['item-json'])) : publicCandidatePath
+    }))}\n`);
+    return;
+  }
   if (command === 'smoke-test') return smokeTest();
   if (command === 'verify') return verifyOutput({
     expected: args.expected ? path.resolve(String(args.expected)) : (fs.existsSync(expectedItemJsonPath) ? expectedItemJsonPath : publicItemJsonPath),

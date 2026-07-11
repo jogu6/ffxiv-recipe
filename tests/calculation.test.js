@@ -71,6 +71,22 @@ test('aggregates shared intermediate demand before rounding craft counts', () =>
   assert.equal(result.states.get('Ore').needed, 5);
 });
 
+test('treats purchased intermediates as terminal without removing other shared demand', () => {
+  const recipes = {
+    Product: recipe(1, [{ name: 'Purchased', qty: 1 }, { name: 'Other', qty: 1 }]),
+    Purchased: recipe(1, [{ name: 'Shared', qty: 2 }, { name: 'OnlyPurchased', qty: 1 }]),
+    Other: recipe(1, [{ name: 'Shared', qty: 1 }])
+  };
+  const result = calculateRequirements(recipes, [{ name: 'Product', qty: 1 }], {
+    exchangeCraftTypes,
+    terminalNames: ['Purchased']
+  });
+
+  assert.equal(result.states.get('Purchased').needed, 1);
+  assert.equal(result.states.get('Shared').needed, 1);
+  assert.equal(result.states.has('OnlyPurchased'), false);
+});
+
 test('aggregates a shared dependency reached through different parents', () => {
   const recipes = {
     Product: recipe(1, [{ name: 'Left', qty: 1 }, { name: 'Right', qty: 1 }]),

@@ -51,13 +51,13 @@
     });
   }
 
-  function assertAcyclic(recipes, rootNames, exchangeTypes) {
+  function assertAcyclic(recipes, rootNames, exchangeTypes, terminalNames) {
     const visiting = new Set();
     const visited = new Set();
 
     function visit(name) {
       const recipe = recipes[name];
-      if (!recipe || exchangeTypes.has(String(recipe.craftType))) return;
+      if (!recipe || terminalNames.has(name) || exchangeTypes.has(String(recipe.craftType))) return;
       validateRecipe(name, recipe);
       if (visiting.has(name)) throw new Error(`Recipe cycle detected at ${name}`);
       if (visited.has(name)) return;
@@ -76,6 +76,7 @@
     const exchangeTypes = new Set(
       [...(options.exchangeCraftTypes || [])].map(value => String(value))
     );
+    const terminalNames = new Set(options.terminalNames || []);
     const rootNames = new Set();
     const demand = new Map();
 
@@ -91,7 +92,7 @@
       );
     });
 
-    assertAcyclic(recipes, rootNames, exchangeTypes);
+    assertAcyclic(recipes, rootNames, exchangeTypes, terminalNames);
 
     const craftTimes = new Map();
     const parents = new Map();
@@ -109,7 +110,7 @@
       const previousCraftTimes = craftTimes.get(name) || 0;
       if (info.craftTimes <= previousCraftTimes) continue;
       craftTimes.set(name, info.craftTimes);
-      if (exchangeTypes.has(String(recipe.craftType))) continue;
+      if (terminalNames.has(name) || exchangeTypes.has(String(recipe.craftType))) continue;
 
       const addedCraftTimes = info.craftTimes - previousCraftTimes;
       recipe.ingredients.forEach(ingredient => {

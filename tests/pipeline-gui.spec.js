@@ -37,6 +37,7 @@ async function openPipelineGui(page) {
           window.__pipelineGuiTest.invokes.push({ command, payload });
           if (command === 'read_update_state') return {};
           if (command === 'read_quality_preview_state') return { available: false };
+          if (command === 'read_equipment_role_summary') return { selected: 0, unselected: 0, total: 0 };
           if (window.__pipelineGuiTest.holdIcons && command === 'run_pipeline_command' && payload.command === 'icons') {
             return new Promise(resolve => {
               window.__pipelineGuiTest.resolveLongRun = () => resolve('icons ok');
@@ -106,7 +107,8 @@ test('pipeline GUI confirms long operations before invoking Tauri', async ({ pag
   await page.locator('#confirmCancelBtn').click();
   expect(await invokes(page)).toEqual([
     { command: 'read_update_state', payload: {} },
-    { command: 'read_quality_preview_state', payload: {} }
+    { command: 'read_quality_preview_state', payload: {} },
+    { command: 'read_equipment_role_summary', payload: {} }
   ]);
 
   await page.locator('#buildBtn').click();
@@ -116,6 +118,7 @@ test('pipeline GUI confirms long operations before invoking Tauri', async ({ pag
     command: 'run_pipeline_command',
     payload: { command: 'build', args: [] }
   });
+  expect((await invokes(page)).filter(call => call.command === 'read_equipment_role_summary')).toHaveLength(2);
 });
 
 test('pipeline GUI runs the recommended sequence with WebP quality', async ({ page }) => {
@@ -152,6 +155,7 @@ test('pipeline GUI can force Lodestone info refresh without changing cache behav
     command: 'publish-lodestone-info',
     args: ['--delay', '100', '--force']
   });
+  expect((await invokes(page)).filter(call => call.command === 'read_equipment_role_summary')).toHaveLength(2);
 });
 
 test('pipeline GUI defaults icon generation to q80 Lodestone output', async ({ page }) => {
