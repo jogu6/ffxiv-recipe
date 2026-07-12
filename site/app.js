@@ -167,6 +167,7 @@ let equipmentSearchResults = [];
 let equipmentSearchIndex = new Map();
 let equipmentParameterDisplayNames = new Set();
 let equipmentItemLevelSourceLevel = 0;
+let floatingDialogScrollState = null;
 let maxEquipmentLevel = 1;
 let favoriteMaterialsRingCounts = {};
 let favoriteItemCountStore = { version: 1, lists: {} };
@@ -1176,7 +1177,7 @@ function selectedEquipmentItemLevel() {
   return toNumeric(customSelectValue(elements.equipmentItemLevelSelect), 0);
 }
 
-function updateEquipmentItemLevelOptions(preferredItemLevel = selectedEquipmentItemLevel()) {
+function updateEquipmentItemLevelOptions(preferredItemLevel = null) {
   const rawLevel = equipmentLevelInputValue();
   if (rawLevel <= 0) {
     equipmentItemLevelSourceLevel = 0;
@@ -1187,16 +1188,15 @@ function updateEquipmentItemLevelOptions(preferredItemLevel = selectedEquipmentI
   }
   const level = Math.max(1, Math.min(maxEquipmentLevel, rawLevel));
   const job = customSelectValue(elements.equipmentJobSelect);
-  let sourceLevel = level;
-  let itemLevels = [];
-  while (sourceLevel >= 1) {
-    itemLevels = [...(equipmentSearchIndex.get(job)?.levels.get(sourceLevel)?.itemLevels || [])]
-      .sort((a, b) => b - a);
-    if (itemLevels.length > 0) break;
-    sourceLevel -= 1;
+  const itemLevelSet = new Set();
+  for (let sourceLevel = level; sourceLevel >= 1; sourceLevel -= 1) {
+    equipmentSearchIndex.get(job)?.levels.get(sourceLevel)?.itemLevels
+      .forEach(itemLevel => itemLevelSet.add(itemLevel));
   }
-  equipmentItemLevelSourceLevel = itemLevels.length > 0 ? sourceLevel : 0;
-  setCustomSelectOptions(elements.equipmentItemLevelSelect, itemLevels.map(String), String(preferredItemLevel));
+  const itemLevels = [...itemLevelSet].sort((a, b) => b - a);
+  equipmentItemLevelSourceLevel = itemLevels.length > 0 ? level : 0;
+  const selectedItemLevel = preferredItemLevel === null ? itemLevels[0] : preferredItemLevel;
+  setCustomSelectOptions(elements.equipmentItemLevelSelect, itemLevels.map(String), String(selectedItemLevel || ''));
   updateEquipmentSearchButtons();
   saveViewState();
 }
@@ -2998,6 +2998,10 @@ function openFavoriteMaterialsMode({ listIds = [] } = {}) {
     prevPanel = 'left';
     showMobilePanel('right');
   }
+  requestAnimationFrame(() => {
+    elements.treeContainer.scrollTop = 0;
+    elements.panelRight.scrollTop = 0;
+  });
 }
 
 function leaveFavoriteMaterialsMode() {
@@ -3703,6 +3707,20 @@ function getCurrentMaterialRequirements(terminalNames = []) {
   return calculateMaterialRequirements(roots, terminalNames);
 }
 
+function recipeDependsOn(name, target, visited = new Set()) {
+  if (name === target) return true;
+  if (visited.has(name)) return false;
+  visited.add(name);
+  return (recipes[name]?.ingredients || []).some(ingredient =>
+    recipeDependsOn(ingredient.name, target, visited)
+  );
+}
+
+function purchasedIntermediateBlockers(name) {
+  return [...purchasedIntermediateNames]
+    .filter(purchasedName => purchasedName !== name && recipeDependsOn(purchasedName, name));
+}
+
 function renderMaterialsList() {
   const count = readRequestedCount(elements.countInput);
   const requirements = getCurrentMaterialRequirements();
@@ -3711,9 +3729,18 @@ function renderMaterialsList() {
     purchasedIntermediateContext = purchaseContext;
     purchasedIntermediateNames.clear();
   }
-  const requirementsAfterPurchases = purchasedIntermediateNames.size
+  let requirementsAfterPurchases = purchasedIntermediateNames.size
     ? getCurrentMaterialRequirements(purchasedIntermediateNames)
     : requirements;
+  const invalidPurchasedNames = [...purchasedIntermediateNames]
+    .filter(name => !requirementsAfterPurchases.states.has(name));
+  if (invalidPurchasedNames.length > 0) {
+    invalidPurchasedNames.forEach(name => purchasedIntermediateNames.delete(name));
+    requirementsAfterPurchases = purchasedIntermediateNames.size
+      ? getCurrentMaterialRequirements(purchasedIntermediateNames)
+      : requirements;
+    saveViewState();
+  }
   const originalRows = materialRowsFromRequirements(requirements);
   const recalculatedRows = materialRowsFromRequirements(requirementsAfterPurchases);
   const recalculatedRowsByKey = new Map(
@@ -3721,6 +3748,7 @@ function renderMaterialsList() {
   );
   const rows = originalRows.map(row => recalculatedRowsByKey.get(`${row.type}:${row.name}`) || row);
   const originalIntermediateRows = orderedIntermediateRows(requirements);
+  const originalIntermediateRowsByName = new Map(originalIntermediateRows.map(row => [row.name, row]));
   const recalculatedIntermediateRowsByName = new Map(
     orderedIntermediateRows(requirementsAfterPurchases).map(row => [row.name, row])
   );
@@ -3849,6 +3877,8 @@ function renderMaterialsList() {
     li.className = 'intermediate-tree-node';
     const purchased = purchasedIntermediateNames.has(row.name);
     const noLongerNeeded = !purchased && !requirementsAfterPurchases.states.has(row.name);
+    const originalQty = originalIntermediateRowsByName.get(row.name)?.qty || row.qty;
+    const reducedQty = Math.max(0, originalQty - (noLongerNeeded ? 0 : row.qty));
     if (purchased) li.classList.add('purchase-selected');
     if (noLongerNeeded) li.classList.add('purchase-unneeded');
     const rowElement = document.createElement('div');
@@ -3946,7 +3976,14 @@ function renderMaterialsList() {
     });
     appendItemActionButtons(
       primary,
-      createShopInfoButton(row.name, { allowIntermediatePurchase: true }),
+      createShopInfoButton(row.name, {
+        intermediatePurchase: {
+          disabled: noLongerNeeded,
+          qty: noLongerNeeded ? 0 : row.qty,
+          reducedQty,
+          blockers: purchasedIntermediateBlockers(row.name)
+        }
+      }),
       createGatheringTimerButton(row.name),
       treeButton
     );
@@ -4223,18 +4260,19 @@ function hasShopInfo(name) {
   return (itemMaster[name]?.shopInfo?.shops || []).length > 0;
 }
 
-function createShopInfoButton(name, { allowIntermediatePurchase = false } = {}) {
+function createShopInfoButton(name, { allowIntermediatePurchase = false, intermediatePurchase = null } = {}) {
   if (!hasShopInfo(name)) return null;
   const button = document.createElement('button');
   button.className = 'shop-info-btn';
   button.type = 'button';
-  const purchased = allowIntermediatePurchase && purchasedIntermediateNames.has(name);
+  const purchaseEnabled = allowIntermediatePurchase || Boolean(intermediatePurchase);
+  const purchased = purchaseEnabled && purchasedIntermediateNames.has(name);
   button.textContent = purchased ? '💰🛒' : '🛒';
   button.title = `${name}の店情報`;
   button.setAttribute('aria-label', `${name}の店情報`);
   button.addEventListener('click', event => {
     event.stopPropagation();
-    showShopDialog(name, { allowIntermediatePurchase });
+    showShopDialog(name, { allowIntermediatePurchase, intermediatePurchase });
   });
   return button;
 }
@@ -4313,6 +4351,23 @@ function stopGatheringTimerUpdates() {
   gatheringTimerIntervalId = null;
 }
 
+function rememberFloatingDialogScroll() {
+  floatingDialogScrollState = {
+    panelRight: elements.panelRight.scrollTop,
+    treeContainer: elements.treeContainer.scrollTop
+  };
+}
+
+function restoreFloatingDialogScroll() {
+  if (!floatingDialogScrollState) return;
+  const state = floatingDialogScrollState;
+  floatingDialogScrollState = null;
+  requestAnimationFrame(() => {
+    elements.panelRight.scrollTop = state.panelRight;
+    elements.treeContainer.scrollTop = state.treeContainer;
+  });
+}
+
 function startGatheringTimerUpdates() {
   stopGatheringTimerUpdates();
   if (!elements.gatheringOverlay.classList.contains('open') || document.hidden) return;
@@ -4329,6 +4384,7 @@ function createGatheringNote(label, highlightText, suffix) {
 }
 
 function showGatheringDialog(name) {
+  rememberFloatingDialogScroll();
   stopGatheringTimerUpdates();
   const entries = itemMaster[name]?.gatheringTimer || [];
   elements.gatheringTitle.textContent = `採集情報: ${name}`;
@@ -4390,9 +4446,11 @@ function showGatheringDialog(name) {
 function closeGatheringDialog() {
   elements.gatheringOverlay.classList.remove('open');
   stopGatheringTimerUpdates();
+  restoreFloatingDialogScroll();
 }
 
-function showShopDialog(name, { allowIntermediatePurchase = false } = {}) {
+function showShopDialog(name, { allowIntermediatePurchase = false, intermediatePurchase = null } = {}) {
+  rememberFloatingDialogScroll();
   const shopInfo = itemMaster[name]?.shopInfo;
   const shops = shopInfo?.shops || [];
   elements.shopTitle.textContent = `店情報: ${name}`;
@@ -4410,12 +4468,32 @@ function showShopDialog(name, { allowIntermediatePurchase = false } = {}) {
       );
       elements.shopPriceHeader.appendChild(priceBlock);
     }
-    if (allowIntermediatePurchase) {
+    if (allowIntermediatePurchase || intermediatePurchase) {
       const purchaseLabel = createTextElement('label', 'shop-purchase-option', '');
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.checked = purchasedIntermediateNames.has(name);
-      purchaseLabel.append(checkbox, document.createTextNode('この中間素材は購入💰して用意する'));
+      checkbox.disabled = Boolean(intermediatePurchase?.disabled);
+      checkbox.setAttribute('aria-label', 'この中間素材は購入💰して用意する');
+      const qty = intermediatePurchase?.qty;
+      const text = checkbox.disabled
+        ? '現在は購入指定できません'
+        : Number.isFinite(qty)
+          ? `${formatNumber(qty)}個を購入💰して用意する`
+          : 'この中間素材は購入💰して用意する';
+      purchaseLabel.append(checkbox, document.createTextNode(text));
+      if (intermediatePurchase?.reducedQty > 0) {
+        const blockerText = intermediatePurchase.blockers?.length
+          ? `「${intermediatePurchase.blockers.join('」「')}」の購入指定により`
+          : '上位中間素材の購入指定により';
+        purchaseLabel.appendChild(createTextElement(
+          'span',
+          'shop-purchase-reason',
+          checkbox.disabled
+            ? `${blockerText}不要です`
+            : `${blockerText}${formatNumber(intermediatePurchase.reducedQty)}個不要になりました`
+        ));
+      }
       checkbox.addEventListener('change', () => {
         purchasedIntermediateContext = currentMaterialPurchaseContext();
         if (checkbox.checked) purchasedIntermediateNames.add(name);
@@ -4447,6 +4525,7 @@ function showShopDialog(name, { allowIntermediatePurchase = false } = {}) {
 
 function closeShopDialog() {
   elements.shopOverlay.classList.remove('open');
+  restoreFloatingDialogScroll();
 }
 
 function createTreeMain(name, producedQty, subInfo, badge) {
@@ -4844,6 +4923,11 @@ function bindEvents() {
   const overlayQuery = window.matchMedia('(display-mode: window-controls-overlay)');
   standaloneQuery.addEventListener?.('change', updatePopupButtonVisibility);
   overlayQuery.addEventListener?.('change', updatePopupButtonVisibility);
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return;
+    if (elements.shopOverlay.classList.contains('open')) closeShopDialog();
+    else if (elements.gatheringOverlay.classList.contains('open')) closeGatheringDialog();
+  });
 
   elements.appTitle.addEventListener('click', resetToStartupView);
   elements.appTitle.addEventListener('keydown', event => {

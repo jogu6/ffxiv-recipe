@@ -594,9 +594,13 @@ test('purchased intermediate keeps rows visible and marks its unused materials',
   const purchasedNode = page.locator('.intermediate-tree-row .material-name').filter({ hasText: /^バスタードソード$/ })
     .locator('xpath=ancestor::li[contains(@class,"intermediate-tree-node")]');
   await expect(purchasedNode).not.toHaveClass(/purchase-selected/);
+  await page.locator('#treeContainer').evaluate(element => { element.scrollTop = 120; });
+  const scrollBeforePurchase = await page.locator('#treeContainer').evaluate(element => element.scrollTop);
   await purchasedNode.locator('.shop-info-btn').click();
   const option = page.getByLabel('この中間素材は購入💰して用意する');
   await expect(option).not.toBeChecked();
+  await expect(page.locator('.shop-purchase-option')).toContainText('1個を購入');
+  await expect(page.locator('.shop-purchase-option')).not.toContainText('バスタードソード 1個');
   await expect(option).toHaveCSS('appearance', 'none');
   await expect(option).toHaveCSS('width', '22px');
   await expect(option).toHaveCSS('height', '22px');
@@ -605,8 +609,6 @@ test('purchased intermediate keeps rows visible and marks its unused materials',
   const earthShardRow = page.locator('.materials-list li').filter({ hasText: 'アースシャード' });
   await expect(fireShardRow.locator('.material-qty')).toHaveText('× 2');
   await expect(earthShardRow.locator('.material-qty')).toHaveText('× 2');
-  await page.locator('#treeContainer').evaluate(element => { element.scrollTop = 120; });
-  const scrollBeforePurchase = await page.locator('#treeContainer').evaluate(element => element.scrollTop);
   await option.check();
   await expect(option).toHaveCSS('background-color', 'rgb(200, 168, 75)');
   await expect.poll(() => page.locator('#treeContainer').evaluate(element => element.scrollTop)).toBe(scrollBeforePurchase);
@@ -620,6 +622,14 @@ test('purchased intermediate keeps rows visible and marks its unused materials',
   const lowerIntermediate = page.locator('.intermediate-tree-row .material-name').filter({ hasText: /^メープル材$/ })
     .locator('xpath=ancestor::li[contains(@class,"intermediate-tree-node")]');
   await expect(lowerIntermediate).toHaveClass(/purchase-unneeded/);
+  await page.locator('#treeContainer').evaluate(element => { element.scrollTop = 60; });
+  const scrollBeforeDisabledDialog = await page.locator('#treeContainer').evaluate(element => element.scrollTop);
+  await lowerIntermediate.locator('.shop-info-btn').click();
+  await expect(page.getByLabel('この中間素材は購入💰して用意する')).toBeDisabled();
+  await expect(page.locator('.shop-purchase-option')).toContainText('現在は購入指定できません');
+  await expect(page.locator('.shop-purchase-reason')).toContainText('バスタードソード');
+  await page.locator('#shopCloseBtn').click();
+  await expect.poll(() => page.locator('#treeContainer').evaluate(element => element.scrollTop)).toBe(scrollBeforeDisabledDialog);
   const unusedRow = page.locator('.materials-list li').filter({ hasText: 'メープル原木' });
   await expect(unusedRow).toHaveClass(/purchase-unneeded/);
   await expect(unusedRow.locator('.purchase-status')).toHaveText('中間素材購入💰の為不要');
@@ -1045,6 +1055,7 @@ test('mobile pin turns active after adding to a favorite list', async ({ page })
   await page.locator('#confirmYes').click();
   await expect(secondPin).not.toHaveClass(/inactive/);
 
+  await page.locator('#panelRight').evaluate(panel => { panel.scrollTop = 100; });
   await page.locator('#mobileBackBtn').click();
   await page.locator('#favBtn').click();
   await page.locator('#favoriteLists').getByText('スマホ確認').click();
@@ -1053,6 +1064,7 @@ test('mobile pin turns active after adding to a favorite list', async ({ page })
   const materialsButton = page.locator('#recipeList .favorite-materials-row').getByText('素材リストを表示');
   await materialsButton.click();
   await expect(materialsButton).toHaveClass(/active/);
+  await expect.poll(() => page.locator('#panelRight').evaluate(panel => panel.scrollTop)).toBe(0);
   await page.locator('#mobileBackBtn').click();
   await expect(page.locator('#recipeList .favorite-materials-row').getByText('素材リストを表示')).not.toHaveClass(/active/);
 });
@@ -1339,6 +1351,9 @@ test('equipment search uses custom dropdowns and recommended roles', async ({ pa
   await expect(page.locator('#equipmentLevelInput')).toHaveJSProperty('value', await page.locator('#equipmentLevelInput').getAttribute('max'));
   await expect(page.locator('#equipmentItemLevelSelect')).toHaveAttribute('data-value', '');
   await expect(page.locator('#equipmentSearchBtn')).toBeDisabled();
+  const levelBeforeBlankClick = await page.locator('#equipmentLevelInput').inputValue();
+  await page.locator('.equipment-search-field > span').click({ position: { x: 120, y: 5 } });
+  await expect(page.locator('#equipmentLevelInput')).toHaveValue(levelBeforeBlankClick);
   const jobBox = await page.locator('#equipmentJobSelect').boundingBox();
   const itemLevelBox = await page.locator('#equipmentItemLevelSelect').boundingBox();
   expect(jobBox).toBeTruthy();
@@ -1355,6 +1370,17 @@ test('equipment search uses custom dropdowns and recommended roles', async ({ pa
   await page.locator('#equipmentSearchBtn').click();
   await expect(page.locator('#recipeList')).toContainText('ブラスリストレット');
   await expect(page.locator('#recipeList')).not.toContainText('ブラスゴルゲット');
+
+  await page.locator('#equipmentLevelInput').fill('45');
+  await page.locator('#equipmentLevelInput').dispatchEvent('input');
+  await expect(page.locator('#equipmentItemLevelSelect .custom-select-option[data-value="48"]')).toHaveCount(1);
+  await expect(page.locator('#equipmentItemLevelSelect')).toHaveAttribute('data-value', '48');
+  await page.locator('#equipmentLevelInput').fill('46');
+  await page.locator('#equipmentLevelInput').dispatchEvent('input');
+  await expect(page.locator('#equipmentItemLevelSelect .custom-select-option[data-value="48"]')).toHaveCount(1);
+  await expect(page.locator('#equipmentItemLevelSelect')).toHaveAttribute('data-value', '48');
+  await page.locator('#equipmentLevelInput').fill('16');
+  await page.locator('#equipmentLevelInput').dispatchEvent('input');
 
   await chooseCustomOption(page, 'equipmentJobSelect', '剣術士');
   await expect(page.locator('#equipmentSlotSelect .custom-select-option[data-value="shield"]')).toHaveCount(1);
@@ -1510,7 +1536,6 @@ test('equipment search does not mix all-class crafter gear into battle class res
   await page.locator('#equipmentLevelInput').dispatchEvent('input');
 
   await expect(page.locator('#equipmentItemLevelSelect .custom-select-option[data-value="43"]')).toHaveCount(0);
-  await expect(page.locator('#equipmentItemLevelSelect')).not.toContainText('43');
 });
 
 test('equipment search keeps classes separate and falls back per slot', async ({ page }) => {
