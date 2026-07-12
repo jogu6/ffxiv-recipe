@@ -43,6 +43,7 @@
   },
   "dependencies": {
     "dompurify": "^3.4.11",
-    "marked": "^18.0.5"
+    "marked": "^18.0.5",
+    "swiper": "^14.0.5"
   }
 }

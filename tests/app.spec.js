@@ -1638,6 +1638,9 @@ test('equipment search prefers tenacity or piety and shows only differing tied p
 test('title returns to the startup view', async ({ page }) => {
   await openApp(page);
   await expect(page.locator('#tipsMsg .tips-about-btn')).toHaveText('このアプリは何ですか？');
+  await expect(page.locator('#tipsMsg .tips-about-description')).toHaveText(
+    '← 選択すると、このアプリでできることや各種機能の説明画面が表示されます'
+  );
   await searchFor(page, 'バスタードソード');
   await page.getByText('バスタードソード', { exact: true }).first().click();
   await expect(page.locator('.result-root-summary')).toContainText('バスタードソード');
@@ -1688,6 +1691,7 @@ test('crossing the responsive breakpoint resets to startup view', async ({ page 
   await expect(page.locator('#recipeList li.tips-li')).toHaveCount(0);
   await expect(page.locator('#mobileTipsMsg')).toBeVisible();
   await expect(page.locator('#mobileTipsMsg .tips-about-btn')).toHaveText('このアプリは何ですか？');
+  await expect(page.locator('#mobileTipsMsg .tips-about-description')).toBeVisible();
   await expect(page.locator('#mobileTipsMsg .tips-row')).toBeVisible();
   await expect(page.locator('#mobileTipsMsg')).toHaveCSS('padding', '16px 20px 22px');
   await expect(page.locator('#mobileTipsMsg')).toHaveCSS('background-color', 'rgb(26, 26, 26)');

@@ -1,7 +1,7 @@
 const DATA_CACHE_VERSION = 'ff14recipe-data-7.50-4492adda';
 const DATA_FILE = `./data/Item.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 const TIPS_FILE = './data/tips.md';
-const ABOUT_URL = 'https://jogu6.github.io/ffxiv-recipe-about/';
+const ABOUT_URL = '/guide/';
 const LS_FAV = 'ff14_favorites';
 const LS_FAV_LISTS = 'ff14_favorite_lists_v2';
 const LS_FAV_COUNTS = 'ff14_favorite_item_counts_v1';
@@ -2302,7 +2302,9 @@ function createMarkdownElement(tagName, className, html) {
   return element;
 }
 
-function createAboutAppButton() {
+function createAboutAppLink() {
+  const container = document.createElement('div');
+  container.className = 'tips-about-link';
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'tips-about-btn';
@@ -2310,7 +2312,11 @@ function createAboutAppButton() {
   button.addEventListener('click', () => {
     window.location.href = ABOUT_URL;
   });
-  return button;
+  const description = document.createElement('span');
+  description.className = 'tips-about-description';
+  description.textContent = '← 選択すると、このアプリでできることや各種機能の説明画面が表示されます';
+  container.append(button, description);
+  return container;
 }
 
 function renderTips() {
@@ -2318,7 +2324,7 @@ function renderTips() {
     const rows = tipsData.map(tip =>
       createMarkdownElement('div', 'tips-row markdown-content', tip.html)
     );
-    container.replaceChildren(createAboutAppButton(), ...rows);
+    container.replaceChildren(createAboutAppLink(), ...rows);
   });
 }
 

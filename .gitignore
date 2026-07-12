@@ -39,3 +39,6 @@ pipeline/state/*.json
 pipeline/reports/
 pipeline/legacy-powershell/
 site/__tmp_icon_quality/
+
+# Local guide screenshot sources
+guide-capture/output/
