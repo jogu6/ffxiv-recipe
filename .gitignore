@@ -25,6 +25,7 @@ src-tauri/target/
 *.tmp
 *.temp
 pipeline/logs/*.tmp
+*.local.json
 
 # Local data pipeline files
 pipeline/input/*.csv
