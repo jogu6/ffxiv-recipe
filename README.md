@@ -6,7 +6,7 @@ FF14のレシピ、必要素材、中間素材、装備、採集・店情報を�
 - GitHub Pagesで配信
 - PWA対応
 - 日本語表示専用
-- データ生成処理はWindows 11上のNode.js/Tauriツールで実行
+- データ生成処理はWindows 11上のNode.js 24以降/Tauriツールで実行
 
 ## 主な機能
 
@@ -62,7 +62,7 @@ npm run pipeline:gui:build
 
 ## Validation
 
-Node.js依存関係をインストールします。
+Node.js 24以降で依存関係をインストールします。
 
 ```powershell
 npm install

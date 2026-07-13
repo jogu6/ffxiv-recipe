@@ -6,6 +6,7 @@ import path from 'node:path';
 import process from 'node:process';
 import zlib from 'node:zlib';
 import { spawnSync } from 'node:child_process';
+import { DatabaseSync } from 'node:sqlite';
 import sharp from 'sharp';
 
 sharp.cache(false);
@@ -22,6 +23,7 @@ export const cacheRoot = path.join(pipelineRoot, 'cache');
 export const pngIconCacheRoot = path.join(cacheRoot, 'item-icons-png');
 export const lodestonePngIconCacheRoot = path.join(cacheRoot, 'lodestone-icons-png');
 export const lodestoneShopCacheRoot = path.join(cacheRoot, 'lodestone-shops');
+export const lodestoneShopCacheDatabasePath = path.join(cacheRoot, 'lodestone-shops.sqlite');
 export const siteRoot = path.join(repositoryRoot, 'site');
 export const itemIconsRoot = path.join(siteRoot, 'assets', 'item-icons');
 
@@ -47,7 +49,11 @@ const lodestoneItemUrlsPath = path.join(stateRoot, 'lodestone-item-urls.json');
 const defaultIconQuality = 80;
 const defaultIconDelayMs = 500;
 const defaultLodestoneInfoDelayMs = 100;
+const lodestoneHtmlMaxBytes = 4 * 1024 * 1024;
+const lodestoneShopConditionCacheMaxEntries = 4096;
 let lodestoneEtaStats = null;
+let lodestoneShopConditionCache = null;
+let lodestoneShopCacheStore = null;
 let cancellationEnabled = false;
 const defaultPreviewSampleCount = 64;
 const iconFailureAllowedRate = 0.003;
@@ -182,6 +188,93 @@ function writeBytesAtomic(file, bytes) {
   const temp = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.tmp`);
   fs.writeFileSync(temp, bytes);
   fs.renameSync(temp, file);
+}
+
+export function compressLodestoneHtml(text, { maxOutputLength = lodestoneHtmlMaxBytes } = {}) {
+  const source = Buffer.from(String(text), 'utf8');
+  if (source.length > maxOutputLength) {
+    throw new Error(`展開後HTMLが上限を超えています: ${source.length} > ${maxOutputLength}`);
+  }
+  const compressed = zlib.gzipSync(source, { level: 6 });
+  const verified = zlib.gunzipSync(compressed, { maxOutputLength });
+  if (!verified.equals(source)) throw new Error('gzip検証結果が元HTMLと一致しません');
+  return {
+    body: compressed,
+    rawBytes: source.length,
+    sha256: crypto.createHash('sha256').update(source).digest()
+  };
+}
+
+export function decompressLodestoneHtml(entry, { maxOutputLength = lodestoneHtmlMaxBytes } = {}) {
+  if (!entry) return null;
+  const source = zlib.gunzipSync(Buffer.from(entry.body), { maxOutputLength });
+  if (source.length !== Number(entry.raw_bytes)) throw new Error('Lodestoneキャッシュの展開サイズが一致しません');
+  const expectedHash = Buffer.from(entry.sha256);
+  const actualHash = crypto.createHash('sha256').update(source).digest();
+  if (!actualHash.equals(expectedHash)) throw new Error('LodestoneキャッシュのSHA-256が一致しません');
+  return source.toString('utf8');
+}
+
+export function openLodestoneShopCacheStore(file = lodestoneShopCacheDatabasePath) {
+  ensureDir(path.dirname(file));
+  const db = new DatabaseSync(file);
+  db.exec(`
+    PRAGMA journal_mode=WAL;
+    PRAGMA synchronous=FULL;
+    PRAGMA busy_timeout=5000;
+    PRAGMA cell_size_check=ON;
+    PRAGMA trusted_schema=OFF;
+    CREATE TABLE IF NOT EXISTS cache (
+      key TEXT PRIMARY KEY,
+      url TEXT,
+      body BLOB NOT NULL,
+      raw_bytes INTEGER NOT NULL,
+      sha256 BLOB NOT NULL,
+      updated_at INTEGER NOT NULL
+    ) WITHOUT ROWID;
+  `);
+  const columns = db.prepare('PRAGMA table_info(cache)').all().map(column => column.name);
+  if (!columns.includes('url')) db.exec('ALTER TABLE cache ADD COLUMN url TEXT');
+  return {
+    file,
+    db,
+    get: db.prepare('SELECT body, raw_bytes, sha256 FROM cache WHERE key = ?'),
+    put: db.prepare(`
+      INSERT INTO cache (key, url, body, raw_bytes, sha256, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET
+        url = COALESCE(excluded.url, cache.url),
+        body = excluded.body,
+        raw_bytes = excluded.raw_bytes,
+        sha256 = excluded.sha256,
+        updated_at = excluded.updated_at
+    `),
+    remove: db.prepare('DELETE FROM cache WHERE key = ?'),
+    count: db.prepare('SELECT COUNT(*) AS count FROM cache'),
+    close() {
+      try {
+        db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+      } finally {
+        db.close();
+      }
+    }
+  };
+}
+
+export function readLodestoneShopCacheEntry(store, key) {
+  return decompressLodestoneHtml(store.get.get(key));
+}
+
+export function writeLodestoneShopCacheEntry(store, key, text, { url = null } = {}) {
+  const entry = compressLodestoneHtml(text);
+  store.db.exec('BEGIN IMMEDIATE');
+  try {
+    store.put.run(key, url, entry.body, entry.rawBytes, entry.sha256, Date.now());
+    store.db.exec('COMMIT');
+  } catch (error) {
+    store.db.exec('ROLLBACK');
+    throw error;
+  }
+  return { sourceBytes: entry.rawBytes, compressedBytes: entry.body.length };
 }
 
 function sha256File(file) {
@@ -712,18 +805,141 @@ async function fetchLodestoneText(url, delayMs) {
   return text;
 }
 
+function lodestoneCacheKey(url) {
+  return crypto.createHash('sha256').update(url).digest('hex');
+}
+
+function getLodestoneShopCacheStore() {
+  if (!lodestoneShopCacheStore) lodestoneShopCacheStore = openLodestoneShopCacheStore();
+  return lodestoneShopCacheStore;
+}
+
 async function fetchCachedLodestoneText(url, delayMs) {
   assertNotCancelled();
-  ensureDir(lodestoneShopCacheRoot);
-  const cacheFile = path.join(lodestoneShopCacheRoot, `${crypto.createHash('sha256').update(url).digest('hex')}.html`);
-  if (fs.existsSync(cacheFile)) {
+  const key = lodestoneCacheKey(url);
+  const store = getLodestoneShopCacheStore();
+  const legacy = path.join(lodestoneShopCacheRoot, `${key}.html`);
+  const cached = store.get.get(key);
+  if (cached) {
+    try {
+      const text = decompressLodestoneHtml(cached);
+      if (lodestoneEtaStats) lodestoneEtaStats.cache += 1;
+      return text;
+    } catch (error) {
+      log(`Lodestone SQLiteキャッシュ破損: ${key}: ${error.message}`);
+      store.remove.run(key);
+    }
+  }
+  if (fs.existsSync(legacy)) {
     if (lodestoneEtaStats) lodestoneEtaStats.cache += 1;
-    return fs.readFileSync(cacheFile, 'utf8');
+    return fs.readFileSync(legacy, 'utf8');
   }
   if (lodestoneEtaStats) lodestoneEtaStats.fetch += 1;
   const text = await fetchLodestoneText(url, delayMs);
-  writeTextAtomic(cacheFile, text);
+  try {
+    writeLodestoneShopCacheEntry(store, key, text, { url });
+  } catch (error) {
+    log(`Lodestone SQLiteキャッシュ保存をスキップしました: ${error.message}`);
+  }
   return text;
+}
+
+export function migrateLodestoneShopCache({
+  root = lodestoneShopCacheRoot,
+  databasePath = lodestoneShopCacheDatabasePath,
+  dryRun = false,
+  keepHtml = false,
+  limit = Number.POSITIVE_INFINITY,
+  batchSize = 100
+} = {}) {
+  ensureDir(root);
+  const legacyFiles = fs.readdirSync(root)
+    .filter(name => /^[a-f0-9]{64}\.html$/.test(name))
+    .sort()
+    .slice(0, Number.isFinite(limit) ? Math.max(0, limit) : undefined);
+  const result = {
+    candidates: legacyFiles.length,
+    converted: 0,
+    reused: 0,
+    removed: 0,
+    failed: 0,
+    legacyBytes: 0,
+    databaseBytes: 0,
+    databaseRows: 0,
+    quickCheck: '',
+    errors: []
+  };
+  if (dryRun) {
+    for (const name of legacyFiles) result.legacyBytes += fs.statSync(path.join(root, name)).size;
+    return result;
+  }
+  const store = openLodestoneShopCacheStore(databasePath);
+  try {
+    const size = Math.max(1, Number(batchSize) || 1);
+    for (let offset = 0; offset < legacyFiles.length; offset += size) {
+      assertNotCancelled();
+      const batch = [];
+      for (const name of legacyFiles.slice(offset, offset + size)) {
+        const legacy = path.join(root, name);
+        const source = fs.readFileSync(legacy);
+        result.legacyBytes += source.length;
+        try {
+          const key = name.slice(0, 64);
+          let reusable = false;
+          try {
+            reusable = Buffer.from(readLodestoneShopCacheEntry(store, key) || '', 'utf8').equals(source);
+          } catch {
+            reusable = false;
+          }
+          const entry = reusable ? null : compressLodestoneHtml(source.toString('utf8'));
+          batch.push({ name, legacy, key, source, entry });
+          if (reusable) result.reused += 1;
+        } catch (error) {
+          result.failed += 1;
+          if (result.errors.length < 20) result.errors.push(`${name}: ${error.message}`);
+        }
+      }
+      const writes = batch.filter(row => row.entry);
+      if (writes.length) {
+        store.db.exec('BEGIN IMMEDIATE');
+        try {
+          for (const row of writes) {
+            store.put.run(row.key, null, row.entry.body, row.entry.rawBytes, row.entry.sha256, Date.now());
+          }
+          store.db.exec('COMMIT');
+          result.converted += writes.length;
+        } catch (error) {
+          store.db.exec('ROLLBACK');
+          throw error;
+        }
+      }
+      for (const row of batch) {
+        try {
+          const verified = Buffer.from(readLodestoneShopCacheEntry(store, row.key), 'utf8');
+          if (!verified.equals(row.source)) throw new Error('DB格納後のHTMLが元ファイルと一致しません');
+          if (!keepHtml) {
+            fs.rmSync(row.legacy);
+            result.removed += 1;
+          }
+        } catch (error) {
+          result.failed += 1;
+          if (result.errors.length < 20) result.errors.push(`${row.name}: ${error.message}`);
+        }
+      }
+      const completed = Math.min(offset + size, legacyFiles.length);
+      if (legacyFiles.length >= 1000 && (completed % 1000 === 0 || completed === legacyFiles.length)) {
+        log(`Lodestoneキャッシュ移行中: ${completed}/${legacyFiles.length}件`);
+      }
+    }
+    result.databaseRows = Number(store.count.get().count);
+    result.quickCheck = String(store.db.prepare('PRAGMA quick_check').get().quick_check || '');
+    if (result.quickCheck !== 'ok') throw new Error(`SQLite quick_checkに失敗しました: ${result.quickCheck}`);
+  } finally {
+    store.close();
+  }
+  if (fs.existsSync(databasePath)) result.databaseBytes = fs.statSync(databasePath).size;
+  if (!keepHtml && fs.existsSync(root) && fs.readdirSync(root).length === 0) fs.rmdirSync(root);
+  return result;
 }
 
 function emitEtaProgress(payload) {
@@ -840,6 +1056,26 @@ export function extractLodestoneShopInfo(detailHtml) {
 
 export function isConditionalLodestoneShop(shopHtml) {
   return normalizeHtmlText(shopHtml).includes(lodestoneConditionalShopText);
+}
+
+export async function resolveLodestoneShopCondition(
+  shopId,
+  loadHtml,
+  { cache = null, maxEntries = lodestoneShopConditionCacheMaxEntries } = {}
+) {
+  if (cache?.has(shopId)) {
+    return { conditional: cache.get(shopId), memoryHit: true, cacheError: false };
+  }
+  const conditional = isConditionalLodestoneShop(await loadHtml());
+  let cacheError = false;
+  if (cache && cache.size < maxEntries) {
+    try {
+      cache.set(shopId, conditional);
+    } catch {
+      cacheError = true;
+    }
+  }
+  return { conditional, memoryHit: false, cacheError };
 }
 
 const lodestoneEquipmentPerformanceLabels = {
@@ -1718,8 +1954,19 @@ async function filterUnconditionalShops(shops, delayMs) {
   const filtered = [];
   for (const shop of shops) {
     assertNotCancelled();
-    const shopHtml = await fetchCachedLodestoneText(`https://jp.finalfantasyxiv.com/lodestone/playguide/db/shop/${shop.shopId}/`, delayMs);
-    if (isConditionalLodestoneShop(shopHtml)) continue;
+    const condition = await resolveLodestoneShopCondition(
+      shop.shopId,
+      () => fetchCachedLodestoneText(`https://jp.finalfantasyxiv.com/lodestone/playguide/db/shop/${shop.shopId}/`, delayMs),
+      { cache: lodestoneShopConditionCache }
+    );
+    if (condition.memoryHit) {
+      if (lodestoneEtaStats) lodestoneEtaStats.memory += 1;
+    }
+    if (condition.cacheError) {
+      lodestoneShopConditionCache?.clear();
+      lodestoneShopConditionCache = null;
+    }
+    if (condition.conditional) continue;
     filtered.push({
       shopName: shop.shopName,
       area: shop.area,
@@ -1883,7 +2130,8 @@ export async function publishLodestoneInfo({
   let failed = 0;
   let skipped = 0;
   const itemUrls = readJson(lodestoneItemUrlsPath, {});
-  lodestoneEtaStats = { fetch: 0, cache: 0 };
+  lodestoneEtaStats = { fetch: 0, cache: 0, memory: 0 };
+  lodestoneShopConditionCache = new Map();
   cancellationEnabled = true;
   try {
     for (const item of limitedItems) {
@@ -1892,6 +2140,7 @@ export async function publishLodestoneInfo({
       const itemStartedAt = Date.now();
       const fetchBefore = lodestoneEtaStats.fetch;
       const cacheBefore = lodestoneEtaStats.cache;
+      const memoryBefore = lodestoneEtaStats.memory;
       let didSkip = false;
       try {
         if (!force && hasExistingLodestoneInfo(item)) {
@@ -1919,12 +2168,22 @@ export async function publishLodestoneInfo({
           elapsedMs: Date.now() - itemStartedAt,
           fetches: lodestoneEtaStats.fetch - fetchBefore,
           caches: lodestoneEtaStats.cache - cacheBefore,
+          memoryCaches: lodestoneEtaStats.memory - memoryBefore,
           skipped: didSkip ? 1 : 0
         });
       }
     }
   } finally {
     cancellationEnabled = false;
+    lodestoneShopConditionCache?.clear();
+    lodestoneShopConditionCache = null;
+    if (lodestoneShopCacheStore) {
+      try {
+        lodestoneShopCacheStore.close();
+      } finally {
+        lodestoneShopCacheStore = null;
+      }
+    }
   }
   lodestoneEtaStats = null;
 
@@ -2485,7 +2744,9 @@ function printHelp() {
   publish [--accept-diff]   検証後 site/data/Item.json をatomicに置換
   publish-gathering         既存Item.jsonへ採集情報だけを反映
   publish-lodestone-info [--name アイテム名] [--limit 件数] [--delay 100] [--target path] [--force]
-                            Lodestone由来の店/製作/装備情報を公開候補JSONへ反映
+                             Lodestone由来の店/製作/装備情報を公開候補JSONへ反映
+  migrate-lodestone-cache [--dry-run] [--limit 件数] [--keep-html]
+                             旧Lodestone HTMLキャッシュを検証済みSQLiteへ逐次移行
   equipment-role-groups [--item-json path]
                             手動指定が必要な装備推奨ロール一覧をJSONで出力
   equipment-role-summary [--item-json path]
@@ -2532,6 +2793,21 @@ export async function main(argv = process.argv.slice(2)) {
     name: args.name ? String(args.name) : '',
     force: Boolean(args.force)
   });
+  if (command === 'migrate-lodestone-cache') {
+    cancellationEnabled = true;
+    try {
+      const result = migrateLodestoneShopCache({
+        dryRun: Boolean(args['dry-run']),
+        keepHtml: Boolean(args['keep-html']),
+        limit: args.limit ? Number(args.limit) : Number.POSITIVE_INFINITY
+      });
+      log(`Lodestoneキャッシュ移行: 対象 ${result.candidates}件、変換 ${result.converted}件、再利用 ${result.reused}件、削除 ${result.removed}件、失敗 ${result.failed}件、旧 ${formatBytes(result.legacyBytes)}、DB ${formatBytes(result.databaseBytes)}、DB行 ${result.databaseRows}${result.quickCheck ? `、quick_check ${result.quickCheck}` : ''}`);
+      for (const error of result.errors) log(`Lodestoneキャッシュ移行警告: ${error}`);
+      return result;
+    } finally {
+      cancellationEnabled = false;
+    }
+  }
   if (command === 'equipment-role-groups') {
     process.stdout.write(`${JSON.stringify(equipmentRoleGroupsForGui({
       itemJsonPath: args['item-json'] ? path.resolve(String(args['item-json'])) : publicCandidatePath

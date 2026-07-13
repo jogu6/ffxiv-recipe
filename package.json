@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "FFXIVのレシピと必要素材をツリー表示する静的Webアプリです。",
   "private": true,
+  "engines": {
+    "node": ">=24"
+  },
   "directories": {
     "doc": "docs"
   },

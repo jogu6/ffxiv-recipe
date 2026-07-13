@@ -3,7 +3,7 @@
 ## Environment
 
 - Windows 11
-- Node.js
+- Node.js 24 or later (`node:sqlite` is used for the local Lodestone HTML cache)
 - `sharp` for item icon resizing, WebP conversion, and quality preview generation
 - Tauri GUI: `FF14レシピ素材ツリー アイテム情報作成` (`makeRecipe.exe`, tool version v1.0)
 
@@ -85,12 +85,24 @@ Run only the Lodestone-derived shop, crafting, equipment, stats, and performance
 node pipeline/tool/pipeline-tool.mjs publish-lodestone-info --delay 100
 ```
 
-The Lodestone command keeps strict exact-name matching, follows all result pages, caches fetched
-HTML under `pipeline/cache/lodestone-shops/`, and reuses cached HTML without an access delay.
+The Lodestone command keeps strict exact-name matching, follows all result pages, and stores every
+fetched HTML page as an individually compressed row in `pipeline/cache/lodestone-shops.sqlite`.
+Rows are addressed by the SHA-256 of their URL and verified by uncompressed size and SHA-256 when
+read. SQLite WAL transactions protect cache writes from interrupted processes. Reused HTML has no
+access delay, and repeated shop-condition decisions are memoized with a bounded in-process map.
 `--force` bypasses completed-item skipping but does not bypass the HTML cache. Player-state
 dependent shops are excluded. `housing-shops.json` is merged after Lodestone processing when the
 file exists. Equipment roles are inferred where unambiguous and then supplemented from
 `equipment-role-overrides.json`.
+
+Migrate the legacy per-file HTML cache in verified batches. Each source HTML file is deleted only
+after its committed database row has been read back and matched byte-for-byte. The command is
+idempotent and resumes safely after interruption.
+
+```bash
+node pipeline/tool/pipeline-tool.mjs migrate-lodestone-cache --dry-run
+node pipeline/tool/pipeline-tool.mjs migrate-lodestone-cache
+```
 
 ```json
 {

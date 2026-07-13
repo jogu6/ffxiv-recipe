@@ -1,10 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   extractLodestoneCraftInfo,
   extractLodestoneEquipmentInfo,
   extractLodestoneRecipePaths,
   extractLodestoneShopInfo,
+  compressLodestoneHtml,
+  decompressLodestoneHtml,
   applyEquipmentRoleOverrides,
   equipmentRoleDecision,
   findUnresolvedEquipmentRoleGroups,
@@ -12,9 +17,14 @@ import {
   mergeFriendlyTribeShopInfo,
   mergeHousingShopInfo,
   mergePublishItems,
+  migrateLodestoneShopCache,
   nextLodestoneSearchUrl,
+  openLodestoneShopCacheStore,
   parseCsv,
-  resolveLodestoneItemDetail
+  readLodestoneShopCacheEntry,
+  resolveLodestoneShopCondition,
+  resolveLodestoneItemDetail,
+  writeLodestoneShopCacheEntry
 } from '../pipeline/tool/pipeline-tool.mjs';
 
 test('parseCsv handles commas, escaped quotes, and newlines in quoted fields', () => {
@@ -159,6 +169,91 @@ test('resolveLodestoneItemDetail errors after the last search page without exact
 test('isConditionalLodestoneShop detects player-state dependent shops', () => {
   assert.equal(isConditionalLodestoneShop('<p>※このショップはプレイヤーの特定条件によって販売されるアイテムが異なります。</p>'), true);
   assert.equal(isConditionalLodestoneShop('<p>通常ショップ</p>'), false);
+});
+
+test('SQLite Lodestone cache preserves Japanese HTML, verifies integrity, and rejects oversized output', () => {
+  const html = `<title>エオルゼアデータベース「鉄鉱」</title>${'<p>通常ショップ</p>'.repeat(100)}`;
+  const entry = compressLodestoneHtml(html);
+  assert.equal(decompressLodestoneHtml({ body: entry.body, raw_bytes: entry.rawBytes, sha256: entry.sha256 }), html);
+  assert.ok(entry.body.length < entry.rawBytes);
+  assert.throws(() => compressLodestoneHtml('x'.repeat(1025), { maxOutputLength: 1024 }), /上限を超えています/);
+  assert.throws(
+    () => decompressLodestoneHtml({ body: entry.body, raw_bytes: entry.rawBytes + 1, sha256: entry.sha256 }),
+    /展開サイズが一致しません/
+  );
+});
+
+test('Lodestone cache migration is resumable and removes only HTML verified in SQLite', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ffxiv-recipe-migrate-'));
+  const databasePath = path.join(root, 'cache.sqlite');
+  const first = `${'a'.repeat(64)}.html`;
+  const second = `${'b'.repeat(64)}.html`;
+  try {
+    fs.writeFileSync(path.join(root, first), '<p>通常ショップ</p>', 'utf8');
+    fs.writeFileSync(path.join(root, second), '<p>再開対象</p>', 'utf8');
+
+    const dryRun = migrateLodestoneShopCache({ root, databasePath, dryRun: true });
+    assert.equal(dryRun.candidates, 2);
+    assert.equal(dryRun.removed, 0);
+    assert.ok(fs.existsSync(path.join(root, first)));
+
+    const firstRun = migrateLodestoneShopCache({ root, databasePath, limit: 1, batchSize: 1 });
+    assert.deepEqual(
+      { converted: firstRun.converted, removed: firstRun.removed, failed: firstRun.failed },
+      { converted: 1, removed: 1, failed: 0 }
+    );
+    assert.ok(!fs.existsSync(path.join(root, first)));
+    assert.ok(fs.existsSync(path.join(root, second)));
+
+    const resumed = migrateLodestoneShopCache({ root, databasePath, batchSize: 1 });
+    assert.equal(resumed.removed, 1);
+    assert.equal(resumed.failed, 0);
+    assert.ok(!fs.existsSync(path.join(root, second)));
+    const store = openLodestoneShopCacheStore(databasePath);
+    try {
+      assert.equal(readLodestoneShopCacheEntry(store, 'a'.repeat(64)), '<p>通常ショップ</p>');
+      assert.equal(readLodestoneShopCacheEntry(store, 'b'.repeat(64)), '<p>再開対象</p>');
+      assert.equal(Number(store.count.get().count), 2);
+    } finally {
+      store.close();
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('SQLite Lodestone cache writes one keyed row and stores its source URL', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ffxiv-recipe-sqlite-'));
+  const databasePath = path.join(root, 'cache.sqlite');
+  const store = openLodestoneShopCacheStore(databasePath);
+  try {
+    const key = 'c'.repeat(64);
+    const html = '<p>レシピ詳細</p>';
+    writeLodestoneShopCacheEntry(store, key, html, { url: 'https://example.invalid/page' });
+    assert.equal(readLodestoneShopCacheEntry(store, key), html);
+    assert.equal(Number(store.count.get().count), 1);
+    assert.equal(store.db.prepare('SELECT url FROM cache WHERE key = ?').get(key).url, 'https://example.invalid/page');
+  } finally {
+    store.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('shop condition memory cache reuses decisions and stops admitting entries at its limit', async () => {
+  const cache = new Map();
+  let loads = 0;
+  const loadConditional = async () => {
+    loads += 1;
+    return '<p>このショップはプレイヤーの特定条件によって販売されるアイテムが異なります。</p>';
+  };
+  const first = await resolveLodestoneShopCondition('shop-a', loadConditional, { cache, maxEntries: 1 });
+  const reused = await resolveLodestoneShopCondition('shop-a', loadConditional, { cache, maxEntries: 1 });
+  const uncached = await resolveLodestoneShopCondition('shop-b', async () => '<p>通常ショップ</p>', { cache, maxEntries: 1 });
+  assert.deepEqual(first, { conditional: true, memoryHit: false, cacheError: false });
+  assert.deepEqual(reused, { conditional: true, memoryHit: true, cacheError: false });
+  assert.deepEqual(uncached, { conditional: false, memoryHit: false, cacheError: false });
+  assert.equal(loads, 1);
+  assert.equal(cache.size, 1);
 });
 
 test('extractLodestoneCraftInfo reads job, level, and masterbook only', () => {
