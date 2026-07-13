@@ -383,7 +383,8 @@ function saveViewState() {
     },
     favoriteMaterials: {
       listIds: favoriteMaterialsListIds,
-      ringCounts: favoriteMaterialsRingCounts
+      ringCounts: favoriteMaterialsRingCounts,
+      calcMode: favoriteMaterialCalcMode
     },
     materials: {
       sections: Object.fromEntries(materialSectionState),
@@ -465,6 +466,15 @@ function restoreViewState() {
       ? restoredFavoriteMaterialIds
       : [];
     setResultSourceMode(restoreFavoriteMaterials ? 'favorite-materials' : 'recipe');
+    const restoredFavoriteMaterialCalcMode = ['counts', 'any-one'].includes(state.favoriteMaterials?.calcMode)
+      ? state.favoriteMaterials.calcMode
+      : 'sum';
+    favoriteMaterialCalcMode = restoreFavoriteMaterials && favoriteMaterialsListIds.length < 2
+      ? restoredFavoriteMaterialCalcMode
+      : 'sum';
+    if (restoreFavoriteMaterials && favoriteMaterialsListIds.length < 2 && favoriteList) {
+      getFavoriteCountState(favoriteList).enabled = favoriteMaterialCalcMode !== 'sum';
+    }
     favoriteMaterialsRingCounts = normalizeFavoriteMaterialsRingCounts(state.favoriteMaterials?.ringCounts);
     materialSectionState.clear();
     Object.entries(normalizeMaterialSectionState(state.materials?.sections))

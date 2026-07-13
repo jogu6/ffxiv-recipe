@@ -952,6 +952,15 @@ test('favorite list count mode excludes zero-count items from materials', async 
   await expect(page.locator('.materials-list')).toContainText(/カッパーインゴット\s*× 1/);
   await expect(page.locator('.materials-list')).not.toContainText('ゴールデンイール');
 
+  await page.reload();
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await expect(page.locator('.favorite-material-root-summary')).toHaveCount(1);
+  await expect(page.locator('.favorite-material-root-summary')).toContainText('カッパーリング');
+  await expect(page.locator('.materials-list')).toContainText(/カッパーインゴット\s*× 1/);
+  await expect(page.locator('.materials-list')).not.toContainText('ゴールデンイール');
+  await page.locator('.favorite-material-curtain-toggle').click();
+  await expect(page.locator('.favorite-material-curtain-actions').getByText('個数指定')).toHaveClass(/active/);
+
   await page.locator('.favorite-material-curtain-actions').getByText('どれでも1つ').click();
   await expect(page.locator('.favorite-material-curtain-actions').getByText('どれでも1つ')).toHaveClass(/active/);
   await expect(page.locator('.favorite-material-curtain-actions').getByText('個数指定')).not.toHaveClass(/active/);
@@ -980,6 +989,15 @@ test('favorite list count mode excludes zero-count items from materials', async 
   await expect(page.locator('.favorite-material-root-summary').filter({ hasText: 'アリペブレ' })).toContainText('× 3');
   await expect(page.locator('.favorite-material-root-summary').filter({ hasText: 'アリペブレ' })).toContainText('余り');
   await expect(page.locator('.favorite-material-root-summary').filter({ hasText: 'カッパーリング' })).toContainText('× 2');
+
+  await page.reload();
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await expect(page.locator('.favorite-material-root-summary')).toHaveCount(2);
+  await expect(page.locator('.favorite-material-root-or')).toHaveText('もしくは');
+  await expect(page.locator('.favorite-material-root-summary').filter({ hasText: 'アリペブレ' })).toContainText('× 3');
+  await expect(page.locator('.favorite-material-root-summary').filter({ hasText: 'カッパーリング' })).toContainText('× 2');
+  await page.locator('.favorite-material-curtain-toggle').click();
+  await expect(page.locator('.favorite-material-curtain-actions').getByText('どれでも1つ')).toHaveClass(/active/);
 });
 
 test('mobile favorite ring controls keep the count toggle on one right-aligned row', async ({ page }) => {
