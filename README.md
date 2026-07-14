@@ -109,7 +109,7 @@ XIVAPI由来のCSVを毎日確認し、変更時だけDiscordへ通知できま�
 
 1. `pipeline/config/xivapi-monitor.example.json` を `pipeline/config/xivapi-monitor.local.json` としてコピーします。
 2. `discordWebhookUrl` に通知先のDiscord Webhook URLを設定します。ローカル設定はGitの追跡対象外です。
-3. タスクスケジューラで `tools/xivapi-update-monitor-task.xml` をインポートし、実行ユーザーのパスワードを設定します。
+3. Gitの追跡対象外であるローカルのタスク定義をタスクスケジューラへインポートし、実行ユーザーのパスワードを設定します。
 4. タスクを一度手動実行して基準状態を保存します。初回実行では通知しません。
 
 Webhookへのテスト通知は `node pipeline/tool/xivapi-update-monitor.mjs --test-notification` で送信できます。この操作では監視の基準状態を変更しません。

@@ -27,7 +27,7 @@ The local file is ignored by Git. Treat the webhook URL as a secret because anyo
 
 ## Task Scheduler
 
-Import `tools/xivapi-update-monitor-task.xml` into Windows Task Scheduler. The included task runs daily.
+The Task Scheduler definition and its VBScript wrapper are machine-local files ignored by Git. Import the local task definition into Windows Task Scheduler. The task runs daily.
 
 The VBScript wrapper starts Node.js with window style `0`, waits for it to finish, and returns its exit code to Task Scheduler.
 
