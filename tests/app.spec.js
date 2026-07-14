@@ -349,6 +349,38 @@ test('favorite materials show intermediate usage and dependency-aware craft orde
   expect(names.indexOf('亜麻糸')).toBeLessThan(names.indexOf('亜麻布'));
 });
 
+test('imports from the share code plaza with naming confirmation and keeps the plaza open', async ({ page }) => {
+  const shareCode =
+    'Z00273F0Y320Y1M0Y6D55576G4H436D4J4R0W243A1A1G1C0Y180Y2X0Y1M2J1E1C1G1D181E1K1C1I181F1D1G1I181F1I1D1I181F1G1C1J181F1K1H1I181G1E1F1J181G1F1G1F181G1D1F1J181G1G1J1E2L3H';
+  await openApp(page);
+  await page.locator('#settingsBtn').click();
+  await page.locator('#sharePlazaOpenBtn').click();
+  await expect(page.locator('#sharePlazaOverlay')).toHaveClass(/open/);
+  await page.evaluate((code) => {
+    const frame = document.querySelector('#sharePlazaFrame');
+    window.dispatchEvent(new MessageEvent('message', {
+      origin: 'http://127.0.0.1:4174',
+      source: frame.contentWindow,
+      data: { type: 'ffxiv-share-code-import', code },
+    }));
+  }, shareCode);
+  await expect(page.locator('#textInputOverlay')).toHaveClass(/open/);
+  await page.locator('#textInputField').fill('広場から保存');
+  await page.locator('#textInputOkBtn').click();
+  await expect(page.locator('#sharePlazaOverlay')).toHaveClass(/open/);
+  await expect(page.locator('#settingsOverlay')).toHaveClass(/open/);
+  await page.evaluate(() => {
+    const frame = document.querySelector('#sharePlazaFrame');
+    window.dispatchEvent(new MessageEvent('message', {
+      origin: 'http://127.0.0.1:4174',
+      source: frame.contentWindow,
+      data: { type: 'ffxiv-share-code-plaza-close' },
+    }));
+  });
+  await expect(page.locator('#sharePlazaOverlay')).not.toHaveClass(/open/);
+  await expect(page.locator('#settingsOverlay')).toHaveClass(/open/);
+});
+
 test('combined materials delay a craft job until its cross-job dependencies are ready', async ({ page }) => {
   const shareCode =
     'Z002X3F0Y320Y1M0Y6F49590W6B3M4Z6B3N586B3N3S6B3N4Q6B3N586B3N4P6B3N506B3M4H6B3N580Y180Y2X0Y1M2J1G1L1E1L1I181G1L1E1L1J181G1L1E1L1K181G1L1E1L1L181G1L1F1C1C181G1L1F1C1L181G1L1F1D1G181G1L1F1D1L181G1L1F1E1G181G1I1E1H1F2L3H';
@@ -2027,6 +2059,10 @@ test('equipment search prefers tenacity or piety and shows only differing tied p
 test('title returns to the startup view', async ({ page }) => {
   await openApp(page);
   await expect(page.locator('#tipsMsg .tips-about-btn')).toHaveText('このアプリは何ですか？');
+  await expect(page.locator('#tipsMsg .tips-about-btn')).toHaveAttribute(
+    'data-url',
+    'http://127.0.0.1:4174/'
+  );
   await expect(page.locator('#tipsMsg .tips-about-description')).toHaveText(
     '← 選択すると、このアプリでできることや各種機能の説明画面が表示されます'
   );

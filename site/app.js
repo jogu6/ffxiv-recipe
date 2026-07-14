@@ -1,7 +1,9 @@
 const DATA_CACHE_VERSION = 'ff14recipe-data-7.50-4492adda';
 const DATA_FILE = `./data/Item.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 const TIPS_FILE = './data/tips.md';
-const ABOUT_URL = './guide/';
+const ABOUT_URL = ['127.0.0.1', 'localhost'].includes(location.hostname)
+  ? `http://${location.hostname}:4174/`
+  : 'https://jogu6.github.io/ffxiv-recipe-about/';
 const LS_FAV = 'ff14_favorites';
 const LS_FAV_LISTS = 'ff14_favorite_lists_v2';
 const LS_FAV_COUNTS = 'ff14_favorite_item_counts_v1';
@@ -115,6 +117,9 @@ const elements = {
   importCode: document.getElementById('importCode'),
   startImportBtn: document.getElementById('startImportBtn'),
   importErr: document.getElementById('importErr'),
+  sharePlazaOpenBtn: document.getElementById('sharePlazaOpenBtn'),
+  sharePlazaOverlay: document.getElementById('sharePlazaOverlay'),
+  sharePlazaFrame: document.getElementById('sharePlazaFrame'),
   contactBtn: document.getElementById('contactBtn'),
   privacyBtn: document.getElementById('privacyBtn'),
   licenseBtn: document.getElementById('licenseBtn'),
@@ -2473,6 +2478,7 @@ function createAboutAppLink() {
   button.type = 'button';
   button.className = 'tips-about-btn';
   button.textContent = 'このアプリは何ですか？';
+  button.dataset.url = ABOUT_URL;
   button.addEventListener('click', () => {
     window.location.href = ABOUT_URL;
   });
@@ -5021,6 +5027,48 @@ function closeSettings() {
   closeExportListDropdown();
 }
 
+const SHARE_PLAZA_URL = ['127.0.0.1', 'localhost'].includes(location.hostname)
+  ? `http://${location.hostname}:4174/share-code-plaza.html`
+  : 'https://jogu6.github.io/ffxiv-recipe-about/share-code-plaza.html';
+
+function openSharePlaza() {
+  if (!elements.sharePlazaFrame.src) elements.sharePlazaFrame.src = SHARE_PLAZA_URL;
+  elements.sharePlazaOverlay.classList.add('open');
+  elements.sharePlazaOverlay.setAttribute('aria-hidden', 'false');
+}
+
+function closeSharePlaza() {
+  elements.sharePlazaOverlay.classList.remove('open');
+  elements.sharePlazaOverlay.setAttribute('aria-hidden', 'true');
+}
+
+function isTrustedSharePlazaMessage(event) {
+  if (event.source !== elements.sharePlazaFrame.contentWindow) return false;
+  if (event.origin === 'https://jogu6.github.io') return true;
+  if (!['127.0.0.1', 'localhost'].includes(location.hostname)) return false;
+  return event.origin === `http://${location.hostname}:4174`;
+}
+
+function importFavoriteFromSharePlaza(code) {
+  const decoded = decodeFavoriteShareCode(String(code || '').trim().toUpperCase());
+  if (!decoded || decoded.needsName || decoded.itemIds.length === 0) return;
+  showTextInput('取り込むお気に入りリスト名', decoded.name, name => {
+    const list = createFavoriteList(name, decoded.itemIds);
+    renderFavoriteLists();
+    renderExportListChoices();
+    elements.sharePlazaFrame.contentWindow?.postMessage(
+      { type: 'ffxiv-share-code-imported', listName: list.name },
+      '*'
+    );
+  });
+}
+
+function handleSharePlazaMessage(event) {
+  if (!isTrustedSharePlazaMessage(event) || !event.data || typeof event.data !== 'object') return;
+  if (event.data.type === 'ffxiv-share-code-plaza-close') closeSharePlaza();
+  if (event.data.type === 'ffxiv-share-code-import') importFavoriteFromSharePlaza(event.data.code);
+}
+
 function renderMarkdown(markdown, { breaks = false } = {}) {
   if (!window.marked?.parse || !window.DOMPurify?.sanitize) {
     throw new Error('Markdownレンダラの読み込みに失敗しました');
@@ -5364,6 +5412,8 @@ function bindEvents() {
   });
   elements.copyExportBtn.addEventListener('click', copyExportCode);
   elements.startImportBtn.addEventListener('click', startImport);
+  elements.sharePlazaOpenBtn.addEventListener('click', openSharePlaza);
+  window.addEventListener('message', handleSharePlazaMessage);
   elements.contactBtn.addEventListener('click', openContactLink);
   elements.privacyBtn.addEventListener('click', openPrivacyPolicy);
   elements.licenseBtn.addEventListener('click', openLicenseNotice);
