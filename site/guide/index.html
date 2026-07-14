@@ -45,39 +45,45 @@
         </button>
         <ol id="toc-list">
           <li><a href="#overview">このアプリでできること</a></li>
+          <li><a href="#search">アイテムを検索する</a></li>
+          <li><a href="#equipment">装備を条件検索する</a></li>
+          <li><a href="#recipe-tree">レシピツリー画面を確認する</a></li>
+          <li><a href="#materials">必要素材と個数を確認する</a></li>
           <li>
-            検索
+            <a href="#tree-tools">ツリー内の素材を操作する</a>
             <ol>
-              <li><a href="#search">アイテム名から検索</a></li>
-              <li><a href="#equipment">装備を条件検索</a></li>
-              <li><a href="#reverse">素材から逆引き</a></li>
+              <li><a href="#craft-or-buy">🛒 制作・購入とショップ情報</a></li>
+              <li><a href="#timed-gathering">⏰ 刻限採集</a></li>
+            </ol>
+          </li>
+          <li><a href="#reverse">素材からレシピを逆引きする</a></li>
+          <li>
+            <a href="#favorites">お気に入りリストを使う</a>
+            <ol>
+              <li><a href="#favorite-organize">お気に入りリストを整理する</a></li>
             </ol>
           </li>
           <li>
-            レシピと素材
+            <a href="#favorite-tools">お気に入りリストの拡張機能</a>
             <ol>
-              <li><a href="#recipe-tree">レシピツリー画面</a></li>
-              <li><a href="#tree-tools">ツリー内の操作</a></li>
-              <li><a href="#materials">素材リスト</a></li>
+              <li><a href="#favorite-sort">並び替え</a></li>
+              <li><a href="#favorite-count">個数指定</a></li>
+              <li><a href="#favorite-any-one">どれでも1つ</a></li>
+              <li><a href="#favorite-rings">指輪</a></li>
             </ol>
           </li>
           <li>
-            お気に入り
+            <a href="#combined">複数のお気に入りリストの素材を計算する</a>
             <ol>
-              <li><a href="#favorites">登録・削除・素材リスト</a></li>
-              <li><a href="#favorite-tools">拡張機能</a></li>
-              <li><a href="#combined">複数リストの合算</a></li>
-              <li><a href="#share">保存・共有</a></li>
+              <li><a href="#combined-select">計算するリストをチェックする</a></li>
+              <li><a href="#combined-sum">合算</a></li>
+              <li><a href="#combined-any-one">どれか一つだけ</a></li>
+              <li><a href="#combined-production">製作内容と指輪の数</a></li>
             </ol>
           </li>
-          <li>
-            端末での利用
-            <ol>
-              <li><a href="#mobile">スマートフォン</a></li>
-              <li><a href="#window">小窓・ホーム画面への追加</a></li>
-            </ol>
-          </li>
-          <li><a href="#notes">注意事項</a></li>
+          <li><a href="#share">保存・共有する</a></li>
+          <li><a href="#window">小窓・PWAで使う</a></li>
+          <li><a href="#notes">注意事項・設定</a></li>
         </ol>
       </nav>
 
@@ -98,13 +104,14 @@
             </div>
             <div>
               <b>お気に入りを整理・計算する</b
-              ><span>リスト分け、並べ替え、個数指定、素材合算、保存・共有</span>
+              ><span
+                >リスト分け、並べ替え、個数指定、複数リストの素材計算、保存・共有</span
+              >
             </div>
           </div>
         </section>
 
         <section class="post" id="search">
-          <p class="step">STEP 1</p>
           <h2>アイテムを検索する</h2>
           <ol class="instructions">
             <li>検索欄にアイテム名の一部を入力します。</li>
@@ -138,6 +145,66 @@
           <p class="hint">
             名前が分からない装備は、検索欄右の「▼」からジョブ・レベル・部位で絞り込めます。
           </p>
+        </section>
+
+        <section class="post" id="equipment">
+          <h2>装備を条件検索する</h2>
+          <p>
+            検索欄右の「▼」を開き、ジョブ・装備レベル・アイテムレベル・部位を指定します。アイテムレベルには、指定した装備レベルに対応する候補だけが表示されます。「検索結果をお気に入り登録」で候補を一括保存できます。
+          </p>
+          <div
+            class="image-grid"
+            data-mobile-slides="assets/images/mobile-07-equipment-search-01.webp|装備検索を開く場所を示した画面|①▼をタップ,assets/images/mobile-07-equipment-search-02.webp|装備検索パネルを開いた画面|②条件を指定,assets/images/mobile-35-equipment-item-levels.webp|装備レベルに対応するアイテムレベルの選択肢|③アイテムレベルを選択,assets/images/mobile-25-equipment-results.webp|条件に一致した装備の検索結果|④検索結果を確認"
+          >
+            <figure class="image-frame">
+              <img
+                src="assets/images/07-equipment-search.webp"
+                alt="装備検索パネルを開いた画面"
+                loading="lazy"
+              /><button
+                class="zoom-button"
+                type="button"
+                aria-label="画像を拡大"
+              >
+                ⌕
+              </button>
+              <figcaption>
+                「リセット」で指定した条件を初期化できます。
+              </figcaption>
+            </figure>
+            <figure class="image-frame">
+              <img
+                src="assets/images/35-equipment-item-levels.webp"
+                alt="装備レベルに対応するアイテムレベルの選択肢"
+                loading="lazy"
+              /><button
+                class="zoom-button"
+                type="button"
+                aria-label="画像を拡大"
+              >
+                ⌕
+              </button>
+              <figcaption>
+                アイテムレベルには、指定した装備レベルに対応する候補だけが表示されます。
+              </figcaption>
+            </figure>
+            <figure class="image-frame">
+              <img
+                src="assets/images/25-equipment-results.webp"
+                alt="条件に一致した装備の検索結果"
+                loading="lazy"
+              /><button
+                class="zoom-button"
+                type="button"
+                aria-label="画像を拡大"
+              >
+                ⌕
+              </button>
+              <figcaption>
+                「検索」を押すと、条件に一致した装備が一覧表示されます。
+              </figcaption>
+            </figure>
+          </div>
         </section>
 
         <section class="post" id="recipe-tree">
@@ -182,52 +249,7 @@
           </div>
         </section>
 
-        <section class="post" id="equipment">
-          <h2>装備を条件検索する</h2>
-          <p>
-            検索欄右の「▼」を開き、ジョブ・装備レベル・アイテムレベル・部位を指定します。「検索結果をお気に入り登録」で候補を一括保存できます。
-          </p>
-          <div
-            class="image-grid"
-            data-mobile-slides="assets/images/mobile-07-equipment-search-01.webp|装備検索を開く場所を示した画面|①▼をタップ,assets/images/mobile-07-equipment-search-02.webp|装備検索パネルを開いた画面|②条件を指定,assets/images/mobile-25-equipment-results.webp|条件に一致した装備の検索結果|③検索結果を確認"
-          >
-            <figure class="image-frame">
-              <img
-                src="assets/images/07-equipment-search.webp"
-                alt="装備検索パネルを開いた画面"
-                loading="lazy"
-              /><button
-                class="zoom-button"
-                type="button"
-                aria-label="画像を拡大"
-              >
-                ⌕
-              </button>
-              <figcaption>
-                「リセット」で指定した条件を初期化できます。
-              </figcaption>
-            </figure>
-            <figure class="image-frame">
-              <img
-                src="assets/images/25-equipment-results.webp"
-                alt="条件に一致した装備の検索結果"
-                loading="lazy"
-              /><button
-                class="zoom-button"
-                type="button"
-                aria-label="画像を拡大"
-              >
-                ⌕
-              </button>
-              <figcaption>
-                「検索」を押すと、条件に一致した装備が一覧表示されます。
-              </figcaption>
-            </figure>
-          </div>
-        </section>
-
         <section class="post" id="materials">
-          <p class="step">STEP 2</p>
           <h2>必要素材と個数を確認する</h2>
           <p>
             「素材リスト」は、レシピツリーの末端素材を種類ごとに合算する画面です。各行に素材名、入手方法、合計必要数を表示し、中間素材には推奨制作順と、どの完成品・中間素材の制作に何個使うかを表示します。
@@ -271,7 +293,7 @@
               ><span>選んだ中間素材のレシピツリーと個数指定を開きます。</span>
             </div>
           </div>
-          <h3>🛒 制作・購入とショップ情報</h3>
+          <h3 id="craft-or-buy">🛒 制作・購入とショップ情報</h3>
           <p>
             素材を購入して用意する場合に使います。🛒を押すとフローティングウィンドウが開き、購入価格、ショップ名、場所を確認できます。購入指定を有効にすると、その素材より下の制作工程を素材計算から外します。
           </p>
@@ -296,7 +318,7 @@
               </figcaption>
             </figure>
           </div>
-          <h3>⏰ 刻限採集</h3>
+          <h3 id="timed-gathering">⏰ 刻限採集</h3>
           <p>
             採集できる時間が決まっている素材に⏰が表示されます。⏰を押すとフローティングウィンドウが開き、エオルゼア時間、開始までの時間、採集場所を確認できます。
           </p>
@@ -324,7 +346,6 @@
         </section>
 
         <section class="post" id="reverse">
-          <p class="step">STEP 3</p>
           <h2>素材からレシピを逆引きする</h2>
           <p>
             素材を選んで「使用先」を押すと、その素材を使うレシピを一覧できます。余った素材の使い道を探すときに便利です。
@@ -356,7 +377,6 @@
         </section>
 
         <section class="post" id="favorites">
-          <p class="step">STEP 4</p>
           <h2>お気に入りリストを使う</h2>
           <ol class="instructions">
             <li>検索結果やレシピツリーの📍を押します。</li>
@@ -435,7 +455,7 @@
               </figcaption>
             </figure>
           </div>
-          <h3>お気に入りリストを整理する</h3>
+          <h3 id="favorite-organize">お気に入りリストを整理する</h3>
           <p>
             リスト右端の「◀」を押すと、✏️・☰・🗑️が表示されます。✏️で名前を変更し、☰をドラッグしてリストの順番を変えます。🗑️を押した場合は確認画面で「はい」を選ぶとリストが削除されます。「▶」で操作を閉じます。
           </p>
@@ -572,7 +592,7 @@
           </div>
           <div class="extension-sections">
             <div>
-              <h3>並び替え</h3>
+              <h3 id="favorite-sort">並び替え</h3>
               <span
                 >リスト内のアイテム順を変えたいときに使います。「並び替え」を有効にし、☰をドラッグします。もう一度「並び替え」を押すと終了します。</span
               >
@@ -612,9 +632,9 @@
               </div>
             </div>
             <div>
-              <h3>個数指定</h3>
+              <h3 id="favorite-count">個数指定</h3>
               <span
-                >アイテムごとに作りたい数が異なるときに使います。「個数指定」を有効にして数を入力します。「全て1個」「全て0個」で一括変更できます。「素材リストを表示」で指定数を反映した結果を確認します。</span
+                >アイテムごとに作りたい数が異なるときに使います。「個数指定」を有効にして数を入力します。「全て1個」「全て0個」で一括変更できます。「素材リストを表示」で指定数を反映した結果を確認し、「▼製作内容」で対象アイテムを折り畳めます。</span
               >
               <div class="image-grid">
                 <figure class="image-frame">
@@ -651,12 +671,29 @@
                     指定した個数を反映した素材リストです。
                   </figcaption>
                 </figure>
+                <figure class="image-frame">
+                  <img
+                    src="assets/images/40-favorite-count-production-collapsed.webp"
+                    data-mobile-src="assets/images/mobile-40-favorite-count-production-collapsed.webp"
+                    alt="個数指定の製作内容を折り畳んだ素材リスト"
+                    loading="lazy"
+                  /><button
+                    class="zoom-button"
+                    type="button"
+                    aria-label="画像を拡大"
+                  >
+                    ⌕
+                  </button>
+                  <figcaption>
+                    「▼製作内容」を押すと対象アイテムを折り畳み、素材を広く表示できます。
+                  </figcaption>
+                </figure>
               </div>
             </div>
             <div>
-              <h3>どれでも1つ</h3>
+              <h3 id="favorite-any-one">どれでも1つ</h3>
               <span
-                >登録した候補をすべて作るのではなく、候補のうちどれか1つを作れる素材リストを確認する場合に使います。「どれでも1つ」を有効にし、比較したい候補をOnにします。「全てOn」「全てOff」で候補を一括変更できます。「素材リストを表示」を押すと、Onにした各候補を1つ作るための必要素材が候補別に表示され、それぞれの結果が「もしくは」で区切られます。</span
+                >登録した候補をすべて作るのではなく、候補のうちどれか1つを作れる素材リストを確認する場合に使います。「どれでも1つ」を有効にし、比較したい候補をOnにします。「全てOn」「全てOff」で候補を一括変更できます。「素材リストを表示」を押すと、Onにした各候補を1つ作るための必要素材が「もしくは」で区切られます。「▼製作内容」で候補表示を折り畳めます。</span
               >
               <div class="image-grid">
                 <figure class="image-frame">
@@ -693,10 +730,27 @@
                     各候補の結果は「もしくは」で区切って表示されます。
                   </figcaption>
                 </figure>
+                <figure class="image-frame">
+                  <img
+                    src="assets/images/41-favorite-any-one-production-collapsed.webp"
+                    data-mobile-src="assets/images/mobile-41-favorite-any-one-production-collapsed.webp"
+                    alt="どれでも1つの製作内容を折り畳んだ素材リスト"
+                    loading="lazy"
+                  /><button
+                    class="zoom-button"
+                    type="button"
+                    aria-label="画像を拡大"
+                  >
+                    ⌕
+                  </button>
+                  <figcaption>
+                    「▼製作内容」を押すと候補を折り畳み、素材を広く表示できます。
+                  </figcaption>
+                </figure>
               </div>
             </div>
             <div>
-              <h3>指輪</h3>
+              <h3 id="favorite-rings">指輪</h3>
               <span
                 >指輪を含む素材リストでは、指輪ごとに0・1つ・2つから選びます。選んだ数で必要素材が再計算されます。</span
               >
@@ -724,28 +778,28 @@
         </section>
 
         <section class="post" id="combined">
-          <h2>複数のお気に入りリストを合算する</h2>
+          <h2>複数のお気に入りリストの素材を計算する</h2>
+
+          <h3 id="combined-select">計算するリストをチェックする</h3>
           <ol class="instructions">
             <li>
-              「お気に入り」を開き、合算したいリスト右端の「◀」を押します。
+              「お気に入り」を開き、計算に含めるリスト右端の「◀」を押します。
             </li>
             <li>表示されたチェックボックスへチェックを入れます。</li>
+            <li>同じ操作で、ほかのリストにもチェックを入れます。</li>
             <li>
-              同じ操作で、合算したい2つ目以降のリストにもチェックを入れます。
+              「合算」または「どれか一つだけ」を選び、「素材リストを表示」を押します。
             </li>
-            <li>
-              2つ以上選ぶと「チェックしたお気に入りリストの合算素材リスト」が表示されます。
-            </li>
-            <li>不要になったら「チェックを全て外す」で解除します。</li>
           </ol>
-          <div
-            class="image-grid"
-            data-mobile-slides="assets/images/mobile-08-combined-lists-01.webp|お気に入りリストの一覧|①お気に入りを開く,assets/images/mobile-31-combined-checkbox.webp|リスト操作とチェックボックス|②◀を押す,assets/images/mobile-20-combined-first-selected.webp|1つ目のリストを選択した画面|③1つ目を選択,assets/images/mobile-32-combined-second-checkbox.webp|2つ目のリストのチェックボックス|④2つ目の◀を押す,assets/images/mobile-08-combined-lists-02.webp|合算素材リストを開く項目が現れた画面|⑤2つ目を選択,assets/images/mobile-22-combined-result.webp|複数リストの素材合算結果|⑥合算結果を確認"
-          >
+          <p>
+            1リスト以上をチェックすると、複数リスト用の「拡張機能」が表示され、検索欄と装備検索は上へ折り畳まれます。「？」では2つの計算方法の説明を確認できます。「戻る」を押すと、チェックをすべて外して素材リストを閉じます。
+          </p>
+          <div class="image-grid">
             <figure class="image-frame">
               <img
                 src="assets/images/08-combined-lists.webp"
-                alt="複数のお気に入りリストを素材合算対象にした画面"
+                data-mobile-src="assets/images/mobile-08-combined-lists-01.webp"
+                alt="お気に入りリストの一覧"
                 loading="lazy"
               /><button
                 class="zoom-button"
@@ -754,14 +808,13 @@
               >
                 ⌕
               </button>
-              <figcaption>
-                リストをまたいだ共通素材も一度に合算します。
-              </figcaption>
+              <figcaption>計算に含めるリストを確認します。</figcaption>
             </figure>
             <figure class="image-frame">
               <img
                 src="assets/images/31-combined-checkbox.webp"
-                alt="リスト操作を開いて合算用チェックボックスを表示した画面"
+                data-mobile-src="assets/images/mobile-31-combined-checkbox.webp"
+                alt="リスト操作と計算対象のチェックボックス"
                 loading="lazy"
               /><button
                 class="zoom-button"
@@ -771,27 +824,14 @@
                 ⌕
               </button>
               <figcaption>
-                「◀」を押すと、合算対象を選ぶチェックボックスが表示されます。
+                「◀」を押すと、計算対象にするチェックボックスが表示されます。
               </figcaption>
             </figure>
             <figure class="image-frame">
               <img
                 src="assets/images/20-combined-first-selected.webp"
-                alt="1つ目のお気に入りリストを選択した画面"
-                loading="lazy"
-              /><button
-                class="zoom-button"
-                type="button"
-                aria-label="画像を拡大"
-              >
-                ⌕
-              </button>
-              <figcaption>1つ目のリストのチェックを入れます。</figcaption>
-            </figure>
-            <figure class="image-frame">
-              <img
-                src="assets/images/32-combined-second-checkbox.webp"
-                alt="2つ目のリスト操作を開いてチェックボックスを表示した画面"
+                data-mobile-src="assets/images/mobile-20-combined-first-selected.webp"
+                alt="1つ目のお気に入りリストをチェックした画面"
                 loading="lazy"
               /><button
                 class="zoom-button"
@@ -801,13 +841,31 @@
                 ⌕
               </button>
               <figcaption>
-                2つ目のリストも「◀」を押し、表示されたチェックボックスを選びます。
+                1リストをチェックした時点で、複数リスト用の拡張機能が表示されます。
+              </figcaption>
+            </figure>
+            <figure class="image-frame">
+              <img
+                src="assets/images/32-combined-second-checkbox.webp"
+                data-mobile-src="assets/images/mobile-32-combined-second-checkbox.webp"
+                alt="2つ目のお気に入りリストのチェックボックス"
+                loading="lazy"
+              /><button
+                class="zoom-button"
+                type="button"
+                aria-label="画像を拡大"
+              >
+                ⌕
+              </button>
+              <figcaption>
+                ほかのリストも「◀」を押し、同じチェックボックスを使います。
               </figcaption>
             </figure>
             <figure class="image-frame">
               <img
                 src="assets/images/21-combined-ready.webp"
-                alt="2つのリストを選択して合算素材リストの項目が表示された画面"
+                data-mobile-src="assets/images/mobile-08-combined-lists-02.webp"
+                alt="複数リスト用の拡張機能を表示した画面"
                 loading="lazy"
               /><button
                 class="zoom-button"
@@ -817,13 +875,14 @@
                 ⌕
               </button>
               <figcaption>
-                2つ目を選ぶと「チェックしたお気に入りリストの合算素材リスト」が現れます。
+                「合算」と「どれか一つだけ」から計算方法を選びます。初期状態は「合算」です。
               </figcaption>
             </figure>
             <figure class="image-frame">
               <img
-                src="assets/images/22-combined-result.webp"
-                alt="複数のお気に入りリストを合算した素材リスト"
+                src="assets/images/36-combined-help.webp"
+                data-mobile-src="assets/images/mobile-36-combined-help.webp"
+                alt="複数リスト用拡張機能の説明ウィンドウ"
                 loading="lazy"
               /><button
                 class="zoom-button"
@@ -833,14 +892,127 @@
                 ⌕
               </button>
               <figcaption>
-                選択した全リストの必要素材をまとめ、共通素材は合計数で表示します。
+                「？」を押すと、「合算」と「どれか一つだけ」の説明が表示されます。
               </figcaption>
             </figure>
+          </div>
+
+          <div class="extension-sections">
+            <div>
+              <h3 id="combined-sum">合算</h3>
+              <span
+                >チェックした複数のお気に入りリスト内の全アイテムを製作するために必要な素材を合算して表示します。</span
+              >
+              <div class="image-grid">
+                <figure class="image-frame">
+                  <img
+                    src="assets/images/22-combined-result.webp"
+                    data-mobile-src="assets/images/mobile-22-combined-result.webp"
+                    alt="複数のお気に入りリストを合算した素材リスト"
+                    loading="lazy"
+                  /><button
+                    class="zoom-button"
+                    type="button"
+                    aria-label="画像を拡大"
+                  >
+                    ⌕
+                  </button>
+                  <figcaption>
+                    チェックした全リストの必要素材をまとめ、共通素材は合計数で表示します。
+                  </figcaption>
+                </figure>
+              </div>
+            </div>
+
+            <div>
+              <h3 id="combined-any-one">どれか一つだけ</h3>
+              <span
+                >チェックしたお気に入りリストのうち、どれか1リストをセット数分製作するために必要な素材リストを表示します。チェックしたすべてのリストを製作する素材リストではありません。</span
+              >
+              <div class="image-grid">
+                <figure class="image-frame">
+                  <img
+                    src="assets/images/37-combined-any-one-mode.webp"
+                    data-mobile-src="assets/images/mobile-37-combined-any-one-mode.webp"
+                    alt="どれか一つだけを選択した複数リスト用拡張機能"
+                    loading="lazy"
+                  /><button
+                    class="zoom-button"
+                    type="button"
+                    aria-label="画像を拡大"
+                  >
+                    ⌕
+                  </button>
+                  <figcaption>
+                    「どれか一つだけ」を選び、「素材リストを表示」を押します。
+                  </figcaption>
+                </figure>
+                <figure class="image-frame">
+                  <img
+                    src="assets/images/37-combined-any-one-result.webp"
+                    data-mobile-src="assets/images/mobile-37-combined-any-one-result.webp"
+                    alt="どれか一つだけで表示した複数リストの素材リスト"
+                    loading="lazy"
+                  /><button
+                    class="zoom-button"
+                    type="button"
+                    aria-label="画像を拡大"
+                  >
+                    ⌕
+                  </button>
+                  <figcaption>
+                    製作対象の各リストは「もしくは」で区切って表示されます。
+                  </figcaption>
+                </figure>
+              </div>
+            </div>
+
+            <div>
+              <h3 id="combined-production">製作内容と指輪の数</h3>
+              <span
+                >「合算」と「どれか一つだけ」のどちらでも、「▼製作内容」で対象リストを折り畳めます。指輪を含むリストでは、リストごとに指輪の製作数を0・1つ・2つから変更すると、必要素材が再計算されます。</span
+              >
+              <div class="image-grid">
+                <figure class="image-frame">
+                  <img
+                    src="assets/images/38-combined-production-collapsed.webp"
+                    data-mobile-src="assets/images/mobile-38-combined-production-collapsed.webp"
+                    alt="複数リストの製作内容を折り畳んだ素材リスト"
+                    loading="lazy"
+                  /><button
+                    class="zoom-button"
+                    type="button"
+                    aria-label="画像を拡大"
+                  >
+                    ⌕
+                  </button>
+                  <figcaption>
+                    製作内容を折り畳むと「▶製作内容」になり、素材を広く表示できます。
+                  </figcaption>
+                </figure>
+                <figure class="image-frame">
+                  <img
+                    src="assets/images/39-combined-ring-count.webp"
+                    data-mobile-src="assets/images/mobile-39-combined-ring-count.webp"
+                    alt="お気に入りリストごとに指輪の製作数を変更した素材リスト"
+                    loading="lazy"
+                  /><button
+                    class="zoom-button"
+                    type="button"
+                    aria-label="画像を拡大"
+                  >
+                    ⌕
+                  </button>
+                  <figcaption>
+                    指輪の数はリストごとに指定でき、0にした指輪は素材計算から外れます。
+                  </figcaption>
+                </figure>
+              </div>
+            </div>
           </div>
         </section>
 
         <section class="post" id="share">
-          <p class="step">STEP 5</p>
           <h2>保存・共有する</h2>
           <p>
             お気に入りはブラウザー内に自動保存されます。別端末への移行や仲間との共有には「⚙
@@ -936,33 +1108,6 @@
           </div>
         </section>
 
-        <section class="post mobile-only" id="mobile">
-          <h2>スマートフォンで使う</h2>
-          <p>
-            スマートフォンでは、候補を選ぶと表示が候補一覧からレシピツリーへ切り替わります。「戻る」を押すと、直前の候補一覧または使用先一覧へ表示が切り替わります。
-          </p>
-          <div
-            class="image-grid"
-            data-mobile-slides="assets/images/mobile-01-search-01.webp|検索候補の一覧|①候補を選ぶ,assets/images/mobile-01-search-02.webp|レシピツリー画面|②レシピを確認"
-          >
-            <figure class="image-frame">
-              <img
-                src="assets/images/mobile-01-search-01.webp"
-                alt="スマートフォンの検索候補一覧"
-                loading="lazy"
-              /><button
-                class="zoom-button"
-                type="button"
-                aria-label="画像を拡大"
-              >
-                ⌕
-              </button>
-              <figcaption>
-                候補を選ぶとレシピツリー画面へ移動します。
-              </figcaption>
-            </figure>
-          </div>
-        </section>
         <section class="post" id="notes">
           <h2>注意事項・設定</h2>
           <ul>
@@ -1020,9 +1165,9 @@
       ↑
     </button>
     <div class="image-viewer" aria-hidden="true">
-      <div class="image-viewer-toolbar">
-        <button class="image-viewer-close" type="button">閉じる</button>
-      </div>
+      <button class="image-viewer-close" type="button" aria-label="拡大画像を閉じる">
+        ✕
+      </button>
       <div class="image-viewer-stage">
         <img class="image-viewer-img" alt="" />
       </div>

@@ -1,4 +1,4 @@
-const APP_CACHE_VERSION = 'ff14recipe-app-20260714-v2.81';
+const APP_CACHE_VERSION = 'ff14recipe-app-20260714-v2.9';
 const DATA_CACHE_VERSION = 'ff14recipe-data-7.50-4492adda';
 const CACHE_PREFIX = 'ff14recipe-';
 

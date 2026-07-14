@@ -5,24 +5,43 @@
   const topButton = document.querySelector(".top-button");
   const licenseOverlay = document.querySelector("#licenseOverlay");
   let drag = null;
+  let pinch = null;
+  let viewerScale = 1;
+  let viewerMinScale = 1;
+  let viewerBaseWidth = 0;
+  const activePointers = new Map();
 
   const mobileMedia = window.matchMedia("(max-width: 600px)");
   const toc = document.querySelector(".toc");
+  const footer = document.querySelector("footer");
+  let tocFrame = 0;
 
   function fitTocToViewport() {
     if (mobileMedia.matches) {
       toc.style.removeProperty("--toc-available-height");
       return;
     }
+    const footerHeight = footer?.getBoundingClientRect().height ?? 0;
     const available = Math.max(
-      180,
-      window.innerHeight - toc.getBoundingClientRect().top - 12,
+      44,
+      window.innerHeight - toc.getBoundingClientRect().top - footerHeight - 8,
     );
     toc.style.setProperty("--toc-available-height", `${available}px`);
   }
-  fitTocToViewport();
-  window.addEventListener("resize", fitTocToViewport);
-  window.addEventListener("scroll", fitTocToViewport, { passive: true });
+  function scheduleTocFit() {
+    cancelAnimationFrame(tocFrame);
+    tocFrame = requestAnimationFrame(fitTocToViewport);
+  }
+  scheduleTocFit();
+  requestAnimationFrame(scheduleTocFit);
+  window.addEventListener("load", scheduleTocFit);
+  window.addEventListener("resize", scheduleTocFit);
+  window.addEventListener("scroll", scheduleTocFit, { passive: true });
+  document.fonts?.ready.then(scheduleTocFit);
+  new ResizeObserver(scheduleTocFit).observe(
+    document.querySelector(".page-heading"),
+  );
+  if (footer) new ResizeObserver(scheduleTocFit).observe(footer);
 
   const galleryStates = [...document.querySelectorAll(".image-grid")].map(
     (gallery) => ({
@@ -116,18 +135,61 @@
   rebuildResponsiveGalleries();
   mobileMedia.addEventListener("change", () => {
     rebuildResponsiveGalleries();
-    fitTocToViewport();
+    scheduleTocFit();
+  });
+
+  function applyViewerScale(scale, centerX = 0, centerY = 0) {
+    if (!viewerBaseWidth) return;
+    const previousScale = viewerScale;
+    const contentX = (stage.scrollLeft + centerX) / previousScale;
+    const contentY = (stage.scrollTop + centerY) / previousScale;
+    viewerScale = Math.min(1, Math.max(viewerMinScale, scale));
+    viewerImg.style.width = `${viewerBaseWidth * viewerScale}px`;
+    viewerImg.dataset.scale = String(viewerScale);
+    stage.scrollLeft = contentX * viewerScale - centerX;
+    stage.scrollTop = contentY * viewerScale - centerY;
+  }
+  function resetViewerTransform() {
+    activePointers.clear();
+    drag = null;
+    pinch = null;
+    viewerScale = 1;
+    viewerMinScale = 1;
+    viewerBaseWidth = 0;
+    viewerImg.style.removeProperty("width");
+    viewerImg.dataset.scale = "1";
+    stage.classList.remove("dragging");
+    stage.scrollTo(0, 0);
+  }
+  function initializeViewerImage() {
+    viewerBaseWidth = viewerImg.naturalWidth;
+    if (!viewerBaseWidth || !viewerImg.naturalHeight) return;
+    viewerMinScale = Math.min(
+      1,
+      stage.clientWidth / viewerImg.naturalWidth,
+      stage.clientHeight / viewerImg.naturalHeight,
+    );
+    viewerScale = viewerMinScale;
+    viewerImg.style.width = `${viewerBaseWidth * viewerScale}px`;
+    viewerImg.dataset.scale = String(viewerScale);
+    stage.scrollTo(0, 0);
+  }
+  viewerImg.addEventListener("load", initializeViewerImage);
+  window.addEventListener("resize", () => {
+    if (viewer.classList.contains("open") && viewerImg.complete)
+      initializeViewerImage();
   });
 
   function openViewer(img) {
+    resetViewerTransform();
     viewerImg.src = img.currentSrc || img.src;
     viewerImg.alt = img.alt;
     viewer.classList.add("open");
     viewer.setAttribute("aria-hidden", "false");
     document.body.classList.add("viewer-open");
-    stage.scrollTo(0, 0);
   }
   function closeViewer() {
+    resetViewerTransform();
     viewer.classList.remove("open");
     viewer.setAttribute("aria-hidden", "true");
     document.body.classList.remove("viewer-open");
@@ -140,7 +202,27 @@
   document
     .querySelector(".image-viewer-close")
     .addEventListener("click", closeViewer);
+  function pointerDistance(first, second) {
+    return Math.hypot(second.x - first.x, second.y - first.y);
+  }
+  function beginPinch() {
+    const [first, second] = [...activePointers.values()];
+    pinch = {
+      distance: Math.max(1, pointerDistance(first, second)),
+      scale: viewerScale,
+    };
+    drag = null;
+    stage.classList.remove("dragging");
+  }
   stage.addEventListener("pointerdown", (event) => {
+    if (mobileMedia.matches) {
+      activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      stage.setPointerCapture(event.pointerId);
+      if (activePointers.size > 1) {
+        beginPinch();
+        return;
+      }
+    }
     drag = {
       id: event.pointerId,
       x: event.clientX,
@@ -152,14 +234,44 @@
     stage.classList.add("dragging");
   });
   stage.addEventListener("pointermove", (event) => {
+    if (mobileMedia.matches && activePointers.has(event.pointerId)) {
+      activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (activePointers.size > 1) {
+        event.preventDefault();
+        if (!pinch) beginPinch();
+        const [first, second] = [...activePointers.values()];
+        const rect = stage.getBoundingClientRect();
+        const centerX = (first.x + second.x) / 2 - rect.left;
+        const centerY = (first.y + second.y) / 2 - rect.top;
+        applyViewerScale(
+          pinch.scale * (pointerDistance(first, second) / pinch.distance),
+          centerX,
+          centerY,
+        );
+        return;
+      }
+    }
     if (!drag || drag.id !== event.pointerId) return;
     stage.scrollLeft = drag.left - event.clientX + drag.x;
     stage.scrollTop = drag.top - event.clientY + drag.y;
   });
   ["pointerup", "pointercancel"].forEach((type) =>
-    stage.addEventListener(type, () => {
+    stage.addEventListener(type, (event) => {
+      activePointers.delete(event.pointerId);
+      pinch = null;
       drag = null;
       stage.classList.remove("dragging");
+      if (mobileMedia.matches && activePointers.size === 1) {
+        const [id, point] = [...activePointers.entries()][0];
+        drag = {
+          id,
+          x: point.x,
+          y: point.y,
+          left: stage.scrollLeft,
+          top: stage.scrollTop,
+        };
+        stage.classList.add("dragging");
+      }
     }),
   );
 

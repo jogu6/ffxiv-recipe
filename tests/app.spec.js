@@ -20,7 +20,7 @@ async function searchFor(page, value) {
 
 async function chooseCustomOption(page, selectId, value) {
   const select = page.locator(`#${selectId}`);
-  if (await select.getAttribute('data-value') === value) return;
+  if ((await select.getAttribute('data-value')) === value) return;
   await select.locator('.custom-select-toggle').click();
   await select.locator(`.custom-select-option[data-value="${value}"]`).click();
 }
@@ -127,14 +127,18 @@ test('number inputs hide native spin buttons', async ({ page }) => {
   expect(materialTreeRightGap).toBeGreaterThanOrEqual(8);
 });
 
-test('intermediate materials follow craft order, show usage, and open an independent material tree', async ({ page }) => {
+test('intermediate materials follow craft order, show usage, and open an independent material tree', async ({
+  page
+}) => {
   await openApp(page);
   await searchFor(page, 'ブラスバスタードソード');
   await page.getByText('ブラスバスタードソード', { exact: true }).first().click();
   await page.locator('#materialsViewBtn').click();
 
   const intermediateHeader = page.locator('.materials-section-header').filter({ hasText: '製作する中間素材' });
-  const bastardNode = page.locator('.material-name').filter({ hasText: /^バスタードソード$/ })
+  const bastardNode = page
+    .locator('.material-name')
+    .filter({ hasText: /^バスタードソード$/ })
     .locator('xpath=ancestor::div[contains(@class,"intermediate-tree-row")]');
   const intermediateNames = await page.locator('.intermediate-tree-row .material-name').allTextContents();
   expect(intermediateNames.indexOf('ブロンズインゴット')).toBeLessThan(intermediateNames.indexOf('バスタードソード'));
@@ -154,7 +158,9 @@ test('intermediate materials follow craft order, show usage, and open an indepen
   await materialsHeader.click();
   await expect(firstMaterial).not.toHaveClass(/collapsed/);
 
-  const crystalsHeader = page.locator('.materials-section-header').filter({ hasText: '必要なシャード/クリスタル/クラスター' });
+  const crystalsHeader = page
+    .locator('.materials-section-header')
+    .filter({ hasText: '必要なシャード/クリスタル/クラスター' });
   const firstCrystal = crystalsHeader.locator('xpath=following-sibling::*[1]');
   await expect(firstCrystal).toHaveClass(/collapsed/);
   await crystalsHeader.click();
@@ -171,10 +177,14 @@ test('intermediate materials follow craft order, show usage, and open an indepen
   await expect(page.locator('#materialTreeContent > .tree-node').first()).not.toContainText('バスタードソード');
   await expect(page.locator('#materialTreeContent')).toContainText('ブロンズインゴット');
   await expect(page.locator('#materialTreeContent .pin-btn')).toHaveCount(0);
-  const materialTreeHeight = await page.locator('#materialTreeContent').evaluate(el => Math.round(el.getBoundingClientRect().height));
+  const materialTreeHeight = await page
+    .locator('#materialTreeContent')
+    .evaluate(el => Math.round(el.getBoundingClientRect().height));
   await page.locator('#materialTreeContent .tree-node .node-row').first().click();
   await page.waitForTimeout(220);
-  const foldedMaterialTreeHeight = await page.locator('#materialTreeContent').evaluate(el => Math.round(el.getBoundingClientRect().height));
+  const foldedMaterialTreeHeight = await page
+    .locator('#materialTreeContent')
+    .evaluate(el => Math.round(el.getBoundingClientRect().height));
   expect(foldedMaterialTreeHeight).toBe(materialTreeHeight);
   await page.locator('#materialTreeContent .tree-node .node-row').first().click();
   const initialCount = Number(await page.locator('#materialTreeCountInput').inputValue());
@@ -235,8 +245,15 @@ test('toggles between recipe tree and materials list, and resets to tree on new 
   await expect(page.locator('.materials-list')).toContainText('ゴールデンイール');
   await expect(page.locator('.tree-node')).toHaveCount(0);
   await page.locator('.materials-section-header').filter({ hasText: '必要なシャード' }).click();
-  await expect(page.locator('.materials-section-header').filter({ hasText: '必要なシャード' }).locator('xpath=following-sibling::*[1]')).not.toHaveClass(/collapsed/);
-  await page.locator('#treeContainer').evaluate(el => { el.scrollTop = 120; });
+  await expect(
+    page
+      .locator('.materials-section-header')
+      .filter({ hasText: '必要なシャード' })
+      .locator('xpath=following-sibling::*[1]')
+  ).not.toHaveClass(/collapsed/);
+  await page.locator('#treeContainer').evaluate(el => {
+    el.scrollTop = 120;
+  });
 
   await searchFor(page, 'バスタードソード');
   await page.getByText('バスタードソード', { exact: true }).first().click();
@@ -245,7 +262,10 @@ test('toggles between recipe tree and materials list, and resets to tree on new 
   await expect.poll(() => page.locator('#treeContainer').evaluate(el => el.scrollTop)).toBe(0);
 
   await page.locator('#materialsViewBtn').click();
-  const resetCrystalFirstRow = page.locator('.materials-section-header').filter({ hasText: '必要なシャード' }).locator('xpath=following-sibling::*[1]');
+  const resetCrystalFirstRow = page
+    .locator('.materials-section-header')
+    .filter({ hasText: '必要なシャード' })
+    .locator('xpath=following-sibling::*[1]');
   await expect(resetCrystalFirstRow).toHaveClass(/collapsed/);
 });
 
@@ -282,7 +302,9 @@ test('materials list sorts normal items before crystals and shows supplement ico
     '必要なシャード/クリスタル/クラスター',
     '必要な交換貨幣'
   ]);
-  const crystalsHeader = page.locator('.materials-section-header').filter({ hasText: '必要なシャード/クリスタル/クラスター' });
+  const crystalsHeader = page
+    .locator('.materials-section-header')
+    .filter({ hasText: '必要なシャード/クリスタル/クラスター' });
   await expect(crystalsHeader.locator('xpath=following-sibling::*[1]')).toHaveClass(/collapsed/);
   const text = await page.locator('.materials-list').innerText();
   await page.locator('.materials-section-header').filter({ hasText: '必要な交換貨幣' }).click();
@@ -296,20 +318,27 @@ test('materials list sorts normal items before crystals and shows supplement ico
   await expect(page.locator('.materials-summary-separator')).toHaveCount(0);
   await expect(page.locator('.material-supplement-icon').first()).toBeVisible();
   await expect(page.locator('.material-sub-surplus').first()).toHaveCSS('color', 'rgb(106, 191, 105)');
-  await expect(page.locator('.material-sub-num:not(.material-sub-surplus)').first()).toHaveCSS('color', 'rgb(106, 191, 105)');
+  await expect(page.locator('.material-sub-num:not(.material-sub-surplus)').first()).toHaveCSS(
+    'color',
+    'rgb(106, 191, 105)'
+  );
 });
 
 test('favorite materials show intermediate usage and dependency-aware craft order', async ({ page }) => {
-  const shareCode = 'Z00273F0Y320Y1M0Y6D55576G4H436D4J4R0W243A1A1G1C0Y180Y2X0Y1M2J1E1C1G1D181E1K1C1I181F1D1G1I181F1I1D1I181F1G1C1J181F1K1H1I181G1E1F1J181G1F1G1F181G1D1F1J181G1G1J1E2L3H';
+  const shareCode =
+    'Z00273F0Y320Y1M0Y6D55576G4H436D4J4R0W243A1A1G1C0Y180Y2X0Y1M2J1E1C1G1D181E1K1C1I181F1D1G1I181F1I1D1I181F1G1C1J181F1K1H1I181G1E1F1J181G1F1G1F181G1D1F1J181G1G1J1E2L3H';
   await openApp(page);
   await page.locator('#settingsBtn').click();
   await page.locator('#importCode').fill(shareCode);
   await page.locator('#startImportBtn').click();
   await page.locator('#recipeList .favorite-materials-row > .favorite-list-action').click();
 
-  const threadRow = page.locator('.intermediate-tree-row').filter({
+  const threadRow = page
+    .locator('.intermediate-tree-row')
+    .filter({
     has: page.getByText('亜麻糸', { exact: true })
-  }).first();
+    })
+    .first();
   await expect(threadRow).toContainText('裁縫');
   await expect(threadRow).toContainText('× 10');
   await expect(threadRow).toContainText('うち 8 個は亜麻布に使用');
@@ -321,7 +350,8 @@ test('favorite materials show intermediate usage and dependency-aware craft orde
 });
 
 test('combined materials delay a craft job until its cross-job dependencies are ready', async ({ page }) => {
-  const shareCode = 'Z002X3F0Y320Y1M0Y6F49590W6B3M4Z6B3N586B3N3S6B3N4Q6B3N586B3N4P6B3N506B3M4H6B3N580Y180Y2X0Y1M2J1G1L1E1L1I181G1L1E1L1J181G1L1E1L1K181G1L1E1L1L181G1L1F1C1C181G1L1F1C1L181G1L1F1D1G181G1L1F1D1L181G1L1F1E1G181G1I1E1H1F2L3H';
+  const shareCode =
+    'Z002X3F0Y320Y1M0Y6F49590W6B3M4Z6B3N586B3N3S6B3N4Q6B3N586B3N4P6B3N506B3M4H6B3N580Y180Y2X0Y1M2J1G1L1E1L1I181G1L1E1L1J181G1L1E1L1K181G1L1E1L1L181G1L1F1C1C181G1L1F1C1L181G1L1F1D1G181G1L1F1D1L181G1L1F1E1G181G1I1E1H1F2L3H';
   await openApp(page);
   await page.locator('#settingsBtn').click();
   await page.locator('#importCode').fill(shareCode);
@@ -346,7 +376,9 @@ test('exchange materials are sorted by their exchange currency first', async ({ 
   await page.getByText('オールドキングダム・ディフェンダーヘルム', { exact: true }).first().click();
 
   await page.locator('#materialsViewBtn').click();
-  const rows = await page.locator('.materials-list li:not(.materials-summary-row)').evaluateAll(items =>
+  const rows = await page
+    .locator('.materials-list li:not(.materials-summary-row)')
+    .evaluateAll(items =>
     items
       .map(item => item.textContent || '')
       .filter(text => text.includes('アラガントームストーン:数理') || text.includes('ギャザラースクリップ:橙貨'))
@@ -479,28 +511,34 @@ test('restores selected view state after reload without saving calculated materi
   const materialsHeader = page.locator('.materials-section-header').filter({ hasText: '必要素材' });
   await intermediateHeader.click();
   await expect(intermediateHeader.locator('xpath=following-sibling::*[1]')).toHaveClass(/collapsed/);
-  await expect.poll(async () => {
+  await expect
+    .poll(async () => {
     const upper = await intermediateHeader.boundingBox();
     const lower = await materialsHeader.boundingBox();
     if (!upper || !lower) return 999;
     return Math.round(lower.y - (upper.y + upper.height));
-  }).toBeLessThanOrEqual(2);
+    })
+    .toBeLessThanOrEqual(2);
   await materialsHeader.click();
   await expect(materialsHeader.locator('xpath=following-sibling::*[1]')).toHaveClass(/collapsed/);
   const crystalHeader = page.locator('.materials-section-header').filter({ hasText: '必要なシャード' });
   const exchangeHeader = page.locator('.materials-section-header').filter({ hasText: '必要な交換貨幣' });
-  await expect.poll(async () => {
+  await expect
+    .poll(async () => {
     const upper = await materialsHeader.boundingBox();
     const lower = await crystalHeader.boundingBox();
     if (!upper || !lower) return 999;
     return Math.round(lower.y - (upper.y + upper.height));
-  }).toBeLessThanOrEqual(2);
-  await expect.poll(async () => {
+    })
+    .toBeLessThanOrEqual(2);
+  await expect
+    .poll(async () => {
     const upper = await crystalHeader.boundingBox();
     const lower = await exchangeHeader.boundingBox();
     if (!upper || !lower) return 999;
     return Math.round(lower.y - (upper.y + upper.height));
-  }).toBeLessThanOrEqual(2);
+    })
+    .toBeLessThanOrEqual(2);
 
   await page.reload();
   await expect(page.locator('#loadStatus')).toContainText(/patch/);
@@ -531,15 +569,20 @@ test('limits the protected recent-items list to one hundred entries', async ({ p
       .map(item => Number(item.ID))
       .filter(id => Number.isInteger(id) && id > 0)
       .slice(0, 101);
-    localStorage.setItem('ff14_favorite_lists_v2', JSON.stringify({
+    localStorage.setItem(
+      'ff14_favorite_lists_v2',
+      JSON.stringify({
       version: 2,
       selectedListId: 'SYSTEM_RECENT_ITEMS',
-      lists: [{
+        lists: [
+          {
         id: 'SYSTEM_RECENT_ITEMS',
         name: '検索履歴',
         itemIds
-      }]
-    }));
+          }
+        ]
+      })
+    );
   });
   await page.reload();
   await expect(page.locator('#loadStatus')).toContainText(/patch/);
@@ -555,16 +598,19 @@ test('shows shop info button and dialog for items with ShopInfo', async ({ page 
     const target = items.find(item => item.Name === 'アリペブレ');
     target.ShopInfo = {
       price: 4,
-      shops: [{
+      shops: [
+        {
         shopName: '素材屋 テスト',
         area: 'リムサ・ロミンサ：下甲板層',
         x: 8.6,
         y: 11.8,
         requiredRank: '1: 中立'
-      }, {
+        },
+        {
         shopName: '通常ショップ テスト',
         area: 'グリダニア：新市街'
-      }]
+        }
+      ]
     };
     await route.fulfill({
       contentType: 'application/json',
@@ -591,10 +637,14 @@ test('purchased intermediate keeps rows visible and marks its unused materials',
   await page.getByText('ブラスバスタードソード', { exact: true }).first().click();
   await page.locator('#materialsViewBtn').click();
 
-  const purchasedNode = page.locator('.intermediate-tree-row .material-name').filter({ hasText: /^バスタードソード$/ })
+  const purchasedNode = page
+    .locator('.intermediate-tree-row .material-name')
+    .filter({ hasText: /^バスタードソード$/ })
     .locator('xpath=ancestor::li[contains(@class,"intermediate-tree-node")]');
   await expect(purchasedNode).not.toHaveClass(/purchase-selected/);
-  await page.locator('#treeContainer').evaluate(element => { element.scrollTop = 120; });
+  await page.locator('#treeContainer').evaluate(element => {
+    element.scrollTop = 120;
+  });
   const scrollBeforePurchase = await page.locator('#treeContainer').evaluate(element => element.scrollTop);
   await purchasedNode.locator('.shop-info-btn').click();
   const option = page.getByLabel('この中間素材は購入💰して用意する');
@@ -611,7 +661,9 @@ test('purchased intermediate keeps rows visible and marks its unused materials',
   await expect(earthShardRow.locator('.material-qty')).toHaveText('× 2');
   await option.check();
   await expect(option).toHaveCSS('background-color', 'rgb(200, 168, 75)');
-  await expect.poll(() => page.locator('#treeContainer').evaluate(element => element.scrollTop)).toBe(scrollBeforePurchase);
+  await expect
+    .poll(() => page.locator('#treeContainer').evaluate(element => element.scrollTop))
+    .toBe(scrollBeforePurchase);
   await page.locator('#shopCloseBtn').click();
 
   await expect(purchasedNode).toHaveClass(/purchase-selected/);
@@ -619,17 +671,23 @@ test('purchased intermediate keeps rows visible and marks its unused materials',
   await expect(purchasedNode.locator('.shop-info-btn')).toHaveText('💰🛒');
   await expect(fireShardRow.locator('.material-qty')).toHaveText('× 1');
   await expect(earthShardRow.locator('.material-qty')).toHaveText('× 1');
-  const lowerIntermediate = page.locator('.intermediate-tree-row .material-name').filter({ hasText: /^メープル材$/ })
+  const lowerIntermediate = page
+    .locator('.intermediate-tree-row .material-name')
+    .filter({ hasText: /^メープル材$/ })
     .locator('xpath=ancestor::li[contains(@class,"intermediate-tree-node")]');
   await expect(lowerIntermediate).toHaveClass(/purchase-unneeded/);
-  await page.locator('#treeContainer').evaluate(element => { element.scrollTop = 60; });
+  await page.locator('#treeContainer').evaluate(element => {
+    element.scrollTop = 60;
+  });
   const scrollBeforeDisabledDialog = await page.locator('#treeContainer').evaluate(element => element.scrollTop);
   await lowerIntermediate.locator('.shop-info-btn').click();
   await expect(page.getByLabel('この中間素材は購入💰して用意する')).toBeDisabled();
   await expect(page.locator('.shop-purchase-option')).toContainText('現在は購入指定できません');
   await expect(page.locator('.shop-purchase-reason')).toContainText('バスタードソード');
   await page.locator('#shopCloseBtn').click();
-  await expect.poll(() => page.locator('#treeContainer').evaluate(element => element.scrollTop)).toBe(scrollBeforeDisabledDialog);
+  await expect
+    .poll(() => page.locator('#treeContainer').evaluate(element => element.scrollTop))
+    .toBe(scrollBeforeDisabledDialog);
   const unusedRow = page.locator('.materials-list li').filter({ hasText: 'メープル原木' });
   await expect(unusedRow).toHaveClass(/purchase-unneeded/);
   await expect(unusedRow.locator('.purchase-status')).toHaveText('中間素材購入💰の為不要');
@@ -642,9 +700,15 @@ test('purchased intermediate keeps rows visible and marks its unused materials',
 
   await page.reload();
   await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
-  await expect(page.locator('.intermediate-tree-row .material-name').filter({ hasText: /^バスタードソード$/ })
-    .locator('xpath=ancestor::li[contains(@class,"intermediate-tree-node")]')).toHaveClass(/purchase-selected/);
-  const restoredPurchasedNode = page.locator('.intermediate-tree-row .material-name').filter({ hasText: /^バスタードソード$/ })
+  await expect(
+    page
+      .locator('.intermediate-tree-row .material-name')
+      .filter({ hasText: /^バスタードソード$/ })
+      .locator('xpath=ancestor::li[contains(@class,"intermediate-tree-node")]')
+  ).toHaveClass(/purchase-selected/);
+  const restoredPurchasedNode = page
+    .locator('.intermediate-tree-row .material-name')
+    .filter({ hasText: /^バスタードソード$/ })
     .locator('xpath=ancestor::li[contains(@class,"intermediate-tree-node")]');
   await restoredPurchasedNode.locator('.shop-info-btn').click();
   await expect(page.getByLabel('この中間素材は購入💰して用意する')).toBeChecked();
@@ -658,18 +722,23 @@ test('purchased intermediate status is visible on mobile', async ({ page }) => {
   await searchFor(page, 'ブラスバスタードソード');
   await page.getByText('ブラスバスタードソード', { exact: true }).first().click();
   await page.locator('#materialsViewBtn').click();
-  const purchasedNode = page.locator('.intermediate-tree-row .material-name').filter({ hasText: /^バスタードソード$/ })
+  const purchasedNode = page
+    .locator('.intermediate-tree-row .material-name')
+    .filter({ hasText: /^バスタードソード$/ })
     .locator('xpath=ancestor::li[contains(@class,"intermediate-tree-node")]');
   await purchasedNode.locator('.shop-info-btn').click();
   await page.getByLabel('この中間素材は購入💰して用意する').check();
   await page.locator('#shopCloseBtn').click();
-  await expect(page.locator('.materials-list li').filter({ hasText: 'メープル原木' }).locator('.purchase-status'))
-    .toBeVisible();
+  await expect(
+    page.locator('.materials-list li').filter({ hasText: 'メープル原木' }).locator('.purchase-status')
+  ).toBeVisible();
   await page.locator('#appTitle').click();
   await searchFor(page, 'ブラスバスタードソード');
   await page.locator('#recipeList').getByText('ブラスバスタードソード', { exact: true }).click();
   await page.locator('#materialsViewBtn').click();
-  const resetNode = page.locator('.intermediate-tree-row .material-name').filter({ hasText: /^バスタードソード$/ })
+  const resetNode = page
+    .locator('.intermediate-tree-row .material-name')
+    .filter({ hasText: /^バスタードソード$/ })
     .locator('xpath=ancestor::li[contains(@class,"intermediate-tree-node")]');
   await expect(resetNode).not.toHaveClass(/purchase-selected/);
   await expect(resetNode.locator('.shop-info-btn')).toHaveText('🛒');
@@ -757,7 +826,9 @@ test('reorders favorite lists locally with the rightmost drag handle', async ({ 
   const actionButtons = listA.locator('.favorite-list-curtain-actions button');
   const firstActionBox = await actionButtons.nth(0).boundingBox();
   const secondActionBox = await actionButtons.nth(1).boundingBox();
-  expect(secondActionBox.x - (firstActionBox.x + firstActionBox.width)).toBeGreaterThanOrEqual(firstActionBox.width - 1);
+  expect(secondActionBox.x - (firstActionBox.x + firstActionBox.width)).toBeGreaterThanOrEqual(
+    firstActionBox.width - 1
+  );
 
   await dragHandleAfter(page, listA.locator('.reorder-handle'), listB);
 
@@ -855,13 +926,23 @@ test('shows favorite list materials mode with set count and ring toggles', async
 
   await page.locator('#favBtn').click();
   await page.locator('#favoriteLists').getByText('素材確認').click();
-  await expect(page.locator('#recipeList li.fav-item-row').first().locator('.favorite-item-job')).toHaveClass(/badge-craft/);
-  const favoriteItemFontSizes = await page.locator('#recipeList li.fav-item-row').first().evaluate(row => ({
+  await expect(page.locator('#recipeList li.fav-item-row').first().locator('.favorite-item-job')).toHaveClass(
+    /badge-craft/
+  );
+  const favoriteItemFontSizes = await page
+    .locator('#recipeList li.fav-item-row')
+    .first()
+    .evaluate(row => ({
     job: getComputedStyle(row.querySelector('.favorite-item-job')).fontSize,
-    name: getComputedStyle(row.querySelector('.favorite-item-name')).fontSize,
+      name: getComputedStyle(row.querySelector('.favorite-item-name')).fontSize
   }));
   expect(favoriteItemFontSizes.job).toBe(favoriteItemFontSizes.name);
   await expect(page.locator('.result-header')).toBeHidden();
+  const favoriteMaterialActionHeights = await page.locator('#recipeList .favorite-materials-row').evaluate(row => ({
+    material: row.querySelector(':scope > .favorite-list-action').getBoundingClientRect().height,
+    toggle: row.querySelector('.favorite-material-curtain').getBoundingClientRect().height
+  }));
+  expect(Math.abs(favoriteMaterialActionHeights.material - favoriteMaterialActionHeights.toggle)).toBeLessThan(1);
   await page.locator('#recipeList').getByText('素材リストを表示').click();
   await page.locator('#countIncrease5Btn').click();
 
@@ -936,7 +1017,9 @@ test('favorite list count mode excludes zero-count items from materials', async 
   await expect(page.locator('#recipeList').getByText('素材リストを表示(1/2)')).toBeVisible();
   await page.locator('#recipeList li.fav-item-row').filter({ hasText: 'カッパーリング' }).click();
   await expect(page.locator('#countLabel')).toHaveText('セット数:');
-  await expect(page.locator('#recipeList .favorite-materials-row').getByText('素材リストを表示(1/2)')).toHaveClass(/active/);
+  await expect(page.locator('#recipeList .favorite-materials-row').getByText('素材リストを表示(1/2)')).toHaveClass(
+    /active/
+  );
   await page.locator('#settingsBtn').click();
   await page.locator('#exportListToggle').click();
   await page.locator('#exportListChoices').getByText('個数確認').click();
@@ -945,7 +1028,15 @@ test('favorite list count mode excludes zero-count items from materials', async 
 
   await page.locator('#recipeList').getByText('素材リストを表示(1/2)').click();
   await expect(page.locator('.favorite-ring-controls')).toHaveCount(0);
+  await expect(page.locator('.production-content-toggle')).toHaveText('▼製作内容');
+  await expect(page.locator('.production-content-toggle')).toHaveClass(/materials-section-header/);
   await expect(page.locator('.favorite-material-root-summary')).toHaveCount(1);
+  const countProductionGap = await page.locator('.production-content-section').evaluate(section => {
+    const header = section.querySelector('.production-content-toggle').getBoundingClientRect();
+    const firstItem = section.querySelector('.favorite-material-root-summary').getBoundingClientRect();
+    return firstItem.top - header.bottom;
+  });
+  expect(countProductionGap).toBeGreaterThan(4);
   await expect(page.locator('.favorite-material-root-summary')).toContainText('カッパーリング');
   await expect(page.locator('.favorite-material-root-summary')).not.toContainText('アリペブレ');
   await expect(page.locator('.favorite-material-root-summary .node-icon')).toHaveCSS('width', '40px');
@@ -970,7 +1061,7 @@ test('favorite list count mode excludes zero-count items from materials', async 
   await expect(page.locator('.favorite-item-count-controls input[type="checkbox"]:checked')).toHaveCount(2);
   const storedAnyOneTargets = await page.evaluate(() => localStorage.getItem('ff14_favorite_item_counts_v1'));
   expect(storedAnyOneTargets).toContain('anyOneTargets');
-  await page.locator('.favorite-material-help-btn').click();
+  await page.locator('#recipeList .favorite-material-help-btn').click();
   await expect(page.locator('#licenseTitle')).toContainText('拡張機能について');
   await expect(page.locator('#licenseText')).toContainText('お気に入りリスト内全アイテム');
   await expect(page.locator('#licenseText')).toContainText('セット数分');
@@ -983,19 +1074,37 @@ test('favorite list count mode excludes zero-count items from materials', async 
   await page.locator('#countInput').blur();
   await expect(page.locator('#countInput')).toHaveValue('2');
   await page.locator('#recipeList').getByText('素材リストを表示').click();
+  await expect(page.locator('.production-content-toggle')).toHaveText('▼製作内容');
   await expect(page.locator('.favorite-material-root-summary')).toHaveCount(2);
   await expect(page.locator('.favorite-material-root-or')).toHaveCount(1);
   await expect(page.locator('.favorite-material-root-or')).toHaveText('もしくは');
   await expect(page.locator('.favorite-material-root-summary').filter({ hasText: 'アリペブレ' })).toContainText('× 3');
   await expect(page.locator('.favorite-material-root-summary').filter({ hasText: 'アリペブレ' })).toContainText('余り');
-  await expect(page.locator('.favorite-material-root-summary').filter({ hasText: 'カッパーリング' })).toContainText('× 2');
+  await expect(page.locator('.favorite-material-root-summary').filter({ hasText: 'カッパーリング' })).toContainText(
+    '× 2'
+  );
+  await page.locator('.production-content-toggle').click();
+  await expect(page.locator('.production-content-toggle')).toHaveText('▶製作内容');
+  await expect
+    .poll(() =>
+      page.locator('.production-content-toggle').evaluate(header => {
+        const firstMaterialsHeader = document.querySelector(
+          '.materials-section-header:not(.production-content-toggle)'
+        );
+        return Math.abs(firstMaterialsHeader.getBoundingClientRect().top - header.getBoundingClientRect().bottom);
+      })
+    )
+    .toBeLessThan(1);
 
   await page.reload();
   await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
   await expect(page.locator('.favorite-material-root-summary')).toHaveCount(2);
+  await expect(page.locator('.production-content-toggle')).toHaveText('▶製作内容');
   await expect(page.locator('.favorite-material-root-or')).toHaveText('もしくは');
   await expect(page.locator('.favorite-material-root-summary').filter({ hasText: 'アリペブレ' })).toContainText('× 3');
-  await expect(page.locator('.favorite-material-root-summary').filter({ hasText: 'カッパーリング' })).toContainText('× 2');
+  await expect(page.locator('.favorite-material-root-summary').filter({ hasText: 'カッパーリング' })).toContainText(
+    '× 2'
+  );
   await page.locator('.favorite-material-curtain-toggle').click();
   await expect(page.locator('.favorite-material-curtain-actions').getByText('どれでも1つ')).toHaveClass(/active/);
 });
@@ -1017,15 +1126,15 @@ test('mobile favorite ring controls keep the count toggle on one right-aligned r
   const rowBox = await page.locator('.favorite-ring-row').first().boundingBox();
   const nameBox = await page.locator('.favorite-ring-name').first().boundingBox();
   const toggleBox = await page.locator('.favorite-ring-toggle').first().boundingBox();
-  const buttonTops = await page.locator('.favorite-ring-toggle button').evaluateAll(buttons =>
-    buttons.map(button => button.getBoundingClientRect().top)
-  );
+  const buttonTops = await page
+    .locator('.favorite-ring-toggle button')
+    .evaluateAll(buttons => buttons.map(button => button.getBoundingClientRect().top));
   expect(rowBox).toBeTruthy();
   expect(nameBox).toBeTruthy();
   expect(toggleBox).toBeTruthy();
   expect(buttonTops).toHaveLength(3);
   expect(Math.max(...buttonTops) - Math.min(...buttonTops)).toBeLessThan(1);
-  expect(Math.abs((toggleBox.x + toggleBox.width) - (rowBox.x + rowBox.width))).toBeLessThanOrEqual(2);
+  expect(Math.abs(toggleBox.x + toggleBox.width - (rowBox.x + rowBox.width))).toBeLessThanOrEqual(2);
   expect(toggleBox.y).toBeLessThan(nameBox.y + nameBox.height);
 });
 
@@ -1041,12 +1150,10 @@ test('mobile pin turns active after adding to a favorite list', async ({ page })
   const primaryRowBox = await page.locator('.header-primary-row').boundingBox();
   expect(titleBox.y).toBeLessThan(mobileBackBox.y);
   expect(mobileBackBox.x).toBeLessThan(settingsBox.x);
-  expect(Math.abs(
-    (primaryRowBox.x + primaryRowBox.width / 2) - 300
-  )).toBeLessThan(1);
-  expect(Math.abs(
-    (mobileBackBox.y + mobileBackBox.height / 2) - (settingsBox.y + settingsBox.height / 2)
-  )).toBeLessThan(1);
+  expect(Math.abs(primaryRowBox.x + primaryRowBox.width / 2 - 300)).toBeLessThan(1);
+  expect(Math.abs(mobileBackBox.y + mobileBackBox.height / 2 - (settingsBox.y + settingsBox.height / 2))).toBeLessThan(
+    1
+  );
   await expect(page.locator('#mobileBackBtn')).toHaveCSS('font-size', '15px');
 
   const pin = page.locator('.result-root-summary .pin-btn').first();
@@ -1073,7 +1180,9 @@ test('mobile pin turns active after adding to a favorite list', async ({ page })
   await page.locator('#confirmYes').click();
   await expect(secondPin).not.toHaveClass(/inactive/);
 
-  await page.locator('#panelRight').evaluate(panel => { panel.scrollTop = 100; });
+  await page.locator('#panelRight').evaluate(panel => {
+    panel.scrollTop = 100;
+  });
   await page.locator('#mobileBackBtn').click();
   await page.locator('#favBtn').click();
   await page.locator('#favoriteLists').getByText('スマホ確認').click();
@@ -1084,19 +1193,24 @@ test('mobile pin turns active after adding to a favorite list', async ({ page })
   await expect(materialsButton).toHaveClass(/active/);
   await expect.poll(() => page.locator('#panelRight').evaluate(panel => panel.scrollTop)).toBe(0);
   await page.locator('#mobileBackBtn').click();
-  await expect(page.locator('#recipeList .favorite-materials-row').getByText('素材リストを表示')).not.toHaveClass(/active/);
+  await expect(page.locator('#recipeList .favorite-materials-row').getByText('素材リストを表示')).not.toHaveClass(
+    /active/
+  );
 });
 
 test('mobile panels align list actions and scroll on the intended element', async ({ page }) => {
   await openApp(page, 423, 780);
   await searchFor(page, '岩塩');
 
-  const saltRow = page.locator('#recipeList li').filter({ has: page.getByText('岩塩', { exact: true }) }).first();
+  const saltRow = page
+    .locator('#recipeList li')
+    .filter({ has: page.getByText('岩塩', { exact: true }) })
+    .first();
   const leftRowBox = await saltRow.boundingBox();
   const actionBox = await saltRow.locator('.item-action-buttons').boundingBox();
   expect(leftRowBox).toBeTruthy();
   expect(actionBox).toBeTruthy();
-  expect((leftRowBox.x + leftRowBox.width) - (actionBox.x + actionBox.width)).toBeLessThanOrEqual(16);
+  expect(leftRowBox.x + leftRowBox.width - (actionBox.x + actionBox.width)).toBeLessThanOrEqual(16);
 
   const leftMetrics = await page.locator('#panelLeft').evaluate(panel => {
     const list = panel.querySelector('#recipeList');
@@ -1148,9 +1262,16 @@ test('mobile panels align list actions and scroll on the intended element', asyn
 test('selecting an item in the left panel closes and resets the middle panel', async ({ page }) => {
   await openApp(page);
   await searchFor(page, '岩塩');
-  await page.locator('#recipeList li').filter({ has: page.getByText('岩塩', { exact: true }) }).first().locator('.uses-list-btn').click();
+  await page
+    .locator('#recipeList li')
+    .filter({ has: page.getByText('岩塩', { exact: true }) })
+    .first()
+    .locator('.uses-list-btn')
+    .click();
   await expect(page.locator('#panelMiddle')).toHaveClass(/open/);
-  await page.locator('#usesList').evaluate(list => { list.scrollTop = list.scrollHeight; });
+  await page.locator('#usesList').evaluate(list => {
+    list.scrollTop = list.scrollHeight;
+  });
 
   await searchFor(page, 'バスタードソード');
   await page.getByText('バスタードソード', { exact: true }).first().click();
@@ -1160,7 +1281,9 @@ test('selecting an item in the left panel closes and resets the middle panel', a
 
 test('combined favorite materials opens directly without confirmation dialog', async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem('ff14_favorite_lists_v2', JSON.stringify({
+    localStorage.setItem(
+      'ff14_favorite_lists_v2',
+      JSON.stringify({
       version: 2,
       selectedListId: 'list-defense',
       lists: [
@@ -1177,19 +1300,35 @@ test('combined favorite materials opens directly without confirmation dialog', a
           materialSelected: true
         }
       ]
-    }));
+      })
+    );
   });
 
   await openApp(page, 423, 780);
   await page.locator('#checkedFavoriteMaterialsBtn').click();
   await expect(page.locator('#confirmOverlay')).not.toHaveClass(/open/);
-  await expect(page.locator('.favorite-list-root-summary').filter({ hasText: 'コートリーブーツ・ディフェンダー' })).toBeVisible();
-  await expect(page.locator('.favorite-list-root-summary').filter({ hasText: 'コートリーブーツ・ヒーラー' })).toBeVisible();
+  await expect(
+    page.locator('.favorite-list-root-summary').filter({ hasText: 'コートリーブーツ・ディフェンダー' })
+  ).toBeVisible();
+  await expect(
+    page.locator('.favorite-list-root-summary').filter({ hasText: 'コートリーブーツ・ヒーラー' })
+  ).toBeVisible();
+  await expect(page.locator('.production-content-toggle')).toHaveText('▼製作内容');
+  const listProductionGap = await page.locator('.production-content-section').evaluate(section => {
+    const header = section.querySelector('.production-content-toggle').getBoundingClientRect();
+    const firstList = section.querySelector('.favorite-list-root-summary').getBoundingClientRect();
+    return firstList.top - header.bottom;
+  });
+  expect(listProductionGap).toBeGreaterThan(4);
 });
 
-test('checked favorite lists use a dedicated combined materials entry and reset on main navigation', async ({ page }) => {
+test('checked favorite lists use a dedicated combined materials entry and reset on main navigation', async ({
+  page
+}) => {
   await page.addInitScript(() => {
-    localStorage.setItem('ff14_favorite_lists_v2', JSON.stringify({
+    localStorage.setItem(
+      'ff14_favorite_lists_v2',
+      JSON.stringify({
       version: 2,
       selectedListId: 'list-defense',
       lists: [
@@ -1206,24 +1345,63 @@ test('checked favorite lists use a dedicated combined materials entry and reset 
           materialSelected: true
         }
       ]
-    }));
+      })
+    );
   });
 
   await openApp(page, 423, 780);
   await expect(page.locator('#checkedFavoriteMaterialsActions')).toHaveClass(/visible/);
+  await expect(page.locator('#searchBox')).toBeDisabled();
+  await expect(page.locator('#equipmentSearchToggle')).toBeDisabled();
+  await expect(page.locator('.search-row')).toHaveAttribute('aria-hidden', 'true');
+  await expect.poll(() => page.locator('.search-row').evaluate(row => row.getBoundingClientRect().height)).toBe(0);
   await expect(page.locator('#checkedFavoriteMaterialsBtn')).toBeVisible();
   await expect(page.locator('#clearFavoriteMaterialChecksBtn')).toBeVisible();
   const actionColor = await page.locator('#checkedFavoriteMaterialsBtn').evaluate(el => getComputedStyle(el).color);
   await expect(page.locator('#clearFavoriteMaterialChecksBtn')).toHaveCSS('color', actionColor);
-  await expect(page.locator('#checkedFavoriteMaterialsBtn')).toContainText('チェックしたお気に入りリストの合算素材リスト');
+  await expect(page.locator('#checkedFavoriteMaterialsActions')).toContainText('拡張機能');
+  await expect(page.locator('#checkedFavoriteSumModeBtn')).toHaveClass(/active/);
+  await expect(page.locator('#checkedFavoriteMaterialsBtn')).toContainText('素材リストを表示');
+  await expect(page.locator('#clearFavoriteMaterialChecksBtn')).toContainText('戻る');
+  const modeWidths = await page
+    .locator('.checked-favorite-materials-mode button')
+    .evaluateAll(buttons => buttons.map(button => button.getBoundingClientRect().width));
+  expect(Math.abs(modeWidths[0] - modeWidths[1])).toBeLessThan(1);
+  const modeLayout = await page.locator('.checked-favorite-materials-mode').evaluate(group => {
+    const [first, second] = [...group.querySelectorAll('button')].map(button => button.getBoundingClientRect());
+    return {
+      gap: getComputedStyle(group).gap,
+      separation: second.left - first.right
+    };
+  });
+  expect(modeLayout.gap).toBe('normal');
+  expect(Math.abs(modeLayout.separation)).toBeLessThan(1);
+  await page.locator('#favBtn').click();
+  await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
+  await page.locator('#checkedFavoriteMaterialsHelpBtn').click();
+  await expect(page.locator('#licenseText')).toContainText('チェックした複数のお気に入りリスト');
+  await expect(page.locator('#licenseText')).toContainText('どれか一つだけ');
+  await page.locator('#licenseCloseBtn').click();
+  await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
 
   await page.locator('#checkedFavoriteMaterialsBtn').click();
   await expect(page.locator('#confirmOverlay')).not.toHaveClass(/open/);
-  await expect(page.locator('.favorite-list-root-summary').filter({ hasText: 'コートリーブーツ・ディフェンダー' })).toBeVisible();
-  await expect(page.locator('.favorite-list-root-summary').filter({ hasText: 'コートリーブーツ・ヒーラー' })).toBeVisible();
+  await expect(
+    page.locator('.favorite-list-root-summary').filter({ hasText: 'コートリーブーツ・ディフェンダー' })
+  ).toBeVisible();
+  await expect(
+    page.locator('.favorite-list-root-summary').filter({ hasText: 'コートリーブーツ・ヒーラー' })
+  ).toBeVisible();
+  await expect(page.locator('.production-content-toggle')).toHaveText('▼製作内容');
 
   await page.locator('#appTitle').click();
   await expect(page.locator('#checkedFavoriteMaterialsActions')).not.toHaveClass(/visible/);
+  await expect(page.locator('#searchBox')).toBeEnabled();
+  await expect(page.locator('#equipmentSearchToggle')).toBeEnabled();
+  await expect(page.locator('.search-row')).toHaveAttribute('aria-hidden', 'false');
+  await expect
+    .poll(() => page.locator('.search-row').evaluate(row => row.getBoundingClientRect().height))
+    .toBeGreaterThan(25);
   await page.locator('#favBtn').click();
   await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
   await expect(page.locator('#favoriteLists .favorite-list-material-checkbox:checked')).toHaveCount(0);
@@ -1232,14 +1410,19 @@ test('checked favorite lists use a dedicated combined materials entry and reset 
   await expect(page.locator('#checkedFavoriteMaterialsActions')).toHaveClass(/visible/);
   await page.locator('#clearFavoriteMaterialChecksBtn').click();
   await expect(page.locator('#checkedFavoriteMaterialsActions')).not.toHaveClass(/visible/);
+  await expect(page.locator('#searchBox')).toBeEnabled();
+  await expect(page.locator('#equipmentSearchToggle')).toBeEnabled();
   await expect(page.locator('#favoriteLists .favorite-list-material-checkbox:checked')).toHaveCount(0);
 
-  if (!await page.locator('#favoriteLists').evaluate(list => list.classList.contains('open'))) {
+  if (!(await page.locator('#favoriteLists').evaluate(list => list.classList.contains('open')))) {
     await page.locator('#favBtn').click();
     await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
   }
   await page.locator('#favoriteLists .favorite-list-material-checkbox').first().check();
   await expect(page.locator('#checkedFavoriteMaterialsActions')).toHaveClass(/visible/);
+  await expect(page.locator('#searchBox')).toBeDisabled();
+  await expect(page.locator('#equipmentSearchToggle')).toBeDisabled();
+  await page.locator('#clearFavoriteMaterialChecksBtn').click();
   await searchFor(page, 'バスタードソード');
   await page.getByText('バスタードソード', { exact: true }).first().click();
   await expect(page.locator('#checkedFavoriteMaterialsActions')).not.toHaveClass(/visible/);
@@ -1251,7 +1434,9 @@ test('checked favorite lists use a dedicated combined materials entry and reset 
 
 test('combined favorite materials supports ring count toggles and restores them', async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem('ff14_favorite_lists_v2', JSON.stringify({
+    localStorage.setItem(
+      'ff14_favorite_lists_v2',
+      JSON.stringify({
       version: 2,
       selectedListId: 'list-ring-a',
       lists: [
@@ -1268,38 +1453,170 @@ test('combined favorite materials supports ring count toggles and restores them'
           materialSelected: true
         }
       ]
-    }));
+      })
+    );
   });
 
   await openApp(page, 423, 780);
   await page.locator('#checkedFavoriteMaterialsBtn').click();
-  await expect(page.locator('.favorite-ring-controls')).toContainText('カッパーリング');
+  await expect(page.locator('.favorite-ring-controls')).toHaveCount(2);
   const listBox = await page.locator('.favorite-list-root-summary').last().boundingBox();
-  const ringBox = await page.locator('.favorite-ring-controls').boundingBox();
+  const ringBox = await page.locator('.favorite-ring-controls').last().boundingBox();
   expect(listBox).toBeTruthy();
   expect(ringBox).toBeTruthy();
   expect(ringBox.y).toBeGreaterThanOrEqual(listBox.y + listBox.height - 1);
+  const firstList = page.locator('.favorite-list-production-block').first();
+  const secondList = page.locator('.favorite-list-production-block').last();
+  await firstList.locator('.favorite-ring-toggle button').filter({ hasText: /^0$/ }).click();
+  await expect(firstList.locator('.favorite-ring-toggle button').filter({ hasText: /^0$/ })).toHaveClass(/active/);
+  await expect(secondList.locator('.favorite-ring-toggle button').filter({ hasText: '1つ' })).toHaveClass(/active/);
+  await expect(page.locator('.materials-list')).toContainText(/銅鉱\s*×\s*3/);
+
+  await page.reload();
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
+  await expect(
+    page
+      .locator('.favorite-list-production-block')
+      .first()
+      .locator('.favorite-ring-toggle button')
+      .filter({ hasText: /^0$/ })
+  ).toHaveClass(/active/);
+  await page
+    .locator('.favorite-list-production-block')
+    .last()
+    .locator('.favorite-ring-toggle button')
+    .filter({ hasText: '2つ' })
+    .click();
+  await expect(page.locator('.materials-list')).toContainText(/銅鉱\s*×\s*6/);
+
+  await page.reload();
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await expect(page.locator('.favorite-ring-controls')).toHaveCount(2);
+  await expect(
+    page
+      .locator('.favorite-list-production-block')
+      .first()
+      .locator('.favorite-ring-toggle button')
+      .filter({ hasText: /^0$/ })
+  ).toHaveClass(/active/);
+  await expect(
+    page
+      .locator('.favorite-list-production-block')
+      .last()
+      .locator('.favorite-ring-toggle button')
+      .filter({ hasText: '2つ' })
+  ).toHaveClass(/active/);
+  await expect(page.locator('.materials-list')).toContainText(/銅鉱\s*×\s*6/);
+});
+
+test('checked favorite lists calculate any one list and restore production disclosure state', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'ff14_favorite_lists_v2',
+      JSON.stringify({
+        version: 2,
+        selectedListId: 'list-ring-a',
+        lists: [
+          {
+            id: 'list-ring-a',
+            name: '指輪A',
+            itemIds: [4422],
+            materialSelected: true
+          },
+          {
+            id: 'list-ring-b',
+            name: '指輪B',
+            itemIds: [4422],
+            materialSelected: true
+          }
+        ]
+      })
+    );
+  });
+
+  await openApp(page, 423, 780);
+  await page.locator('#checkedFavoriteAnyOneModeBtn').click();
+  await expect(page.locator('#checkedFavoriteAnyOneModeBtn')).toHaveClass(/active/);
+  await page.locator('#checkedFavoriteMaterialsBtn').click();
+  await expect(page.locator('.production-content-toggle')).toHaveText('▼製作内容');
+  await expect(page.locator('.favorite-list-root-summary')).toHaveCount(2);
+  await expect(page.locator('.favorite-material-root-or')).toHaveText('もしくは');
+  await expect(page.locator('.materials-list')).toContainText(/銅鉱\s*×\s*3/);
+
+  await page
+    .locator('.favorite-list-production-block')
+    .first()
+    .locator('.favorite-ring-toggle button')
+    .filter({ hasText: '2つ' })
+    .click();
+  await expect(page.locator('.materials-list')).toContainText(/銅鉱\s*×\s*6/);
+  await page.locator('.production-content-toggle').click();
+  await expect(page.locator('.production-content-toggle')).toHaveText('▶製作内容');
+  await expect
+    .poll(() =>
+      page.locator('.production-content-toggle').evaluate(header => {
+        const firstMaterialsHeader = document.querySelector(
+          '.materials-section-header:not(.production-content-toggle)'
+        );
+        return Math.abs(firstMaterialsHeader.getBoundingClientRect().top - header.getBoundingClientRect().bottom);
+      })
+    )
+    .toBeLessThan(1);
+
+  await page.reload();
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
+  await expect(page.locator('#checkedFavoriteAnyOneModeBtn')).toHaveClass(/active/);
+  await expect(page.locator('#searchBox')).toBeDisabled();
+  await expect(page.locator('#equipmentSearchToggle')).toBeDisabled();
+  await expect(page.locator('.production-content-toggle')).toHaveText('▶製作内容');
+  await expect(page.locator('.materials-list')).toContainText(/銅鉱\s*×\s*6/);
+
+  await page.locator('#mobileBackBtn').click();
+  await page.locator('#clearFavoriteMaterialChecksBtn').click();
+  await expect(page.locator('#checkedFavoriteMaterialsActions')).not.toHaveClass(/visible/);
+  await expect(page.locator('.materials-list')).toHaveCount(0);
+});
+
+test('checked favorite materials runs with one list and zero ring count', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'ff14_favorite_lists_v2',
+      JSON.stringify({
+        version: 2,
+        selectedListId: 'list-ring',
+        lists: [
+          {
+            id: 'list-ring',
+            name: '指輪だけ',
+            itemIds: [4422],
+            materialSelected: true
+          }
+        ]
+      })
+    );
+  });
+
+  await openApp(page, 423, 780);
+  await page.locator('#checkedFavoriteAnyOneModeBtn').click();
+  await page.locator('#checkedFavoriteMaterialsBtn').click();
+  await expect(page.locator('.favorite-list-root-summary')).toContainText('指輪だけ');
+  await expect(page.locator('.favorite-material-root-or')).toHaveCount(0);
   await page.locator('.favorite-ring-toggle button').filter({ hasText: /^0$/ }).click();
-  await expect(page.locator('.favorite-ring-toggle button').filter({ hasText: /^0$/ })).toHaveClass(/active/);
   await expect(page.locator('.materials-list')).not.toContainText('銅鉱');
 
   await page.reload();
   await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
   await expect(page.locator('.favorite-ring-toggle button').filter({ hasText: /^0$/ })).toHaveClass(/active/);
-  await page.locator('.favorite-ring-toggle button').filter({ hasText: '2つ' }).click();
-  await expect(page.locator('.favorite-ring-toggle button').filter({ hasText: '2つ' })).toHaveClass(/active/);
-  await expect(page.locator('.materials-list')).toContainText(/銅鉱\s*×\s*12/);
-
-  await page.reload();
-  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
-  await expect(page.locator('.favorite-ring-controls')).toContainText('カッパーリング');
-  await expect(page.locator('.favorite-ring-toggle button').filter({ hasText: '2つ' })).toHaveClass(/active/);
-  await expect(page.locator('.materials-list')).toContainText(/銅鉱\s*×\s*12/);
+  await expect(page.locator('.materials-list')).not.toContainText('銅鉱');
 });
 
 test('favorite dropdown max height stays within the viewport with checked-list buttons', async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem('ff14_favorite_lists_v2', JSON.stringify({
+    localStorage.setItem(
+      'ff14_favorite_lists_v2',
+      JSON.stringify({
       version: 2,
       selectedListId: null,
       lists: Array.from({ length: 40 }, (_, index) => ({
@@ -1308,7 +1625,8 @@ test('favorite dropdown max height stays within the viewport with checked-list b
         itemIds: [1602],
         materialSelected: index < 2
       }))
-    }));
+      })
+    );
   });
 
   await openApp(page, 423, 780);
@@ -1366,7 +1684,10 @@ test('equipment search uses custom dropdowns and recommended roles', async ({ pa
 
   await expect(page.locator('#equipmentJobSelect')).toHaveAttribute('data-value', '');
   await expect(page.locator('#equipmentJobSelect')).toContainText('---');
-  await expect(page.locator('#equipmentLevelInput')).toHaveJSProperty('value', await page.locator('#equipmentLevelInput').getAttribute('max'));
+  await expect(page.locator('#equipmentLevelInput')).toHaveJSProperty(
+    'value',
+    await page.locator('#equipmentLevelInput').getAttribute('max')
+  );
   await expect(page.locator('#equipmentItemLevelSelect')).toHaveAttribute('data-value', '');
   await expect(page.locator('#equipmentSearchBtn')).toBeDisabled();
   const levelBeforeBlankClick = await page.locator('#equipmentLevelInput').inputValue();
@@ -1395,8 +1716,10 @@ test('equipment search uses custom dropdowns and recommended roles', async ({ pa
   await expect(page.locator('#equipmentItemLevelSelect')).toHaveAttribute('data-value', '48');
   await page.locator('#equipmentLevelInput').fill('46');
   await page.locator('#equipmentLevelInput').dispatchEvent('input');
-  await expect(page.locator('#equipmentItemLevelSelect .custom-select-option[data-value="48"]')).toHaveCount(1);
-  await expect(page.locator('#equipmentItemLevelSelect')).toHaveAttribute('data-value', '48');
+  await expect(page.locator('#equipmentItemLevelSelect .custom-select-option[data-value="48"]')).toHaveCount(0);
+  await expect(page.locator('#equipmentItemLevelSelect .custom-select-option[data-value="46"]')).toHaveCount(1);
+  await expect(page.locator('#equipmentItemLevelSelect')).toHaveAttribute('data-value', '46');
+  await expect(page.locator('#equipmentItemLevelSelect .custom-select-option')).toHaveCount(1);
   await page.locator('#equipmentLevelInput').fill('16');
   await page.locator('#equipmentLevelInput').dispatchEvent('input');
 
@@ -1474,13 +1797,17 @@ test('short search runs on blur and clear button resets it', async ({ page }) =>
 test('updated search results and result views return to the top', async ({ page }) => {
   await openApp(page);
   await searchFor(page, 'コートリー');
-  await page.locator('#recipeList').evaluate(element => { element.scrollTop = element.scrollHeight; });
+  await page.locator('#recipeList').evaluate(element => {
+    element.scrollTop = element.scrollHeight;
+  });
   await searchFor(page, '岩塩');
   await expect.poll(() => page.locator('#recipeList').evaluate(element => element.scrollTop)).toBe(0);
 
   await searchFor(page, 'アリペブレ');
   await page.getByText('アリペブレ', { exact: true }).first().click();
-  await page.locator('#treeContainer').evaluate(element => { element.scrollTop = element.scrollHeight; });
+  await page.locator('#treeContainer').evaluate(element => {
+    element.scrollTop = element.scrollHeight;
+  });
   await page.locator('#materialsViewBtn').click();
   await expect.poll(() => page.locator('#treeContainer').evaluate(element => element.scrollTop)).toBe(0);
 });
@@ -1493,6 +1820,7 @@ test('equipment search item levels update by job and restore after reload', asyn
   await page.locator('#equipmentLevelInput').fill('100');
   await page.locator('#equipmentLevelInput').dispatchEvent('input');
   await expect(page.locator('#equipmentItemLevelSelect')).toHaveAttribute('data-value', '770');
+  await expect(page.locator('#equipmentItemLevelSelect .custom-select-option[data-value="1"]')).toHaveCount(0);
 
   await chooseCustomOption(page, 'equipmentJobSelect', '木工師');
   await expect(page.locator('#equipmentItemLevelSelect')).toHaveAttribute('data-value', '750');
@@ -1529,7 +1857,9 @@ test('equipment search item levels update by job and restore after reload', asyn
   await expect(page.locator('#equipmentLevelInput')).toHaveValue('95');
   await page.locator('#equipmentLevelUp5Btn').click();
   await expect(page.locator('#equipmentLevelInput')).toHaveValue('100');
-  const levelInputWidth = await page.locator('#equipmentLevelInput').evaluate(element => element.getBoundingClientRect().width);
+  const levelInputWidth = await page
+    .locator('#equipmentLevelInput')
+    .evaluate(element => element.getBoundingClientRect().width);
   expect(levelInputWidth).toBeGreaterThanOrEqual(42);
 });
 
@@ -1561,11 +1891,22 @@ test('equipment search keeps classes separate and falls back per slot', async ({
     const response = await route.fetch();
     const items = (await response.json()).filter(item => !item.EquipmentInfo);
     const equipment = (ID, Name, category, jobs, equipLevel, itemLevel) => ({
-      ID, Name, Patch: 750, IconFile: '000000.webp', ItemUICategoryName: category,
+      ID,
+      Name,
+      Patch: 750,
+      IconFile: '000000.webp',
+      ItemUICategoryName: category,
       EquipmentInfo: {
-        jobs, equipLevel, itemLevel,
+        jobs,
+        equipLevel,
+        itemLevel,
         stats: { STR: 1, DEX: 0, VIT: 1, INT: 0, MND: 0 },
-        performance: { physicalDamage: 99999, magicalDamage: 0, physicalDefense: 99999, magicalDefense: 99999 }
+        performance: {
+          physicalDamage: 99999,
+          magicalDamage: 0,
+          physicalDefense: 99999,
+          magicalDefense: 99999
+        }
       }
     });
     items.push(
@@ -1577,7 +1918,11 @@ test('equipment search keeps classes separate and falls back per slot', async ({
       equipment('990006', '試験用両手呪具', '両手呪具', ['呪術士'], 30, 100),
       equipment('990007', '試験用呪術盾', '盾', ['呪術士'], 30, 100)
     );
-    await route.fulfill({ response, contentType: 'application/json', body: JSON.stringify(items) });
+    await route.fulfill({
+      response,
+      contentType: 'application/json',
+      body: JSON.stringify(items)
+    });
   });
   await openApp(page);
   await page.locator('#equipmentSearchToggle').click();
@@ -1593,7 +1938,9 @@ test('equipment search keeps classes separate and falls back per slot', async ({
   await chooseCustomOption(page, 'equipmentItemLevelSelect', '115');
   await page.locator('#equipmentSearchBtn').click();
   await expect(page.locator('#recipeList')).toContainText('試験用ナイト頭');
-  await expect(page.locator('#recipeList li').filter({ hasText: '試験用公式順頭' }).locator('.badge-equipment-job')).toHaveText('ナ詩');
+  await expect(
+    page.locator('#recipeList li').filter({ hasText: '試験用公式順頭' }).locator('.badge-equipment-job')
+  ).toHaveText('ナ詩');
   await expect(page.locator('#recipeList')).toContainText('試験用ナイト足・最高');
   await expect(page.locator('#recipeList')).not.toContainText('試験用ナイト足・低IL');
   await expect(page.locator('#recipeList')).not.toContainText('試験用剣術士頭');
@@ -1615,20 +1962,44 @@ test('equipment search prefers tenacity or piety and shows only differing tied p
     const response = await route.fetch();
     const items = await response.json();
     const equipment = (ID, Name, defense, stats) => ({
-      ID, Name, IconFile: '000000.webp', ItemUICategoryName: '頭防具',
+      ID,
+      Name,
+      IconFile: '000000.webp',
+      ItemUICategoryName: '頭防具',
       EquipmentInfo: {
-        jobs: ['ナイト'], equipLevel: 50, itemLevel: 999,
+        jobs: ['ナイト'],
+        equipLevel: 50,
+        itemLevel: 999,
         stats,
-        performance: { physicalDamage: 0, magicalDamage: 0, physicalDefense: defense, magicalDefense: defense }
+        performance: {
+          physicalDamage: 0,
+          magicalDamage: 0,
+          physicalDefense: defense,
+          magicalDefense: defense
+        }
       }
     });
     items.push(
       equipment('990011', '試験用低防御頭', 9000, { STR: 1, VIT: 1 }),
       equipment('990012', '試験用専門なし頭', 9999, { STR: 9, VIT: 9 }),
-      equipment('990013', '試験用同値頭A', 9999, { STR: 9, VIT: 9, 不屈: 6, DEX: 3 }),
-      equipment('990014', '試験用同値頭B', 9999, { STR: 9, VIT: 9, 不屈: 6, MND: 4 })
+      equipment('990013', '試験用同値頭A', 9999, {
+        STR: 9,
+        VIT: 9,
+        不屈: 6,
+        DEX: 3
+      }),
+      equipment('990014', '試験用同値頭B', 9999, {
+        STR: 9,
+        VIT: 9,
+        不屈: 6,
+        MND: 4
+      })
     );
-    await route.fulfill({ response, contentType: 'application/json', body: JSON.stringify(items) });
+    await route.fulfill({
+      response,
+      contentType: 'application/json',
+      body: JSON.stringify(items)
+    });
   });
   await openApp(page);
   await page.locator('#equipmentSearchToggle').click();
@@ -1668,6 +2039,39 @@ test('title returns to the startup view', async ({ page }) => {
   await expect(page.locator('#favBtn')).toHaveText('📌 お気に入り');
   await expect(page.locator('#resultTitle')).toHaveText('');
   await expect(page.locator('#tipsMsg')).toBeVisible();
+});
+
+test('tips groups releases before v2.5 in a collapsed accordion', async ({ page }) => {
+  await openApp(page);
+  const details = page.locator('#tipsMsg details');
+  const summary = details.locator('summary');
+
+  await expect(details).toHaveCount(1);
+  await expect(summary).toHaveText('v2.5未満のリリース情報');
+  await expect(details).not.toHaveAttribute('open', '');
+  await expect(details.getByText('v1.384 リリース')).toBeHidden();
+  await expect.poll(() => summary.evaluate(element => getComputedStyle(element, '::before').content)).toContain('▶');
+
+  await summary.click();
+  await expect(details).toHaveAttribute('open', '');
+  await expect(details.getByText('v1.384 リリース')).toBeVisible();
+  await expect.poll(() => summary.evaluate(element => getComputedStyle(element, '::before').content)).toContain('▼');
+});
+
+test('tips treats one newline as a line break and keeps indented text in its list item', async ({ page }) => {
+  await page.route('**/data/tips.md', route =>
+    route.fulfill({
+      contentType: 'text/markdown; charset=utf-8',
+      body: '通常行1\n通常行2\n\n- 箇条書き\n  箇条内の改行'
+    })
+  );
+  await openApp(page);
+
+  await expect(page.locator('#tipsMsg p')).toHaveText('通常行1通常行2');
+  await expect(page.locator('#tipsMsg p br')).toHaveCount(1);
+  await expect(page.locator('#tipsMsg li')).toHaveText('箇条書き箇条内の改行');
+  await expect(page.locator('#tipsMsg li br')).toHaveCount(1);
+  await expect(page.locator('#tipsMsg li')).toHaveCount(1);
 });
 
 test('hides the popup button when launched as a desktop PWA', async ({ page }) => {

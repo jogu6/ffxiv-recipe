@@ -69,8 +69,18 @@
       <ul id="searchHistory"></ul>
       <button id="favBtn" title="お気に入り">📌 お気に入り</button>
       <div id="checkedFavoriteMaterialsActions" class="checked-favorite-materials-actions">
-        <button id="checkedFavoriteMaterialsBtn" type="button">チェックしたお気に入りリストの合算素材リスト</button>
-        <button id="clearFavoriteMaterialChecksBtn" type="button">チェックを全て外す</button>
+        <div class="checked-favorite-materials-header">
+          <span>拡張機能</span>
+          <button id="checkedFavoriteMaterialsHelpBtn" class="favorite-material-help-btn" type="button" aria-label="拡張機能について">?</button>
+        </div>
+        <div class="checked-favorite-materials-mode" role="group" aria-label="素材リストの計算方法">
+          <button id="checkedFavoriteSumModeBtn" class="active" type="button">合算</button>
+          <button id="checkedFavoriteAnyOneModeBtn" type="button">どれか一つだけ</button>
+        </div>
+        <div class="checked-favorite-materials-run">
+          <button id="checkedFavoriteMaterialsBtn" type="button">素材リストを表示</button>
+          <button id="clearFavoriteMaterialChecksBtn" type="button">戻る</button>
+        </div>
       </div>
       <ul id="favoriteLists"></ul>
     </div>

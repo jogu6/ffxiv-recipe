@@ -1,5 +1,5 @@
 import { chromium } from "@playwright/test";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { access, mkdir, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
@@ -7,6 +7,14 @@ import sharp from "sharp";
 const root = path.resolve(import.meta.dirname, "..");
 const output = path.join(root, "site", "guide", "assets", "images");
 const sourceOutput = path.join(root, "guide-capture", "output");
+const captureCss = `
+  *, *::before, *::after {
+    animation: none !important;
+    caret-color: transparent !important;
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+`;
 await mkdir(output, { recursive: true });
 await mkdir(sourceOutput, { recursive: true });
 const server = spawn(
@@ -24,6 +32,21 @@ async function waitForServer() {
     await sleep(250);
   }
   throw new Error("ローカルサーバーを起動できませんでした");
+}
+function stopServer() {
+  if (!server.pid) return;
+  if (process.platform !== "win32") {
+    server.kill();
+    return;
+  }
+  try {
+    execFileSync("taskkill.exe", ["/PID", String(server.pid), "/T", "/F"], {
+      stdio: "ignore",
+      windowsHide: true,
+    });
+  } catch {
+    server.kill();
+  }
 }
 const annotationTheme = {
   gold: "#d8b95f",
@@ -68,15 +91,27 @@ function annotationSvg(width, height, annotation) {
   </svg>`);
 }
 
-async function save(page, name, annotation = null) {
+async function waitForCaptureReady(page) {
+  await page.waitForTimeout(120);
   await page.evaluate(async () => {
+    await document.fonts?.ready;
     await Promise.allSettled(
-      document.getAnimations().map((animation) => animation.finished),
+      [...document.images]
+        .filter((image) => image.getClientRects().length > 0)
+        .map((image) =>
+          image.complete ? image.decode?.() : Promise.resolve(),
+        ),
     );
     await new Promise((resolve) =>
-      requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
     );
   });
+}
+
+async function save(page, name, annotation = null) {
+  await waitForCaptureReady(page);
   const invalidState = await page.evaluate(() => {
     const loading = document.querySelector("#loadingOverlay");
     return {
@@ -100,16 +135,18 @@ async function save(page, name, annotation = null) {
     .toFile(path.join(output, name));
 }
 async function saveElement(page, name, locator) {
-  await page.evaluate(async () => {
-    await Promise.allSettled(
-      document.getAnimations().map((animation) => animation.finished),
-    );
-    await new Promise((resolve) =>
-      requestAnimationFrame(() => requestAnimationFrame(resolve)),
-    );
-  });
+  await waitForCaptureReady(page);
   const pngName = name.replace(/\.webp$/i, ".png");
   const buffer = await locator.screenshot({ type: "png" });
+  await sharp(buffer).png().toFile(path.join(sourceOutput, pngName));
+  await sharp(buffer)
+    .webp({ quality: 94, smartSubsample: true })
+    .toFile(path.join(output, name));
+}
+async function saveOpenSelect(page, name) {
+  await waitForCaptureReady(page);
+  const pngName = name.replace(/\.webp$/i, ".png");
+  const buffer = await page.screenshot({ fullPage: false, type: "png" });
   await sharp(buffer).png().toFile(path.join(sourceOutput, pngName));
   await sharp(buffer)
     .webp({ quality: 94, smartSubsample: true })
@@ -132,6 +169,22 @@ async function chooseOption(page, id, label) {
     .locator(`#${id} .custom-select-option`)
     .getByText(label, { exact: true })
     .click();
+}
+async function captureItemLevelOptions(page, name, value) {
+  const select = page.locator("#equipmentItemLevelSelect");
+  await select.locator(".custom-select-toggle").click();
+  const forcedOpenStyle = await page.addStyleTag({
+    content: `
+      #equipmentItemLevelSelect .custom-select-options { display: grid !important; }
+      #equipmentItemLevelSelect .custom-select-toggle::after { content: "▲" !important; }
+    `,
+  });
+  await saveOpenSelect(page, name);
+  await select
+    .locator(".custom-select-option")
+    .getByText(value, { exact: true })
+    .click({ force: true });
+  await forcedOpenStyle.evaluate((style) => style.remove());
 }
 async function dragAfter(page, handle, target) {
   const from = await handle.boundingBox();
@@ -172,11 +225,30 @@ async function expectFavoriteOrder(page, first, second) {
 }
 
 async function prepare(page) {
+  await page.addInitScript((styles) => {
+    const style = document.createElement("style");
+    style.textContent = styles;
+    document.documentElement.append(style);
+  }, captureCss);
   await page.goto("http://127.0.0.1:4173/");
   await page.locator("#loadingOverlay").waitFor({ state: "hidden" });
-  await page.addStyleTag({
-    content:
-      "*,*::before,*::after{animation:none!important;transition:none!important}",
+  await page.addStyleTag({ content: captureCss });
+}
+
+async function resetResultScroll(page) {
+  await page.locator("#panelRight").evaluate((panel) => {
+    window.scrollTo(0, 0);
+    panel.scrollTop = 0;
+  });
+}
+
+async function resetLeftScroll(page) {
+  await page.evaluate(() => {
+    window.scrollTo(0, 0);
+    const favorites = document.querySelector("#favoriteLists");
+    const recipes = document.querySelector("#recipeList");
+    if (favorites) favorites.scrollTop = 0;
+    if (recipes) recipes.scrollTop = 0;
   });
 }
 
@@ -190,7 +262,7 @@ async function setGuideFavorites(page) {
         selectedListId: "guide",
         lists: [
           { id: "guide", name: "制作予定", itemIds: [1607, 4422] },
-          { id: "guide-2", name: "納品用", itemIds: [273] },
+          { id: "guide-2", name: "納品用", itemIds: [273, 4422] },
         ],
       }),
     );
@@ -217,7 +289,7 @@ async function captureDesktop(browser) {
   await chooseOption(page, "equipmentJobSelect", "ナイト");
   await page.locator("#equipmentLevelInput").fill("100");
   await page.locator("#equipmentLevelInput").dispatchEvent("input");
-  await chooseOption(page, "equipmentItemLevelSelect", "770");
+  await captureItemLevelOptions(page, "35-equipment-item-levels.webp", "770");
   await page.locator("#equipmentSearchBtn").click();
   await save(page, "25-equipment-results.webp");
   await page.locator("#equipmentSearchToggle").click();
@@ -381,6 +453,8 @@ async function captureDesktop(browser) {
     .getByText(/素材リストを表示/)
     .click();
   await save(page, "14-favorite-count-result.webp");
+  await page.locator(".production-content-toggle").click();
+  await save(page, "40-favorite-count-production-collapsed.webp");
   await page.locator("#appTitle").click();
   await page.locator("#favBtn").click();
   await page.locator("#favoriteLists").getByText("制作予定").click();
@@ -396,6 +470,8 @@ async function captureDesktop(browser) {
     .getByText(/素材リストを表示/)
     .click();
   await save(page, "17-favorite-any-one-result.webp");
+  await page.locator(".production-content-toggle").click();
+  await save(page, "41-favorite-any-one-production-collapsed.webp");
   await page.locator("#appTitle").click();
   await page.locator("#favBtn").click();
   await page.locator("#favoriteLists").getByText("制作予定").click();
@@ -428,8 +504,27 @@ async function captureDesktop(browser) {
   await save(page, "32-combined-second-checkbox.webp");
   await page.locator(".favorite-list-material-checkbox").nth(1).check();
   await save(page, "21-combined-ready.webp");
+  await page.locator("#checkedFavoriteMaterialsHelpBtn").click();
+  await save(page, "36-combined-help.webp");
+  await page.locator("#licenseCloseBtn").click();
+  await page.locator("#checkedFavoriteAnyOneModeBtn").click();
+  await save(page, "37-combined-any-one-mode.webp");
+  await page.locator("#checkedFavoriteMaterialsBtn").click();
+  await save(page, "37-combined-any-one-result.webp");
+  await page.locator("#checkedFavoriteSumModeBtn").click();
   await page.locator("#checkedFavoriteMaterialsBtn").click();
   await save(page, "22-combined-result.webp");
+  await page.locator(".production-content-toggle").click();
+  await save(page, "38-combined-production-collapsed.webp");
+  await page.locator(".production-content-toggle").click();
+  await page
+    .locator(".favorite-list-production-block")
+    .first()
+    .locator(".favorite-ring-toggle button")
+    .filter({ hasText: "2つ" })
+    .click();
+  await page.waitForTimeout(700);
+  await save(page, "39-combined-ring-count.webp");
   await page.locator("#settingsBtn").click();
   await save(page, "23-share-settings.webp");
   await page.locator("#exportListToggle").click();
@@ -451,7 +546,11 @@ async function captureMobile(browser) {
   await chooseOption(page, "equipmentJobSelect", "ナイト");
   await page.locator("#equipmentLevelInput").fill("100");
   await page.locator("#equipmentLevelInput").dispatchEvent("input");
-  await chooseOption(page, "equipmentItemLevelSelect", "770");
+  await captureItemLevelOptions(
+    page,
+    "mobile-35-equipment-item-levels.webp",
+    "770",
+  );
   await page.locator("#equipmentSearchBtn").click();
   await save(page, "mobile-25-equipment-results.webp");
   await page.locator("#appTitle").click();
@@ -669,7 +768,11 @@ async function captureMobile(browser) {
     .locator("#recipeList")
     .getByText(/素材リストを表示/)
     .click();
+  await resetResultScroll(page);
   await save(page, "mobile-14-favorite-count-result.webp");
+  await page.locator(".production-content-toggle").click();
+  await resetResultScroll(page);
+  await save(page, "mobile-40-favorite-count-production-collapsed.webp");
   await page.locator("#mobileBackBtn").click();
   await page
     .locator(".favorite-material-mode-group")
@@ -684,7 +787,11 @@ async function captureMobile(browser) {
     .locator("#recipeList")
     .getByText(/素材リストを表示/)
     .click();
+  await resetResultScroll(page);
   await save(page, "mobile-17-favorite-any-one-result.webp");
+  await page.locator(".production-content-toggle").click();
+  await resetResultScroll(page);
+  await save(page, "mobile-41-favorite-any-one-production-collapsed.webp");
   await page.locator("#mobileBackBtn").click();
   await page
     .locator(".favorite-material-mode-group")
@@ -734,9 +841,34 @@ async function captureMobile(browser) {
   await secondCombinedMobile.locator(".favorite-list-curtain-toggle").click();
   await save(page, "mobile-32-combined-second-checkbox.webp");
   await page.locator(".favorite-list-material-checkbox").nth(1).check();
+  await resetLeftScroll(page);
   await save(page, "mobile-08-combined-lists-02.webp");
+  await page.locator("#checkedFavoriteMaterialsHelpBtn").click();
+  await save(page, "mobile-36-combined-help.webp");
+  await page.locator("#licenseCloseBtn").click();
+  await page.locator("#checkedFavoriteAnyOneModeBtn").click();
+  await save(page, "mobile-37-combined-any-one-mode.webp");
   await page.locator("#checkedFavoriteMaterialsBtn").click();
+  await resetResultScroll(page);
+  await save(page, "mobile-37-combined-any-one-result.webp");
+  await page.locator("#mobileBackBtn").click();
+  await page.locator("#checkedFavoriteSumModeBtn").click();
+  await page.locator("#checkedFavoriteMaterialsBtn").click();
+  await resetResultScroll(page);
   await save(page, "mobile-22-combined-result.webp");
+  await page.locator(".production-content-toggle").click();
+  await resetResultScroll(page);
+  await save(page, "mobile-38-combined-production-collapsed.webp");
+  await page.locator(".production-content-toggle").click();
+  await page
+    .locator(".favorite-list-production-block")
+    .first()
+    .locator(".favorite-ring-toggle button")
+    .filter({ hasText: "2つ" })
+    .click();
+  await page.waitForTimeout(700);
+  await resetResultScroll(page);
+  await save(page, "mobile-39-combined-ring-count.webp");
   await page.locator("#settingsBtn").click();
   await save(page, "mobile-06-share-01.webp", {
     x: 0.5,
@@ -800,5 +932,5 @@ try {
   await verifyGeneratedGuideImages();
   console.log(`ガイド画像を ${output} に生成しました。`);
 } finally {
-  server.kill();
+  stopServer();
 }
