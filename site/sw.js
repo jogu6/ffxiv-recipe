@@ -1,4 +1,4 @@
-const APP_CACHE_VERSION = 'ff14recipe-app-20260722-v2.92-job-icons';
+const APP_CACHE_VERSION = 'ff14recipe-app-20260723-v2.921';
 const DATA_CACHE_VERSION = 'ff14recipe-data-7.50-b8abd5cd';
 const CACHE_PREFIX = 'ff14recipe-';
 
