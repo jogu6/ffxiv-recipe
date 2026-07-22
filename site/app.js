@@ -1,4 +1,4 @@
-const DATA_CACHE_VERSION = 'ff14recipe-data-7.50-4492adda';
+const DATA_CACHE_VERSION = 'ff14recipe-data-7.50-b8abd5cd';
 const DATA_FILE = `./data/Item.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 const TIPS_FILE = './data/tips.md';
 const ABOUT_URL = ['127.0.0.1', 'localhost'].includes(location.hostname)
@@ -23,7 +23,8 @@ const REQUEST_COUNT_MAX = 999;
 const MIN_LOADING_OVERLAY_MS = 2500;
 const loadingOverlayStartedAt = Date.now();
 const EORZEA_TIME_MULTIPLIER = 144 / 7;
-const { calculateCraft, calculateRequirements, validateRequestedCount } = RecipeCalculation;
+const { calculateCraft, calculateRequirements, mergeAlternativeRequirements, validateRequestedCount } =
+  RecipeCalculation;
 
 const CRAFT_TYPE_NAME = {
   0: '木工師',
@@ -350,6 +351,8 @@ const EQUIPMENT_JOB_GROUPS = {
   クラフター: new Set(['木工師', '鍛冶師', '甲冑師', '彫金師', '革細工師', '裁縫師', '錬金術師', '調理師']),
   ギャザラー: new Set(['採掘師', '園芸師', '漁師'])
 };
+const CRAFTER_EQUIPMENT_STATS = ['CP', '作業精度', '加工精度'];
+const GATHERER_EQUIPMENT_STATS = ['GP', '獲得力', '技術力'];
 const EQUIPMENT_ROLE_JOBS = {
   tank: new Set(['剣術士', '斧術士', 'ナイト', '戦士', '暗黒騎士', 'ガンブレイカー']),
   healer: new Set(['幻術士', '白魔道士', '学者', '占星術師', '賢者']),
@@ -373,6 +376,34 @@ const CRAFT_JOB_ABBREVIATIONS = {
   錬金術師: '錬金',
   調理師: '調理'
 };
+const JOB_ICON_PATHS = {
+  木工師: './assets/job-icons/carpenter.webp',
+  鍛冶師: './assets/job-icons/blacksmith.webp',
+  甲冑師: './assets/job-icons/armorer.webp',
+  彫金師: './assets/job-icons/goldsmith.webp',
+  革細工師: './assets/job-icons/leatherworker.webp',
+  裁縫師: './assets/job-icons/weaver.webp',
+  錬金術師: './assets/job-icons/alchemist.webp',
+  調理師: './assets/job-icons/culinarian.webp',
+  採掘師: './assets/job-icons/miner.webp',
+  園芸師: './assets/job-icons/botanist.webp',
+  漁師: './assets/job-icons/fisher.webp'
+};
+const GATHERING_METHOD_JOBS = {
+  採掘: '採掘師',
+  砕岩: '採掘師',
+  伐採: '園芸師',
+  草刈: '園芸師'
+};
+
+function craftJobName(method) {
+  return CRAFT_JOB_ABBREVIATIONS[method] || method;
+}
+
+function craftJobLevelLabel(method, craftLevel) {
+  const level = toNumeric(craftLevel, 0);
+  return level > 0 ? `${craftJobName(method)}Lv${level}` : craftJobName(method);
+}
 const EQUIPMENT_JOB_ABBREVIATIONS = Object.fromEntries(
   EQUIPMENT_JOB_OPTIONS.map(job => [job, job.replace(/士$|師$|道士$/u, '').slice(0, 1)])
 );
@@ -1064,6 +1095,11 @@ function equipmentJobs(master) {
   return Array.isArray(master?.equipmentInfo?.jobs) ? master.equipmentInfo.jobs : [];
 }
 
+function equipmentHasPositiveStat(master, statNames) {
+  const stats = master?.equipmentInfo?.stats || {};
+  return statNames.some(name => toNumeric(stats[name]) > 0);
+}
+
 function equipmentMatchesJob(master, job) {
   const jobs = equipmentJobs(master);
   if (job === '巴術士' && jobs.includes(job)) {
@@ -1073,6 +1109,14 @@ function equipmentMatchesJob(master, job) {
   if (jobs.includes(job)) return true;
   if (jobs.includes('クラフター') && EQUIPMENT_JOB_GROUPS.クラフター.has(job)) return true;
   if (jobs.includes('ギャザラー') && EQUIPMENT_JOB_GROUPS.ギャザラー.has(job)) return true;
+  if (jobs.includes('全クラス')) {
+    if (EQUIPMENT_JOB_GROUPS.クラフター.has(job) && equipmentHasPositiveStat(master, CRAFTER_EQUIPMENT_STATS)) {
+      return true;
+    }
+    if (EQUIPMENT_JOB_GROUPS.ギャザラー.has(job) && equipmentHasPositiveStat(master, GATHERER_EQUIPMENT_STATS)) {
+      return true;
+    }
+  }
   if (!jobs.some(group => ['全クラス', 'ファイター', 'ソーサラー'].includes(group))) return false;
   const recommendedRole = master?.equipmentInfo?.recommendedRole || '';
   if (!recommendedRole) return false;
@@ -2020,7 +2064,7 @@ function createFavoriteMaterialsRow() {
   anyOneButton.className = 'favorite-list-action favorite-list-action-compact';
   anyOneButton.classList.toggle('active', favoriteAnyOneMode());
   anyOneButton.type = 'button';
-  anyOneButton.textContent = 'どれでも1つ';
+  anyOneButton.textContent = 'どれか1アイテム';
   anyOneButton.addEventListener('click', event => {
     event.stopPropagation();
     const enable = !favoriteAnyOneMode();
@@ -2061,11 +2105,13 @@ function createFavoriteMaterialsRow() {
 - **全て0個**  
   お気に入りリスト内全アイテムの個数をまとめて0個にします。
 
-### どれでも1つ
+### どれか1アイテム
 
 チェックしたアイテムのうち、どれか1つをセット数分制作するために必要な素材リストを表示します。チェックした全てを制作する素材リストではありません。
 
-どれでも1つ中に使える操作:
+完成品が直接使う同じ末端素材と、同じ中間素材は、候補間で最も多く必要な数を1回分だけ表示します。異なる中間素材はそれぞれ表示し、それらの製作に共通して使う末端素材は合算します。
+
+どれか1アイテム中に使える操作:
 
 - **全てOn**  
   お気に入りリスト内全アイテムをまとめてチェックします。
@@ -2385,6 +2431,20 @@ function createItemIcon(iconPath, className = 'list-icon') {
   return image;
 }
 
+function createJobIcon(jobName) {
+  const icon = createItemIcon(JOB_ICON_PATHS[jobName], 'job-icon');
+  if (icon) icon.setAttribute('aria-hidden', 'true');
+  return icon;
+}
+
+function createJobBadge(jobName, className, label) {
+  const badge = createTextElement('span', `${className} job-badge`, '');
+  const icon = createJobIcon(jobName);
+  if (icon) badge.appendChild(icon);
+  badge.append(label);
+  return badge;
+}
+
 function createItemDisplayLabel(name, { favorite = false } = {}) {
   const master = itemMaster[name] || {};
   const wrapper = document.createElement('span');
@@ -2393,10 +2453,10 @@ function createItemDisplayLabel(name, { favorite = false } = {}) {
   badges.className = 'item-list-badges';
 
   if (CRAFT_JOBS_SET.has(master.method) && master.craftLevel > 0) {
-    const badge = createTextElement(
-      'span',
+    const badge = createJobBadge(
+      master.method,
       `${favorite ? 'favorite-item-job ' : ''}badge ${methodBadgeClass(master.method)}`,
-      `${CRAFT_JOB_ABBREVIATIONS[master.method] || master.method}Lv${master.craftLevel}`
+      craftJobLevelLabel(master.method, master.craftLevel)
     );
     badges.appendChild(badge);
   }
@@ -3747,37 +3807,21 @@ function usageSignature(entries) {
   return entries.map(entry => `${entry.name}:${entry.qty}`).join('|');
 }
 
-function mergeMaxRequirementResults(results) {
-  const states = new Map();
-  const roots = new Set();
-  const exchangeTypes = new Set(EXCHANGE_CRAFT_TYPES);
-
-  results.forEach(result => {
-    result.roots.forEach(name => roots.add(name));
-    result.states.forEach((state, name) => {
-      const current = states.get(name);
-      const usage = intermediateUsageEntries(result, state);
-      if (current && current.needed > state.needed) return;
-      if (current && current.needed === state.needed) {
-        current.parents = new Set([...current.parents, ...state.parents]);
-        if (!current.usageAlternatives.some(entries => usageSignature(entries) === usageSignature(usage))) {
-          current.usageAlternatives.push(usage);
-        }
-        return;
+function mergeAlternativeRequirementsWithUsage(results) {
+  const merged = mergeAlternativeRequirements(results);
+  merged.states.forEach((state, name) => {
+    const usageAlternatives = [];
+    results.forEach(result => {
+      const source = result.states.get(name);
+      if (!source || source.needed !== state.needed) return;
+      const usage = intermediateUsageEntries(result, source);
+      if (!usageAlternatives.some(entries => usageSignature(entries) === usageSignature(usage))) {
+        usageAlternatives.push(usage);
       }
-      states.set(name, {
-        ...state,
-        parents: new Set(state.parents),
-        usageAlternatives: [usage]
-      });
     });
+    state.usageAlternatives = usageAlternatives;
   });
-
-  states.forEach((state, name) => {
-    state.isRoot = roots.has(name);
-  });
-
-  return { states, roots, exchangeTypes };
+  return merged;
 }
 
 function materialRowsFromRequirements(result) {
@@ -3916,14 +3960,14 @@ function getCurrentMaterialRequirements(terminalNames = []) {
     const results = getActiveFavoriteMaterialLists().map(list =>
       calculateMaterialRequirements(getFavoriteListMaterialRoots(list), terminalNames)
     );
-    return mergeMaxRequirementResults(results);
+    return mergeAlternativeRequirementsWithUsage(results);
   }
   if (resultSourceMode === 'favorite-materials' && favoriteAnyOneMode() && favoriteMaterialsListIds.length === 0) {
     const roots = getFavoriteMaterialRoots();
     const results = roots.map(root =>
       calculateMaterialRequirements([{ name: root.name, qty: root.qty }], terminalNames)
     );
-    return mergeMaxRequirementResults(results);
+    return mergeAlternativeRequirementsWithUsage(results);
   }
   const roots =
     resultSourceMode === 'favorite-materials' ? getFavoriteMaterialRoots() : [{ name: selectedRecipe, qty: count }];
@@ -4154,10 +4198,10 @@ function renderMaterialsList() {
     const master = itemMaster[row.name] || {};
     if (CRAFT_JOBS_SET.has(master.method)) {
       primary.appendChild(
-        createTextElement(
-          'span',
+        createJobBadge(
+          master.method,
           `badge ${methodBadgeClass(master.method)}`,
-          CRAFT_JOB_ABBREVIATIONS[master.method] || master.method
+          craftJobLevelLabel(master.method, master.craftLevel)
         )
       );
     }
@@ -4482,7 +4526,10 @@ function collectTreeCraftTypes(rootName) {
 }
 
 function createTreeBadge(method, hideCraftBadge) {
-  const badge = createTextElement('span', `badge ${methodBadgeClass(method)}`, method);
+  const label = CRAFT_JOBS_SET.has(method) ? craftJobName(method) : method;
+  const badge = CRAFT_JOBS_SET.has(method)
+    ? createJobBadge(method, `badge ${methodBadgeClass(method)}`, label)
+    : createTextElement('span', `badge ${methodBadgeClass(method)}`, label);
   badge.classList.toggle('hidden', !method || hideCraftBadge);
   return badge;
 }
@@ -4678,7 +4725,11 @@ function showGatheringDialog(name) {
       const block = createTextElement('div', 'gathering-entry', '');
       const head = createTextElement('div', 'gathering-entry-head', '');
       head.appendChild(
-        createTextElement('span', `badge gathering-method ${gatheringMethodClass(entry.Method)}`, entry.Method)
+        createJobBadge(
+          GATHERING_METHOD_JOBS[entry.Method],
+          `badge gathering-method ${gatheringMethodClass(entry.Method)}`,
+          entry.Method
+        )
       );
       head.appendChild(createTextElement('span', 'gathering-type', entry.Type));
       block.appendChild(head);
@@ -5331,9 +5382,11 @@ function bindEvents() {
 
 チェックした複数のお気に入りリスト内の全アイテムを制作するために必要な素材を合算して表示します。
 
-### どれか一つだけ
+### どれか1リスト
 
-チェックしたお気に入りリストのうち、どれか1リストをセット数分製作するために必要な素材リストを表示します。チェックしたすべてのリストを製作する素材リストではありません。`
+チェックしたお気に入りリストのうち、どれか1リストをセット数分製作するために必要な素材リストを表示します。チェックしたすべてのリストを製作する素材リストではありません。
+
+完成品が直接使う同じ末端素材は各リスト内で合算してから、リスト間で最も多い数を表示します。同じ中間素材もリスト間で最も多く必要な数を1回分だけ表示します。異なる中間素材はそれぞれ表示し、それらの製作に共通して使う末端素材は合算します。`
     );
   });
   elements.checkedFavoriteMaterialsBtn.addEventListener('click', openCheckedFavoriteMaterialsMode);

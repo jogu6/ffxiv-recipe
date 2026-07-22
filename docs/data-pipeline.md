@@ -115,7 +115,16 @@ node pipeline/tool/pipeline-tool.mjs migrate-lodestone-cache
     "itemLevel": 9,
     "jobs": ["全クラス"],
     "equipLevel": 9,
-    "stats": { "STR": 1, "DEX": 1, "VIT": 1, "INT": 1, "MND": 1 },
+    "statsVersion": 2,
+    "stats": {
+      "STR": 0,
+      "DEX": 0,
+      "VIT": 0,
+      "INT": 0,
+      "MND": 0,
+      "作業精度": 89,
+      "加工精度": 35
+    },
     "performance": {
       "physicalDamage": 0,
       "magicalDamage": 0,
@@ -126,6 +135,10 @@ node pipeline/tool/pipeline-tool.mjs migrate-lodestone-cache
   }
 }
 ```
+
+`stats` keeps every normal-quality bonus exposed by the Lodestone rather than a fixed subset.
+`statsVersion` is incremented when extraction coverage changes so previously processed equipment is
+refreshed from the verified HTML cache on the next Lodestone information run.
 
 After Lodestone processing, use the GUI's "推奨ロール確認" view for unresolved broad equipment.
 Groups are keyed by equipment level, item level, slot, compatible stat signature, and related item

@@ -1,0 +1,10 @@
+Use case: background-extraction
+Asset type: compact web UI job icon
+Primary request: Extract and redraw only the central {{subject}} emblem from the supplied reference as a highly faithful flat icon.
+Input image: edit target and strict geometry reference.
+Scene/backdrop: perfectly flat solid #00ff00 chroma-key background.
+Style/medium: crisp two-color raster glyph.
+Composition/framing: one isolated emblem, centered, upright in the same orientation as the reference, generous even padding, no cropping.
+Colors: pure white main shape and near-black outline only. Intermediate edge pixels are allowed only for antialiasing.
+Constraints: preserve the recognizable silhouette, proportions, internal openings, and orientation of the reference; use a consistent strong outline suitable for 16–24 px display.
+Avoid: square frame, plaque, colored backplate, bevel, metallic shading, gradients, texture, glow, shadow, reflection, extra objects, text, watermark. The background must be one uniform #00ff00 with no variation. Do not use green in the emblem.

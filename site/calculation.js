@@ -145,11 +145,135 @@
         recipe: recipe || null,
         isRoot: rootNames.has(name),
         isExchange: Boolean(recipe && exchangeTypes.has(String(recipe.craftType))),
+        isTerminal: Boolean(!recipe || terminalNames.has(name) || exchangeTypes.has(String(recipe.craftType))),
         parents: new Set(parents.get(name) || [])
       });
     });
 
     return { states, roots: rootNames, exchangeTypes };
+  }
+
+  function mergeAlternativeRequirements(results) {
+    if (!Array.isArray(results)) throw new TypeError('results must be an array');
+    const states = new Map();
+    const roots = new Set();
+    const exchangeTypes = new Set();
+
+    results.forEach((result, resultIndex) => {
+      if (!(result?.states instanceof Map) || !(result.roots instanceof Set)) {
+        throw new TypeError(`Invalid requirement result: ${resultIndex}`);
+      }
+      result.roots.forEach(name => roots.add(name));
+      result.exchangeTypes?.forEach(type => exchangeTypes.add(type));
+      result.states.forEach((state, name) => {
+        const current = states.get(name);
+        if (current && current.needed > state.needed) return;
+        if (current && current.needed === state.needed) {
+          current.parents = new Set([...current.parents, ...state.parents]);
+          current.isRoot = current.isRoot || state.isRoot;
+          return;
+        }
+        states.set(name, {
+          ...state,
+          parents: new Set(state.parents)
+        });
+      });
+    });
+
+    const terminalDemand = new Map();
+    const terminalParents = new Map();
+    const nonRootIntermediateNames = new Set();
+    results.forEach(result => {
+      result.states.forEach(state => {
+        if (!state.isRoot && state.recipe && !state.isTerminal) nonRootIntermediateNames.add(state.name);
+      });
+    });
+    const addTerminalDemand = (name, addedDemand, parentNames = []) => {
+      terminalDemand.set(
+        name,
+        checkedAdd(terminalDemand.get(name) || 0, addedDemand, `${name} alternative demand`)
+      );
+      if (!terminalParents.has(name)) terminalParents.set(name, new Set());
+      parentNames.forEach(parentName => terminalParents.get(name).add(parentName));
+    };
+    states.forEach(state => {
+      if (state.isTerminal && state.isRoot) terminalDemand.set(state.name, state.needed);
+    });
+    const rootTerminalMaximums = new Map();
+    results.forEach(result => {
+      const resultDemand = new Map();
+      const resultParents = new Map();
+      result.roots.forEach(rootName => {
+        const parent = result.states.get(rootName);
+        if (!parent?.recipe || parent.isTerminal) return;
+        parent.recipe.ingredients.forEach(ingredient => {
+          const child = result.states.get(ingredient.name);
+          if (!child?.isTerminal) return;
+          const addedDemand = checkedMultiply(
+            ingredient.qty,
+            parent.craftTimes,
+            `${ingredient.name} alternative root demand increment`
+          );
+          resultDemand.set(
+            ingredient.name,
+            checkedAdd(
+              resultDemand.get(ingredient.name) || 0,
+              addedDemand,
+              `${ingredient.name} alternative root demand`
+            )
+          );
+          if (!resultParents.has(ingredient.name)) resultParents.set(ingredient.name, new Set());
+          resultParents.get(ingredient.name).add(parent.name);
+        });
+      });
+      resultDemand.forEach((needed, name) => {
+        const current = rootTerminalMaximums.get(name);
+        if (current && current.needed > needed) return;
+        if (current && current.needed === needed) {
+          resultParents.get(name)?.forEach(parentName => current.parents.add(parentName));
+          return;
+        }
+        rootTerminalMaximums.set(name, {
+          needed,
+          parents: new Set(resultParents.get(name) || [])
+        });
+      });
+    });
+    rootTerminalMaximums.forEach((entry, name) => {
+      addTerminalDemand(name, entry.needed, entry.parents);
+    });
+    states.forEach(parent => {
+      if (!parent.recipe || parent.isTerminal || !nonRootIntermediateNames.has(parent.name)) return;
+      parent.recipe.ingredients.forEach(ingredient => {
+        const child = states.get(ingredient.name);
+        if (!child?.isTerminal) return;
+        const addedDemand = checkedMultiply(
+          ingredient.qty,
+          parent.craftTimes,
+          `${ingredient.name} alternative demand increment`
+        );
+        addTerminalDemand(ingredient.name, addedDemand, [parent.name]);
+      });
+    });
+
+    terminalDemand.forEach((needed, name) => {
+      const state = states.get(name);
+      if (!state) return;
+      const craft = state.recipe ? calculateCraft(needed, state.recipe.yield) : null;
+      states.set(name, {
+        ...state,
+        needed,
+        craftTimes: craft?.craftTimes || 0,
+        produced: craft?.produced || needed,
+        surplus: craft?.surplus || 0,
+        parents: new Set(terminalParents.get(name) || state.parents)
+      });
+    });
+
+    states.forEach((state, name) => {
+      state.isRoot = roots.has(name);
+    });
+    return { states, roots, exchangeTypes };
   }
 
   function createIntermediateForest(result, predicate = () => true) {
@@ -180,6 +304,7 @@
     calculateCraft,
     calculateRequirements,
     createIntermediateForest,
+    mergeAlternativeRequirements,
     validateRequestedCount
   };
 });

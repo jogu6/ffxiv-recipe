@@ -1,4 +1,5 @@
 const { expect, test } = require('@playwright/test');
+const { loverWeapons } = require('./fixtures/favorite-share-codes.js');
 
 async function openApp(page, width = 900, height = 700) {
   await page.setViewportSize({ width, height });
@@ -23,6 +24,39 @@ async function chooseCustomOption(page, selectId, value) {
   if ((await select.getAttribute('data-value')) === value) return;
   await select.locator('.custom-select-toggle').click();
   await select.locator(`.custom-select-option[data-value="${value}"]`).click();
+}
+
+async function importFavoriteFromPlaza(page, code, name) {
+  await page.locator('#settingsBtn').click();
+  await page.locator('#sharePlazaOpenBtn').click();
+  await expect(page.locator('#sharePlazaOverlay')).toHaveClass(/open/);
+  await page.evaluate(importCode => {
+    const frame = document.querySelector('#sharePlazaFrame');
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        origin: 'http://127.0.0.1:4174',
+        source: frame.contentWindow,
+        data: { type: 'ffxiv-share-code-import', code: importCode }
+      })
+    );
+  }, code);
+  await expect(page.locator('#textInputOverlay')).toHaveClass(/open/);
+  await page.locator('#textInputField').fill(name);
+  await page.locator('#textInputOkBtn').click();
+}
+
+async function closeSharePlaza(page) {
+  await page.evaluate(() => {
+    const frame = document.querySelector('#sharePlazaFrame');
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        origin: 'http://127.0.0.1:4174',
+        source: frame.contentWindow,
+        data: { type: 'ffxiv-share-code-plaza-close' }
+      })
+    );
+  });
+  await expect(page.locator('#sharePlazaOverlay')).not.toHaveClass(/open/);
 }
 
 async function dragHandleAfter(page, handle, targetRow) {
@@ -142,7 +176,18 @@ test('intermediate materials follow craft order, show usage, and open an indepen
     .locator('xpath=ancestor::div[contains(@class,"intermediate-tree-row")]');
   const intermediateNames = await page.locator('.intermediate-tree-row .material-name').allTextContents();
   expect(intermediateNames.indexOf('ブロンズインゴット')).toBeLessThan(intermediateNames.indexOf('バスタードソード'));
-  await expect(bastardNode).toContainText('鍛冶');
+  await expect(bastardNode.locator('.badge')).toHaveText('鍛冶Lv2');
+  const craftJobIcon = bastardNode.locator('.badge .job-icon');
+  await expect(craftJobIcon).toHaveAttribute('src', './assets/job-icons/blacksmith.webp');
+  await expect(craftJobIcon).toHaveAttribute('alt', '');
+  await expect(craftJobIcon).toHaveAttribute('aria-hidden', 'true');
+  const craftBadgeSizes = await bastardNode.locator('.badge').evaluate(badge => ({
+    fontSize: Number.parseFloat(getComputedStyle(badge).fontSize),
+    iconWidth: badge.querySelector('.job-icon').getBoundingClientRect().width,
+    iconHeight: badge.querySelector('.job-icon').getBoundingClientRect().height
+  }));
+  expect(Math.abs(craftBadgeSizes.iconWidth - craftBadgeSizes.fontSize)).toBeLessThan(0.1);
+  expect(Math.abs(craftBadgeSizes.iconHeight - craftBadgeSizes.fontSize)).toBeLessThan(0.1);
   await expect(bastardNode).not.toContainText('ブラスバスタードソードに使用');
   await expect(bastardNode.locator('.material-primary > .item-action-buttons')).toHaveCount(1);
 
@@ -173,6 +218,8 @@ test('intermediate materials follow craft order, show usage, and open an indepen
   await expect(page.locator('#materialTreeOverlay')).toHaveClass(/open/);
   await expect(page.locator('#materialTreeTitle')).toHaveText('素材ツリー');
   await expect(page.locator('.material-tree-root-summary')).toContainText('バスタードソード');
+  await expect(page.locator('.material-tree-root-summary .badge')).toHaveText('鍛冶');
+  await expect(page.locator('.material-tree-root-summary')).not.toContainText('鍛冶師');
   await expect(page.locator('.material-tree-root-summary .node-icon')).toHaveCSS('width', '40px');
   await expect(page.locator('#materialTreeContent > .tree-node').first()).not.toContainText('バスタードソード');
   await expect(page.locator('#materialTreeContent')).toContainText('ブロンズインゴット');
@@ -200,6 +247,23 @@ test('intermediate materials follow craft order, show usage, and open an indepen
   await expect(page.locator('#materialTreeCountInput')).toHaveValue('300');
   await page.locator('#materialTreeCloseBtn').click();
   await expect(page.locator('#materialTreeOverlay')).not.toHaveClass(/open/);
+});
+
+test('timed gathering dialog uses gatherer icons only for its gathering methods', async ({ page }) => {
+  await openApp(page);
+
+  await searchFor(page, '金鉱');
+  await page.locator('#recipeList .gathering-timer-btn').first().click();
+  const miningBadge = page.locator('#gatheringContent .gathering-method').first();
+  await expect(miningBadge).toContainText('採掘');
+  await expect(miningBadge.locator('.job-icon')).toHaveAttribute('src', './assets/job-icons/miner.webp');
+  await page.locator('#gatheringCloseBtn').click();
+
+  await searchFor(page, 'ブラックトリュフ');
+  await page.locator('#recipeList .gathering-timer-btn').first().click();
+  const botanyBadge = page.locator('#gatheringContent .gathering-method').first();
+  await expect(botanyBadge).toContainText('草刈');
+  await expect(botanyBadge.locator('.job-icon')).toHaveAttribute('src', './assets/job-icons/botanist.webp');
 });
 
 test('uses buttons share the accent style', async ({ page }) => {
@@ -339,7 +403,7 @@ test('favorite materials show intermediate usage and dependency-aware craft orde
     has: page.getByText('亜麻糸', { exact: true })
     })
     .first();
-  await expect(threadRow).toContainText('裁縫');
+  await expect(threadRow.locator('.badge')).toHaveText('裁縫Lv32');
   await expect(threadRow).toContainText('× 10');
   await expect(threadRow).toContainText('うち 8 個は亜麻布に使用');
   await expect(threadRow).not.toContainText('ウールコイフ');
@@ -353,31 +417,11 @@ test('imports from the share code plaza with naming confirmation and keeps the p
   const shareCode =
     'Z00273F0Y320Y1M0Y6D55576G4H436D4J4R0W243A1A1G1C0Y180Y2X0Y1M2J1E1C1G1D181E1K1C1I181F1D1G1I181F1I1D1I181F1G1C1J181F1K1H1I181G1E1F1J181G1F1G1F181G1D1F1J181G1G1J1E2L3H';
   await openApp(page);
-  await page.locator('#settingsBtn').click();
-  await page.locator('#sharePlazaOpenBtn').click();
-  await expect(page.locator('#sharePlazaOverlay')).toHaveClass(/open/);
-  await page.evaluate((code) => {
-    const frame = document.querySelector('#sharePlazaFrame');
-    window.dispatchEvent(new MessageEvent('message', {
-      origin: 'http://127.0.0.1:4174',
-      source: frame.contentWindow,
-      data: { type: 'ffxiv-share-code-import', code },
-    }));
-  }, shareCode);
-  await expect(page.locator('#textInputOverlay')).toHaveClass(/open/);
-  await page.locator('#textInputField').fill('広場から保存');
-  await page.locator('#textInputOkBtn').click();
+  await expect(page.locator('#sharePlazaFrame')).toHaveAttribute('allow', 'clipboard-write');
+  await importFavoriteFromPlaza(page, shareCode, '広場から保存');
   await expect(page.locator('#sharePlazaOverlay')).toHaveClass(/open/);
   await expect(page.locator('#settingsOverlay')).toHaveClass(/open/);
-  await page.evaluate(() => {
-    const frame = document.querySelector('#sharePlazaFrame');
-    window.dispatchEvent(new MessageEvent('message', {
-      origin: 'http://127.0.0.1:4174',
-      source: frame.contentWindow,
-      data: { type: 'ffxiv-share-code-plaza-close' },
-    }));
-  });
-  await expect(page.locator('#sharePlazaOverlay')).not.toHaveClass(/open/);
+  await closeSharePlaza(page);
   await expect(page.locator('#settingsOverlay')).toHaveClass(/open/);
 });
 
@@ -1084,8 +1128,8 @@ test('favorite list count mode excludes zero-count items from materials', async 
   await page.locator('.favorite-material-curtain-toggle').click();
   await expect(page.locator('.favorite-material-curtain-actions').getByText('個数指定')).toHaveClass(/active/);
 
-  await page.locator('.favorite-material-curtain-actions').getByText('どれでも1つ').click();
-  await expect(page.locator('.favorite-material-curtain-actions').getByText('どれでも1つ')).toHaveClass(/active/);
+  await page.locator('.favorite-material-curtain-actions').getByText('どれか1アイテム').click();
+  await expect(page.locator('.favorite-material-curtain-actions').getByText('どれか1アイテム')).toHaveClass(/active/);
   await expect(page.locator('.favorite-material-curtain-actions').getByText('個数指定')).not.toHaveClass(/active/);
   await expect(page.locator('.favorite-material-curtain-actions').getByText('全てOn')).toBeVisible();
   await expect(page.locator('.favorite-item-count-controls input[type="checkbox"]')).toHaveCount(2);
@@ -1098,6 +1142,9 @@ test('favorite list count mode excludes zero-count items from materials', async 
   await expect(page.locator('#licenseText')).toContainText('お気に入りリスト内全アイテム');
   await expect(page.locator('#licenseText')).toContainText('セット数分');
   await expect(page.locator('#licenseText')).toContainText('全てを制作する素材リストではありません');
+  await expect(page.locator('#licenseText')).toContainText('完成品が直接使う同じ末端素材');
+  await expect(page.locator('#licenseText')).toContainText('候補間で最も多く必要な数');
+  await expect(page.locator('#licenseText')).toContainText('共通して使う末端素材は合算');
   await page.locator('#licenseCloseBtn').click();
   await expect(page.locator('#countInput')).toBeVisible();
   await expect(page.locator('#countInput')).toBeEnabled();
@@ -1138,7 +1185,25 @@ test('favorite list count mode excludes zero-count items from materials', async 
     '× 2'
   );
   await page.locator('.favorite-material-curtain-toggle').click();
-  await expect(page.locator('.favorite-material-curtain-actions').getByText('どれでも1つ')).toHaveClass(/active/);
+  await expect(page.locator('.favorite-material-curtain-actions').getByText('どれか1アイテム')).toHaveClass(/active/);
+});
+
+test('favorite any-item materials cover shared ingredients for every distinct intermediate', async ({ page }) => {
+  await openApp(page);
+  await importFavoriteFromPlaza(page, loverWeapons.code, '宝水確認');
+  await closeSharePlaza(page);
+  await page.locator('#settingsCloseBtn').click();
+  await page.locator('#favBtn').click();
+  await page.locator('#favoriteLists').getByText('宝水確認').click();
+  await page.locator('.favorite-material-curtain-toggle').click();
+  await page.locator('.favorite-material-curtain-actions').getByText('どれか1アイテム').click();
+  await page.locator('#recipeList').getByText('素材リストを表示').click();
+
+  for (const name of ['活力の宝水G4', '剛力の宝水G4', '眼力の宝水G4', '心力の宝水G4', '知力の宝水G4']) {
+    await expect(page.locator('.materials-list')).toContainText(name);
+  }
+  await expect(page.locator('.materials-list')).toContainText(/ガーデン・ソフトウォーター\s*×\s*15/);
+  await expect(page.locator('.materials-list')).toContainText(/ヤクテル天然水\s*×\s*5/);
 });
 
 test('mobile favorite ring controls keep the count toggle on one right-aligned row', async ({ page }) => {
@@ -1412,7 +1477,10 @@ test('checked favorite lists use a dedicated combined materials entry and reset 
   await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
   await page.locator('#checkedFavoriteMaterialsHelpBtn').click();
   await expect(page.locator('#licenseText')).toContainText('チェックした複数のお気に入りリスト');
-  await expect(page.locator('#licenseText')).toContainText('どれか一つだけ');
+  await expect(page.locator('#licenseText')).toContainText('どれか1リスト');
+  await expect(page.locator('#licenseText')).toContainText('完成品が直接使う同じ末端素材は各リスト内で合算');
+  await expect(page.locator('#licenseText')).toContainText('同じ中間素材もリスト間で最も多く必要な数');
+  await expect(page.locator('#licenseText')).toContainText('共通して使う末端素材は合算');
   await page.locator('#licenseCloseBtn').click();
   await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
 
@@ -1644,6 +1712,35 @@ test('checked favorite materials runs with one list and zero ring count', async 
   await expect(page.locator('.materials-list')).not.toContainText('銅鉱');
 });
 
+test('favorite any-list materials cover shared ingredients for every distinct intermediate', async ({ page }) => {
+  await page.addInitScript(() => {
+    const itemIds = [49251, 49250, 49258, 49254, 49256];
+    localStorage.setItem(
+      'ff14_favorite_lists_v2',
+      JSON.stringify({
+        version: 2,
+        selectedListId: 'lover-list-0',
+        lists: itemIds.map((itemId, index) => ({
+          id: `lover-list-${index}`,
+          name: `宝水確認${index + 1}`,
+          itemIds: [itemId],
+          materialSelected: true
+        }))
+      })
+    );
+  });
+
+  await openApp(page);
+  await page.locator('#checkedFavoriteAnyOneModeBtn').click();
+  await page.locator('#checkedFavoriteMaterialsBtn').click();
+
+  for (const name of ['活力の宝水G4', '剛力の宝水G4', '眼力の宝水G4', '心力の宝水G4', '知力の宝水G4']) {
+    await expect(page.locator('.materials-list')).toContainText(name);
+  }
+  await expect(page.locator('.materials-list')).toContainText(/ガーデン・ソフトウォーター\s*×\s*15/);
+  await expect(page.locator('.materials-list')).toContainText(/ヤクテル天然水\s*×\s*5/);
+});
+
 test('favorite dropdown max height stays within the viewport with checked-list buttons', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem(
@@ -1744,8 +1841,8 @@ test('equipment search uses custom dropdowns and recommended roles', async ({ pa
 
   await page.locator('#equipmentLevelInput').fill('45');
   await page.locator('#equipmentLevelInput').dispatchEvent('input');
-  await expect(page.locator('#equipmentItemLevelSelect .custom-select-option[data-value="48"]')).toHaveCount(1);
-  await expect(page.locator('#equipmentItemLevelSelect')).toHaveAttribute('data-value', '48');
+  await expect(page.locator('#equipmentItemLevelSelect .custom-select-option[data-value="45"]')).toHaveCount(1);
+  await expect(page.locator('#equipmentItemLevelSelect')).toHaveAttribute('data-value', '45');
   await page.locator('#equipmentLevelInput').fill('46');
   await page.locator('#equipmentLevelInput').dispatchEvent('input');
   await expect(page.locator('#equipmentItemLevelSelect .custom-select-option[data-value="48"]')).toHaveCount(0);
@@ -1764,6 +1861,7 @@ test('equipment search uses custom dropdowns and recommended roles', async ({ pa
 
   await chooseCustomOption(page, 'equipmentJobSelect', 'ナイト');
   await expect(page.locator('#equipmentSlotSelect .custom-select-option[data-value="shield"]')).toHaveCount(1);
+  await expect(page.locator('#equipmentJobSelect .job-icon')).toHaveCount(0);
   await chooseCustomOption(page, 'equipmentJobSelect', '木工師');
   await expect(page.locator('#equipmentSlotSelect .custom-select-option[data-value="mainTool"]')).toHaveCount(1);
   await expect(page.locator('#equipmentSlotSelect .custom-select-option[data-value="offTool"]')).toHaveCount(1);
@@ -1903,8 +2001,41 @@ test('equipment search excludes bait from web search targets', async ({ page }) 
   await page.locator('#equipmentLevelInput').fill('5');
   await page.locator('#equipmentLevelInput').dispatchEvent('input');
 
-  await expect(page.locator('#equipmentItemLevelSelect .custom-select-option[data-value="5"]')).toHaveCount(0);
-  await expect(page.locator('#equipmentSearchBtn')).toBeDisabled();
+  await expect(page.locator('#equipmentItemLevelSelect .custom-select-option[data-value="5"]')).toHaveCount(1);
+  await expect(page.locator('#equipmentSearchBtn')).toBeEnabled();
+  await page.locator('#equipmentSearchBtn').click();
+  await expect(page.locator('#recipeList')).toContainText('バンダナ');
+  await expect(page.locator('#recipeList')).not.toContainText('ザリガニボール');
+});
+
+test('equipment search classifies all-class crafter and gatherer gear by every relevant stat family', async ({
+  page
+}) => {
+  await openApp(page);
+  await page.locator('#equipmentSearchToggle').click();
+
+  await chooseCustomOption(page, 'equipmentJobSelect', '木工師');
+  await page.locator('#equipmentLevelInput').fill('50');
+  await page.locator('#equipmentLevelInput').dispatchEvent('input');
+  await page.locator('#equipmentSearchBtn').click();
+  await expect(page.locator('#recipeList')).toContainText('アーティザンエプロン');
+  await expect(page.locator('#recipeList')).toContainText('アーティザンミトン');
+  await expect(page.locator('#recipeList')).not.toContainText('フォリジャーベスト');
+
+  await chooseCustomOption(page, 'equipmentJobSelect', '採掘師');
+  await page.locator('#equipmentLevelInput').fill('50');
+  await page.locator('#equipmentLevelInput').dispatchEvent('input');
+  await page.locator('#equipmentSearchBtn').click();
+  await expect(page.locator('#recipeList')).toContainText('フォリジャーベスト');
+  await expect(page.locator('#recipeList')).not.toContainText('アーティザンエプロン');
+
+  for (const job of ['木工師', '採掘師']) {
+    await chooseCustomOption(page, 'equipmentJobSelect', job);
+    await page.locator('#equipmentLevelInput').fill('15');
+    await page.locator('#equipmentLevelInput').dispatchEvent('input');
+    await page.locator('#equipmentSearchBtn').click();
+    await expect(page.locator('#recipeList')).toContainText('コットンシェパードチュニック');
+  }
 });
 
 test('equipment search does not mix all-class crafter gear into battle class results', async ({ page }) => {

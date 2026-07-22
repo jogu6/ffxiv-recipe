@@ -279,6 +279,7 @@ test('extractLodestoneEquipmentInfo reads item level, equip level, jobs, and pri
     itemLevel: 9,
     jobs: ['ファイター', 'ソーサラー'],
     equipLevel: 9,
+    statsVersion: 2,
     stats: {
       STR: 1,
       DEX: 2,
@@ -288,7 +289,8 @@ test('extractLodestoneEquipmentInfo reads item level, equip level, jobs, and pri
       不屈: 0,
       信仰: 0,
       スキルスピード: 0,
-      スペルスピード: 0
+      スペルスピード: 0,
+      クリティカル: 6
     },
     performance: { physicalDamage: 0, magicalDamage: 0, physicalDefense: 12, magicalDefense: 8 }
   });
@@ -308,6 +310,7 @@ test('extractLodestoneEquipmentInfo records zero primary stats when none are pre
     itemLevel: 1,
     jobs: ['全クラス'],
     equipLevel: 1,
+    statsVersion: 2,
     stats: {
       STR: 0,
       DEX: 0,
@@ -331,12 +334,43 @@ test('extractLodestoneEquipmentInfo reads role and speed stats', () => {
   });
 });
 
+test('extractLodestoneEquipmentInfo reads every NQ crafter and gatherer stat', () => {
+  const html = `
+    <section>ITEM LEVEL 70 全クラス Lv 50～
+      <div class="sys_nq_element">
+        <h3>Bonuses</h3>
+        <ul class="db-view__basic_bonus">
+          <li><span>CP</span> +2</li>
+          <li><span>作業精度</span> +89</li>
+          <li><span>加工精度</span> +35</li>
+          <li><span>GP</span> +3</li>
+          <li><span>獲得力</span> +62</li>
+          <li><span>技術力</span> +31</li>
+          <li><span>将来追加ステータス</span> +7</li>
+        </ul>
+      </div>
+      <div class="sys_hq_element">
+        <h3>Bonuses</h3>
+        <ul class="db-view__basic_bonus"><li><span>作業精度</span> +101</li></ul>
+      </div>
+    </section>`;
+  const info = extractLodestoneEquipmentInfo(html);
+
+  assert.equal(info?.statsVersion, 2);
+  assert.deepEqual(
+    Object.fromEntries(['CP', '作業精度', '加工精度', 'GP', '獲得力', '技術力', '将来追加ステータス']
+      .map(name => [name, info?.stats?.[name]])),
+    { CP: 2, 作業精度: 89, 加工精度: 35, GP: 3, 獲得力: 62, 技術力: 31, 将来追加ステータス: 7 }
+  );
+});
+
 test('extractLodestoneEquipmentInfo does not absorb stats as job text', () => {
   const html = '<section>ITEM LEVEL 110 魔法防御力 1 ファイター ソーサラー Lv 50～ Bonuses STR +18 VIT +18 MND +13 ソーサラー Lv 50～</section>';
   assert.deepEqual(extractLodestoneEquipmentInfo(html), {
     itemLevel: 110,
     jobs: ['ファイター', 'ソーサラー'],
     equipLevel: 50,
+    statsVersion: 2,
     stats: {
       STR: 18,
       DEX: 0,

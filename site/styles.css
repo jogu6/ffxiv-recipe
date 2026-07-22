@@ -1894,6 +1894,18 @@ li.ingredient-row.selected {
   font-weight: bold;
   flex-shrink: 0;
 }
+.job-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+}
+.job-icon {
+  display: block;
+  width: 1em;
+  height: 1em;
+  object-fit: contain;
+  flex: 0 0 1em;
+}
 .badge-craft {
   background: #3a2e10;
   color: var(--craft);

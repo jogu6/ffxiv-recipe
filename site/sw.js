@@ -1,5 +1,5 @@
-const APP_CACHE_VERSION = 'ff14recipe-app-20260714-v2.91';
-const DATA_CACHE_VERSION = 'ff14recipe-data-7.50-4492adda';
+const APP_CACHE_VERSION = 'ff14recipe-app-20260722-v2.92-job-icons';
+const DATA_CACHE_VERSION = 'ff14recipe-data-7.50-b8abd5cd';
 const CACHE_PREFIX = 'ff14recipe-';
 
 const PRECACHE_FILES = [
@@ -12,6 +12,17 @@ const PRECACHE_FILES = [
   './assets/app-icons/favicon.png',
   './assets/app-icons/icon-192.png',
   './assets/app-icons/icon-512.png',
+  './assets/job-icons/alchemist.webp',
+  './assets/job-icons/armorer.webp',
+  './assets/job-icons/blacksmith.webp',
+  './assets/job-icons/botanist.webp',
+  './assets/job-icons/carpenter.webp',
+  './assets/job-icons/culinarian.webp',
+  './assets/job-icons/fisher.webp',
+  './assets/job-icons/goldsmith.webp',
+  './assets/job-icons/leatherworker.webp',
+  './assets/job-icons/miner.webp',
+  './assets/job-icons/weaver.webp',
   './manifest.webmanifest',
 ];
 

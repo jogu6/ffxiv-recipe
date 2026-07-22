@@ -66,6 +66,7 @@ const lodestoneConditionalShopText = 'このショップはプレイヤーの特
 const lodestonePrimaryStatNames = ['STR', 'DEX', 'VIT', 'INT', 'MND'];
 const lodestoneRoleStatNames = ['不屈', '信仰', 'スキルスピード', 'スペルスピード'];
 const lodestoneEquipmentStatNames = [...lodestonePrimaryStatNames, ...lodestoneRoleStatNames];
+const lodestoneEquipmentStatsVersion = 2;
 const equipmentRoleCodes = ['tank', 'healer', 'striker_slayer', 'scout_ranger', 'caster'];
 const equipmentAggregateRoleCodes = ['fighter', 'sorcerer'];
 const equipmentOverrideRoleCodes = [...equipmentRoleCodes, ...equipmentAggregateRoleCodes];
@@ -1109,6 +1110,34 @@ function extractLodestoneEquipmentPerformance(detailHtml) {
   return performance;
 }
 
+function extractLodestoneEquipmentStats(detailHtml, specText) {
+  const stats = Object.fromEntries(lodestoneEquipmentStatNames.map(name => [name, 0]));
+  const html = String(detailHtml || '');
+  const bonusListMatch = html.match(
+    /<h3\b[^>]*>\s*Bonuses\s*<\/h3>[\s\S]*?<ul\b[^>]*class=["'][^"']*db-view__basic_bonus[^"']*["'][^>]*>([\s\S]*?)<\/ul>/i
+  );
+  if (bonusListMatch) {
+    for (const match of bonusListMatch[1].matchAll(
+      /<li\b[^>]*>\s*<span\b[^>]*>([\s\S]*?)<\/span>\s*\+\s*([0-9,]+)/gi
+    )) {
+      const name = normalizeHtmlText(match[1]);
+      const value = Number(match[2].replace(/,/g, ''));
+      if (name && Number.isSafeInteger(value)) stats[name] = value;
+    }
+    return stats;
+  }
+
+  const bonusText = String(specText || '').split(/\s+Bonuses\s+/)[1]?.split(
+    /\s+(?:Materia|Craft & Repair|修理レベル|マテリア|SHOP販売:)/
+  )[0] || '';
+  for (const match of bonusText.matchAll(/(?:^|\s)([^\d+]+?)\s*\+\s*([0-9,]+)/gu)) {
+    const name = match[1].trim();
+    const value = Number(match[2].replace(/,/g, ''));
+    if (name && Number.isSafeInteger(value)) stats[name] = value;
+  }
+  return stats;
+}
+
 export function extractLodestoneEquipmentInfo(detailHtml) {
   const text = normalizeHtmlText(detailHtml);
   const itemLevelMatch = text.match(/ITEM LEVEL\s+([0-9]+)/);
@@ -1125,12 +1154,8 @@ export function extractLodestoneEquipmentInfo(detailHtml) {
   const info = { itemLevel: Number(itemLevelMatch[1]) };
   info.jobs = [...new Set(jobs)];
   info.equipLevel = Number(equipLevelMatch[1]);
-  const stats = Object.fromEntries(lodestoneEquipmentStatNames.map(name => [name, 0]));
-  for (const stat of lodestoneEquipmentStatNames) {
-    const statMatch = specText.match(new RegExp(`(?:^|\\s)${stat}\\s*\\+\\s*([0-9]+)(?=\\s|$)`));
-    if (statMatch) stats[stat] = Number(statMatch[1]);
-  }
-  info.stats = stats;
+  info.statsVersion = lodestoneEquipmentStatsVersion;
+  info.stats = extractLodestoneEquipmentStats(detailHtml, specText);
   info.performance = extractLodestoneEquipmentPerformance(detailHtml);
   return info;
 }
@@ -2008,6 +2033,7 @@ async function applyLodestoneInfoToItem(item, delayMs) {
 
 function hasExistingLodestoneInfo(item) {
   if (item?.EquipmentInfo && !item.EquipmentInfo.stats) return false;
+  if (item?.EquipmentInfo?.statsVersion !== lodestoneEquipmentStatsVersion) return false;
   if (item?.EquipmentInfo?.stats
     && lodestoneEquipmentStatNames.some(stat => !Object.hasOwn(item.EquipmentInfo.stats, stat))) return false;
   if (item?.EquipmentInfo && !item.EquipmentInfo.performance) return false;

@@ -1,0 +1,13 @@
+[
+  { "id": "carpenter", "nameJa": "木工師", "subject": "Carpenter hand saw", "reference": "04_CRAFTER/Carpenter.png" },
+  { "id": "blacksmith", "nameJa": "鍛冶師", "subject": "Blacksmith anvil", "reference": "04_CRAFTER/Blacksmith.png" },
+  { "id": "armorer", "nameJa": "甲冑師", "subject": "Armorer helmet", "reference": "04_CRAFTER/Armorer.png" },
+  { "id": "goldsmith", "nameJa": "彫金師", "subject": "Goldsmith ornamental crown", "reference": "04_CRAFTER/Goldsmith.png" },
+  { "id": "leatherworker", "nameJa": "革細工師", "subject": "Leatherworker stretched hide", "reference": "04_CRAFTER/Leatherworker.png" },
+  { "id": "weaver", "nameJa": "裁縫師", "subject": "Weaver spindle and thread", "reference": "04_CRAFTER/Weaver.png" },
+  { "id": "alchemist", "nameJa": "錬金術師", "subject": "Alchemist alembic", "reference": "04_CRAFTER/Alchemist.png" },
+  { "id": "culinarian", "nameJa": "調理師", "subject": "Culinarian bread loaves", "reference": "04_CRAFTER/Culinarian.png" },
+  { "id": "miner", "nameJa": "採掘師", "subject": "Miner pickaxe", "reference": "05_GATHERER/Miner.png" },
+  { "id": "botanist", "nameJa": "園芸師", "subject": "Botanist hatchet", "reference": "05_GATHERER/Botanist.png" },
+  { "id": "fisher", "nameJa": "漁師", "subject": "Fisher fish", "reference": "05_GATHERER/Fisher.png" }
+]

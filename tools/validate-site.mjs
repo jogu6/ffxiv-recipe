@@ -22,7 +22,18 @@ for (const relativePath of [
   'data/tips.md',
   'assets/app-icons/favicon.png',
   'assets/app-icons/icon-192.png',
-  'assets/app-icons/icon-512.png'
+  'assets/app-icons/icon-512.png',
+  'assets/job-icons/alchemist.webp',
+  'assets/job-icons/armorer.webp',
+  'assets/job-icons/blacksmith.webp',
+  'assets/job-icons/botanist.webp',
+  'assets/job-icons/carpenter.webp',
+  'assets/job-icons/culinarian.webp',
+  'assets/job-icons/fisher.webp',
+  'assets/job-icons/goldsmith.webp',
+  'assets/job-icons/leatherworker.webp',
+  'assets/job-icons/miner.webp',
+  'assets/job-icons/weaver.webp'
 ]) {
   requireFile(relativePath);
 }
