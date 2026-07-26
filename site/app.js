@@ -4281,6 +4281,25 @@ function recipeMapForSelections(recipeSelections = {}) {
   return contextualRecipes;
 }
 
+function reachableMultiRecipeNames(rootNames, recipeSelections = {}) {
+  const recipeMap = recipeMapForSelections(recipeSelections);
+  const reachable = [];
+  const visited = new Set();
+  const stack = [...rootNames];
+  while (stack.length > 0) {
+    const name = stack.pop();
+    if (!name || visited.has(name)) continue;
+    visited.add(name);
+    const recipe = recipeMap[name];
+    if (!recipe) continue;
+    if ((recipeVariants[name] || []).length > 1) reachable.push(name);
+    recipe.ingredients.forEach(ingredient => {
+      if (recipeMap[ingredient.name]) stack.push(ingredient.name);
+    });
+  }
+  return reachable;
+}
+
 function effectiveRecipeSelectionSignature(recipeSelections = {}) {
   return JSON.stringify(
     Object.entries(normalizeRecipeSelections(recipeSelections))
