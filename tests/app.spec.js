@@ -19,6 +19,264 @@ async function searchFor(page, value) {
   await expect(page.locator('#recipeList li').first()).toContainText(value);
 }
 
+async function routeMirageRecipeVariants(page, { parentName = '', includeVariantMaterial = true } = {}) {
+  await page.route('**/data/Item.json*', async route => {
+    const response = await route.fetch();
+    const items = await response.json();
+    const target = items.find(item => item.Name === 'ミラージュプリズム');
+    const itemId = name => items.find(item => item.Name === name).ID;
+    const materials = [
+      ['ウォルナット材', '0e351054234'],
+      ['スチールインゴット', 'a0d2fcedeb3'],
+      ['スチールリベット', 'bf5ee3e37ca'],
+      ['シルバーインゴット', 'eaddf83f1d9'],
+      ['ギガントードレザー', 'e333e776c67'],
+      ['別珍', 'f25d440fc89'],
+      ['グロースフォーミュラ・ガンマ', '169de6ea318']
+    ];
+    target.Recipes = target.CraftInfo.map((craftInfo, index) => ({
+      RecipeID: materials[index][1],
+      CraftType: String(index),
+      CraftInfo: craftInfo,
+      AmountResult: '1',
+      Ingredients: [
+        { ItemID: itemId('クリアプリズム'), Name: 'クリアプリズム', Amount: '1' },
+        ...(includeVariantMaterial
+          ? [{ ItemID: itemId(materials[index][0]), Name: materials[index][0], Amount: '2' }]
+          : [])
+      ]
+    }));
+    if (parentName) {
+      const parent = items.find(item => item.Name === parentName);
+      parent.Recipe.Ingredients = [{ ItemID: target.ID, Name: target.Name, Amount: '1' }];
+    }
+    await route.fulfill({ response, json: items });
+  });
+}
+
+test('shows the transfer and listing restriction badge only for confirmed EX items', async ({ page }) => {
+  await openApp(page);
+  await searchFor(page, '改良用のアイアンネイル');
+  const exRow = page.locator('#recipeList li').filter({ hasText: '改良用のアイアンネイル' }).first();
+  await expect(exRow.locator('.badge-ex')).toHaveText('譲渡・出品✖');
+  await exRow.click();
+  await expect(page.locator('.result-root-summary .badge-ex')).toHaveText('譲渡・出品✖');
+
+  await searchFor(page, 'バスタードソード');
+  const normalRow = page
+    .locator('#recipeList li')
+    .filter({ has: page.getByText('バスタードソード', { exact: true }) })
+    .first();
+  await expect(normalRow.locator('.badge-ex')).toHaveCount(0);
+  await normalRow.click();
+  const root = page.locator('.result-root-summary');
+  await expect(root.locator('.badge-craft')).toHaveText('鍛冶Lv2');
+  await expect(root.locator('.badge-equipment')).toHaveText('Lv5/IL5');
+  await expect(root.locator('.badge-equipment-job')).toHaveText('ナ剣');
+  await expect(root.getByRole('button', { name: 'バスタードソードの店情報' })).toBeVisible();
+});
+
+test('shows the confirmed masterbook on recipe item labels', async ({ page }) => {
+  await openApp(page);
+  await searchFor(page, 'ギガントガルロングソード');
+  const masterbookRow = page
+    .locator('#recipeList li')
+    .filter({ has: page.getByText('ギガントガルロングソード', { exact: true }) })
+    .first();
+  await expect(masterbookRow.locator('.badge-craft')).toHaveText('錬成秘伝書:第1巻');
+  await expect(masterbookRow.locator('.craft-job-label > .job-icon')).toHaveAttribute(
+    'src',
+    './assets/job-icons/alchemist.webp'
+  );
+
+  await searchFor(page, 'バスタードソード');
+  const normalRow = page
+    .locator('#recipeList li')
+    .filter({ has: page.getByText('バスタードソード', { exact: true }) })
+    .first();
+  await expect(normalRow.locator('.badge-craft')).toHaveText('鍛冶Lv2');
+});
+
+test('shows one selectable search row per recipe variant and uses the selected ingredients', async ({ page }) => {
+  await routeMirageRecipeVariants(page);
+  await openApp(page, 420, 700);
+  await searchFor(page, 'ミラージュプリズム');
+  const rows = page
+    .locator('#recipeList li')
+    .filter({ has: page.getByText('ミラージュプリズム', { exact: true }) });
+  await expect(rows).toHaveCount(7);
+  await expect(rows.nth(0).locator('.badge-craft')).toHaveText('木工秘伝書:ミラージュプリズム');
+  await expect(rows.nth(0).locator('.craft-job-label > .job-icon')).toHaveAttribute(
+    'src',
+    './assets/job-icons/carpenter.webp'
+  );
+  await expect(rows.nth(6).locator('.badge-craft')).toHaveText('錬成秘伝書:ミラージュプリズム');
+
+  const overflowingRows = await rows.evaluateAll(elements => {
+    return elements.filter(element => {
+      const rowRect = element.getBoundingClientRect();
+      const badgeRect = element.querySelector('.craft-job-label').getBoundingClientRect();
+      return badgeRect.right > rowRect.right + 0.5;
+    }).length;
+  });
+  expect(overflowingRows).toBe(0);
+
+  const searchIconRatio = await rows
+    .nth(0)
+    .locator('.craft-job-label')
+    .evaluate(label => label.querySelector('.job-icon').getBoundingClientRect().width / parseFloat(getComputedStyle(label).fontSize));
+  await rows.nth(0).click();
+  await expect(page.locator('#treeContainer')).toContainText('ウォルナット材');
+  await expect(page.locator('#treeContainer')).not.toContainText('グロースフォーミュラ・ガンマ');
+  const rootSummary = page.locator('.result-root-summary');
+  await expect(rootSummary).toHaveClass(/recipe-method-root/);
+  await expect(rootSummary.locator(':scope > .recipe-method-control')).toHaveCount(1);
+  await expect(rootSummary.locator('.root-item-display-label .craft-job-label')).toHaveCount(0);
+  await expect(rootSummary.getByText('製作方法', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.recipe-methods-section')).toHaveCount(0);
+  const rootLayout = await rootSummary.evaluate(root => {
+    const name = root.querySelector('.list-name').getBoundingClientRect();
+    const qty = root.querySelector('.node-qty').getBoundingClientRect();
+    const method = root.querySelector(':scope > .recipe-method-control').getBoundingClientRect();
+    const box = root.getBoundingClientRect();
+    return {
+      quantityGap: qty.left - name.right,
+      methodInside: method.left >= box.left && method.right <= box.right && method.bottom <= box.bottom
+    };
+  });
+  expect(rootLayout.quantityGap).toBeLessThanOrEqual(12);
+  expect(rootLayout.methodInside).toBe(true);
+  const selectorIconRatio = await page
+    .locator('.result-root-summary .recipe-method-summary .craft-job-label')
+    .evaluate(label => label.querySelector('.job-icon').getBoundingClientRect().width / parseFloat(getComputedStyle(label).fontSize));
+  expect(Math.abs(searchIconRatio - selectorIconRatio)).toBeLessThan(0.01);
+  await page.locator('.result-root-summary .recipe-method-summary').click();
+  await expect(page.locator('.result-root-summary .recipe-method-choice')).toHaveCount(7);
+  await expect(page.locator('.result-root-summary .recipe-method-choice').first()).toBeVisible();
+  const mobileSelectorWidths = await page.locator('.result-root-summary .recipe-method-control').evaluate(control => ({
+    control: control.getBoundingClientRect().width,
+    choices: control.querySelector('.recipe-method-choices').getBoundingClientRect().width
+  }));
+  expect(Math.abs(mobileSelectorWidths.control - mobileSelectorWidths.choices)).toBeLessThan(1);
+  await page.locator('#mobileBackBtn').click();
+  await rows.nth(6).click();
+  await expect(page.locator('#treeContainer')).toContainText('グロースフォーミュラ・ガンマ');
+  await expect(page.locator('#treeContainer')).not.toContainText('ウォルナット材');
+
+  await page.reload();
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await expect(page.locator('#treeContainer')).toContainText('グロースフォーミュラ・ガンマ');
+  await expect(page.locator('#treeContainer')).not.toContainText('ウォルナット材');
+});
+
+test('loads all recipe variants from the published item data', async ({ page }) => {
+  await openApp(page);
+  await searchFor(page, 'ミラージュプリズム');
+  const rows = page
+    .locator('#recipeList li')
+    .filter({ has: page.getByText('ミラージュプリズム', { exact: true }) });
+  await expect(rows).toHaveCount(7);
+  await expect(rows.nth(0).locator('.craft-job-label > .job-icon')).toHaveAttribute(
+    'src',
+    './assets/job-icons/carpenter.webp'
+  );
+  await expect(rows.nth(6).locator('.craft-job-label > .job-icon')).toHaveAttribute(
+    'src',
+    './assets/job-icons/alchemist.webp'
+  );
+});
+
+test('offers the same recipe selector for an intermediate item in the tree and materials list', async ({
+  page
+}) => {
+  await routeMirageRecipeVariants(page, { parentName: 'バスタードソード' });
+  await openApp(page);
+  await searchFor(page, 'バスタードソード');
+  await page.getByText('バスタードソード', { exact: true }).first().click();
+  await page.locator('#countInput').fill('6');
+
+  const intermediate = page.locator('.tree-node').filter({
+    has: page.getByText('ミラージュプリズム', { exact: true })
+  });
+  await expect(intermediate.locator(':scope > .recipe-method-control')).toHaveCount(1);
+  const methodSummary = intermediate.locator(':scope > .recipe-method-control .recipe-method-summary');
+  await methodSummary.click();
+  await expect(methodSummary).toHaveAttribute('aria-expanded', 'true');
+  await intermediate
+    .locator(':scope > .recipe-method-control .recipe-method-choice')
+    .filter({ hasText: '木工秘伝書:ミラージュプリズム' })
+    .click();
+  await expect(page.locator('#countInput')).toHaveValue('6');
+  await expect(page.locator('#treeContainer')).toContainText('ウォルナット材');
+
+  await page.locator('#materialsViewBtn').click();
+  await expect(page.locator('.recipe-methods-section')).toHaveCount(0);
+  const materialIntermediate = page
+    .locator('.intermediate-tree-node > .intermediate-tree-row .material-name')
+    .filter({ hasText: /^ミラージュプリズム$/ })
+    .locator('xpath=ancestor::li[contains(@class,"intermediate-tree-node")]');
+  await expect(materialIntermediate.locator(':scope > .recipe-method-control')).toHaveCount(1);
+  await expect(materialIntermediate.locator('.material-primary > .craft-job-label')).toHaveCount(0);
+  await expect(materialIntermediate.getByText('製作方法', { exact: true })).toHaveCount(0);
+  const materialMethodLayout = await materialIntermediate.evaluate(node => {
+    const item = node.querySelector(':scope > .intermediate-tree-row').getBoundingClientRect();
+    const method = node.querySelector(':scope > .recipe-method-control').getBoundingClientRect();
+    const itemBorder = getComputedStyle(node.querySelector(':scope > .intermediate-tree-row')).borderBottomWidth;
+    const nodeBorder = getComputedStyle(node).borderBottomWidth;
+    return {
+      belowItem: method.top >= item.bottom - 1,
+      indented: method.left > item.left,
+      itemBorder,
+      nodeBorder
+    };
+  });
+  expect(materialMethodLayout).toEqual({
+    belowItem: true,
+    indented: true,
+    itemBorder: '0px',
+    nodeBorder: '1px'
+  });
+
+  const rootAndListWidths = await page.evaluate(() => {
+    const root = document.querySelector('.result-root-summary').getBoundingClientRect();
+    const list = document.querySelector('.materials-list').getBoundingClientRect();
+    return { root: root.width, list: list.width };
+  });
+  expect(Math.abs(rootAndListWidths.root - rootAndListWidths.list)).toBeLessThan(1);
+
+  await page.setViewportSize({ width: 600, height: 780 });
+  await searchFor(page, 'バスタードソード');
+  await page
+    .locator('#recipeList li')
+    .filter({ has: page.getByText('バスタードソード', { exact: true }) })
+    .first()
+    .click();
+  await page.locator('#materialsViewBtn').click();
+  const mobileMaterialIntermediate = page
+    .locator('.intermediate-tree-node > .intermediate-tree-row .material-name')
+    .filter({ hasText: /^ミラージュプリズム$/ })
+    .locator('xpath=ancestor::li[contains(@class,"intermediate-tree-node")]');
+  const materialMethod = mobileMaterialIntermediate.locator(':scope > .recipe-method-control');
+  await materialMethod.locator('.recipe-method-summary').click();
+  const mobileMethodLayout = await mobileMaterialIntermediate.evaluate(node => {
+    const name = node.querySelector('.material-name').getBoundingClientRect();
+    const summary = node.querySelector('.recipe-method-summary').getBoundingClientRect();
+    const choices = node.querySelector('.recipe-method-choices').getBoundingClientRect();
+    const actions = node.querySelector('.intermediate-tree-row .item-action-buttons').getBoundingClientRect();
+    const next = node.nextElementSibling?.getBoundingClientRect();
+    return {
+      connected: Math.abs(choices.top - summary.bottom),
+      pushesNextRow: !next || next.top >= choices.bottom - 1,
+      nameAlignment: Math.abs(summary.left - name.left),
+      actionGap: actions.left - summary.right
+    };
+  });
+  expect(mobileMethodLayout.connected).toBeLessThan(1);
+  expect(mobileMethodLayout.pushesNextRow).toBe(false);
+  expect(mobileMethodLayout.nameAlignment).toBeLessThanOrEqual(3);
+  expect(mobileMethodLayout.actionGap).toBeGreaterThanOrEqual(0);
+});
+
 async function chooseCustomOption(page, selectId, value) {
   const select = page.locator(`#${selectId}`);
   if ((await select.getAttribute('data-value')) === value) return;
@@ -177,17 +435,18 @@ test('intermediate materials follow craft order, show usage, and open an indepen
   const intermediateNames = await page.locator('.intermediate-tree-row .material-name').allTextContents();
   expect(intermediateNames.indexOf('ブロンズインゴット')).toBeLessThan(intermediateNames.indexOf('バスタードソード'));
   await expect(bastardNode.locator('.badge')).toHaveText('鍛冶Lv2');
-  const craftJobIcon = bastardNode.locator('.badge .job-icon');
+  await expect(bastardNode.locator('.badge .job-icon')).toHaveCount(0);
+  const craftJobIcon = bastardNode.locator('.craft-job-label > .job-icon');
   await expect(craftJobIcon).toHaveAttribute('src', './assets/job-icons/blacksmith.webp');
   await expect(craftJobIcon).toHaveAttribute('alt', '');
   await expect(craftJobIcon).toHaveAttribute('aria-hidden', 'true');
-  const craftBadgeSizes = await bastardNode.locator('.badge').evaluate(badge => ({
-    fontSize: Number.parseFloat(getComputedStyle(badge).fontSize),
-    iconWidth: badge.querySelector('.job-icon').getBoundingClientRect().width,
-    iconHeight: badge.querySelector('.job-icon').getBoundingClientRect().height
+  const craftBadgeSizes = await bastardNode.locator('.material-primary').evaluate(primary => ({
+    fontSize: Number.parseFloat(getComputedStyle(primary.querySelector('.material-name')).fontSize),
+    iconWidth: primary.querySelector('.job-icon').getBoundingClientRect().width,
+    iconHeight: primary.querySelector('.job-icon').getBoundingClientRect().height
   }));
-  expect(Math.abs(craftBadgeSizes.iconWidth - craftBadgeSizes.fontSize)).toBeLessThan(0.1);
-  expect(Math.abs(craftBadgeSizes.iconHeight - craftBadgeSizes.fontSize)).toBeLessThan(0.1);
+  expect(Math.abs(craftBadgeSizes.iconWidth / craftBadgeSizes.fontSize - 1.154)).toBeLessThan(0.01);
+  expect(Math.abs(craftBadgeSizes.iconHeight / craftBadgeSizes.fontSize - 1.154)).toBeLessThan(0.01);
   await expect(bastardNode).not.toContainText('ブラスバスタードソードに使用');
   await expect(bastardNode.locator('.material-primary > .item-action-buttons')).toHaveCount(1);
 
@@ -218,7 +477,7 @@ test('intermediate materials follow craft order, show usage, and open an indepen
   await expect(page.locator('#materialTreeOverlay')).toHaveClass(/open/);
   await expect(page.locator('#materialTreeTitle')).toHaveText('素材ツリー');
   await expect(page.locator('.material-tree-root-summary')).toContainText('バスタードソード');
-  await expect(page.locator('.material-tree-root-summary .badge')).toHaveText('鍛冶');
+  await expect(page.locator('.material-tree-root-summary .badge-craft')).toHaveText('鍛冶Lv2');
   await expect(page.locator('.material-tree-root-summary')).not.toContainText('鍛冶師');
   await expect(page.locator('.material-tree-root-summary .node-icon')).toHaveCSS('width', '40px');
   await expect(page.locator('#materialTreeContent > .tree-node').first()).not.toContainText('バスタードソード');
@@ -515,7 +774,7 @@ test('restricts requested counts to integers from 1 through 999', async ({ page 
   await expect(page.locator('#countInput')).toHaveValue('1');
 });
 
-test('creates a named favorite list from a tree pin and exports a base36 share code', async ({ page }) => {
+test('creates a named favorite list from a tree pin and exports a compact share code', async ({ page }) => {
   await openApp(page);
   await searchFor(page, 'バスタードソード');
   await page.getByText('バスタードソード', { exact: true }).first().click();
@@ -541,7 +800,254 @@ test('creates a named favorite list from a tree pin and exports a base36 share c
   await expect(page.locator('#exportListChoices')).not.toContainText('検索履歴');
   await page.locator('#exportListChoices').getByText('剣リスト').click();
   await expect(page.locator('#exportListToggle')).toContainText('剣リスト');
-  await expect(page.locator('#exportCode')).toHaveValue(/^[0-9A-Z]+$/);
+  await expect(page.locator('#exportCode')).toHaveValue(/^Y[A-Za-z0-9_-]+$/);
+});
+
+test('converts v2 favorite storage to v3 and removes v2 only after saving it', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'ff14_favorite_lists_v2',
+      JSON.stringify({
+        version: 2,
+        selectedListId: 'old-list',
+        lists: [
+          {
+            id: 'old-list',
+            name: '旧リスト',
+            itemIds: [1602],
+            materialSelected: false
+          }
+        ]
+      })
+    );
+  });
+
+  await openApp(page);
+  const stored = await page.evaluate(() => ({
+    v2: localStorage.getItem('ff14_favorite_lists_v2'),
+    v3: JSON.parse(localStorage.getItem('ff14_favorite_lists_v3'))
+  }));
+  expect(stored.v2).toBeNull();
+  expect(stored.v3.version).toBe(3);
+  expect(stored.v3.selectedListId).toBe('old-list');
+  expect(stored.v3.lists.find(list => list.id === 'old-list')).toMatchObject({
+    name: '旧リスト',
+    itemIds: [1602],
+    recipeSelections: {}
+  });
+});
+
+test('round-trips a selected recipe through the compact favorite share code', async ({ page }) => {
+  await routeMirageRecipeVariants(page);
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'ff14_favorite_lists_v3',
+      JSON.stringify({
+        version: 3,
+        selectedListId: 'mirage-list',
+        lists: [
+          {
+            id: 'mirage-list',
+            name: 'ミラージュ',
+            itemIds: [21800],
+            recipeSelections: { 21800: '0e351054234' },
+            materialSelected: false
+          }
+        ]
+      })
+    );
+  });
+
+  await openApp(page);
+  await page.locator('#settingsBtn').click();
+  await page.locator('#exportListToggle').click();
+  await page.locator('#exportListChoices').getByText('ミラージュ', { exact: true }).click();
+  const shareCode = await page.locator('#exportCode').inputValue();
+  expect(shareCode).toMatch(/^Y[A-Za-z0-9_-]+$/);
+  expect(shareCode.length).toBeLessThan(100);
+
+  await page.locator('#importCode').fill(shareCode);
+  await page.locator('#startImportBtn').click();
+  await expect(page.locator('#settingsOverlay')).not.toHaveClass(/open/);
+
+  const imported = await page.evaluate(() => {
+    const store = JSON.parse(localStorage.getItem('ff14_favorite_lists_v3'));
+    return store.lists.find(list => list.id !== 'mirage-list' && list.name.startsWith('ミラージュ'));
+  });
+  expect(imported.itemIds).toEqual([21800]);
+  expect(imported.recipeSelections).toEqual({ 21800: '0e351054234' });
+});
+
+test('uses the favorite list recipe selection for its material calculation', async ({ page }) => {
+  await routeMirageRecipeVariants(page);
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'ff14_favorite_lists_v3',
+      JSON.stringify({
+        version: 3,
+        selectedListId: 'mirage-list',
+        lists: [
+          {
+            id: 'mirage-list',
+            name: '木工ミラージュ',
+            itemIds: [21800],
+            recipeSelections: { 21800: '0e351054234' },
+            materialSelected: false
+          }
+        ]
+      })
+    );
+  });
+
+  await openApp(page);
+  await page.locator('#favBtn').click();
+  await page.locator('#favoriteLists').getByText('木工ミラージュ', { exact: true }).click();
+  await page.locator('#recipeList').getByText('素材リストを表示').click();
+  await expect(page.locator('.materials-list')).toContainText('ウォルナット材');
+  await expect(page.locator('.materials-list')).not.toContainText('グロースフォーミュラ・ガンマ');
+
+  await page.reload();
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await expect(page.locator('.materials-list')).toContainText('ウォルナット材');
+  await expect(page.locator('.materials-list')).not.toContainText('グロースフォーミュラ・ガンマ');
+  await expect(page.locator('#confirmOverlay')).not.toHaveClass(/open/);
+});
+
+test('automatically saves a recipe method that minimizes craft job changes', async ({ page }) => {
+  await routeMirageRecipeVariants(page, {
+    parentName: 'バスタードソード',
+    includeVariantMaterial: false
+  });
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'ff14_favorite_lists_v3',
+      JSON.stringify({
+        version: 3,
+        selectedListId: 'legacy-list',
+        lists: [
+          {
+            id: 'legacy-list',
+            name: '旧ミラージュ',
+            itemIds: [1602],
+            recipeSelections: {},
+            materialSelected: false
+          }
+        ]
+      })
+    );
+  });
+
+  await openApp(page);
+  await page.locator('#favBtn').click();
+  await page.locator('#favoriteLists').getByText('旧ミラージュ', { exact: true }).click();
+  await expect(page.locator('#recipeList .badge-provisional')).toHaveCount(0);
+  await expect(page.locator('#confirmOverlay')).toHaveClass(/open/);
+  await expect(page.locator('#confirmMsg')).toContainText('製作方法情報がなかったため、次の製作方法に設定しました');
+  await expect(page.locator('#confirmMsg')).toContainText(
+    'ミラージュプリズム：鍛冶秘伝書:ミラージュプリズム'
+  );
+
+  const selections = await page.evaluate(() => {
+    const store = JSON.parse(localStorage.getItem('ff14_favorite_lists_v3'));
+    return store.lists.find(list => list.id === 'legacy-list').recipeSelections;
+  });
+  expect(selections).toEqual({ 21800: 'a0d2fcedeb3' });
+
+  await page.locator('#confirmNo').click();
+  await page.locator('#recipeList').getByText('素材リストを表示').click();
+  const intermediateMethod = page
+    .locator('.intermediate-tree-node > .intermediate-tree-row .material-name')
+    .filter({ hasText: /^ミラージュプリズム$/ })
+    .locator('xpath=ancestor::li[contains(@class,"intermediate-tree-node")]')
+    .locator(':scope > .recipe-method-control');
+  await intermediateMethod.locator('.recipe-method-summary').click();
+  await page
+    .locator('.intermediate-tree-node .recipe-method-choice')
+    .filter({ hasText: '木工秘伝書:ミラージュプリズム' })
+    .click();
+  const savedSelections = await page.evaluate(() => {
+    const store = JSON.parse(localStorage.getItem('ff14_favorite_lists_v3'));
+    return store.lists.find(list => list.id === 'legacy-list').recipeSelections;
+  });
+  expect(savedSelections).toEqual({ 21800: '0e351054234' });
+});
+
+test('finalizes missing legacy recipe methods when restoring a favorite list', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ff14_favorite_lists_v3')) return;
+    localStorage.setItem(
+      'ff14_favorite_lists_v3',
+      JSON.stringify({
+        version: 3,
+        selectedListId: 'legacy-restore-list',
+        lists: [
+          {
+            id: 'legacy-restore-list',
+            name: '旧データ復帰',
+            itemIds: [1602],
+            recipeSelections: {},
+            materialSelected: false
+          }
+        ]
+      })
+    );
+  });
+  await openApp(page);
+  await page.evaluate(() => {
+    favoriteStore.selectedListId = 'legacy-restore-list';
+    listMode = 'fav';
+    saveViewState();
+  });
+
+  await page.reload();
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await expect(page.locator('#confirmMsg')).toContainText(
+    '製作方法情報がなかったため、次の製作方法に設定しました'
+  );
+  const restoredSelections = await page.evaluate(() => {
+    const store = JSON.parse(localStorage.getItem('ff14_favorite_lists_v3'));
+    return store.lists.find(list => list.id === 'legacy-restore-list').recipeSelections;
+  });
+  expect(Object.keys(restoredSelections).length).toBeGreaterThan(0);
+
+  await page.locator('#confirmNo').click();
+  await page.reload();
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await expect(page.locator('#confirmOverlay')).not.toHaveClass(/open/);
+});
+
+test('keeps different recipe selections when summing multiple favorite lists', async ({ page }) => {
+  await routeMirageRecipeVariants(page);
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'ff14_favorite_lists_v3',
+      JSON.stringify({
+        version: 3,
+        selectedListId: null,
+        lists: [
+          {
+            id: 'carpenter-list',
+            name: '木工ミラージュ',
+            itemIds: [21800],
+            recipeSelections: { 21800: '0e351054234' },
+            materialSelected: true
+          },
+          {
+            id: 'alchemist-list',
+            name: '錬金ミラージュ',
+            itemIds: [21800],
+            recipeSelections: { 21800: '169de6ea318' },
+            materialSelected: true
+          }
+        ]
+      })
+    );
+  });
+
+  await openApp(page);
+  await page.locator('#checkedFavoriteMaterialsBtn').click();
+  await expect(page.locator('.materials-list')).toContainText('ウォルナット材');
+  await expect(page.locator('.materials-list')).toContainText('グロースフォーミュラ・ガンマ');
 });
 
 test('keeps a protected recent-items list with recipes and reverse-looked-up materials', async ({ page }) => {
@@ -637,6 +1143,49 @@ test('restores selected view state after reload without saving calculated materi
   expect(JSON.stringify(storedState)).not.toContain('ゴールデンイール');
 });
 
+test('restores left and right scroll positions after reload', async ({ page }) => {
+  await openApp(page, 600, 500);
+  await page.evaluate(() => {
+    const rootName = 'コートリーラヴァー・ソード';
+    const itemIds = [
+      itemIdForName(rootName),
+      ...recipeNames.slice(0, 60).map(itemIdForName)
+    ].filter(Boolean);
+    const list = createFavoriteList('スクロール復帰', itemIds, {}, { captureSelections: true });
+    selectFavoriteList(list.id);
+    selectRecipeByName(rootName);
+  });
+  await page.locator('#materialsViewBtn').click();
+  const rightScroll = await page.locator('#panelRight').evaluate(panel => {
+    panel.scrollTop = Math.min(180, panel.scrollHeight - panel.clientHeight);
+    panel.dispatchEvent(new Event('scroll'));
+    return panel.scrollTop;
+  });
+  expect(rightScroll).toBeGreaterThan(0);
+
+  await page.evaluate(() => showMobilePanel('left'));
+  const leftScroll = await page.locator('#recipeList').evaluate(list => {
+    list.scrollTop = Math.min(180, list.scrollHeight - list.clientHeight);
+    list.dispatchEvent(new Event('scroll'));
+    return list.scrollTop;
+  });
+  expect(leftScroll).toBeGreaterThan(0);
+  await page.evaluate(() => showMobilePanel('right'));
+  await expect
+    .poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('ff14_view_state_v1')).scroll))
+    .toMatchObject({
+      recipeList: leftScroll,
+      panelRight: rightScroll
+    });
+
+  await page.reload();
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await expect(page.locator('#mobileBackBtn')).toBeVisible();
+  await expect.poll(() => page.locator('#panelRight').evaluate(panel => panel.scrollTop)).toBe(rightScroll);
+  await page.evaluate(() => showMobilePanel('left'));
+  await expect.poll(() => page.locator('#recipeList').evaluate(list => list.scrollTop)).toBe(leftScroll);
+});
+
 test('limits the protected recent-items list to one hundred entries', async ({ page }) => {
   await openApp(page);
   await page.evaluate(async () => {
@@ -646,15 +1195,16 @@ test('limits the protected recent-items list to one hundred entries', async ({ p
       .filter(id => Number.isInteger(id) && id > 0)
       .slice(0, 101);
     localStorage.setItem(
-      'ff14_favorite_lists_v2',
+      'ff14_favorite_lists_v3',
       JSON.stringify({
-      version: 2,
+      version: 3,
       selectedListId: 'SYSTEM_RECENT_ITEMS',
         lists: [
           {
         id: 'SYSTEM_RECENT_ITEMS',
         name: '検索履歴',
-        itemIds
+        itemIds,
+        recipeSelections: {}
           }
         ]
       })
@@ -665,6 +1215,28 @@ test('limits the protected recent-items list to one hundred entries', async ({ p
   await page.locator('#favBtn').click();
   await page.locator('#favoriteLists').getByText('検索履歴', { exact: true }).click();
   await expect(page.locator('#recipeList li.fav-item-row')).toHaveCount(100);
+});
+
+test('single-column shop dialog stays compact at six hundred pixels and expands only for multiple columns', async ({
+  page
+}) => {
+  await openApp(page, 600, 720);
+  await page.evaluate(() => showShopDialog('コバルトスキレット'));
+  await expect(page.locator('#shopTitle')).toContainText('店情報: コバルトスキレット');
+  await expect(page.locator('.shop-entry')).toHaveCount(10);
+  const columnCount = () =>
+    page.locator('.shop-entry-list').evaluate(list => {
+      return getComputedStyle(list).gridTemplateColumns.split(' ').filter(Boolean).length;
+    });
+  await expect.poll(columnCount).toBe(1);
+  const compactWidth = await page.locator('#shopDialog').evaluate(dialog => dialog.getBoundingClientRect().width);
+  expect(compactWidth).toBeLessThanOrEqual(440);
+
+  await page.setViewportSize({ width: 900, height: 720 });
+  await expect.poll(columnCount).toBeGreaterThan(1);
+  await expect
+    .poll(() => page.locator('#shopDialog').evaluate(dialog => dialog.getBoundingClientRect().width))
+    .toBeGreaterThan(compactWidth);
 });
 
 test('shows shop info button and dialog for items with ShopInfo', async ({ page }) => {
@@ -705,6 +1277,42 @@ test('shows shop info button and dialog for items with ShopInfo', async ({ page 
   await expect(page.locator('#shopContent')).toContainText('リムサ・ロミンサ：下甲板層 X:8.6 Y:11.8');
   await expect(page.locator('#shopContent')).toContainText('必要友好ランク：1: 中立');
   await expect(page.locator('.shop-required-rank')).toHaveCount(1);
+  await expect
+    .poll(async () => {
+      const tops = await page
+        .locator('.shop-entry')
+        .evaluateAll(entries => entries.map(entry => entry.getBoundingClientRect().top));
+      return tops.length === 2 && tops[0] === tops[1];
+    })
+    .toBe(true);
+  const shopCards = await page.locator('.shop-entry').evaluateAll(entries =>
+    entries.map(entry => ({
+      top: entry.getBoundingClientRect().top,
+      width: entry.getBoundingClientRect().width,
+      wraps: entry.scrollWidth > entry.clientWidth + 1
+    }))
+  );
+  expect(shopCards[0].top).toBe(shopCards[1].top);
+  expect(Math.abs(shopCards[0].width - shopCards[1].width)).toBeLessThan(1);
+  expect(shopCards.some(card => card.wraps)).toBe(false);
+  const multipleShopDialogWidth = await page.locator('#shopDialog').evaluate(dialog => dialog.getBoundingClientRect().width);
+  await page.evaluate(() =>
+    showShopDialog('オーク材', {
+      allowIntermediatePurchase: true,
+      intermediatePurchase: { qty: 1 }
+    })
+  );
+  await expect(page.locator('#shopTitle')).toContainText('店情報: オーク材');
+  await expect(page.locator('.shop-entry')).toHaveCount(1);
+  await expect(page.locator('.shop-purchase-option')).toContainText('1個を購入');
+  const singleCardWidths = await page.locator('.shop-entry-list').evaluate(list => ({
+    list: list.getBoundingClientRect().width,
+    card: list.querySelector('.shop-entry').getBoundingClientRect().width
+  }));
+  expect(Math.abs(singleCardWidths.list - singleCardWidths.card)).toBeLessThan(1);
+  await expect.poll(() => page.locator('#shopDialog').evaluate(dialog => dialog.getBoundingClientRect().width)).toBeLessThanOrEqual(440);
+  const singleShopDialogWidth = await page.locator('#shopDialog').evaluate(dialog => dialog.getBoundingClientRect().width);
+  expect(singleShopDialogWidth).toBeLessThan(multipleShopDialogWidth);
 });
 
 test('purchased intermediate keeps rows visible and marks its unused materials', async ({ page }) => {
@@ -791,6 +1399,44 @@ test('purchased intermediate keeps rows visible and marks its unused materials',
   await page.getByLabel('この中間素材は購入💰して用意する').uncheck();
   await page.locator('#shopCloseBtn').click();
   await expect(restoredPurchasedNode.locator('.shop-info-btn')).toHaveText('🛒');
+});
+
+test('bulk purchase controls are collapsible and synchronize disabled state', async ({ page }) => {
+  await openApp(page);
+  await searchFor(page, 'ブラスバスタードソード');
+  await page.getByText('ブラスバスタードソード', { exact: true }).first().click();
+  await page.locator('#materialsViewBtn').click();
+  const header = page.locator('.materials-section-header').filter({ hasText: '製作する中間素材' });
+  await expect(header.locator('xpath=following-sibling::*[1]')).toHaveClass(/materials-bulk-actions/);
+  await expect(page.getByRole('button', { name: '購入取消' })).toHaveCount(2);
+  await expect(page.getByRole('button', { name: '購入取消' }).first()).toBeDisabled();
+  await page.getByRole('button', { name: '全中間素材購入' }).click();
+  await expect(page.getByRole('button', { name: '全中間素材購入' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '全素材購入' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '購入取消' }).first()).toBeEnabled();
+  await page.getByRole('button', { name: '購入取消' }).last().click();
+  await expect(page.getByRole('button', { name: '購入取消' }).first()).toBeDisabled();
+  await header.click();
+  await expect(header.locator('xpath=following-sibling::*[1]')).toHaveClass(/collapsed/);
+});
+
+test('search result selection preserves applicable purchase flags', async ({ page }) => {
+  await openApp(page);
+  await searchFor(page, 'ブラスバスタードソード');
+  await page.getByText('ブラスバスタードソード', { exact: true }).first().click();
+  await page.locator('#materialsViewBtn').click();
+  const maple = () =>
+    page
+      .locator('.intermediate-tree-row .material-name')
+      .filter({ hasText: /^メープル材$/ })
+      .locator('xpath=ancestor::li[contains(@class,"intermediate-tree-node")]');
+  await maple().locator('.shop-info-btn').click();
+  await page.getByLabel('この中間素材は購入💰して用意する').check();
+  await page.locator('#shopCloseBtn').click();
+  await searchFor(page, 'バスタードソード');
+  await page.locator('#recipeList').getByText('バスタードソード', { exact: true }).click();
+  await page.locator('#materialsViewBtn').click();
+  await expect(maple()).toHaveClass(/purchase-selected/);
 });
 
 test('purchased intermediate status is visible on mobile', async ({ page }) => {
@@ -1188,6 +1834,49 @@ test('favorite list count mode excludes zero-count items from materials', async 
   await expect(page.locator('.favorite-material-curtain-actions').getByText('どれか1アイテム')).toHaveClass(/active/);
 });
 
+test('favorite child count changes preserve the list scroll position', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'ff14_favorite_lists_v2',
+      JSON.stringify({
+        version: 2,
+        selectedListId: 'count-scroll',
+        lists: [
+          {
+            id: 'count-scroll',
+            name: '個数スクロール',
+            itemIds: ['2834', '3425', '3648', '3870', '4126', '4254', '4353', '4422', '46253']
+          }
+        ]
+      })
+    );
+  });
+  await openApp(page, 900, 400);
+  await page.locator('#favBtn').click();
+  await page.locator('#favoriteLists').getByText('個数スクロール', { exact: true }).click();
+  await page.locator('.favorite-material-curtain-toggle').click();
+  await page.locator('.favorite-material-curtain-actions').getByText('個数指定').click();
+  await page.locator('#recipeList').evaluate(list => {
+    list.scrollTop = list.scrollHeight;
+  });
+  const scrollTop = await page.locator('#recipeList').evaluate(list => list.scrollTop);
+  expect(scrollTop).toBeGreaterThan(0);
+
+  const lastControls = page.locator('#recipeList li.fav-item-row .favorite-item-count-controls').last();
+  await lastControls.getByRole('button', { name: '＋' }).click();
+  await expect.poll(() => page.locator('#recipeList').evaluate(list => list.scrollTop)).toBe(scrollTop);
+  await expect(lastControls.locator('input')).toHaveValue('2');
+
+  await lastControls.locator('input').fill('4');
+  await lastControls.locator('input').dispatchEvent('change');
+  await expect.poll(() => page.locator('#recipeList').evaluate(list => list.scrollTop)).toBe(scrollTop);
+  await expect(lastControls.locator('input')).toHaveValue('4');
+
+  await lastControls.getByRole('button', { name: '－' }).click();
+  await expect.poll(() => page.locator('#recipeList').evaluate(list => list.scrollTop)).toBe(scrollTop);
+  await expect(lastControls.locator('input')).toHaveValue('3');
+});
+
 test('favorite any-item materials cover shared ingredients for every distinct intermediate', async ({ page }) => {
   await openApp(page);
   await importFavoriteFromPlaza(page, loverWeapons.code, '宝水確認');
@@ -1403,7 +2092,11 @@ test('combined favorite materials opens directly without confirmation dialog', a
 
   await openApp(page, 423, 780);
   await page.locator('#checkedFavoriteMaterialsBtn').click();
-  await expect(page.locator('#confirmOverlay')).not.toHaveClass(/open/);
+  await expect(page.locator('#confirmOverlay')).toHaveClass(/info/);
+  await expect(page.locator('#confirmMsg')).toContainText(
+    '製作方法情報がなかったため、次の製作方法に設定しました'
+  );
+  await page.locator('#confirmNo').click();
   await expect(
     page.locator('.favorite-list-root-summary').filter({ hasText: 'コートリーブーツ・ディフェンダー' })
   ).toBeVisible();
@@ -1485,7 +2178,11 @@ test('checked favorite lists use a dedicated combined materials entry and reset 
   await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
 
   await page.locator('#checkedFavoriteMaterialsBtn').click();
-  await expect(page.locator('#confirmOverlay')).not.toHaveClass(/open/);
+  await expect(page.locator('#confirmOverlay')).toHaveClass(/info/);
+  await expect(page.locator('#confirmMsg')).toContainText(
+    '製作方法情報がなかったため、次の製作方法に設定しました'
+  );
+  await page.locator('#confirmNo').click();
   await expect(
     page.locator('.favorite-list-root-summary').filter({ hasText: 'コートリーブーツ・ディフェンダー' })
   ).toBeVisible();
@@ -1532,6 +2229,42 @@ test('checked favorite lists use a dedicated combined materials entry and reset 
   await expect(page.locator('#favoriteLists .favorite-list-material-checkbox:checked')).toHaveCount(0);
 });
 
+test('multiple rings show production bulk controls and preserve purchases when counts change', async ({ page }) => {
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      'ff14_favorite_lists_v2',
+      JSON.stringify({
+        version: 2,
+        selectedListId: 'multi-ring',
+        lists: [{ id: 'multi-ring', name: '複数指輪', itemIds: [4422, 4430], materialSelected: true }]
+      })
+    )
+  );
+  await openApp(page);
+  await page.locator('#checkedFavoriteMaterialsBtn').click();
+  const production = page.locator('.production-content-section');
+  await expect(production.locator('.favorite-ring-bulk-actions').getByRole('button')).toHaveText([
+    '全て0',
+    '全て1つ',
+    '全て2つ'
+  ]);
+  const copper = page
+    .locator('.intermediate-tree-row .material-name')
+    .filter({ hasText: /^カッパーインゴット$/ })
+    .locator('xpath=ancestor::li[contains(@class,"intermediate-tree-node")]');
+  await copper.locator('.shop-info-btn').click();
+  await page.getByLabel('この中間素材は購入💰して用意する').check();
+  await page.locator('#shopCloseBtn').click();
+  await production.getByRole('button', { name: '全て2つ' }).click();
+  await expect(page.locator('.favorite-ring-toggle button.active').filter({ hasText: '2つ' })).toHaveCount(2);
+  await expect(
+    page
+      .locator('.intermediate-tree-row .material-name')
+      .filter({ hasText: /^カッパーインゴット$/ })
+      .locator('xpath=ancestor::li[contains(@class,"intermediate-tree-node")]')
+  ).toHaveClass(/purchase-selected/);
+});
+
 test('combined favorite materials supports ring count toggles and restores them', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem(
@@ -1560,6 +2293,8 @@ test('combined favorite materials supports ring count toggles and restores them'
   await openApp(page, 423, 780);
   await page.locator('#checkedFavoriteMaterialsBtn').click();
   await expect(page.locator('.favorite-ring-controls')).toHaveCount(2);
+  await expect(page.locator('.production-content-body > .favorite-ring-bulk-actions')).toBeVisible();
+  await expect(page.locator('.favorite-ring-bulk-actions button')).toHaveText(['全て0', '全て1つ', '全て2つ']);
   const listBox = await page.locator('.favorite-list-root-summary').last().boundingBox();
   const ringBox = await page.locator('.favorite-ring-controls').last().boundingBox();
   expect(listBox).toBeTruthy();
@@ -1802,6 +2537,29 @@ test('equipment search lists target gear and saves results as a favorite list', 
   await expect(page.locator('#recipeList')).toContainText('コートリーラヴァー・ソード');
 });
 
+test('equipment search reset clears only the conditions', async ({ page }) => {
+  await openApp(page);
+  await page.locator('#equipmentSearchToggle').click();
+  await chooseCustomOption(page, 'equipmentJobSelect', 'ナイト');
+  await page.locator('#equipmentLevelInput').fill('100');
+  await page.locator('#equipmentLevelInput').dispatchEvent('input');
+  await chooseCustomOption(page, 'equipmentItemLevelSelect', '770');
+  await page.locator('#equipmentSearchBtn').click();
+  await page.locator('#recipeList').getByText('コートリーラヴァー・ソード', { exact: true }).click();
+  await expect(page.locator('.result-root-summary')).toContainText('コートリーラヴァー・ソード');
+
+  await page.locator('#equipmentSearchResetBtn').click();
+  await expect(page.locator('#equipmentJobSelect')).toHaveAttribute('data-value', '');
+  await expect(page.locator('#equipmentLevelInput')).toHaveValue('100');
+  await expect(page.locator('#equipmentItemLevelSelect')).toHaveAttribute('data-value', '');
+  await expect(page.locator('#equipmentSlotSelect')).toHaveAttribute('data-value', 'all');
+  await expect(page.locator('#equipmentSearchBtn')).toBeDisabled();
+  await expect(page.locator('#equipmentSearchPanel')).toHaveClass(/open/);
+  await expect(page.locator('#recipeList')).toContainText('コートリーラヴァー・ソード');
+  await expect(page.locator('.result-root-summary')).toContainText('コートリーラヴァー・ソード');
+  await expect(page.locator('#saveEquipmentSearchBtn')).toBeEnabled();
+});
+
 test('equipment search uses custom dropdowns and recommended roles', async ({ page }) => {
   await openApp(page);
   await expect(page.locator('.equipment-search-grid select')).toHaveCount(0);
@@ -1842,7 +2600,7 @@ test('equipment search uses custom dropdowns and recommended roles', async ({ pa
   await page.locator('#equipmentLevelInput').fill('45');
   await page.locator('#equipmentLevelInput').dispatchEvent('input');
   await expect(page.locator('#equipmentItemLevelSelect .custom-select-option[data-value="45"]')).toHaveCount(1);
-  await expect(page.locator('#equipmentItemLevelSelect')).toHaveAttribute('data-value', '45');
+  await expect(page.locator('#equipmentItemLevelSelect')).toHaveAttribute('data-value', '46');
   await page.locator('#equipmentLevelInput').fill('46');
   await page.locator('#equipmentLevelInput').dispatchEvent('input');
   await expect(page.locator('#equipmentItemLevelSelect .custom-select-option[data-value="48"]')).toHaveCount(0);
@@ -1921,7 +2679,17 @@ test('short search runs on blur and clear button resets it', async ({ page }) =>
   await expect(page.locator('#recipeList li').first()).toContainText('岩塩');
   await page.locator('#searchClearBtn').click();
   await expect(page.locator('#searchBox')).toHaveValue('');
-  await expect(page.locator('#recipeList')).toContainText('該当するレシピがありません');
+  await expect(page.locator('#recipeList .search-empty-message')).toHaveText('条件に一致するアイテムがありません');
+  await expect(page.locator('#recipeList .search-empty-scope')).toHaveText(
+    '⚠️ このアプリには、製作レシピがあるアイテムと、製作に必要なアイテムのみ登録されています。'
+  );
+  const [messageBox, scopeBox] = await Promise.all([
+    page.locator('#recipeList .search-empty-message').boundingBox(),
+    page.locator('#recipeList .search-empty-scope').boundingBox()
+  ]);
+  expect(messageBox).toBeTruthy();
+  expect(scopeBox).toBeTruthy();
+  expect(scopeBox.y).toBeGreaterThanOrEqual(messageBox.y + messageBox.height);
 });
 
 test('updated search results and result views return to the top', async ({ page }) => {
@@ -1946,6 +2714,20 @@ test('equipment search item levels update by job and restore after reload', asyn
   await openApp(page);
 
   await page.locator('#equipmentSearchToggle').click();
+  await chooseCustomOption(page, 'equipmentJobSelect', '調理師');
+  await page.locator('#equipmentLevelInput').fill('50');
+  await page.locator('#equipmentLevelInput').dispatchEvent('input');
+  await expect(page.locator('#equipmentItemLevelSelect')).toHaveAttribute('data-value', '70');
+  await page.locator('#equipmentLevelInput').fill('51');
+  await page.locator('#equipmentLevelInput').dispatchEvent('input');
+  await expect(page.locator('#equipmentItemLevelSelect')).toHaveAttribute('data-value', '70');
+  await page.locator('#equipmentLevelInput').blur();
+  await chooseCustomOption(page, 'equipmentItemLevelSelect', '65');
+  await chooseCustomOption(page, 'equipmentSlotSelect', 'mainTool');
+  await page.locator('#equipmentSearchBtn').click();
+  await expect(page.locator('#recipeList')).toContainText('イフリートフライパン');
+  await expect(page.locator('#recipeList')).not.toContainText('アーティザンクリナリーナイフ');
+
   await chooseCustomOption(page, 'equipmentJobSelect', '竜騎士');
   await page.locator('#equipmentLevelInput').fill('100');
   await page.locator('#equipmentLevelInput').dispatchEvent('input');
@@ -1991,6 +2773,40 @@ test('equipment search item levels update by job and restore after reload', asyn
     .locator('#equipmentLevelInput')
     .evaluate(element => element.getBoundingClientRect().width);
   expect(levelInputWidth).toBeGreaterThanOrEqual(42);
+});
+
+test('equipment search maximum item level never decreases as equipment level rises', async ({ page }) => {
+  await openApp(page);
+
+  const result = await page.evaluate(() => {
+    const failures = [];
+    let checkedLevels = 0;
+    EQUIPMENT_JOB_OPTIONS.forEach(job => {
+      setCustomSelectValue(elements.equipmentJobSelect, job);
+      let previousMaximum = 0;
+      equipmentLevelsForJob(job)
+        .sort((a, b) => a - b)
+        .forEach(level => {
+          elements.equipmentLevelInput.value = String(level);
+          updateEquipmentItemLevelOptions();
+          const maximum = selectedEquipmentItemLevel();
+          checkedLevels += 1;
+          if (maximum < previousMaximum) {
+            failures.push({ job, level, previousMaximum, maximum });
+          }
+          previousMaximum = maximum;
+        });
+    });
+    return {
+      checkedJobs: EQUIPMENT_JOB_OPTIONS.length,
+      checkedLevels,
+      failures
+    };
+  });
+
+  expect(result.checkedJobs).toBeGreaterThan(0);
+  expect(result.checkedLevels).toBeGreaterThan(result.checkedJobs);
+  expect(result.failures).toEqual([]);
 });
 
 test('equipment search excludes bait from web search targets', async ({ page }) => {
@@ -2129,6 +2945,12 @@ test('equipment search prefers tenacity or piety and shows only differing tied p
       Name,
       IconFile: '000000.webp',
       ItemUICategoryName: '頭防具',
+      Recipe: {
+        CraftType: '1',
+        AmountResult: '1',
+        Ingredients: []
+      },
+      CraftInfo: [{ job: '鍛冶師', level: 50 }],
       EquipmentInfo: {
         jobs: ['ナイト'],
         equipLevel: 50,
@@ -2185,6 +3007,21 @@ test('equipment search prefers tenacity or piety and shows only differing tied p
   await page.locator('#saveEquipmentSearchBtn').click();
   await page.locator('#textInputOkBtn').click();
   await expect(page.locator('#recipeList .equipment-parameters')).toHaveCount(2);
+  await page
+    .locator('#recipeList li')
+    .filter({ has: page.getByText('試験用同値頭A', { exact: true }) })
+    .click();
+  await expect(page.locator('.result-root-summary .equipment-parameters')).toHaveText('DEX +3');
+  await expect(page.locator('.result-root-summary')).not.toContainText('STR +9');
+
+  await page.evaluate(() => {
+    const list = getDisplayedFavoriteList();
+    list.itemIds.push(990012);
+    saveFavorites();
+    renderList();
+  });
+  await expect(page.locator('#recipeList .equipment-parameters')).toHaveCount(2);
+  await expect(page.locator('#recipeList')).not.toContainText('STR +9');
 });
 
 test('title returns to the startup view', async ({ page }) => {

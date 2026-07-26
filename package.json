@@ -13,15 +13,20 @@
     "dev": "py -m http.server 4173 --bind 0.0.0.0 --directory site",
     "pipeline:gui": "tauri dev",
     "pipeline:gui:build": "tauri build",
-    "check": "npm-run-all check:js check:site check:calculation check:pipeline",
-    "check:js": "node --check site/calculation.js && node --check site/app.js && node --check site/sw.js && node --check tools/validate-site.mjs && node --check pipeline/tool/pipeline-tool.mjs && node --check pipeline/tool/xivapi-update-monitor.mjs && node --check pipeline/gui/main.js",
+    "check": "npm-run-all check:js check:site check:calculation check:pipeline check:xivapi-analysis",
+    "check:js": "node --check site/calculation.js && node --check site/app.js && node --check site/sw.js && node --check tools/validate-site.mjs && node --check tools/safe-format.mjs && node --check tools/run-e2e.mjs && node --check pipeline/tool/pipeline-tool.mjs && node --check pipeline/tool/xivapi-update-monitor.mjs && node --check pipeline/gui/main.js",
     "check:calculation": "node --test tests/calculation.test.js",
-    "check:pipeline": "node --test tests/pipeline-tool.test.mjs tests/gui-contract.test.mjs tests/xivapi-update-monitor.test.mjs",
+    "check:pipeline": "node --test tests/pipeline-tool.test.mjs tests/gui-contract.test.mjs tests/e2e-config.test.mjs tests/safe-format.test.mjs tests/xivapi-update-monitor.test.mjs",
+    "check:xivapi-analysis": "node --test xivapi-analysis/tests/*.test.mjs && node --check xivapi-analysis/cli.mjs",
     "check:site": "node tools/validate-site.mjs",
     "format:check": "prettier --check \"**/*.{html,css,js,mjs,json,md,yml,yaml,webmanifest}\"",
-    "format": "prettier --write \"**/*.{html,css,js,mjs,json,md,yml,yaml,webmanifest}\"",
+    "format": "node tools/safe-format.mjs --write",
     "lint:md": "markdownlint-cli2",
-    "test:e2e": "playwright test"
+    "test:e2e": "node tools/run-e2e.mjs",
+    "xivapi:download": "node xivapi-analysis/cli.mjs download",
+    "xivapi:analyze": "node xivapi-analysis/cli.mjs analyze",
+    "xivapi:validate": "node xivapi-analysis/cli.mjs validate",
+    "xivapi:status": "node xivapi-analysis/cli.mjs status"
   },
   "repository": {
     "type": "git",
@@ -46,6 +51,7 @@
   "dependencies": {
     "dompurify": "^3.4.11",
     "marked": "^18.0.5",
-    "swiper": "^14.0.5"
+    "swiper": "^14.0.5",
+    "yaml": "^2.9.0"
   }
 }

@@ -1,0 +1,313 @@
+[
+  {
+    "id": "item-base",
+    "title": "名前・説明・分類など、アイテムそのものを知る",
+    "explanation": "Item.csvを追加すると、対象アイテムの名前、説明、アイコン、売却基準価格、スタック数、レアリティ、HQ可否、収集品可否、取引可否が分かります。ItemUICategory.csv、ItemSearchCategory.csv、ItemSortCategory.csvも結合すると、カテゴリIDだけでなくカテゴリ名と並び順まで分かります。",
+    "information": "名称、説明、アイコン、売却基準価格、スタック数、レアリティ、HQ・収集品・取引可否、各種カテゴリ",
+    "csv": ["Item", "ItemUICategory", "ItemSearchCategory", "ItemSortCategory"],
+    "joinPath": "Item → ItemUICategory／ItemSearchCategory／ItemSortCategory",
+    "confidence": "verified",
+    "notes": "Item.csvだけで大部分を取得でき、カテゴリ名は各カテゴリCSVで補完する。"
+  },
+  {
+    "id": "equipment",
+    "title": "装備条件と全ステータスを知る",
+    "explanation": "Item.csvを追加すると、対象アイテムの装備レベル、装備部位、装備可能条件、物理・魔法性能、付与ステータスのIDと値が分かります。ItemLevel.csv、EquipSlotCategory.csv、ClassJobCategory.csv、ClassJob.csv、BaseParam.csvを結合すると、装備可能ジョブ名と、CP・GP・作業精度・加工精度・獲得力・技術力を含む全ステータスの名前と値まで分かります。",
+    "information": "装備レベル、アイテムレベル、装備部位、装備可能ジョブ、物理・魔法性能、全ベースパラメータ",
+    "csv": [
+      "Item",
+      "ItemLevel",
+      "EquipSlotCategory",
+      "ClassJobCategory",
+      "ClassJob",
+      "BaseParam"
+    ],
+    "joinPath": "Item → ItemLevel／EquipSlotCategory／ClassJobCategory／ClassJob／BaseParam",
+    "confidence": "verified",
+    "notes": "クラフター・ギャザラー用CP／GP／作業精度／加工精度／獲得力／技術力も同じ経路で取得できる。"
+  },
+  {
+    "id": "item-effects",
+    "title": "食事・薬品など、使用時の効果を知る",
+    "explanation": "Item.csvとItemAction.csvを追加すると、対象アイテムを使用したときに呼ばれるアクションが分かります。食事・薬品系ではItemFood.csvとBaseParam.csvまで結合すると、上昇するステータス、その上昇率、上限値の候補が分かります。ただしItemAction.Dataの意味を確定する追加検証が必要です。",
+    "information": "アイテム使用アクションと、食事・薬品等のステータス補正候補",
+    "csv": ["Item", "ItemAction", "ItemFood", "BaseParam"],
+    "joinPath": "Item → ItemAction。ItemAction.Dataの意味に応じてItemFood → BaseParam",
+    "confidence": "partial",
+    "notes": "ItemAction.Dataの種別解釈はEXDSchemaだけでは完結しないため、ItemFoodへの対応は追加検証が必要。"
+  },
+  {
+    "id": "recipe",
+    "title": "何を何個使って、どのジョブで製作するかを知る",
+    "explanation": "Recipe.csvを追加すると、対象アイテムがレシピの完成品か素材か、必要素材と数量、完成個数が分かります。CraftType.csvとRecipeLevelTable.csvを結合すると製作ジョブ名、製作レベル、難易度、耐久、必要工数・加工精度が分かり、SecretRecipeBook.csv、Quest.csv、Status.csvまで結合すると秘伝書や開放条件も分かります。",
+    "information": "完成品、全素材、数量、製作数、製作ジョブ、製作レベル、難易度、耐久、必要工数・加工精度、秘伝書・開放条件",
+    "csv": [
+      "Recipe",
+      "Item",
+      "CraftType",
+      "RecipeLevelTable",
+      "RecipeNotebookList",
+      "SecretRecipeBook",
+      "Quest",
+      "Status"
+    ],
+    "joinPath": "Item ← Recipe.ItemResult／Ingredient、Recipe → CraftType／RecipeLevelTable／RecipeNotebookList／SecretRecipeBook／Quest／Status",
+    "confidence": "verified",
+    "notes": "複数レシピ、二次レシピ、収集品メタデータも識別できる。"
+  },
+  {
+    "id": "gathering",
+    "title": "採掘・園芸で、どこから採れるかを知る",
+    "explanation": "GatheringItem.csvを追加すると、対象アイテムが採掘・園芸の採集物か分かります。GatheringPointBase.csv、GatheringPoint.csv、Level.csvをたどると採集ポイントと座標が分かり、GatheringType.csv、GatheringSubCategory.csv、TerritoryType.csv、PlaceName.csvを結合すると採集種別、伝承録等の分類、エリア名まで分かります。",
+    "information": "採掘・園芸の採集対象、採集レベル、必要技術力、採集ポイント、エリア、座標、採集種別、伝承録等のサブカテゴリ",
+    "csv": [
+      "GatheringItem",
+      "GatheringPointBase",
+      "GatheringPoint",
+      "GatheringType",
+      "GatheringSubCategory",
+      "TerritoryType",
+      "PlaceName",
+      "Level"
+    ],
+    "joinPath": "Item ← GatheringItem ← GatheringPointBase ← GatheringPoint → TerritoryType／PlaceName。Level.Object → GatheringPointで座標取得",
+    "confidence": "verified",
+    "notes": "GatheringPointBase.ItemはItemではなくGatheringItem／SpearfishingItem参照であることをEXDSchemaで確認済み。"
+  },
+  {
+    "id": "timed-gathering",
+    "title": "未知・刻限などの出現時間と採集条件を知る",
+    "explanation": "GatheringPointTransient.csvとGatheringRarePopTimeTable.csvを採集ポイントへ結合すると、対象アイテムを採れるポイントの出現時間候補が分かります。GatheringPointBonus.csv、GatheringCondition.csv、GatheringPointBonusType.csvも加えると追加採集条件が分かります。ただしポイントとの対応規則と天候条件には追加検証が残ります。",
+    "information": "未知・刻限等の出現時間と追加採集条件",
+    "csv": [
+      "GatheringPoint",
+      "GatheringPointTransient",
+      "GatheringRarePopTimeTable",
+      "GatheringPointBonus",
+      "GatheringCondition",
+      "GatheringPointBonusType"
+    ],
+    "joinPath": "GatheringPointとGatheringPointTransientの対応 → GatheringRarePopTimeTable。GatheringPoint → GatheringPointBonus",
+    "confidence": "partial",
+    "notes": "Transientとの対応は行キー規則を実データで検証する必要がある。天候条件が別データに隠れている可能性もある。"
+  },
+  {
+    "id": "fishing",
+    "title": "魚をどこで釣れるか、どんな制限があるかを知る",
+    "explanation": "FishParameter.csvとFishingSpot.csvを追加すると、対象アイテムが魚か、釣り場、エリア、座標、釣り場レベルが分かります。FishingNoteInfo.csv、FishingRecordType.csv、AquariumFish.csv、AquariumWater.csvを結合すると魚のサイズ、図鑑分類、水槽対応、時間・天候制限の有無まで分かります。具体的な餌や泳がせ条件は、この組合せだけでは完全には分かりません。",
+    "information": "釣り対象、釣り場、座標、釣り場レベル、魚サイズ、水槽、天候・時間制限、図鑑分類",
+    "csv": [
+      "FishParameter",
+      "FishingSpot",
+      "FishingNoteInfo",
+      "FishingRecordType",
+      "AquariumFish",
+      "AquariumWater",
+      "TerritoryType",
+      "PlaceName"
+    ],
+    "joinPath": "Item ← FishParameter → FishingSpot／FishingRecordType。Item ← FishingSpot → TerritoryType／PlaceName。Item ← FishingNoteInfo",
+    "confidence": "verified",
+    "notes": "具体的な餌、泳がせ、天候遷移等はこれらのCSVだけでは完全に表現されない可能性がある。"
+  },
+  {
+    "id": "spearfishing",
+    "title": "刺突漁でどこから採れるかを知る",
+    "explanation": "SpearfishingItem.csvを追加すると、対象アイテムが刺突漁の対象か分かります。GatheringPointBase.csv、GatheringPoint.csv、Level.csv、TerritoryType.csvを結合すると採集ポイント、座標、エリア、採集レベルが分かり、FishingRecordType.csvから図鑑分類も分かります。",
+    "information": "刺突漁対象、エリア、採集レベル、図鑑分類",
+    "csv": [
+      "SpearfishingItem",
+      "GatheringPointBase",
+      "GatheringPoint",
+      "TerritoryType",
+      "FishingRecordType"
+    ],
+    "joinPath": "Item ← SpearfishingItem ← GatheringPointBase ← GatheringPoint、およびSpearfishingItem → TerritoryType",
+    "confidence": "verified",
+    "notes": "採集ポイント座標はGatheringPointとLevelを追加して補完できる。"
+  },
+  {
+    "id": "gil-shop",
+    "title": "ギルで買えるか、誰がどこで売るかを知る",
+    "explanation": "GilShopItem.csvを追加すると、対象アイテムがギルショップの商品か、HQ販売か、販売条件があるかが分かります。GilShop.csv、ENpcBase.csv、ENpcResident.csv、Level.csv、TerritoryType.csv、Map.csv、PlaceName.csvを逆引きすると、ショップ、販売NPC、エリア、座標まで分かります。販売価格の確定方法とNPCへの逆引き規則には追加検証が必要です。",
+    "information": "ギル購入可否、HQ販売、販売条件、ショップ名、販売NPC、エリア・座標",
+    "csv": [
+      "GilShopItem",
+      "GilShop",
+      "ENpcBase",
+      "ENpcResident",
+      "Level",
+      "TerritoryType",
+      "Map",
+      "PlaceName"
+    ],
+    "joinPath": "Item ← GilShopItem。GilShopItemのサブ行親キー → GilShop ← ENpcBase.ENpcData。ENpcBaseとENpcResident、Level.ObjectからNPC名・座標",
+    "confidence": "partial",
+    "notes": "販売価格はItem.PriceMid等との関係確認が必要。NPCへの逆引きとサブ行親キー規則は実データ検証対象。"
+  },
+  {
+    "id": "special-shop",
+    "title": "交換で入手・消費するかを知る",
+    "explanation": "SpecialShop.csvを追加すると、対象アイテムが交換の受取品か要求品か、数量、HQ条件、収集価値条件が分かります。Quest.csvとAchievement.csvを結合すると開放条件が分かり、ENpcBase.csv、ENpcResident.csv、Level.csv、TerritoryType.csv、PlaceName.csvを逆引きすると交換NPCと場所まで分かります。通常アイテムではない一部通貨は別扱いが必要です。",
+    "information": "アイテム交換の入手品・要求品・数量・HQ・収集価値・開放クエスト、交換NPCと場所",
+    "csv": [
+      "SpecialShop",
+      "SpecialShopItemCategory",
+      "ENpcBase",
+      "ENpcResident",
+      "Level",
+      "TerritoryType",
+      "PlaceName",
+      "Quest",
+      "Achievement"
+    ],
+    "joinPath": "Item ← SpecialShop.Item[*].Item／ItemCost。SpecialShop ← ENpcBase.ENpcData、ENpcBase／ENpcResident／LevelでNPCと場所",
+    "confidence": "partial",
+    "notes": "CostTypeによる通貨種別の一部はコメント段階で、すべてを通常Itemとして扱えない。"
+  },
+  {
+    "id": "collectables-shop",
+    "title": "収集品として納品できるか、報酬はいくらかを知る",
+    "explanation": "CollectablesShopItem.csvを追加すると、対象アイテムが収集品取引の納品対象か分かります。CollectablesShopRefine.csv、CollectablesShopRewardScrip.csv、CollectablesShopRewardItem.csvを結合すると必要収集価値と報酬段階が分かり、CollectablesShop.csvとQuest.csvから取引先と開放条件が分かります。",
+    "information": "収集品納品対象、必要収集価値、スクリップ報酬、ショップ、開放クエスト",
+    "csv": [
+      "CollectablesShopItem",
+      "CollectablesShop",
+      "CollectablesShopRefine",
+      "CollectablesShopRewardScrip",
+      "CollectablesShopRewardItem",
+      "Quest",
+      "ENpcBase"
+    ],
+    "joinPath": "Item ← CollectablesShopItem ← CollectablesShop。CollectablesShopItem → Refine／RewardScrip／Quest",
+    "confidence": "verified",
+    "notes": "NPCと座標まで求める場合はENpcBase、ENpcResident、Levelを逆引きする。"
+  },
+  {
+    "id": "gc-fc-shop",
+    "title": "軍票・カンパニークレジットで交換できるかを知る",
+    "explanation": "GCScripShopItem.csvを追加すると、対象アイテムの必要軍票と必要グランドカンパニー階級が分かります。FccShop.csvを追加すると必要カンパニークレジットが分かり、GrandCompanyRank.csvとFCRank.csvを結合すると必要階級・FCランクの表示名まで分かります。NPCと場所にはNPC系CSVの逆引きが必要です。",
+    "information": "軍票・カンパニークレジット交換の必要額、必要階級・FCランク",
+    "csv": [
+      "GCScripShopItem",
+      "GrandCompanyRank",
+      "FccShop",
+      "FCRank",
+      "ENpcBase",
+      "ENpcResident",
+      "Level"
+    ],
+    "joinPath": "Item ← GCScripShopItem → GrandCompanyRank。Item ← FccShop → FCRank。ショップはENpcBaseから逆引き",
+    "confidence": "partial",
+    "notes": "所属グランドカンパニーやショップNPC情報は追加のショップ定義とNPC逆引きが必要。"
+  },
+  {
+    "id": "retainer-venture",
+    "title": "リテイナーベンチャーで取れるかを知る",
+    "explanation": "RetainerTaskNormal.csvを追加すると、対象アイテムをリテイナーベンチャーで取得できるかと取得数量段階が分かります。RetainerTask.csv、RetainerTaskParameter.csv、ClassJobCategory.csvを結合すると、必要レベル・獲得力・アイテムレベル、所要時間、必要ベンチャースクリップ、対応リテイナー職まで分かります。",
+    "information": "リテイナーベンチャー入手可否、取得数量、必要レベル・獲得力・アイテムレベル、所要時間、ベンチャースクリップ数",
+    "csv": [
+      "RetainerTaskNormal",
+      "RetainerTask",
+      "RetainerTaskParameter",
+      "ClassJobCategory",
+      "GatheringItem",
+      "FishParameter",
+      "SpearfishingItem"
+    ],
+    "joinPath": "Item ← RetainerTaskNormal ← RetainerTask → RetainerTaskParameter／ClassJobCategory",
+    "confidence": "verified",
+    "notes": "RetainerTask.TaskはNormal／Randomの複数参照なので行キーの存在で識別する。"
+  },
+  {
+    "id": "quest-rewards",
+    "title": "クエストで貰う・納品するアイテムかを知る",
+    "explanation": "Quest.csvを追加すると、対象アイテムがクエストの確定報酬、選択報酬、触媒として使われるかが分かります。QuestClassJobReward.csvとQuestClassJobSupply.csvを追加するとジョブ別の報酬・納品要求と数量が分かり、ClassJobCategory.csv、ENpcResident.csv、Level.csvを結合するとジョブ条件、NPC、場所まで分かります。",
+    "information": "クエスト報酬・選択報酬・納品要求、数量、ジョブ制限、NPC、開放条件",
+    "csv": [
+      "Quest",
+      "QuestClassJobReward",
+      "QuestClassJobSupply",
+      "ClassJobCategory",
+      "ENpcResident",
+      "Level"
+    ],
+    "joinPath": "Item ← Quest.Reward／OptionalItemReward／ItemCatalyst、Item ← QuestClassJobReward／QuestClassJobSupply",
+    "confidence": "verified",
+    "notes": "QuestDefineClientの複数型DefineVaueは別途候補として扱い、確定報酬には混ぜない。"
+  },
+  {
+    "id": "leves-deliveries",
+    "title": "リーヴ・調達任務・お得意様などの納品対象かを知る",
+    "explanation": "CraftLeve.csv、GCSupplyDuty.csv、SatisfactionSupply.csv、BankaCraftWorksSupply.csv、SharlayanCraftWorksSupply.csvを追加すると、対象アイテムが各納品コンテンツで要求されるか、数量、収集価値条件が分かります。Leve.csv、LeveRewardItemGroup.csv、SatisfactionNpc.csvを結合すると依頼名、依頼人、報酬候補まで分かります。コンテンツごとに報酬計算方法は異なります。",
+    "information": "製作リーヴ、調達任務、お得意様、各種納品コンテンツの対象、数量、収集価値、報酬",
+    "csv": [
+      "CraftLeve",
+      "Leve",
+      "LeveRewardItemGroup",
+      "GCSupplyDuty",
+      "SatisfactionSupply",
+      "SatisfactionNpc",
+      "BankaCraftWorksSupply",
+      "SharlayanCraftWorksSupply"
+    ],
+    "joinPath": "Item ← 各納品CSV。CraftLeve → Leve、SatisfactionSupply ↔ SatisfactionNpc、各Supply → 報酬・NPC定義",
+    "confidence": "verified",
+    "notes": "納品系コンテンツごとに報酬計算方法が異なるため、一律の値として統合しない。"
+  },
+  {
+    "id": "restoration-company-craft",
+    "title": "復興納品・カンパニークラフトで使うかを知る",
+    "explanation": "HWDCrafterSupply.csvとHWDGathererInspection.csvを追加すると、対象アイテムがイシュガルド復興の製作納品・採集検品対象かと、その条件・報酬が分かります。CompanyCraftDraft.csvとCompanyCraftSupplyItem.csvを追加するとカンパニークラフトの設計図開放・工程で必要か分かり、Process、Sequence、Partの各CSVを結合すると工程と部位まで分かります。",
+    "information": "イシュガルド復興の製作・採集検品、カンパニークラフト工程・設計図の要求品と報酬",
+    "csv": [
+      "HWDCrafterSupply",
+      "HWDGathererInspection",
+      "CompanyCraftDraft",
+      "CompanyCraftSupplyItem",
+      "CompanyCraftProcess",
+      "CompanyCraftSequence",
+      "CompanyCraftPart"
+    ],
+    "joinPath": "Item ← HWDCrafterSupply／HWDGathererInspection。Item ← CompanyCraftDraft／CompanyCraftSupplyItem ← CompanyCraftProcess → Sequence／Part",
+    "confidence": "verified",
+    "notes": "CompanyCraftProcessのSupplyItemはCompanyCraftSupplyItem参照で、直接Item参照ではない。"
+  },
+  {
+    "id": "housing-gardening",
+    "title": "調度品・庭具・種・花・水槽魚として使えるかを知る",
+    "explanation": "HousingFurniture.csvとHousingYardObject.csvを追加すると、対象アイテムが調度品か庭具か分かります。HousingPreset.csvと各CatalogItemList.csvからセット構成とカタログ分類が分かり、GardeningSeed.csv、VaseFlower.csv、AquariumFish.csvから栽培用種、花瓶対応、水槽対応かが分かります。これらは用途分類であり、入手方法そのものではありません。",
+    "information": "調度品・庭具、外装／内装セット、栽培用種、花瓶・水槽対応などの用途分類",
+    "csv": [
+      "HousingFurniture",
+      "HousingYardObject",
+      "HousingPreset",
+      "FurnitureCatalogItemList",
+      "YardCatalogItemList",
+      "GardeningSeed",
+      "VaseFlower",
+      "AquariumFish"
+    ],
+    "joinPath": "Item ← 各Housing／Catalog／Gardening／Vase／Aquariumシート",
+    "confidence": "verified",
+    "notes": "入手方法そのものではなく、ハウジング・栽培上の用途と分類を示す。"
+  },
+  {
+    "id": "special-uses",
+    "title": "染色・修理・収納・強化などの特殊用途を知る",
+    "explanation": "Stain.csv、ItemRepairResource.csv、AnimaWeapon5TradeItem.csv、GcArmyEquipPreset.csv、MirageStoreSetItem.csv、AetherialWheel.csv、WKSItemInfo.csvを調べると、対象アイテムがカララント、修理材、アニマウェポン交換、小隊装備、セット収納、エーテリアルホイール、コスモエクスプローラーで使われるか分かります。登場することは入手方法を意味しません。",
+    "information": "染色、修理材、アニマウェポン交換、冒険者小隊装備、セット収納、エーテリアルホイール等の特殊用途",
+    "csv": [
+      "Stain",
+      "ItemRepairResource",
+      "AnimaWeapon5TradeItem",
+      "GcArmyEquipPreset",
+      "MirageStoreSetItem",
+      "AetherialWheel",
+      "WKSItemInfo"
+    ],
+    "joinPath": "Item ← 各用途別シート。追加カテゴリは各シートの参照先へ結合",
+    "confidence": "verified",
+    "notes": "用途別シートへの登場は入手方法を意味しない。"
+  }
+]

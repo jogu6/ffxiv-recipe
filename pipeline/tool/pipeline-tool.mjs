@@ -45,6 +45,7 @@ const gatheringTimerPath = path.join(inputRoot, 'gathering_timer.json');
 const housingShopsPath = path.join(inputRoot, 'housing-shops.json');
 const friendlyTribeShopsPath = path.join(inputRoot, 'friendly-tribe-shops.json');
 const equipmentRoleOverridesPath = path.join(inputRoot, 'equipment-role-overrides.json');
+const craftJobsPath = path.join(inputRoot, 'web-app', 'craft-jobs.json');
 const lodestoneItemUrlsPath = path.join(stateRoot, 'lodestone-item-urls.json');
 const defaultIconQuality = 80;
 const defaultIconDelayMs = 500;
@@ -67,6 +68,7 @@ const lodestonePrimaryStatNames = ['STR', 'DEX', 'VIT', 'INT', 'MND'];
 const lodestoneRoleStatNames = ['不屈', '信仰', 'スキルスピード', 'スペルスピード'];
 const lodestoneEquipmentStatNames = [...lodestonePrimaryStatNames, ...lodestoneRoleStatNames];
 const lodestoneEquipmentStatsVersion = 2;
+const lodestoneInfoVersion = 2;
 const equipmentRoleCodes = ['tank', 'healer', 'striker_slayer', 'scout_ranger', 'caster'];
 const equipmentAggregateRoleCodes = ['fighter', 'sorcerer'];
 const equipmentOverrideRoleCodes = [...equipmentRoleCodes, ...equipmentAggregateRoleCodes];
@@ -999,6 +1001,20 @@ function extractLodestoneDetailItemName(detailHtml) {
   return title ? cleanLodestoneTitle(title) : '';
 }
 
+export function extractLodestoneIsEx(detailHtml) {
+  const source = String(detailHtml || '');
+  const headerMatch = source.match(
+    /<div\b[^>]*class=["'][^"']*\bdb-view__item__header\b[^"']*["'][^>]*>/i
+  );
+  if (!headerMatch || headerMatch.index == null) return null;
+  const headerStart = headerMatch.index;
+  const nameEnd = source.indexOf('</h2>', headerStart + headerMatch[0].length);
+  if (nameEnd < 0) return null;
+  const headerEnd = nameEnd + '</h2>'.length;
+  const headerHtml = source.slice(headerStart, headerEnd);
+  return /<span\b[^>]*class=["'][^"']*\bex_bind\b[^"']*["'][^>]*>\s*EX\s*<\/span>/i.test(headerHtml);
+}
+
 function extractTableCells(rowHtml) {
   return [...String(rowHtml || '').matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)]
     .map(match => normalizeHtmlText(match[1]))
@@ -1448,12 +1464,71 @@ export function extractLodestoneCraftInfo(recipeHtml) {
     job: jobMatch[1],
     level: Number(jobMatch[2])
   };
-  const itemName = extractLodestoneDetailItemName(recipeHtml);
-  if (itemName) {
-    const masterbookMatch = text.match(new RegExp(`${jobMatch[1]}\\s+秘伝書\\s+(秘伝書:第[0-9]+巻)\\s+${escapeRegExp(itemName)}`));
-    if (masterbookMatch) info.masterbook = masterbookMatch[1];
-  }
+  const masterbookMatch = String(recipeHtml || '').match(
+    /<p\b[^>]*class=["'][^"']*\bdb-view__recipe__text__book_name\b[^"']*["'][^>]*>([\s\S]*?)<\/p>/i
+  );
+  if (masterbookMatch) info.masterbook = normalizeHtmlText(masterbookMatch[1]);
   return info;
+}
+
+function htmlTagAttributes(tag) {
+  return Object.fromEntries(
+    [...String(tag || '').matchAll(/([\w:-]+)\s*=\s*(["'])(.*?)\2/gs)].map(([, name, , value]) => [
+      name.toLowerCase(),
+      decodeHtml(value)
+    ])
+  );
+}
+
+export function extractLodestoneRecipeData(
+  recipePath,
+  recipeHtml,
+  { craftTypeByJob = new Map(), itemIdByLodestoneKey = new Map() } = {}
+) {
+  const recipeId = String(recipePath || '').match(/\/recipe\/([a-z0-9]+)\//)?.[1] || '';
+  if (!recipeId) throw new Error('LodestoneレシピURLからRecipeIDを取得できません');
+
+  const craftInfo = extractLodestoneCraftInfo(recipeHtml);
+  if (!craftInfo) throw new Error(`Lodestoneレシピ ${recipeId} から製作ジョブとレベルを取得できません`);
+  const craftType = craftTypeByJob.get(craftInfo.job);
+  if (craftType === undefined) throw new Error(`Lodestoneレシピ ${recipeId} の製作ジョブが固定マスターにありません: ${craftInfo.job}`);
+
+  const amountMatch = String(recipeHtml || '').match(
+    /<span\b[^>]*class=(["'])[^"']*\bjs__complete_craft_count\b[^"']*\1[^>]*>([\s\S]*?)<\/span>/i
+  );
+  const amountResult = Number(normalizeHtmlText(amountMatch?.[2]));
+  if (!Number.isInteger(amountResult) || amountResult <= 0) {
+    throw new Error(`Lodestoneレシピ ${recipeId} から完成個数を取得できません`);
+  }
+
+  const materialTags = [...String(recipeHtml || '').matchAll(/<div\b[^>]*>/gi)];
+  const ingredients = materialTags
+    .map(match => htmlTagAttributes(match[0]))
+    .filter(attributes => {
+      const classes = String(attributes.class || '').split(/\s+/);
+      return classes.includes('js__material') && classes.includes('db-tree');
+    })
+    .filter(attributes => Number(attributes['data-depth']) === 1)
+    .map(attributes => {
+      const lodestoneKey = attributes['data-key'] || '';
+      const itemId = itemIdByLodestoneKey.get(lodestoneKey);
+      const name = normalizeLodestoneItemName(attributes['data-name']);
+      const amount = Number(attributes['data-num']);
+      if (!itemId) throw new Error(`Lodestoneレシピ ${recipeId} の素材IDを解決できません: ${name || lodestoneKey}`);
+      if (!name || !Number.isInteger(amount) || amount <= 0) {
+        throw new Error(`Lodestoneレシピ ${recipeId} の素材情報が不正です: ${name || lodestoneKey}`);
+      }
+      return { ItemID: String(itemId), Name: name, Amount: String(amount) };
+    });
+  if (ingredients.length === 0) throw new Error(`Lodestoneレシピ ${recipeId} から直接素材を取得できません`);
+
+  return {
+    RecipeID: recipeId,
+    CraftType: String(craftType),
+    CraftInfo: craftInfo,
+    AmountResult: String(amountResult),
+    Ingredients: ingredients
+  };
 }
 
 export async function resolveLodestoneItemDetail(item, delayMs, { cache = false, fetchText: fetchTextOverride = null } = {}) {
@@ -1789,7 +1864,15 @@ function normalizeItemForCompare(item) {
   return clone;
 }
 
-const lodestoneInfoKeys = ['ShopInfo', 'CraftInfo', 'EquipmentInfo', 'LodestoneInfoCheckedAt'];
+const lodestoneInfoKeys = [
+  'ShopInfo',
+  'CraftInfo',
+  'Recipes',
+  'EquipmentInfo',
+  'IsEx',
+  'LodestoneInfoVersion',
+  'LodestoneInfoCheckedAt'
+];
 
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
@@ -1955,24 +2038,40 @@ export function publishGatheringTimer({ target = publicItemJsonPath } = {}) {
   log(`採集情報を公開反映しました 一致 ${matched}件、未一致 ${unmatched.length}件、削除 ${removed}件`);
 }
 
-async function extractLodestoneCraftInfosForItem(item, detailHtml, delayMs) {
+function lodestoneRecipeLookupMaps(itemUrls) {
+  const craftJobs = readJson(craftJobsPath, null)?.jobs;
+  if (!Array.isArray(craftJobs) || craftJobs.length === 0) {
+    throw new Error(`クラフタージョブ固定マスターを読み込めません: ${craftJobsPath}`);
+  }
+  const craftTypeByJob = new Map(craftJobs.map(job => [job.name, String(job.craftType)]));
+  const itemIdByLodestoneKey = new Map(
+    Object.entries(itemUrls)
+      .map(([itemId, url]) => [String(url || '').match(/\/item\/([a-z0-9]+)\//)?.[1], String(itemId)])
+      .filter(([key]) => key)
+  );
+  return { craftTypeByJob, itemIdByLodestoneKey };
+}
+
+async function extractLodestoneRecipesForItem(item, detailHtml, delayMs, lookupMaps) {
   const expectedName = normalizeLodestoneItemName(item.Name);
   const craftInfos = [];
-  const seen = new Set();
+  const recipes = [];
+  const seenRecipeIds = new Set();
   for (const recipePath of extractLodestoneRecipePaths(detailHtml)) {
     assertNotCancelled();
     const recipeUrl = `https://jp.finalfantasyxiv.com${recipePath}`;
     const recipeHtml = decodeHtml(await fetchCachedLodestoneText(recipeUrl, delayMs));
     const recipeItemName = extractLodestoneDetailItemName(recipeHtml);
-    if (normalizeLodestoneItemName(recipeItemName) !== expectedName) continue;
-    const craftInfo = extractLodestoneCraftInfo(recipeHtml);
-    if (!craftInfo) continue;
-    const key = `${craftInfo.job}:${craftInfo.level}:${craftInfo.masterbook || ''}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    craftInfos.push(craftInfo);
+    if (normalizeLodestoneItemName(recipeItemName) !== expectedName) {
+      throw new Error(`Lodestoneレシピの完成品名が一致しません: ${recipeItemName || '名称取得不可'} @ ${recipePath}`);
+    }
+    const recipe = extractLodestoneRecipeData(recipePath, recipeHtml, lookupMaps);
+    if (seenRecipeIds.has(recipe.RecipeID)) throw new Error(`Lodestone RecipeIDが重複しています: ${recipe.RecipeID}`);
+    seenRecipeIds.add(recipe.RecipeID);
+    recipes.push(recipe);
+    craftInfos.push(recipe.CraftInfo);
   }
-  return craftInfos;
+  return { craftInfos, recipes };
 }
 
 async function filterUnconditionalShops(shops, delayMs) {
@@ -2002,9 +2101,11 @@ async function filterUnconditionalShops(shops, delayMs) {
   return filtered;
 }
 
-async function applyLodestoneInfoToItem(item, delayMs) {
+async function applyLodestoneInfoToItem(item, delayMs, recipeLookupMaps) {
   assertNotCancelled();
   const { detailUrl, detailHtml } = await resolveLodestoneItemDetail(item, delayMs, { cache: true });
+  const isEx = extractLodestoneIsEx(detailHtml);
+  if (isEx == null) throw new Error('Lodestoneアイテム見出しからEX情報を取得できません');
 
   const shopInfo = extractLodestoneShopInfo(detailHtml);
   const shops = shopInfo ? await filterUnconditionalShops(shopInfo.shops, delayMs) : [];
@@ -2012,28 +2113,42 @@ async function applyLodestoneInfoToItem(item, delayMs) {
   if (shopInfo && shops.length) item.ShopInfo = { price: shopInfo.price, shops };
   else delete item.ShopInfo;
 
-  const craftInfo = await extractLodestoneCraftInfosForItem(item, detailHtml, delayMs);
-  if (craftInfo.length) item.CraftInfo = craftInfo;
+  const { craftInfos, recipes } = await extractLodestoneRecipesForItem(item, detailHtml, delayMs, recipeLookupMaps);
+  if (craftInfos.length) item.CraftInfo = craftInfos;
   else delete item.CraftInfo;
+  if (recipes.length > 1) item.Recipes = recipes;
+  else delete item.Recipes;
 
   const equipmentInfo = extractLodestoneEquipmentInfo(detailHtml);
   if (equipmentInfo) item.EquipmentInfo = equipmentInfo;
   else delete item.EquipmentInfo;
+  item.IsEx = isEx;
+  item.LodestoneInfoVersion = lodestoneInfoVersion;
   item.LodestoneInfoCheckedAt = nowIso();
 
   return {
     detailUrl,
+    isEx,
     shopSales: shops.length,
-    craftInfo: craftInfo.length,
+    craftInfo: craftInfos.length,
     equipmentInfo: Boolean(equipmentInfo),
     equipmentStats: Boolean(equipmentInfo?.stats && Object.values(equipmentInfo.stats).some(value => Number(value) > 0)),
     equipmentPerformance: Boolean(equipmentInfo?.performance && Object.values(equipmentInfo.performance).some(value => Number(value) > 0))
   };
 }
 
-function hasExistingLodestoneInfo(item) {
+export function hasExistingLodestoneInfo(item) {
+  if (item?.LodestoneInfoVersion !== lodestoneInfoVersion) return false;
+  if (typeof item?.IsEx !== 'boolean') return false;
+  if (
+    Array.isArray(item?.CraftInfo) &&
+    item.CraftInfo.length > 1 &&
+    (!Array.isArray(item?.Recipes) || item.Recipes.length !== item.CraftInfo.length)
+  ) {
+    return false;
+  }
   if (item?.EquipmentInfo && !item.EquipmentInfo.stats) return false;
-  if (item?.EquipmentInfo?.statsVersion !== lodestoneEquipmentStatsVersion) return false;
+  if (item?.EquipmentInfo && item.EquipmentInfo.statsVersion !== lodestoneEquipmentStatsVersion) return false;
   if (item?.EquipmentInfo?.stats
     && lodestoneEquipmentStatNames.some(stat => !Object.hasOwn(item.EquipmentInfo.stats, stat))) return false;
   if (item?.EquipmentInfo && !item.EquipmentInfo.performance) return false;
@@ -2153,9 +2268,11 @@ export async function publishLodestoneInfo({
   let equipmentMatched = 0;
   let equipmentStatsMatched = 0;
   let equipmentPerformanceMatched = 0;
+  let exMatched = 0;
   let failed = 0;
   let skipped = 0;
   const itemUrls = readJson(lodestoneItemUrlsPath, {});
+  const recipeLookupMaps = lodestoneRecipeLookupMaps(itemUrls);
   lodestoneEtaStats = { fetch: 0, cache: 0, memory: 0 };
   lodestoneShopConditionCache = new Map();
   cancellationEnabled = true;
@@ -2175,14 +2292,15 @@ export async function publishLodestoneInfo({
           log(`Lodestone ${processed}/${limitedItems.length}: ${item.ID} ${item.Name} 取得済みのためスキップ`);
           continue;
         }
-        const result = await applyLodestoneInfoToItem(item, delayMs);
+        const result = await applyLodestoneInfoToItem(item, delayMs, recipeLookupMaps);
         if (result.detailUrl) itemUrls[String(item.ID)] = result.detailUrl;
         if (result.shopSales > 0) shopMatched += 1;
         if (result.craftInfo > 0) craftMatched += 1;
         if (result.equipmentInfo) equipmentMatched += 1;
         if (result.equipmentStats) equipmentStatsMatched += 1;
         if (result.equipmentPerformance) equipmentPerformanceMatched += 1;
-        log(`Lodestone ${processed}/${limitedItems.length}: ${item.ID} ${item.Name} 店${result.shopSales} 製作${result.craftInfo} 装備${result.equipmentInfo ? 1 : 0} ステータス${result.equipmentStats ? 1 : 0} 基本性能${result.equipmentPerformance ? 1 : 0}`);
+        if (result.isEx) exMatched += 1;
+        log(`Lodestone ${processed}/${limitedItems.length}: ${item.ID} ${item.Name} 店${result.shopSales} 製作${result.craftInfo} 装備${result.equipmentInfo ? 1 : 0} ステータス${result.equipmentStats ? 1 : 0} 基本性能${result.equipmentPerformance ? 1 : 0} EX${result.isEx ? 1 : 0}`);
       } catch (error) {
         failed += 1;
         log(`Lodestone警告 ${processed}/${limitedItems.length}: ${item.ID} ${item.Name}: ${error.message}`);
@@ -2226,12 +2344,85 @@ export async function publishLodestoneInfo({
   log(`装備推奨ロール情報: 自動 ${roleResult.automatic}件、手動対象 ${roleResult.groups}グループ、手動反映 ${roleResult.applied}件、未指定 ${roleResult.missing}グループ`);
   writeJsonAtomic(target, items);
   if (path.resolve(target) === publicItemJsonPath) {
-    updateDataCacheVersion({ itemJsonPath: target, salt: `lodestone-info-${processed}-${shopMatched}-${craftMatched}-${equipmentMatched}-${equipmentStatsMatched}-${failed}-${housingResult.shopAdded}-${friendlyTribeResult.shopAdded}`, reason: 'lodestone-info' });
+    updateDataCacheVersion({ itemJsonPath: target, salt: `lodestone-info-${processed}-${shopMatched}-${craftMatched}-${equipmentMatched}-${equipmentStatsMatched}-${exMatched}-${failed}-${housingResult.shopAdded}-${friendlyTribeResult.shopAdded}`, reason: 'lodestone-info' });
   } else {
     log('公開Item.json以外が対象のため、データキャッシュ版の更新をスキップしました');
   }
   updateRunState({ command: 'publish-lodestone-info', status: 'completed', finalOutput: path.relative(repositoryRoot, target) });
-  log(`Lodestone情報を候補反映しました 処理 ${processed}件、スキップ ${skipped}件、店 ${shopMatched}件、製作 ${craftMatched}件、装備 ${equipmentMatched}件、ステータス ${equipmentStatsMatched}件、基本性能 ${equipmentPerformanceMatched}件、失敗 ${failed}件`);
+  log(`Lodestone情報を候補反映しました 処理 ${processed}件、スキップ ${skipped}件、店 ${shopMatched}件、製作 ${craftMatched}件、装備 ${equipmentMatched}件、ステータス ${equipmentStatsMatched}件、基本性能 ${equipmentPerformanceMatched}件、EX ${exMatched}件、失敗 ${failed}件`);
+}
+
+export function publishLodestoneRecipesFromCache({ target = publicCandidatePath } = {}) {
+  log('Lodestoneキャッシュからレシピ候補の生成を開始しました');
+  const items = readJson(target, null);
+  if (!Array.isArray(items)) throw new Error(`Item JSON is not an item array: ${target}`);
+  const itemUrls = readJson(lodestoneItemUrlsPath, {});
+  const lookupMaps = lodestoneRecipeLookupMaps(itemUrls);
+  const itemNameById = new Map(items.map(item => [String(item.ID), normalizeLodestoneItemName(item.Name)]));
+  const store = openLodestoneShopCacheStore();
+  const globalRecipeIds = new Set();
+  let recipeItems = 0;
+  let multiRecipeItems = 0;
+  let recipeVariants = 0;
+
+  const readCached = url => {
+    const html = readLodestoneShopCacheEntry(store, lodestoneCacheKey(url));
+    if (!html) throw new Error(`Lodestoneキャッシュがありません: ${url}`);
+    return decodeHtml(html);
+  };
+
+  try {
+    for (const item of items) {
+      const itemUrl = itemUrls[String(item.ID)];
+      if (!itemUrl) continue;
+      const detailHtml = readCached(itemUrl);
+      const recipePaths = extractLodestoneRecipePaths(detailHtml);
+      if (recipePaths.length === 0) {
+        delete item.Recipes;
+        continue;
+      }
+
+      const expectedName = normalizeLodestoneItemName(item.Name);
+      const recipes = recipePaths.map(recipePath => {
+        const recipeHtml = readCached(`https://jp.finalfantasyxiv.com${recipePath}`);
+        const resultName = normalizeLodestoneItemName(extractLodestoneDetailItemName(recipeHtml));
+        if (resultName !== expectedName) {
+          throw new Error(
+            `${item.ID} ${item.Name}: Lodestoneレシピの完成品名が一致しません: ${resultName || '名称取得不可'}`
+          );
+        }
+        const recipe = extractLodestoneRecipeData(recipePath, recipeHtml, lookupMaps);
+        if (globalRecipeIds.has(recipe.RecipeID)) {
+          throw new Error(`RecipeIDがアイテム間で重複しています: ${recipe.RecipeID}`);
+        }
+        globalRecipeIds.add(recipe.RecipeID);
+        for (const ingredient of recipe.Ingredients) {
+          const actualName = itemNameById.get(String(ingredient.ItemID));
+          if (actualName !== normalizeLodestoneItemName(ingredient.Name)) {
+            throw new Error(
+              `${item.ID} ${item.Name}: 素材のLodestoneキーと名称が一致しません: ${ingredient.ItemID} ${ingredient.Name}`
+            );
+          }
+        }
+        return recipe;
+      });
+
+      item.CraftInfo = recipes.map(recipe => recipe.CraftInfo);
+      if (recipes.length > 1) item.Recipes = recipes;
+      else delete item.Recipes;
+      recipeItems += 1;
+      recipeVariants += recipes.length;
+      if (recipes.length > 1) multiRecipeItems += 1;
+    }
+  } finally {
+    store.close();
+  }
+
+  writeJsonAtomic(target, items);
+  log(
+    `Lodestoneレシピ候補を作成しました 対象 ${recipeItems}件、複数 ${multiRecipeItems}件、レシピ ${recipeVariants}件`
+  );
+  return { itemCount: items.length, recipeItems, multiRecipeItems, recipeVariants };
 }
 
 export function smokeTest({ root = fs.mkdtempSync(path.join(os.tmpdir(), 'ffxiv-pipeline-smoke-')) } = {}) {
@@ -2771,6 +2962,8 @@ function printHelp() {
   publish-gathering         既存Item.jsonへ採集情報だけを反映
   publish-lodestone-info [--name アイテム名] [--limit 件数] [--delay 100] [--target path] [--force]
                              Lodestone由来の店/製作/装備情報を公開候補JSONへ反映
+  publish-lodestone-recipes [--target path]
+                             取得済みLodestoneキャッシュから全レシピを候補JSONへ反映
   migrate-lodestone-cache [--dry-run] [--limit 件数] [--keep-html]
                              旧Lodestone HTMLキャッシュを検証済みSQLiteへ逐次移行
   equipment-role-groups [--item-json path]
@@ -2819,6 +3012,11 @@ export async function main(argv = process.argv.slice(2)) {
     name: args.name ? String(args.name) : '',
     force: Boolean(args.force)
   });
+  if (command === 'publish-lodestone-recipes') {
+    return publishLodestoneRecipesFromCache({
+      target: args.target ? path.resolve(String(args.target)) : publicCandidatePath
+    });
+  }
   if (command === 'migrate-lodestone-cache') {
     cancellationEnabled = true;
     try {

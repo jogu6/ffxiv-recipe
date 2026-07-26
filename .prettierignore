@@ -6,6 +6,12 @@ pipeline/input/
 pipeline/intermediate/
 pipeline/reference/csv-headers/
 pipeline/logs/
+xivapi-analysis/source/
+xivapi-analysis/cache/
+xivapi-analysis/logs/
+xivapi-analysis/state/
+xivapi-analysis/output/
+xivapi-analysis/reports/
 
 # Binary assets
 site/assets/

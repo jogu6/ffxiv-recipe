@@ -1,11 +1,12 @@
-const DATA_CACHE_VERSION = 'ff14recipe-data-7.50-b8abd5cd';
+const DATA_CACHE_VERSION = 'ff14recipe-data-7.50-fb8a6c57';
 const DATA_FILE = `./data/Item.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 const TIPS_FILE = './data/tips.md';
 const ABOUT_URL = ['127.0.0.1', 'localhost'].includes(location.hostname)
   ? `http://${location.hostname}:4174/`
   : 'https://jogu6.github.io/ffxiv-recipe-about/';
 const LS_FAV = 'ff14_favorites';
-const LS_FAV_LISTS = 'ff14_favorite_lists_v2';
+const LS_FAV_LISTS = 'ff14_favorite_lists_v3';
+const LS_FAV_LISTS_LEGACY = 'ff14_favorite_lists_v2';
 const LS_FAV_COUNTS = 'ff14_favorite_item_counts_v1';
 const LS_SEARCH_HISTORY = 'ff14_search_history';
 const LS_VIEW_STATE = 'ff14_view_state_v1';
@@ -23,8 +24,13 @@ const REQUEST_COUNT_MAX = 999;
 const MIN_LOADING_OVERLAY_MS = 2500;
 const loadingOverlayStartedAt = Date.now();
 const EORZEA_TIME_MULTIPLIER = 144 / 7;
-const { calculateCraft, calculateRequirements, mergeAlternativeRequirements, validateRequestedCount } =
-  RecipeCalculation;
+const {
+  calculateCraft,
+  calculateRequirements,
+  mergeAlternativeRequirements,
+  mergeSummedRequirements,
+  validateRequestedCount
+} = RecipeCalculation;
 
 const CRAFT_TYPE_NAME = {
   0: '木工師',
@@ -153,6 +159,7 @@ const elements = {
   gatheringContent: document.getElementById('gatheringContent'),
   gatheringCloseBtn: document.getElementById('gatheringCloseBtn'),
   shopOverlay: document.getElementById('shopOverlay'),
+  shopDialog: document.getElementById('shopDialog'),
   shopTitle: document.getElementById('shopTitle'),
   shopPriceHeader: document.getElementById('shopPriceHeader'),
   shopContent: document.getElementById('shopContent'),
@@ -162,9 +169,13 @@ const elements = {
 // Application state and indexes
 let itemMaster = {};
 let recipes = {};
+let recipeVariants = {};
+let activeRecipeIds = {};
+let defaultRecipeIds = {};
 let recipeNames = [];
 let selectedRecipe = null;
-let favoriteStore = { version: 2, selectedListId: null, lists: [] };
+let selectedRecipeId = '';
+let favoriteStore = { version: 3, selectedListId: null, lists: [] };
 let searchHistory = [];
 let tipsData = [];
 let idToRecipeName = {};
@@ -180,7 +191,6 @@ let equipmentSearchOpen = false;
 let equipmentSearchResults = [];
 let equipmentSearchIndex = new Map();
 let equipmentParameterDisplayNames = new Set();
-let equipmentItemLevelSourceLevel = 0;
 let floatingDialogScrollState = null;
 let maxEquipmentLevel = 1;
 let favoriteMaterialsRingCounts = {};
@@ -195,6 +205,7 @@ let materialTreeRecipe = null;
 let expandedFavoriteListActionsId = null;
 let expandedFavoriteMaterialActions = false;
 let favoriteMaterialsListIds = [];
+const autoSelectedRecipeNoticeKeys = new Set();
 let favoriteMaterialCalcMode = 'sum';
 let checkedFavoriteMaterialCalcMode = 'sum';
 let favoriteAnyItemProductionExpanded = true;
@@ -207,6 +218,13 @@ let purchasedIntermediateContext = '';
 let purchasedIntermediateNames = new Set();
 let searchInputTimerId = 0;
 let searchCompositionActive = false;
+let scrollStateSaveFrame = 0;
+let viewScrollPositions = {
+  recipeList: 0,
+  usesList: 0,
+  treeContainer: 0,
+  panelRight: 0
+};
 
 const treePinMap = new Map();
 const exchangeTreeState = new Map();
@@ -400,7 +418,8 @@ function craftJobName(method) {
   return CRAFT_JOB_ABBREVIATIONS[method] || method;
 }
 
-function craftJobLevelLabel(method, craftLevel) {
+function craftJobLevelLabel(method, craftLevel, masterbook = '') {
+  if (masterbook) return masterbook;
   const level = toNumeric(craftLevel, 0);
   return level > 0 ? `${craftJobName(method)}Lv${level}` : craftJobName(method);
 }
@@ -489,6 +508,7 @@ function currentMobilePanel() {
 
 function saveViewState() {
   if (!canSaveViewState || suppressViewStateSave) return;
+  rememberVisibleScrollPositions();
   writeStoredJson(LS_VIEW_STATE, {
     v: 1,
     dataVersion: DATA_CACHE_VERSION,
@@ -499,6 +519,7 @@ function saveViewState() {
     },
     selected: {
       recipe: selectedRecipe || '',
+      recipeId: selectedRecipeId || '',
       favoriteListId: favoriteStore.selectedListId || '',
       usesItem: selectedUsesItem || ''
     },
@@ -529,12 +550,50 @@ function saveViewState() {
       slot: customSelectValue(elements.equipmentSlotSelect),
       results: listMode === 'equipment' ? equipmentSearchResults : [],
       parameterNames: listMode === 'equipment' ? [...equipmentParameterDisplayNames] : []
-    }
+    },
+    scroll: { ...viewScrollPositions }
+  });
+}
+
+function scrollPositionContainers() {
+  return {
+    recipeList: elements.recipeList,
+    usesList: elements.usesList,
+    treeContainer: elements.treeContainer,
+    panelRight: elements.panelRight
+  };
+}
+
+function isScrollPositionActive(key) {
+  if (!isMobile()) return true;
+  const panel = currentMobilePanel();
+  if (key === 'recipeList') return panel === 'left';
+  if (key === 'usesList') return panel === 'middle';
+  return panel === 'right';
+}
+
+function rememberVisibleScrollPositions() {
+  Object.entries(scrollPositionContainers()).forEach(([key, container]) => {
+    if (isScrollPositionActive(key)) viewScrollPositions[key] = container.scrollTop;
+  });
+}
+
+function scheduleScrollStateSave() {
+  if (scrollStateSaveFrame) return;
+  scrollStateSaveFrame = requestAnimationFrame(() => {
+    scrollStateSaveFrame = 0;
+    saveViewState();
   });
 }
 
 function clearViewState() {
   removeStoredItem(LS_VIEW_STATE);
+  viewScrollPositions = {
+    recipeList: 0,
+    usesList: 0,
+    treeContainer: 0,
+    panelRight: 0
+  };
   purchasedIntermediateContext = '';
   purchasedIntermediateNames.clear();
 }
@@ -560,6 +619,7 @@ function restoreViewState() {
         })
       : [];
     const recipe = recipes[state.selected?.recipe] ? state.selected.recipe : '';
+    const recipeId = activateRecipeVariant(recipe, state.selected?.recipeId || '')?.recipeId || '';
     const usesItem = usedIn[state.selected?.usesItem] ? state.selected.usesItem : '';
     const equipmentState = state.equipmentSearch || {};
     setCustomSelectValue(elements.equipmentJobSelect, equipmentState.job || '');
@@ -585,6 +645,7 @@ function restoreViewState() {
     else listMode = search.trim() ? 'search' : 'none';
 
     selectedRecipe = recipe || null;
+    selectedRecipeId = recipe ? recipeId : '';
     selectedUsesItem = usesItem || null;
     elements.countInput.value = count || '1';
     readRequestedCount(elements.countInput);
@@ -594,6 +655,18 @@ function restoreViewState() {
     favoriteMaterialsListIds =
       restoreFavoriteMaterials && restoredFavoriteMaterialIds.length >= 1 ? restoredFavoriteMaterialIds : [];
     setResultSourceMode(restoreFavoriteMaterials ? 'favorite-materials' : 'recipe');
+    const restoredRecipeLists = restoreFavoriteMaterials
+      ? favoriteMaterialsListIds.length > 0
+        ? favoriteMaterialsListIds.map(findFavoriteList).filter(Boolean)
+        : [favoriteList].filter(Boolean)
+      : listMode === 'fav' && favoriteList
+        ? [favoriteList]
+        : [];
+    resolveAndReportRecipeSelections(restoredRecipeLists);
+    if (favoriteMaterialsListIds.length === 0 && listMode === 'fav' && favoriteList) {
+      applyRecipeSelectionContext(favoriteList.recipeSelections);
+      if (selectedRecipe) selectedRecipeId = activeRecipeVariant(selectedRecipe)?.recipeId || '';
+    }
     const restoredFavoriteMaterialCalcMode = ['counts', 'any-one'].includes(state.favoriteMaterials?.calcMode)
       ? state.favoriteMaterials.calcMode
       : 'sum';
@@ -617,7 +690,10 @@ function restoreViewState() {
         ? state.materials.purchasedNames.filter(name => typeof name === 'string')
         : []
     );
-    if (resultSourceMode === 'favorite-materials') selectedRecipe = null;
+    if (resultSourceMode === 'favorite-materials') {
+      selectedRecipe = null;
+      selectedRecipeId = '';
+    }
     setResultViewMode(state.view?.resultMode === 'materials' ? 'materials' : 'tree');
     updateFavoriteButtonState();
     renderList();
@@ -638,6 +714,20 @@ function restoreViewState() {
     } else {
       clearMobilePanels();
     }
+    const restoredScroll = state.scroll || {};
+    viewScrollPositions = {
+      recipeList: Math.max(0, toNumeric(restoredScroll.recipeList)),
+      usesList: Math.max(0, toNumeric(restoredScroll.usesList)),
+      treeContainer: Math.max(0, toNumeric(restoredScroll.treeContainer)),
+      panelRight: Math.max(0, toNumeric(restoredScroll.panelRight))
+    };
+    const restoreScrollPositions = () => {
+      Object.entries(scrollPositionContainers()).forEach(([key, container]) => {
+        container.scrollTop = viewScrollPositions[key];
+      });
+    };
+    restoreScrollPositions();
+    requestAnimationFrame(restoreScrollPositions);
     if (activeInput) {
       setTimeout(() => document.getElementById(activeInput)?.focus(), 0);
     }
@@ -725,6 +815,29 @@ function normalizeItemIds(itemIds) {
   return [...new Set(itemIds.map(id => parseInt(id, 10)).filter(id => Number.isInteger(id) && id > 0))];
 }
 
+function normalizeRecipeSelections(value) {
+  const stored = normalizeStoredRecipeSelections(value);
+  const normalized = {};
+  Object.entries(stored).forEach(([itemId, recipeId]) => {
+    const name = itemNameForId(itemId);
+    const variants = recipeVariants[name] || [];
+    if (variants.length <= 1 || !variants.some(variant => variant.recipeId === recipeId)) return;
+    normalized[itemId] = recipeId;
+  });
+  return normalized;
+}
+
+function normalizeStoredRecipeSelections(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const normalized = {};
+  Object.entries(value).forEach(([itemId, recipeId]) => {
+    const numericId = parseInt(itemId, 10);
+    if (!Number.isInteger(numericId) || numericId <= 0 || typeof recipeId !== 'string' || !recipeId) return;
+    normalized[String(numericId)] = recipeId;
+  });
+  return normalized;
+}
+
 function withDuplicateSuffix(baseName, suffixNumber) {
   if (suffixNumber === 0) return baseName.slice(0, FAVORITE_NAME_MAX);
   const suffix = `（${suffixNumber}）`;
@@ -751,7 +864,8 @@ function createRecentList(itemIds = []) {
   return {
     id: RECENT_LIST_ID,
     name: RECENT_LIST_NAME,
-    itemIds: normalizedIds
+    itemIds: normalizedIds,
+    recipeSelections: {}
   };
 }
 
@@ -773,6 +887,46 @@ function updateFavoriteButtonState() {
 
 function getFavoriteListRecipeNames(list = getDisplayedFavoriteList()) {
   return list ? list.itemIds.map(itemNameForId).filter(name => name && recipes[name]) : [];
+}
+
+function favoriteRecipeSelection(name, list = getDisplayedFavoriteList()) {
+  const itemId = itemIdForName(name);
+  if (!list || !itemId || (recipeVariants[name] || []).length <= 1) return '';
+  return list.recipeSelections?.[String(itemId)] || '';
+}
+
+function setFavoriteRecipeSelection(name, recipeId, list = getDisplayedFavoriteList()) {
+  const itemId = itemIdForName(name);
+  const variants = recipeVariants[name] || [];
+  if (!list || isRecentList(list) || !itemId || variants.length <= 1) return false;
+  if (!variants.some(variant => variant.recipeId === recipeId)) return false;
+  if (!list.recipeSelections) list.recipeSelections = {};
+  if (list.recipeSelections[String(itemId)] === recipeId) return false;
+  list.recipeSelections[String(itemId)] = recipeId;
+  saveFavorites();
+  return true;
+}
+
+function collectActiveRecipeSelections(rootNames) {
+  const selections = {};
+  const visited = new Set();
+  const stack = [...rootNames];
+  while (stack.length > 0) {
+    const name = stack.pop();
+    if (!name || visited.has(name)) continue;
+    visited.add(name);
+    const variants = recipeVariants[name] || [];
+    const recipe = activeRecipeVariant(name);
+    if (!recipe) continue;
+    if (variants.length > 1 && recipe.recipeId) {
+      const itemId = itemIdForName(name);
+      if (itemId) selections[String(itemId)] = recipe.recipeId;
+    }
+    recipe.ingredients.forEach(ingredient => {
+      if (recipes[ingredient.name]) stack.push(ingredient.name);
+    });
+  }
+  return selections;
 }
 
 function getMaterialSelectedFavoriteLists() {
@@ -848,11 +1002,16 @@ function itemNameForId(id) {
   return idToItemName[parseInt(id, 10)] || null;
 }
 
-function createFavoriteList(name, itemIds = []) {
+function createFavoriteList(name, itemIds = [], recipeSelections = {}, { captureSelections = false } = {}) {
+  const normalizedItemIds = normalizeItemIds(itemIds);
+  const capturedSelections = captureSelections
+    ? collectActiveRecipeSelections(normalizedItemIds.map(itemNameForId).filter(Boolean))
+    : {};
   const list = {
     id: createFavoriteListId(),
     name: uniqueFavoriteListName(name),
-    itemIds: normalizeItemIds(itemIds),
+    itemIds: normalizedItemIds,
+    recipeSelections: normalizeRecipeSelections({ ...capturedSelections, ...recipeSelections }),
     materialSelected: false
   };
   favoriteStore.lists.push(list);
@@ -863,12 +1022,15 @@ function createFavoriteList(name, itemIds = []) {
 
 function loadFavorites() {
   localStorage.removeItem(LS_FAV);
-  const stored = readStoredJson(LS_FAV_LISTS, null);
+  const storedV3 = readStoredJson(LS_FAV_LISTS, null);
+  const storedV2 = storedV3 ? null : readStoredJson(LS_FAV_LISTS_LEGACY, null);
+  const stored = storedV3 || storedV2;
   const storedLists = Array.isArray(stored?.lists)
     ? stored.lists.map(list => ({
         id: typeof list.id === 'string' ? list.id : createFavoriteListId(),
         name: normalizeFavoriteListName(list.name),
         itemIds: normalizeItemIds(list.itemIds),
+        recipeSelections: isRecentList(list) ? {} : normalizeStoredRecipeSelections(list.recipeSelections),
         materialSelected: Boolean(list.materialSelected) && !isRecentList(list)
       }))
     : [];
@@ -889,16 +1051,37 @@ function loadFavorites() {
   const lists = [createRecentList(storedRecent?.itemIds), ...normalLists];
 
   favoriteStore = {
-    version: 2,
+    version: 3,
     selectedListId: lists.some(list => list.id === stored?.selectedListId) ? stored.selectedListId : null,
     lists
   };
-  saveFavorites();
+  const saved = saveFavorites();
+  if (storedV2 && saved) {
+    const verified = readStoredJson(LS_FAV_LISTS, null);
+    if (JSON.stringify(verified) === JSON.stringify(favoriteStore)) removeStoredItem(LS_FAV_LISTS_LEGACY);
+  }
   loadFavoriteItemCountStore();
 }
 
 function saveFavorites() {
-  writeStoredJson(LS_FAV_LISTS, favoriteStore);
+  try {
+    writeStoredJson(LS_FAV_LISTS, favoriteStore);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function validateFavoriteRecipeSelections() {
+  let changed = false;
+  favoriteStore.lists.forEach(list => {
+    if (isRecentList(list)) return;
+    const normalized = normalizeRecipeSelections(list.recipeSelections);
+    if (JSON.stringify(normalized) === JSON.stringify(list.recipeSelections || {})) return;
+    list.recipeSelections = normalized;
+    changed = true;
+  });
+  if (changed) saveFavorites();
 }
 
 function loadFavoriteItemCountStore() {
@@ -1366,7 +1549,6 @@ function selectedEquipmentItemLevel() {
 function updateEquipmentItemLevelOptions(preferredItemLevel = null) {
   const rawLevel = equipmentLevelInputValue();
   if (rawLevel <= 0) {
-    equipmentItemLevelSourceLevel = 0;
     setCustomSelectOptions(elements.equipmentItemLevelSelect, []);
     updateEquipmentSearchButtons();
     saveViewState();
@@ -1374,11 +1556,17 @@ function updateEquipmentItemLevelOptions(preferredItemLevel = null) {
   }
   const level = Math.max(1, Math.min(maxEquipmentLevel, rawLevel));
   const job = customSelectValue(elements.equipmentJobSelect);
-  const sourceLevel = equipmentLevelsForJob(job).find(candidate => candidate <= level) || 0;
-  const itemLevels = [...(equipmentSearchIndex.get(job)?.levels.get(sourceLevel)?.itemLevels || [])].sort(
-    (a, b) => b - a
-  );
-  equipmentItemLevelSourceLevel = itemLevels.length > 0 ? sourceLevel : 0;
+  const availableLevels = equipmentLevelsForJob(job).filter(candidate => candidate <= level);
+  const sourceLevel = availableLevels[0] || 0;
+  const sourceItemLevels = [
+    ...(equipmentSearchIndex.get(job)?.levels.get(sourceLevel)?.itemLevels || [])
+  ];
+  const sourceMaxItemLevel = Math.max(0, ...sourceItemLevels);
+  const higherFallbackItemLevels = availableLevels
+    .slice(1)
+    .flatMap(candidate => [...(equipmentSearchIndex.get(job)?.levels.get(candidate)?.itemLevels || [])])
+    .filter(itemLevel => itemLevel > sourceMaxItemLevel);
+  const itemLevels = [...new Set([...sourceItemLevels, ...higherFallbackItemLevels])].sort((a, b) => b - a);
   const selectedItemLevel = preferredItemLevel === null ? itemLevels[0] : preferredItemLevel;
   setCustomSelectOptions(elements.equipmentItemLevelSelect, itemLevels.map(String), String(selectedItemLevel || ''));
   updateEquipmentSearchButtons();
@@ -1429,15 +1617,6 @@ function resetEquipmentSearch() {
   elements.equipmentLevelInput.value = String(maxEquipmentLevel);
   updateEquipmentSlotOptions('all');
   updateEquipmentItemLevelOptions('');
-  equipmentSearchResults = [];
-  equipmentParameterDisplayNames.clear();
-  listMode = 'none';
-  selectedRecipe = null;
-  closeUsesPanel();
-  resetRightPanelViewState();
-  renderList();
-  renderResultView();
-  updateFavoriteButtonState();
   updateEquipmentSearchButtons();
   saveViewState();
 }
@@ -1445,7 +1624,7 @@ function resetEquipmentSearch() {
 function findEquipmentMatchesAtLevel(level, itemLevel, job, slot) {
   const slotIndex = equipmentSearchIndex.get(job)?.levels.get(level)?.slots.get(slot);
   if (!slotIndex) return [];
-  if (itemLevel && level === equipmentItemLevelSourceLevel) {
+  if (itemLevel) {
     const availableItemLevel = [...slotIndex.keys()]
       .filter(candidate => candidate <= itemLevel)
       .sort((a, b) => b - a)[0];
@@ -1465,6 +1644,19 @@ function equipmentPerformanceScore(master, slot) {
 function equipmentSpecialtyScore(master) {
   const stats = master?.equipmentInfo?.stats || {};
   return Math.max(toNumeric(stats['不屈']), toNumeric(stats['信仰']));
+}
+
+function equipmentParameterComparisonKey(name) {
+  const master = itemMaster[name];
+  if (!isEquipmentSearchTarget(master)) return '';
+  const slot = equipmentSlotForItem(master);
+  return [
+    slot,
+    equipmentEquipLevel(master),
+    equipmentItemLevel(master),
+    equipmentPerformanceScore(master, slot),
+    equipmentSpecialtyScore(master)
+  ].join(':');
 }
 
 function runEquipmentSearch() {
@@ -1515,6 +1707,7 @@ function runEquipmentSearch() {
   listMode = 'equipment';
   favoriteStore.selectedListId = null;
   selectedRecipe = null;
+  selectedRecipeId = '';
   closeUsesPanel();
   resetRightPanelViewState();
   elements.searchClearBtn.classList.remove('visible');
@@ -1534,7 +1727,7 @@ function saveEquipmentSearchAsFavorite() {
   if (equipmentSearchResults.length === 0) return;
   const itemIds = equipmentSearchResults.map(itemIdForName).filter(Boolean);
   showTextInput('お気に入りリスト名', defaultEquipmentFavoriteListName(), value => {
-    const list = createFavoriteList(value, itemIds);
+    const list = createFavoriteList(value, itemIds, {}, { captureSelections: true });
     setEquipmentSearchOpen(false);
     selectFavoriteList(list.id);
   });
@@ -1625,6 +1818,7 @@ function markRecipeListSelection(li) {
 
 function resetTreeSelection() {
   selectedRecipe = null;
+  selectedRecipeId = '';
   prevPanel = 'left';
   treePinMap.clear();
   closeUsesPanel();
@@ -1645,6 +1839,12 @@ function applyFavoriteChange(name, shouldAdd, listId = getDisplayedFavoriteList(
   if (shouldAdd && isRecentList(list)) return;
 
   if (shouldAdd && !list.itemIds.includes(id)) list.itemIds.push(id);
+  if (shouldAdd) {
+    list.recipeSelections = {
+      ...collectActiveRecipeSelections([name]),
+      ...(list.recipeSelections || {})
+    };
+  }
   if (!shouldAdd) {
     list.itemIds = list.itemIds.filter(itemId => itemId !== id);
   }
@@ -1880,6 +2080,9 @@ function selectFavoriteList(listId) {
   resetFavoriteOperationModes();
   leaveFavoriteMaterialsMode();
   favoriteStore.selectedListId = listId;
+  const selectedList = findFavoriteList(listId);
+  resolveAndReportRecipeSelections([selectedList].filter(Boolean));
+  applyRecipeSelectionContext(selectedList?.recipeSelections || {});
   if (changedList) resetCountInput();
   saveFavorites();
   listMode = 'fav';
@@ -2186,7 +2389,7 @@ function saveSelectedFavoriteListAs() {
   const source = getDisplayedFavoriteList();
   if (!source) return;
   showTextInput('新規リストとして保存', source.name, value => {
-    const list = createFavoriteList(value, source.itemIds);
+    const list = createFavoriteList(value, source.itemIds, source.recipeSelections);
     selectFavoriteList(list.id);
   });
 }
@@ -2348,7 +2551,7 @@ function addFavoriteToNewList(name) {
   closeFavoriteTarget();
   showTextInput('新しいお気に入りリスト名', formatDefaultListName(), value => {
     const id = itemIdForName(name);
-    const list = createFavoriteList(value, id ? [id] : []);
+    const list = createFavoriteList(value, id ? [id] : [], {}, { captureSelections: true });
     favoriteStore.selectedListId = list.id;
     saveFavorites();
     if (!preserveSearch) listMode = 'fav';
@@ -2445,20 +2648,98 @@ function createJobBadge(jobName, className, label) {
   return badge;
 }
 
-function createItemDisplayLabel(name, { favorite = false } = {}) {
+function createCraftJobLabel(jobName, className, label) {
+  const wrapper = createTextElement('span', 'craft-job-label', '');
+  const icon = createJobIcon(jobName);
+  if (icon) wrapper.appendChild(icon);
+  wrapper.appendChild(createTextElement('span', `${className} job-badge`, label));
+  return wrapper;
+}
+
+function masterbookGroups(craftInfo) {
+  const groups = new Map();
+  for (const info of craftInfo || []) {
+    if (!info?.masterbook || !CRAFT_JOBS_SET.has(info.job)) continue;
+    const commonName = String(info.masterbook).replace(/^[^:]*秘伝書/u, '秘伝書');
+    if (!groups.has(commonName)) groups.set(commonName, []);
+    if (!groups.get(commonName).some(entry => entry.job === info.job)) groups.get(commonName).push(info);
+  }
+  return [...groups.entries()];
+}
+
+function createMasterbookLabel(commonName, craftInfo, className) {
+  if (craftInfo.length === 1) {
+    const label = createCraftJobLabel(
+      craftInfo[0].job,
+      `${className} ${methodBadgeClass(craftInfo[0].job)}`,
+      craftInfo[0].masterbook
+    );
+    label.title = `${craftInfo[0].job}: ${craftInfo[0].masterbook}`;
+    return label;
+  }
+  const wrapper = createTextElement('span', 'craft-job-label masterbook-job-label', '');
+  const icons = createTextElement('span', 'masterbook-job-icons', '');
+  for (const info of craftInfo) {
+    const icon = createJobIcon(info.job);
+    if (icon) icons.appendChild(icon);
+  }
+  wrapper.append(
+    icons,
+    createTextElement('span', `${className} badge-masterbook job-badge`, commonName)
+  );
+  wrapper.title = craftInfo.map(info => `${info.job}: ${info.masterbook}`).join('\n');
+  return wrapper;
+}
+
+function createCraftRequirementLabels(master, className, { requireLevel = false } = {}) {
+  const groups = masterbookGroups(master.craftInfo);
+  if (groups.length > 0) {
+    return groups.map(([commonName, craftInfo]) => createMasterbookLabel(commonName, craftInfo, className));
+  }
+  if (!CRAFT_JOBS_SET.has(master.method) || (requireLevel && master.craftLevel <= 0)) return [];
+  return [
+    createCraftJobLabel(
+      master.method,
+      `${className} ${methodBadgeClass(master.method)}`,
+      craftJobLevelLabel(master.method, master.craftLevel)
+    )
+  ];
+}
+
+function recipeVariantMaster(name, variant = null) {
   const master = itemMaster[name] || {};
+  const recipe = variant || activeRecipeVariant(name);
+  if (!recipe) return master;
+  const craftInfo = recipe.craftInfo;
+  const method = CRAFT_TYPE_NAME[recipe.craftType] || master.method || 'クラフト';
+  return {
+    ...master,
+    method,
+    craftType: recipe.craftType,
+    craftLevel: toNumeric(craftInfo?.level, master.craftLevel || 0),
+    masterbook: craftInfo?.masterbook || '',
+    craftInfo: craftInfo ? [craftInfo] : []
+  };
+}
+
+function createItemDisplayLabel(
+  name,
+  { favorite = false, recipeVariant = null, provisional = false, hideCraftRequirement = false } = {}
+) {
+  const master = recipeVariant ? recipeVariantMaster(name, recipeVariant) : itemMaster[name] || {};
   const wrapper = document.createElement('span');
   wrapper.className = favorite ? 'favorite-item-label item-list-label' : 'item-list-label';
   const badges = document.createElement('span');
   badges.className = 'item-list-badges';
 
-  if (CRAFT_JOBS_SET.has(master.method) && master.craftLevel > 0) {
-    const badge = createJobBadge(
-      master.method,
-      `${favorite ? 'favorite-item-job ' : ''}badge ${methodBadgeClass(master.method)}`,
-      craftJobLevelLabel(master.method, master.craftLevel)
-    );
-    badges.appendChild(badge);
+  if (!hideCraftRequirement) {
+    for (const label of createCraftRequirementLabels(
+      master,
+      `${favorite ? 'favorite-item-job ' : ''}badge`,
+      { requireLevel: true }
+    )) {
+      badges.appendChild(label);
+    }
   }
   if (isEquipmentSearchTarget(master)) {
     badges.append(
@@ -2484,13 +2765,17 @@ function createItemDisplayLabel(name, { favorite = false } = {}) {
     }
     if (targetLabel) badges.append(createTextElement('span', 'badge badge-equipment-job', targetLabel));
   }
+  if (master.isEx === true) {
+    badges.append(createTextElement('span', 'badge badge-ex', '譲渡・出品✖'));
+  }
 
   const nameElement = createTextElement('span', favorite ? 'favorite-item-name list-name' : 'list-name', name);
   if (badges.childElementCount > 0) wrapper.appendChild(badges);
   wrapper.appendChild(nameElement);
   if ((listMode === 'equipment' || listMode === 'fav') && equipmentParameterDisplayNames.has(name)) {
+    const comparisonKey = equipmentParameterComparisonKey(name);
     const peers = [...equipmentParameterDisplayNames].filter(
-      peerName => equipmentSlotForItem(itemMaster[peerName]) === equipmentSlotForItem(master)
+      peerName => equipmentParameterComparisonKey(peerName) === comparisonKey
     );
     const parameters = Object.entries(master.equipmentInfo?.stats || {})
       .filter(([, value]) => Number(value) > 0)
@@ -2505,7 +2790,7 @@ function createItemDisplayLabel(name, { favorite = false } = {}) {
   return wrapper;
 }
 
-function createItemListRow(name, className = '') {
+function createItemListRow(name, className = '', { recipeVariant = null, provisional = false } = {}) {
   const row = document.createElement('li');
   row.className = className;
   row.title = name;
@@ -2514,7 +2799,9 @@ function createItemListRow(name, className = '') {
   if (icon) row.appendChild(icon);
   row.appendChild(
     createItemDisplayLabel(name, {
-      favorite: className.split(/\s+/).includes('fav-item-row')
+      favorite: className.split(/\s+/).includes('fav-item-row'),
+      recipeVariant,
+      provisional
     })
   );
   return row;
@@ -2522,6 +2809,19 @@ function createItemListRow(name, className = '') {
 
 function createEmptyListItem(message) {
   return createTextElement('li', 'list-empty', message);
+}
+
+function createSearchEmptyListItem() {
+  const item = createTextElement('li', 'list-empty search-list-empty', '');
+  item.append(
+    createTextElement('div', 'search-empty-message', '条件に一致するアイテムがありません'),
+    createTextElement(
+      'div',
+      'search-empty-scope',
+      '⚠️ このアプリには、製作レシピがあるアイテムと、製作に必要なアイテムのみ登録されています。'
+    )
+  );
+  return item;
 }
 
 function createMarkdownElement(tagName, className, html) {
@@ -2565,20 +2865,22 @@ function updateListEquipmentParameterNames(names) {
   if (listMode === 'equipment') return;
   equipmentParameterDisplayNames.clear();
   if (listMode !== 'fav') return;
-  const bySlot = new Map();
+  const byComparison = new Map();
   names.forEach(name => {
-    const master = itemMaster[name];
-    if (!isEquipmentSearchTarget(master)) return;
-    const slot = equipmentSlotForItem(master);
-    if (!bySlot.has(slot)) bySlot.set(slot, []);
-    bySlot.get(slot).push(name);
+    const key = equipmentParameterComparisonKey(name);
+    if (!key) return;
+    if (!byComparison.has(key)) byComparison.set(key, []);
+    byComparison.get(key).push(name);
   });
-  bySlot.forEach(slotNames => {
-    if (slotNames.length > 1) slotNames.forEach(name => equipmentParameterDisplayNames.add(name));
+  byComparison.forEach(comparisonNames => {
+    if (comparisonNames.length > 1) {
+      comparisonNames.forEach(name => equipmentParameterDisplayNames.add(name));
+    }
   });
 }
 
-function renderList() {
+function renderList({ preserveScroll = false } = {}) {
+  const scrollTop = elements.recipeList.scrollTop;
   const frag = document.createDocumentFragment();
   const names = getDisplayList();
   updateListEquipmentParameterNames(names);
@@ -2592,7 +2894,7 @@ function renderList() {
   } else if (listMode === 'fav' && names.length === 0) {
     frag.appendChild(createEmptyListItem('お気に入りはありません'));
   } else if (names.length === 0) {
-    frag.appendChild(createEmptyListItem('該当するレシピがありません'));
+    frag.appendChild(createSearchEmptyListItem());
   } else if (listMode === 'fav' && hasMaterialSelectedFavoriteLists()) {
     // Checked favorite lists use the dedicated combined-materials button under the favorite selector.
   } else {
@@ -2603,7 +2905,11 @@ function renderList() {
     names.forEach((name, index) => {
       if (listMode === 'fav') frag.appendChild(makeFavLi(name, index));
       else if (listMode === 'equipment') frag.appendChild(makeEquipmentLi(name));
-      else if (recipes[name]) frag.appendChild(makeRecipeLi(name));
+      else if (recipes[name]) {
+        for (const variant of recipeVariants[name] || [recipes[name]]) {
+          frag.appendChild(makeRecipeLi(name, variant));
+        }
+      }
       else frag.appendChild(makeIngredientLi(name));
     });
   }
@@ -2613,12 +2919,20 @@ function renderList() {
   }
 
   elements.recipeList.replaceChildren(frag);
-  elements.recipeList.scrollTop = 0;
+  elements.recipeList.scrollTop = preserveScroll ? scrollTop : 0;
   saveViewState();
 }
 
 function makeFavLi(name, index) {
-  const li = createItemListRow(name, 'fav-item-row');
+  const list = getDisplayedFavoriteList();
+  const savedRecipeId = favoriteRecipeSelection(name, list);
+  const variants = recipeVariants[name] || [];
+  const provisional = variants.length > 1 && !savedRecipeId;
+  const variant =
+    variants.find(candidate => candidate.recipeId === savedRecipeId) ||
+    defaultRecipeVariantForName(name) ||
+    activeRecipeVariant(name);
+  const li = createItemListRow(name, 'fav-item-row', { recipeVariant: variant, provisional });
   const itemId = itemIdForName(name);
   li.dataset.reorderIndex = String(index);
   li.classList.toggle('selected', selectedRecipe === name);
@@ -2689,7 +3003,7 @@ function makeFavLi(name, index) {
       checkbox.addEventListener('click', event => event.stopPropagation());
       checkbox.addEventListener('change', event => {
         setFavoriteAnyOneTarget(itemId, checkbox.checked);
-        renderList();
+        renderList({ preserveScroll: true });
         if (resultSourceMode === 'favorite-materials') renderResultView();
       });
       controls.appendChild(checkbox);
@@ -2709,7 +3023,7 @@ function makeFavLi(name, index) {
       inc.textContent = '＋';
       const commit = value => {
         setFavoriteItemCount(itemId, value);
-        renderList();
+        renderList({ preserveScroll: true });
         if (resultSourceMode === 'favorite-materials') renderResultView();
       };
       dec.addEventListener('click', event => {
@@ -2733,7 +3047,7 @@ function makeFavLi(name, index) {
 
   li.addEventListener('click', () => {
     if (countsEnabled) return;
-    if (recipes[name]) selectRecipeByName(name);
+    if (recipes[name]) selectRecipeByName(name, variant?.recipeId || '');
     else {
       clearMaterialSelectedFavoriteLists();
       markRecipeListSelection(li);
@@ -2743,15 +3057,19 @@ function makeFavLi(name, index) {
   return li;
 }
 
-function makeRecipeLi(name) {
-  const li = createItemListRow(name);
-  li.classList.toggle('selected', selectedRecipe === name);
+function makeRecipeLi(name, variant = activeRecipeVariant(name)) {
+  const li = createItemListRow(name, 'recipe-variant-row', { recipeVariant: variant });
+  li.dataset.recipeId = variant?.recipeId || '';
+  li.classList.toggle(
+    'selected',
+    selectedRecipe === name && (!variant?.recipeId || selectedRecipeId === variant.recipeId)
+  );
   appendItemActionButtons(li, createShopInfoButton(name), createGatheringTimerButton(name));
 
   li.addEventListener('click', () => {
     rememberCurrentSearch();
     markRecipeListSelection(li);
-    selectRecipe(name, li);
+    selectRecipe(name, li, variant?.recipeId || '');
   });
   return li;
 }
@@ -2801,21 +3119,39 @@ function closeUsesPanel() {
   saveViewState();
 }
 
+function usedInRecipeVariants(ingredientName) {
+  return (usedIn[ingredientName] || []).flatMap(recipeName =>
+    (recipeVariants[recipeName] || [recipes[recipeName]])
+      .filter(Boolean)
+      .filter(recipe => recipe.ingredients.some(ingredient => ingredient.name === ingredientName))
+      .map(variant => ({ recipeName, variant }))
+  );
+}
+
 // Used-in panel and mobile navigation
 function showUsesPanel(ingredientName, options = {}) {
   selectedUsesItem = ingredientName;
   if (options.record !== false) recordViewedItem(ingredientName);
-  const uses = usedIn[ingredientName] || [];
+  const uses = usedInRecipeVariants(ingredientName);
   elements.usesTitle.textContent = `${ingredientName}（${formatNumber(uses.length)}件）`;
   const frag = document.createDocumentFragment();
 
-  uses.forEach(recipeName => {
-    const li = createItemListRow(recipeName);
+  uses.forEach(({ recipeName, variant }) => {
+    const li = createItemListRow(recipeName, 'recipe-variant-row', { recipeVariant: variant });
+    li.dataset.recipeId = variant.recipeId || '';
     li.addEventListener('click', () => {
       recordViewedItem(recipeName);
       resetFavoriteOperationModes();
-      if (selectedRecipe !== recipeName || resultSourceMode === 'favorite-materials') resetCountInput();
+      if (
+        selectedRecipe !== recipeName ||
+        selectedRecipeId !== (variant.recipeId || '') ||
+        resultSourceMode === 'favorite-materials'
+      ) {
+        resetCountInput();
+      }
+      activateRecipeVariant(recipeName, variant.recipeId);
       selectedRecipe = recipeName;
+      selectedRecipeId = variant.recipeId || '';
       leaveFavoriteMaterialsMode();
       resetRightPanelViewState();
       setResultViewMode('tree');
@@ -2852,14 +3188,25 @@ function returnToList() {
   saveViewState();
 }
 
-function selectRecipe(name, li) {
+function selectRecipe(name, li, recipeId = '') {
+  const preservePurchasedIntermediates = listMode === 'search';
+  const variant = activateRecipeVariant(name, recipeId);
+  const nextRecipeId = variant?.recipeId || '';
   recordViewedItem(name);
   resetFavoriteOperationModes();
   clearMaterialSelectedFavoriteLists();
-  if (selectedRecipe !== name || resultSourceMode === 'favorite-materials') resetCountInput();
+  if (
+    selectedRecipe !== name ||
+    selectedRecipeId !== nextRecipeId ||
+    resultSourceMode === 'favorite-materials'
+  ) {
+    resetCountInput();
+  }
   selectedRecipe = name;
+  selectedRecipeId = nextRecipeId;
   closeUsesPanel();
   leaveFavoriteMaterialsMode();
+  if (preservePurchasedIntermediates) purchasedIntermediateContext = currentMaterialPurchaseContext();
   resetRightPanelViewState();
   setResultViewMode('tree');
   markRecipeListSelection(li);
@@ -2871,14 +3218,24 @@ function selectRecipe(name, li) {
   }
 }
 
-function selectRecipeByName(name) {
+function selectRecipeByName(name, recipeId = '') {
+  const variant = activateRecipeVariant(name, recipeId || activeRecipeIds[name] || '');
+  const nextRecipeId = variant?.recipeId || '';
   recordViewedItem(name);
   resetFavoriteOperationModes();
   clearMaterialSelectedFavoriteLists();
-  if (selectedRecipe !== name || resultSourceMode === 'favorite-materials') resetCountInput();
+  if (
+    selectedRecipe !== name ||
+    selectedRecipeId !== nextRecipeId ||
+    resultSourceMode === 'favorite-materials'
+  ) {
+    resetCountInput();
+  }
   selectedRecipe = name;
+  selectedRecipeId = nextRecipeId;
   closeUsesPanel();
   leaveFavoriteMaterialsMode();
+  purchasedIntermediateContext = currentMaterialPurchaseContext();
   resetRightPanelViewState();
   setResultViewMode('tree');
   renderList();
@@ -2932,25 +3289,104 @@ function iconPath(item) {
   return `./assets/item-icons/${folder}/${item.IconFile}?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 }
 
+function normalizedRecipeVariant(rawRecipe, fallbackCraftInfo = null) {
+  if (!rawRecipe || rawRecipe.CraftType === undefined || !Array.isArray(rawRecipe.Ingredients)) return null;
+  const craftType = String(rawRecipe.CraftType);
+  const craftInfo = rawRecipe.CraftInfo || fallbackCraftInfo || null;
+  return {
+    recipeId: String(rawRecipe.RecipeID || ''),
+    yield: toNumeric(rawRecipe.AmountResult, 1),
+    craftType,
+    craftInfo,
+    ingredients: rawRecipe.Ingredients.map(ingredient => ({
+      name: ingredient.Name,
+      qty: toNumeric(ingredient.Amount, 1),
+      itemId: ingredient.ItemID
+    }))
+  };
+}
+
+function recipeIngredientSignature(recipe) {
+  return (recipe?.ingredients || [])
+    .map(ingredient => `${ingredient.itemId}:${ingredient.name}:${ingredient.qty}`)
+    .join('|');
+}
+
+function defaultRecipeVariant(variants, legacyRecipe) {
+  if (variants.length <= 1) return variants[0] || null;
+  const legacy = normalizedRecipeVariant(legacyRecipe);
+  if (!legacy) return variants[0];
+  const signature = recipeIngredientSignature(legacy);
+  return (
+    variants.find(
+      variant => variant.craftType === legacy.craftType && recipeIngredientSignature(variant) === signature
+    ) ||
+    variants.find(variant => recipeIngredientSignature(variant) === signature) ||
+    variants.find(variant => variant.craftType === legacy.craftType) ||
+    variants[0]
+  );
+}
+
+function activateRecipeVariant(name, recipeId = '') {
+  const variants = recipeVariants[name] || [];
+  if (variants.length === 0) return null;
+  const variant = variants.find(candidate => candidate.recipeId === recipeId) || recipes[name] || variants[0];
+  recipes[name] = variant;
+  activeRecipeIds[name] = variant.recipeId;
+  return variant;
+}
+
+function activeRecipeVariant(name) {
+  return activateRecipeVariant(name, activeRecipeIds[name] || '');
+}
+
+function defaultRecipeVariantForName(name) {
+  const variants = recipeVariants[name] || [];
+  return variants.find(variant => variant.recipeId === defaultRecipeIds[name]) || variants[0] || null;
+}
+
+function applyRecipeSelectionContext(recipeSelections = {}) {
+  Object.keys(recipeVariants).forEach(name => {
+    if (recipeVariants[name].length > 1) activateRecipeVariant(name, defaultRecipeIds[name] || '');
+  });
+  Object.entries(recipeSelections).forEach(([itemId, recipeId]) => {
+    const name = itemNameForId(itemId);
+    if (name) activateRecipeVariant(name, recipeId);
+  });
+}
+
 function buildItemAndRecipeMasters(rawList, idToItem) {
   let maxPatch = 0;
 
   rawList.forEach(item => {
-    const recipe = item.Recipe;
+    const legacyRecipe = item.Recipe;
     const name = item.Name;
 
-    if (recipe?.PatchNumber) {
-      const patchNumber = toNumeric(recipe.PatchNumber);
+    if (legacyRecipe?.PatchNumber) {
+      const patchNumber = toNumeric(legacyRecipe.PatchNumber);
       if (patchNumber > maxPatch) maxPatch = patchNumber;
     }
 
-    if (recipe && recipe.CraftType !== undefined) {
-      const craftType = String(recipe.CraftType);
+    const variants = (Array.isArray(item.Recipes) && item.Recipes.length > 0 ? item.Recipes : [legacyRecipe])
+      .map(rawRecipe => {
+        const method = CRAFT_TYPE_NAME[rawRecipe?.CraftType] || 'クラフト';
+        const fallbackCraftInfo =
+          (item.CraftInfo || []).find(info => info.job === method) || item.CraftInfo?.[0] || null;
+        return normalizedRecipeVariant(rawRecipe, fallbackCraftInfo);
+      })
+      .filter(Boolean);
+
+    if (variants.length > 0) {
+      const recipe = defaultRecipeVariant(variants, legacyRecipe);
+      const craftType = recipe.craftType;
+      const method = CRAFT_TYPE_NAME[craftType] || 'クラフト';
+      const craftInfo = recipe.craftInfo;
       itemMaster[name] = {
-        method: CRAFT_TYPE_NAME[recipe.CraftType] || 'クラフト',
+        method,
         icon: iconPath(item),
         craftType,
-        craftLevel: toNumeric(item.CraftInfo?.[0]?.level, 0),
+        craftLevel: toNumeric(craftInfo?.level, 0),
+        masterbook: craftInfo?.masterbook || '',
         id: item.ID,
         numericId: toNumeric(item.ID),
         uiCategory: toNumeric(item.ItemUICategory),
@@ -2958,17 +3394,13 @@ function buildItemAndRecipeMasters(rawList, idToItem) {
         gatheringTimer: item.GatheringTimer || [],
         shopInfo: item.ShopInfo || null,
         equipmentInfo: item.EquipmentInfo || null,
-        craftInfo: item.CraftInfo || []
+        craftInfo: item.CraftInfo || [],
+        isEx: item.IsEx === true
       };
-      recipes[name] = {
-        yield: toNumeric(recipe.AmountResult, 1),
-        craftType,
-        ingredients: recipe.Ingredients.map(ingredient => ({
-          name: ingredient.Name,
-          qty: toNumeric(ingredient.Amount, 1),
-          itemId: ingredient.ItemID
-        }))
-      };
+      recipeVariants[name] = variants;
+      recipes[name] = recipe;
+      activeRecipeIds[name] = recipe.recipeId;
+      defaultRecipeIds[name] = recipe.recipeId;
 
       const numericId = toNumeric(item.ID, NaN);
       if (!Number.isNaN(numericId)) idToRecipeName[numericId] = name;
@@ -2983,13 +3415,15 @@ function buildItemAndRecipeMasters(rawList, idToItem) {
         uiCategoryName: item.ItemUICategoryName || '',
         gatheringTimer: item.GatheringTimer || [],
         shopInfo: item.ShopInfo || null,
-        equipmentInfo: item.EquipmentInfo || null
+        equipmentInfo: item.EquipmentInfo || null,
+        isEx: item.IsEx === true
       };
     }
   });
 
   rawList.forEach(item => {
-    item.Recipe?.Ingredients?.forEach(ingredient => {
+    const sourceRecipes = Array.isArray(item.Recipes) && item.Recipes.length > 0 ? item.Recipes : [item.Recipe];
+    sourceRecipes.flatMap(recipe => recipe?.Ingredients || []).forEach(ingredient => {
       if (itemMaster[ingredient.Name]) return;
       itemMaster[ingredient.Name] = {
         method: '',
@@ -3001,7 +3435,8 @@ function buildItemAndRecipeMasters(rawList, idToItem) {
         uiCategoryName: idToItem[ingredient.ItemID]?.ItemUICategoryName || '',
         gatheringTimer: idToItem[ingredient.ItemID]?.GatheringTimer || [],
         shopInfo: idToItem[ingredient.ItemID]?.ShopInfo || null,
-        equipmentInfo: idToItem[ingredient.ItemID]?.EquipmentInfo || null
+        equipmentInfo: idToItem[ingredient.ItemID]?.EquipmentInfo || null,
+        isEx: idToItem[ingredient.ItemID]?.IsEx === true
       };
     });
   });
@@ -3013,10 +3448,12 @@ function buildRecipeIndexes() {
   recipeNames = sortRecipeNames(Object.keys(recipes));
   const usedInSets = {};
 
-  Object.entries(recipes).forEach(([recipeName, recipe]) => {
-    recipe.ingredients.forEach(ingredient => {
-      if (!usedInSets[ingredient.name]) usedInSets[ingredient.name] = new Set();
-      usedInSets[ingredient.name].add(recipeName);
+  Object.entries(recipeVariants).forEach(([recipeName, variants]) => {
+    variants.forEach(recipe => {
+      recipe.ingredients.forEach(ingredient => {
+        if (!usedInSets[ingredient.name]) usedInSets[ingredient.name] = new Set();
+        usedInSets[ingredient.name].add(recipeName);
+      });
     });
   });
 
@@ -3074,6 +3511,7 @@ async function init() {
     const rawList = await fetchJson(DATA_FILE, status => `Item.json が見つかりません (${status})`);
     const applicationDataStartedAt = performance.now();
     updatePatchStatus(buildApplicationData(rawList));
+    validateFavoriteRecipeSelections();
     setupEquipmentSearchControls();
     performance.measure('application-data-setup', {
       start: applicationDataStartedAt,
@@ -3095,11 +3533,21 @@ async function init() {
 
 function showMobilePanel(panelName) {
   if (!isMobile()) return;
+  rememberVisibleScrollPositions();
   elements.panelLeft.classList.toggle('mobile-visible', panelName === 'left');
   elements.panelMiddle.classList.toggle('mobile-visible', panelName === 'middle');
   elements.panelRight.classList.toggle('mobile-visible', panelName === 'right');
   elements.mobileBackBtn.classList.toggle('visible', panelName !== 'left');
   elements.mobileBackBtn.dataset.panel = panelName;
+  const visibleScrollKeys =
+    panelName === 'left'
+      ? ['recipeList']
+      : panelName === 'middle'
+        ? ['usesList']
+        : ['treeContainer', 'panelRight'];
+  visibleScrollKeys.forEach(key => {
+    scrollPositionContainers()[key].scrollTop = viewScrollPositions[key];
+  });
   saveViewState();
 }
 
@@ -3121,7 +3569,7 @@ function resetRightPanelViewState() {
 
 function changeCount(delta) {
   elements.countInput.value = Math.min(REQUEST_COUNT_MAX, Math.max(1, readRequestedCount(elements.countInput) + delta));
-  renderResultView();
+  renderResultView({ preserveScroll: true });
 }
 
 function readRequestedCount(input) {
@@ -3142,8 +3590,9 @@ function handleRequestedCountInput(input, render) {
 }
 
 function commitRequestedCountInput(input, render) {
+  const previousValue = input.value;
   readRequestedCount(input);
-  render();
+  if (input.value !== previousValue || previousValue === '') render();
 }
 
 function resetCountInput() {
@@ -3233,9 +3682,14 @@ function openFavoriteMaterialsMode({ listIds = [] } = {}) {
   if (resultSourceMode !== 'favorite-materials') resetCountInput();
   favoriteMaterialsListIds = checkedIds;
   selectedRecipe = null;
+  selectedRecipeId = '';
   setResultSourceMode('favorite-materials');
   setResultViewMode('materials');
   ensureFavoriteMaterialsRingCounts();
+  const activeLists =
+    checkedIds.length > 0 ? checkedIds.map(findFavoriteList).filter(Boolean) : [getDisplayedFavoriteList()].filter(Boolean);
+  resolveAndReportRecipeSelections(activeLists);
+  if (checkedIds.length === 0) applyRecipeSelectionContext(getDisplayedFavoriteList()?.recipeSelections || {});
   resetRightPanelViewState();
   renderList();
   renderResultView();
@@ -3287,7 +3741,7 @@ function updateResultHeader() {
   });
   elements.countLabel.textContent = '個数:';
   elements.resultTitle.textContent = '';
-  const usesCount = selectedRecipe ? usedIn[selectedRecipe]?.length || 0 : 0;
+  const usesCount = selectedRecipe ? usedInRecipeVariants(selectedRecipe).length : 0;
   elements.usesBtn.textContent = `使用先 (${formatNumber(usesCount)})`;
   elements.usesBtn.classList.toggle('visible', usesCount > 0);
   elements.treeViewBtn.classList.remove('hidden');
@@ -3325,6 +3779,7 @@ function renderResultView({ preserveScroll = false } = {}) {
   elements.tipsMsg.classList.add('hidden');
   if (resultViewMode === 'materials') renderMaterialsList();
   else renderTree();
+  synchronizeRecipeMethodWidths(elements.treeContainer);
   if (preserveScroll) {
     elements.treeContainer.scrollTop = treeScrollTop;
     elements.panelRight.scrollTop = panelScrollTop;
@@ -3338,6 +3793,7 @@ function resetToStartupView() {
   resetFavoriteOperationModes();
   clearMaterialSelectedFavoriteLists();
   selectedRecipe = null;
+  selectedRecipeId = '';
   selectedUsesItem = null;
   equipmentSearchResults = [];
   setEquipmentSearchOpen(false);
@@ -3430,9 +3886,9 @@ function compareMaterialRows(a, b) {
   return compareItemNames(a.name, b.name);
 }
 
-function compareIntermediateRows(a, b) {
-  const leftRecipe = recipes[a.name];
-  const rightRecipe = recipes[b.name];
+function compareIntermediateRows(a, b, recipeMap = recipes) {
+  const leftRecipe = recipeMap[a.name];
+  const rightRecipe = recipeMap[b.name];
   const left = itemSortKey(a.name);
   const right = itemSortKey(b.name);
 
@@ -3444,10 +3900,17 @@ function compareIntermediateRows(a, b) {
   );
 }
 
-function compareAvailableIntermediateRows(a, b, previous, remainingCraftTypes, craftTypeDependencies) {
-  const previousRecipe = previous ? recipes[previous.name] : null;
-  const leftRecipe = recipes[a.name];
-  const rightRecipe = recipes[b.name];
+function compareAvailableIntermediateRows(
+  a,
+  b,
+  previous,
+  remainingCraftTypes,
+  craftTypeDependencies,
+  recipeMap = recipes
+) {
+  const previousRecipe = previous ? recipeMap[previous.name] : null;
+  const leftRecipe = recipeMap[a.name];
+  const rightRecipe = recipeMap[b.name];
   const previousCraftType = previous ? toNumeric(previousRecipe?.craftType) : null;
   const leftCraftType = toNumeric(leftRecipe?.craftType);
   const rightCraftType = toNumeric(rightRecipe?.craftType);
@@ -3469,7 +3932,7 @@ function compareAvailableIntermediateRows(a, b, previous, remainingCraftTypes, c
   const leftBlocked = waitsForRemainingCraftType(leftCraftType) ? 1 : 0;
   const rightBlocked = waitsForRemainingCraftType(rightCraftType) ? 1 : 0;
   if (leftBlocked !== rightBlocked) return leftBlocked - rightBlocked;
-  return compareIntermediateRows(a, b);
+  return compareIntermediateRows(a, b, recipeMap);
 }
 
 function compareCrystalRows(a, b) {
@@ -3765,6 +4228,7 @@ function renderFavoriteRingControls(container, list = null) {
       button.classList.toggle('active', favoriteMaterialRingCount(name, list) === value);
       button.addEventListener('click', () => {
         setFavoriteMaterialRingCount(name, value, list);
+        purchasedIntermediateContext = currentMaterialPurchaseContext();
         saveViewState();
         renderResultView({ preserveScroll: true });
       });
@@ -3781,11 +4245,306 @@ function renderFavoriteRingControls(container, list = null) {
   container.appendChild(separator);
 }
 
-function calculateMaterialRequirements(rootItems, terminalNames = []) {
-  return calculateRequirements(recipes, rootItems, {
+function renderFavoriteRingBulkControls(container, lists = []) {
+  if (favoriteMaterialsListIds.length === 0 && favoriteCountEnabled()) return;
+  const targets = (lists.length ? lists : [getDisplayedFavoriteList()])
+    .filter(Boolean)
+    .flatMap(list => getFavoriteMaterialRingNames(list).map(name => ({ list, name })));
+  if (targets.length < 2) return;
+  const controls = createTextElement('div', 'favorite-ring-bulk-actions bulk-action-row', '');
+  [0, 1, 2].forEach(value => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = value === 0 ? '全て0' : `全て${value}つ`;
+    button.disabled = targets.every(({ list, name }) => favoriteMaterialRingCount(name, list) === value);
+    button.addEventListener('click', () => {
+      targets.forEach(({ list, name }) => setFavoriteMaterialRingCount(name, value, list));
+      purchasedIntermediateContext = currentMaterialPurchaseContext();
+      saveViewState();
+      renderResultView({ preserveScroll: true });
+    });
+    controls.appendChild(button);
+  });
+  container.appendChild(controls);
+}
+
+function recipeMapForSelections(recipeSelections = {}) {
+  const contextualRecipes = { ...recipes };
+  Object.entries(recipeVariants).forEach(([name, variants]) => {
+    if (variants.length > 1) contextualRecipes[name] = defaultRecipeVariantForName(name);
+  });
+  Object.entries(normalizeRecipeSelections(recipeSelections)).forEach(([itemId, recipeId]) => {
+    const name = itemNameForId(itemId);
+    const variant = (recipeVariants[name] || []).find(candidate => candidate.recipeId === recipeId);
+    if (name && variant) contextualRecipes[name] = variant;
+  });
+  return contextualRecipes;
+}
+
+function effectiveRecipeSelectionSignature(recipeSelections = {}) {
+  return JSON.stringify(
+    Object.entries(normalizeRecipeSelections(recipeSelections))
+      .filter(([itemId, recipeId]) => {
+        const name = itemNameForId(itemId);
+        return defaultRecipeIds[name] !== recipeId;
+      })
+      .sort(([left], [right]) => Number(left) - Number(right))
+  );
+}
+
+function calculateMaterialRequirements(rootItems, terminalNames = [], recipeSelections = null) {
+  const recipeMap = recipeSelections === null ? recipes : recipeMapForSelections(recipeSelections);
+  return calculateRequirements(recipeMap, rootItems, {
     exchangeCraftTypes: EXCHANGE_CRAFT_TYPES,
     terminalNames
   });
+}
+
+function calculateFavoriteListGroups(lists, terminalNames = []) {
+  const groups = new Map();
+  lists.forEach(list => {
+    const signature = effectiveRecipeSelectionSignature(list.recipeSelections);
+    if (!groups.has(signature)) groups.set(signature, { recipeSelections: list.recipeSelections, roots: new Map() });
+    const roots = groups.get(signature).roots;
+    getFavoriteListMaterialRoots(list).forEach(root => {
+      roots.set(root.name, (roots.get(root.name) || 0) + root.qty);
+    });
+  });
+  const results = [...groups.values()].map(group =>
+    calculateMaterialRequirements(
+      [...group.roots].filter(([, qty]) => qty > 0).map(([name, qty]) => ({ name, qty })),
+      terminalNames,
+      group.recipeSelections
+    )
+  );
+  return results.length === 1 ? results[0] : mergeSummedRequirements(results);
+}
+
+function unresolvedRecipeSelections(list) {
+  if (!list || isRecentList(list)) return [];
+  const recipeMap = recipeMapForSelections(list.recipeSelections);
+  const selections = normalizeRecipeSelections(list.recipeSelections);
+  const unresolved = [];
+  const visited = new Set();
+  const stack = getFavoriteListRecipeNames(list);
+  while (stack.length > 0) {
+    const name = stack.pop();
+    if (!name || visited.has(name)) continue;
+    visited.add(name);
+    const recipe = recipeMap[name];
+    if (!recipe) continue;
+    const variants = recipeVariants[name] || [];
+    const itemId = itemIdForName(name);
+    if (variants.length > 1 && itemId && !selections[String(itemId)]) {
+      unresolved.push({ name, recipe });
+    }
+    recipe.ingredients.forEach(ingredient => {
+      if (recipeMap[ingredient.name]) stack.push(ingredient.name);
+    });
+  }
+  return unresolved.sort((left, right) => left.name.localeCompare(right.name, 'ja'));
+}
+
+function recipeSelectionLabel(name, recipe) {
+  const master = recipeVariantMaster(name, recipe);
+  return craftJobLevelLabel(master.method, master.craftLevel, master.masterbook);
+}
+
+function recipeSelectionJobScore(list, recipeSelections) {
+  const recipeMap = recipeMapForSelections(recipeSelections);
+  const roots = getFavoriteListRecipeNames(list).map(name => ({ name, qty: 1 }));
+  const result = calculateRequirements(recipeMap, roots, { exchangeCraftTypes: EXCHANGE_CRAFT_TYPES });
+  const sequence = [
+    ...orderedIntermediateRows(result, recipeMap).map(row => row.name),
+    ...roots.map(root => root.name)
+  ]
+    .map(name => recipeMap[name]?.craftType)
+    .filter(craftType => CRAFT_JOBS_SET.has(CRAFT_TYPE_NAME[craftType]));
+  let changes = 0;
+  for (let index = 1; index < sequence.length; index += 1) {
+    if (sequence[index] !== sequence[index - 1]) changes += 1;
+  }
+  return [changes, new Set(sequence).size];
+}
+
+function compareRecipeSelectionScores(left, right) {
+  return left[0] - right[0] || left[1] - right[1];
+}
+
+function resolveFavoriteRecipeSelections(list) {
+  if (!list || isRecentList(list)) return [];
+  const originalSelections = normalizeRecipeSelections(list.recipeSelections);
+  const selections = { ...originalSelections };
+  const automaticNames = new Set();
+  const selectedEntries = new Map();
+
+  while (true) {
+    const unresolved = unresolvedRecipeSelections({ ...list, recipeSelections: selections });
+    const next = unresolved.find(({ name }) => !automaticNames.has(name));
+    if (!next) break;
+    const itemId = itemIdForName(next.name);
+    if (!itemId || !next.recipe?.recipeId) break;
+    selections[String(itemId)] = next.recipe.recipeId;
+    automaticNames.add(next.name);
+    selectedEntries.set(next.name, next.recipe);
+  }
+
+  let changed = true;
+  let passes = 0;
+  while (changed && passes < Math.max(1, automaticNames.size * 2)) {
+    changed = false;
+    passes += 1;
+    [...automaticNames].forEach(name => {
+      const itemId = String(itemIdForName(name));
+      const variants = recipeVariants[name] || [];
+      let best = variants.find(variant => variant.recipeId === selections[itemId]) || variants[0];
+      let bestScore = recipeSelectionJobScore(list, selections);
+      variants.forEach(variant => {
+        const candidateSelections = { ...selections, [itemId]: variant.recipeId };
+        const score = recipeSelectionJobScore(list, candidateSelections);
+        if (compareRecipeSelectionScores(score, bestScore) < 0) {
+          best = variant;
+          bestScore = score;
+        }
+      });
+      if (best && selections[itemId] !== best.recipeId) {
+        selections[itemId] = best.recipeId;
+        changed = true;
+      }
+      if (best) selectedEntries.set(name, best);
+    });
+  }
+
+  if (JSON.stringify(selections) !== JSON.stringify(originalSelections)) {
+    list.recipeSelections = selections;
+    saveFavorites();
+  }
+  return [...selectedEntries].map(([name, recipe]) => ({ name, recipe }));
+}
+
+function recipeVariantForList(name, list) {
+  const recipeId = favoriteRecipeSelection(name, list);
+  return (
+    (recipeVariants[name] || []).find(variant => variant.recipeId === recipeId) ||
+    defaultRecipeVariantForName(name)
+  );
+}
+
+function currentRecipeSelectionList() {
+  const list = getDisplayedFavoriteList();
+  return list && !isRecentList(list) ? list : null;
+}
+
+function selectRecipeMethod(name, recipeId, list = null) {
+  const variant = (recipeVariants[name] || []).find(candidate => candidate.recipeId === recipeId);
+  if (!variant) return;
+  if (list) {
+    setFavoriteRecipeSelection(name, recipeId, list);
+    if (currentRecipeSelectionList()?.id === list.id) applyRecipeSelectionContext(list.recipeSelections);
+  } else {
+    activateRecipeVariant(name, recipeId);
+  }
+  if (name === selectedRecipe) selectedRecipeId = recipeId;
+  purchasedIntermediateNames.clear();
+  purchasedIntermediateContext = currentMaterialPurchaseContext();
+  renderList({ preserveScroll: true });
+  renderResultView({ preserveScroll: true });
+}
+
+function createRecipeMethodVisual(name, variant) {
+  const visual = createTextElement('span', 'recipe-method-visual', '');
+  const labels = createCraftRequirementLabels(recipeVariantMaster(name, variant), 'badge', {
+    requireLevel: true
+  });
+  if (labels.length > 0) visual.append(...labels);
+  else visual.appendChild(createTextElement('span', 'badge badge-craft', recipeSelectionLabel(name, variant)));
+  return visual;
+}
+
+function createRecipeMethodSelector(name, { list = null } = {}) {
+  const variants = recipeVariants[name] || [];
+  if (variants.length <= 1) return null;
+  const selected = list ? recipeVariantForList(name, list) : activeRecipeVariant(name);
+  if (!selected) return null;
+  const control = document.createElement('div');
+  control.className = 'recipe-method-control';
+  control.addEventListener('click', event => event.stopPropagation());
+
+  const details = document.createElement('div');
+  details.className = 'recipe-method-selector';
+  const summary = document.createElement('button');
+  summary.type = 'button';
+  summary.className = 'recipe-method-summary';
+  summary.appendChild(createRecipeMethodVisual(name, selected));
+  summary.addEventListener('click', () => {
+    const open = !details.classList.contains('open');
+    details.classList.toggle('open', open);
+    control.classList.toggle('open', open);
+    choices.hidden = !open;
+    summary.setAttribute('aria-expanded', String(open));
+  });
+  summary.setAttribute('aria-expanded', 'false');
+  details.appendChild(summary);
+
+  const choices = document.createElement('div');
+  choices.className = 'recipe-method-choices';
+  choices.hidden = true;
+  variants.forEach(variant => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'recipe-method-choice';
+    button.classList.toggle('selected', variant.recipeId === selected.recipeId);
+    button.append(
+      createTextElement('span', 'recipe-method-check', variant.recipeId === selected.recipeId ? '✓' : ''),
+      createRecipeMethodVisual(name, variant)
+    );
+    button.addEventListener('click', () => selectRecipeMethod(name, variant.recipeId, list));
+    choices.appendChild(button);
+  });
+  details.appendChild(choices);
+  control.appendChild(details);
+  return control;
+}
+
+function synchronizeRecipeMethodWidths(container) {
+  const selectors = [...container.querySelectorAll('.recipe-method-selector')];
+  if (selectors.length === 0) return;
+  const measure = document.createElement('div');
+  measure.className = 'recipe-method-width-measure';
+  document.body.appendChild(measure);
+  let widest = 0;
+  selectors.forEach(selector => {
+    selector.querySelectorAll('.recipe-method-visual').forEach(visual => {
+      const clone = visual.cloneNode(true);
+      measure.appendChild(clone);
+      widest = Math.max(widest, clone.getBoundingClientRect().width);
+      clone.remove();
+    });
+  });
+  measure.remove();
+  container.style.setProperty('--recipe-method-selector-width', `${Math.min(360, Math.ceil(widest + 46))}px`);
+}
+
+function resolveAndReportRecipeSelections(lists) {
+  const entries = lists
+    .map(list => ({ list, resolved: resolveFavoriteRecipeSelections(list) }))
+    .filter(entry => entry.resolved.length > 0);
+  if (entries.length === 0) return;
+  const key = entries
+    .map(
+      ({ list, resolved }) =>
+        `${list.id}:${resolved.map(({ name, recipe }) => `${name}:${recipe.recipeId}`).join(',')}`
+    )
+    .join('|');
+  if (autoSelectedRecipeNoticeKeys.has(key)) return;
+  autoSelectedRecipeNoticeKeys.add(key);
+  const details = entries
+    .flatMap(({ list, resolved }) => [
+      ...(entries.length > 1 ? [list.name] : []),
+      ...resolved.map(({ name, recipe }) => `・${name}：${recipeSelectionLabel(name, recipe)}`)
+    ])
+    .join('\n');
+  showInfo(`製作方法情報がなかったため、次の製作方法に設定しました。\n\n${details}`);
 }
 
 function intermediateUsageEntries(result, state) {
@@ -3837,7 +4596,7 @@ function materialRowsFromRequirements(result) {
   return rows;
 }
 
-function orderedIntermediateRows(result) {
+function orderedIntermediateRows(result, recipeMap = recipes) {
   const rows = new Map();
   result.states.forEach(state => {
     if (!state.recipe || state.isRoot || state.isExchange || crystalKind(state.name)) return;
@@ -3862,7 +4621,7 @@ function orderedIntermediateRows(result) {
   const craftTypeDependencies = new Map();
   const remainingCraftTypes = new Map();
   rows.forEach(row => {
-    const craftType = toNumeric(recipes[row.name]?.craftType);
+    const craftType = toNumeric(recipeMap[row.name]?.craftType);
     remainingCraftTypes.set(craftType, (remainingCraftTypes.get(craftType) || 0) + 1);
   });
   rows.forEach(row => {
@@ -3870,8 +4629,8 @@ function orderedIntermediateRows(result) {
       if (!rows.has(parentName)) return;
       indegree.set(parentName, indegree.get(parentName) + 1);
       dependents.get(row.name).push(parentName);
-      const requiredCraftType = toNumeric(recipes[row.name]?.craftType);
-      const dependentCraftType = toNumeric(recipes[parentName]?.craftType);
+      const requiredCraftType = toNumeric(recipeMap[row.name]?.craftType);
+      const dependentCraftType = toNumeric(recipeMap[parentName]?.craftType);
       if (requiredCraftType !== dependentCraftType) {
         if (!craftTypeDependencies.has(dependentCraftType)) craftTypeDependencies.set(dependentCraftType, new Set());
         craftTypeDependencies.get(dependentCraftType).add(requiredCraftType);
@@ -3883,11 +4642,11 @@ function orderedIntermediateRows(result) {
   const ordered = [];
   while (available.length > 0) {
     available.sort((a, b) =>
-      compareAvailableIntermediateRows(a, b, ordered.at(-1), remainingCraftTypes, craftTypeDependencies)
+      compareAvailableIntermediateRows(a, b, ordered.at(-1), remainingCraftTypes, craftTypeDependencies, recipeMap)
     );
     const row = available.shift();
     ordered.push(row);
-    const craftType = toNumeric(recipes[row.name]?.craftType);
+    const craftType = toNumeric(recipeMap[row.name]?.craftType);
     remainingCraftTypes.set(craftType, remainingCraftTypes.get(craftType) - 1);
     dependents.get(row.name).forEach(parentName => {
       indegree.set(parentName, indegree.get(parentName) - 1);
@@ -3896,7 +4655,11 @@ function orderedIntermediateRows(result) {
   }
   if (ordered.length < rows.size) {
     const included = new Set(ordered.map(row => row.name));
-    ordered.push(...[...rows.values()].filter(row => !included.has(row.name)).sort(compareIntermediateRows));
+    ordered.push(
+      ...[...rows.values()]
+        .filter(row => !included.has(row.name))
+        .sort((a, b) => compareIntermediateRows(a, b, recipeMap))
+    );
   }
   return ordered;
 }
@@ -3940,6 +4703,12 @@ function getFavoriteMaterialRoots() {
     .filter(Boolean);
 }
 
+function selectedRecipeContextKey() {
+  const name = selectedRecipe || '';
+  const variants = recipeVariants[name] || [];
+  return variants.length > 1 ? `recipe:${name}:${selectedRecipeId || ''}` : `recipe:${name}`;
+}
+
 function currentMaterialPurchaseContext() {
   if (resultSourceMode === 'favorite-materials') {
     const ids =
@@ -3947,7 +4716,7 @@ function currentMaterialPurchaseContext() {
     const mode = favoriteMaterialsListIds.length >= 1 ? checkedFavoriteMaterialCalcMode : favoriteMaterialCalcMode;
     return `favorite:${ids.join(',')}:${mode}:${JSON.stringify(favoriteMaterialsRingCounts)}`;
   }
-  return `recipe:${selectedRecipe || ''}`;
+  return selectedRecipeContextKey();
 }
 
 function getCurrentMaterialRequirements(terminalNames = []) {
@@ -3958,20 +4727,28 @@ function getCurrentMaterialRequirements(terminalNames = []) {
     checkedFavoriteMaterialCalcMode === 'any-one'
   ) {
     const results = getActiveFavoriteMaterialLists().map(list =>
-      calculateMaterialRequirements(getFavoriteListMaterialRoots(list), terminalNames)
+      calculateMaterialRequirements(getFavoriteListMaterialRoots(list), terminalNames, list.recipeSelections)
     );
     return mergeAlternativeRequirementsWithUsage(results);
   }
   if (resultSourceMode === 'favorite-materials' && favoriteAnyOneMode() && favoriteMaterialsListIds.length === 0) {
     const roots = getFavoriteMaterialRoots();
+    const list = getDisplayedFavoriteList();
     const results = roots.map(root =>
-      calculateMaterialRequirements([{ name: root.name, qty: root.qty }], terminalNames)
+      calculateMaterialRequirements([{ name: root.name, qty: root.qty }], terminalNames, list?.recipeSelections || {})
     );
     return mergeAlternativeRequirementsWithUsage(results);
   }
+  if (resultSourceMode === 'favorite-materials' && favoriteMaterialsListIds.length >= 1) {
+    return calculateFavoriteListGroups(getActiveFavoriteMaterialLists(), terminalNames);
+  }
   const roots =
     resultSourceMode === 'favorite-materials' ? getFavoriteMaterialRoots() : [{ name: selectedRecipe, qty: count }];
-  return calculateMaterialRequirements(roots, terminalNames);
+  return calculateMaterialRequirements(
+    roots,
+    terminalNames,
+    resultSourceMode === 'favorite-materials' ? getDisplayedFavoriteList()?.recipeSelections || {} : null
+  );
 }
 
 function createProductionContentSection(kind) {
@@ -4011,6 +4788,17 @@ function appendFavoriteListProduction(target, list) {
   const block = document.createElement('div');
   block.className = 'favorite-list-production-block';
   block.appendChild(createFavoriteListRootSummary(list));
+  getFavoriteListMaterialRoots(list).forEach(root => {
+    block.appendChild(
+      createResultRootSummary(
+        root.name,
+        root.qty,
+        'result-root-summary favorite-material-root-summary',
+        false,
+        list
+      )
+    );
+  });
   renderFavoriteRingControls(block, list);
   target.appendChild(block);
 }
@@ -4073,6 +4861,7 @@ function renderMaterialsList() {
     const activeLists = getActiveFavoriteMaterialLists();
     if (favoriteMaterialsListIds.length >= 1) {
       const production = createProductionContentSection('list');
+      renderFavoriteRingBulkControls(production.body, activeLists);
       activeLists.forEach((list, index) => {
         if (checkedFavoriteMaterialCalcMode === 'any-one' && index > 0)
           production.body.appendChild(createTextElement('div', 'favorite-material-root-or', 'もしくは'));
@@ -4082,7 +4871,7 @@ function renderMaterialsList() {
     } else {
       renderFavoriteRingControls(elements.treeContainer);
     }
-    if (favoriteMaterialsListIds.length === 0 && favoriteCountEnabled()) {
+    if (favoriteMaterialsListIds.length === 0) {
       const roots = getFavoriteMaterialRoots();
       const production = createProductionContentSection('item');
       const target = production.body;
@@ -4091,7 +4880,13 @@ function renderMaterialsList() {
           target.appendChild(createTextElement('div', 'favorite-material-root-or', 'もしくは'));
         }
         target.appendChild(
-          createResultRootSummary(root.name, root.qty, 'result-root-summary favorite-material-root-summary', false)
+          createResultRootSummary(
+            root.name,
+            root.qty,
+            'result-root-summary favorite-material-root-summary',
+            false,
+            getDisplayedFavoriteList()
+          )
         );
       });
       elements.treeContainer.appendChild(production.section);
@@ -4099,12 +4894,11 @@ function renderMaterialsList() {
   } else {
     elements.treeContainer.appendChild(createResultRootSummary(selectedRecipe, count, 'result-root-summary', true));
   }
-
   const contextKey =
     resultSourceMode === 'favorite-materials'
       ? `favorite:${favoriteMaterialsListIds.length >= 1 ? favoriteMaterialsListIds.join(',') : getDisplayedFavoriteList()?.id || ''}`
-      : `recipe:${selectedRecipe || ''}`;
-  const appendSectionHeader = (title, initiallyCollapsed, bodyRows) => {
+      : selectedRecipeContextKey();
+  const appendSectionHeader = (title, initiallyCollapsed, bodyRows, leadingRows = []) => {
     if (bodyRows.length === 0) return;
     const stateKey = `${contextKey}:${title}`;
     const collapsedState = materialSectionState.has(stateKey) ? materialSectionState.get(stateKey) : initiallyCollapsed;
@@ -4113,7 +4907,8 @@ function renderMaterialsList() {
     const toggle = createTextElement('span', 'materials-section-toggle', collapsedState ? '▶' : '▼');
     header.append(toggle, createTextElement('span', 'materials-section-title', title));
     list.appendChild(header);
-    bodyRows.forEach(row => {
+    const collapsibleRows = [...leadingRows, ...bodyRows];
+    collapsibleRows.forEach(row => {
       row.classList.toggle('collapsed', collapsedState);
       list.appendChild(row);
     });
@@ -4121,7 +4916,7 @@ function renderMaterialsList() {
       const collapsed = toggle.textContent === '▼';
       toggle.textContent = collapsed ? '▶' : '▼';
       materialSectionState.set(stateKey, collapsed);
-      bodyRows.forEach(row => setCollapsedAnimated(row, collapsed));
+      collapsibleRows.forEach(row => setCollapsedAnimated(row, collapsed));
       saveViewState();
     });
   };
@@ -4195,20 +4990,20 @@ function renderMaterialsList() {
     content.className = 'material-content';
     const primary = document.createElement('div');
     primary.className = 'material-primary';
-    const master = itemMaster[row.name] || {};
-    if (CRAFT_JOBS_SET.has(master.method)) {
-      primary.appendChild(
-        createJobBadge(
-          master.method,
-          `badge ${methodBadgeClass(master.method)}`,
-          craftJobLevelLabel(master.method, master.craftLevel)
-        )
-      );
+    const master = recipeVariantMaster(row.name);
+    const selector = createRecipeMethodSelector(row.name, { list: currentRecipeSelectionList() });
+    if (!selector) {
+      for (const label of createCraftRequirementLabels(master, 'badge')) {
+        primary.appendChild(label);
+      }
     }
-    primary.append(
+    const nameAndQuantity = document.createElement('span');
+    nameAndQuantity.className = 'material-name-quantity';
+    nameAndQuantity.append(
       createTextElement('span', 'material-name', row.name),
       createTextElement('span', 'material-qty', `× ${formatNumber(row.qty)}`)
     );
+    primary.appendChild(nameAndQuantity);
     if (noLongerNeeded) {
       primary.appendChild(createTextElement('span', 'purchase-status', '中間素材購入💰の為不要'));
     }
@@ -4295,6 +5090,10 @@ function renderMaterialsList() {
     );
     rowElement.appendChild(content);
     li.appendChild(rowElement);
+    if (selector) {
+      li.classList.add('has-recipe-method');
+      li.appendChild(selector);
+    }
     return li;
   };
 
@@ -4305,8 +5104,39 @@ function renderMaterialsList() {
   const shouldCollapseExchangeSummary =
     exchangeSourceRows.length > 0 && exchangeSourceRows.every(row => itemMaster[row.name]?.craftType === '9');
 
-  appendSectionHeader('製作する中間素材', false, intermediateSectionRows);
-  appendSectionHeader('必要素材', false, materialSectionRows);
+  const purchasableIntermediateNames = originalIntermediateRows.filter(row => hasShopInfo(row.name)).map(row => row.name);
+  const createBulkPurchaseRow = purchaseLabel => {
+    if (purchasableIntermediateNames.length < 2) return [];
+    const row = createTextElement('li', 'materials-bulk-actions bulk-action-row', '');
+    const purchaseAllButton = document.createElement('button');
+    purchaseAllButton.type = 'button';
+    purchaseAllButton.textContent = purchaseLabel;
+    purchaseAllButton.disabled = purchasableIntermediateNames.every(
+      name => purchasedIntermediateNames.has(name) || !requirementsAfterPurchases.states.has(name)
+    );
+    purchaseAllButton.addEventListener('click', event => {
+      event.stopPropagation();
+      purchasedIntermediateContext = currentMaterialPurchaseContext();
+      purchasableIntermediateNames.forEach(name => purchasedIntermediateNames.add(name));
+      saveViewState();
+      renderResultView({ preserveScroll: true });
+    });
+    const cancelButton = document.createElement('button');
+    cancelButton.type = 'button';
+    cancelButton.textContent = '購入取消';
+    cancelButton.disabled = purchasedIntermediateNames.size === 0;
+    cancelButton.addEventListener('click', event => {
+      event.stopPropagation();
+      purchasedIntermediateContext = currentMaterialPurchaseContext();
+      purchasedIntermediateNames.clear();
+      saveViewState();
+      renderResultView({ preserveScroll: true });
+    });
+    row.append(purchaseAllButton, cancelButton);
+    return [row];
+  };
+  appendSectionHeader('製作する中間素材', false, intermediateSectionRows, createBulkPurchaseRow('全中間素材購入'));
+  appendSectionHeader('必要素材', false, materialSectionRows, createBulkPurchaseRow('全素材購入'));
   appendSectionHeader('必要なシャード/クリスタル/クラスター', true, crystalSectionRows);
 
   if (exchangeSummary.fixed.size > 0 || exchangeSummary.choices.size > 0) {
@@ -4397,7 +5227,10 @@ function renderTree() {
   treePinMap.clear();
 
   const recipe = recipes[selectedRecipe];
-  elements.treeContainer.appendChild(createResultRootSummary(selectedRecipe, count, 'result-root-summary', true));
+  const selectionList = currentRecipeSelectionList();
+  elements.treeContainer.appendChild(
+    createResultRootSummary(selectedRecipe, count, 'result-root-summary', true, selectionList)
+  );
   if (!recipe) return;
   appendRecipeChildren(
     elements.treeContainer,
@@ -4406,19 +5239,26 @@ function renderTree() {
     -1,
     selectedRecipe,
     shouldShowCraftBadgeOnlyAtRoot(selectedRecipe),
-    true
+    true,
+    selectionList
   );
 }
 
-function renderMaterialTreeDialog() {
+function renderMaterialTreeDialog({ preserveScroll = false } = {}) {
   if (!materialTreeRecipe) return;
+  const previousScrollTop = elements.materialTreeContent.scrollTop;
   const count = readRequestedCount(elements.materialTreeCountInput);
   elements.materialTreeTitle.textContent = '素材ツリー';
   elements.materialTreeContent.style.height = '';
   elements.materialTreeContent.replaceChildren();
-  elements.materialTreeContent.scrollTop = 0;
   elements.materialTreeContent.appendChild(
-    createResultRootSummary(materialTreeRecipe, count, 'material-tree-root-summary', false)
+    createResultRootSummary(
+      materialTreeRecipe,
+      count,
+      'material-tree-root-summary',
+      false,
+      currentRecipeSelectionList()
+    )
   );
   const recipe = recipes[materialTreeRecipe];
   if (recipe) {
@@ -4429,15 +5269,25 @@ function renderMaterialTreeDialog() {
       -1,
       `material-dialog:${materialTreeRecipe}`,
       shouldShowCraftBadgeOnlyAtRoot(materialTreeRecipe),
-      false
+      false,
+      currentRecipeSelectionList()
     );
   }
   lockMaterialTreeContentHeight();
+  synchronizeRecipeMethodWidths(elements.materialTreeContent);
+  elements.materialTreeContent.scrollTop = preserveScroll ? previousScrollTop : 0;
 }
 
-function createResultRootSummary(name, neededQty, className = 'result-root-summary', showPin = false) {
-  const master = itemMaster[name] || { method: '', icon: '', craftType: '' };
+function createResultRootSummary(
+  name,
+  neededQty,
+  className = 'result-root-summary',
+  showPin = false,
+  selectionList = currentRecipeSelectionList()
+) {
+  const master = recipeVariantMaster(name);
   const recipe = recipes[name];
+  const selector = createRecipeMethodSelector(name, { list: selectionList });
   const producedQty = calcProduced(name, neededQty);
   const wrapper = document.createElement('div');
   wrapper.className = className;
@@ -4446,16 +5296,26 @@ function createResultRootSummary(name, neededQty, className = 'result-root-summa
   const icon = createItemIcon(master.icon, 'node-icon');
   if (showPin) row.appendChild(createTreePin(name));
   if (icon) row.appendChild(icon);
-  row.appendChild(
-    createTreeMain(
-      name,
-      producedQty,
-      createTreeSubInfo(recipe, neededQty, producedQty, null, null),
-      createTreeBadge(master.method, false)
-    )
-  );
+  const main = document.createElement('span');
+  main.className = 'node-main root-item-main';
+  const title = document.createElement('span');
+  title.className = 'node-title root-item-title';
+  const display = createItemDisplayLabel(name, {
+    recipeVariant: recipe,
+    hideCraftRequirement: Boolean(selector)
+  });
+  display.classList.add('root-item-display-label');
+  title.append(display, createTextElement('span', 'node-qty', `× ${formatNumber(producedQty)}`));
+  main.appendChild(title);
+  const subInfo = createTreeSubInfo(recipe, neededQty, producedQty, null, null);
+  if (subInfo) main.appendChild(subInfo);
+  row.appendChild(main);
   appendItemActionButtons(row, createShopInfoButton(name), createGatheringTimerButton(name));
   wrapper.appendChild(row);
+  if (selector) {
+    wrapper.classList.add('recipe-method-root');
+    wrapper.appendChild(selector);
+  }
   return wrapper;
 }
 
@@ -4497,7 +5357,7 @@ function changeMaterialTreeCount(delta) {
     1,
     Math.min(REQUEST_COUNT_MAX, readRequestedCount(elements.materialTreeCountInput) + delta)
   );
-  renderMaterialTreeDialog();
+  renderMaterialTreeDialog({ preserveScroll: true });
 }
 
 function calcProduced(name, needed) {
@@ -4528,7 +5388,7 @@ function collectTreeCraftTypes(rootName) {
 function createTreeBadge(method, hideCraftBadge) {
   const label = CRAFT_JOBS_SET.has(method) ? craftJobName(method) : method;
   const badge = CRAFT_JOBS_SET.has(method)
-    ? createJobBadge(method, `badge ${methodBadgeClass(method)}`, label)
+    ? createCraftJobLabel(method, `badge ${methodBadgeClass(method)}`, label)
     : createTextElement('span', `badge ${methodBadgeClass(method)}`, label);
   badge.classList.toggle('hidden', !method || hideCraftBadge);
   return badge;
@@ -4773,6 +5633,7 @@ function showShopDialog(name, { allowIntermediatePurchase = false, intermediateP
   rememberFloatingDialogScroll();
   const shopInfo = itemMaster[name]?.shopInfo;
   const shops = shopInfo?.shops || [];
+  elements.shopDialog.style.width = '';
   elements.shopTitle.textContent = `店情報: ${name}`;
   elements.shopPriceHeader.replaceChildren();
   elements.shopContent.replaceChildren();
@@ -4827,6 +5688,7 @@ function showShopDialog(name, { allowIntermediatePurchase = false, intermediateP
     }
     const listSection = createTextElement('section', 'shop-list-section', '');
     listSection.appendChild(createTextElement('h3', '', '販売場所'));
+    const entryList = createTextElement('div', 'shop-entry-list', '');
     shops.forEach(shop => {
       const entry = createTextElement('div', 'shop-entry', '');
       const hasCoordinates = Number.isFinite(Number(shop.x)) && Number.isFinite(Number(shop.y));
@@ -4838,11 +5700,46 @@ function showShopDialog(name, { allowIntermediatePurchase = false, intermediateP
       if (shop.requiredRank) {
         entry.appendChild(createTextElement('div', 'shop-required-rank', `必要友好ランク：${shop.requiredRank}`));
       }
-      listSection.appendChild(entry);
+      entryList.appendChild(entry);
     });
+    listSection.appendChild(entryList);
     elements.shopContent.appendChild(listSection);
   }
   elements.shopOverlay.classList.add('open');
+  const entryList = elements.shopContent.querySelector('.shop-entry-list');
+  if (entryList) requestAnimationFrame(() => layoutShopEntries(entryList));
+}
+
+function layoutShopEntries(entryList) {
+  const entries = [...entryList.querySelectorAll('.shop-entry')];
+  if (entries.length === 0) return;
+  elements.shopDialog.style.width = '';
+  entryList.style.gridTemplateColumns = 'minmax(0, 1fr)';
+  const compactDialogWidth = elements.shopDialog.getBoundingClientRect().width;
+  const dialogWidthOverhead = compactDialogWidth - entryList.clientWidth;
+  entryList.classList.add('measuring');
+  const requiredWidth = Math.max(...entries.map(entry => entry.getBoundingClientRect().width));
+  const maxDialogWidth = Math.min(880, window.innerWidth - 24);
+  const gap = 8;
+  if (isMobile()) {
+    elements.shopDialog.style.width = `${compactDialogWidth}px`;
+    entryList.classList.remove('measuring');
+    entryList.style.gridTemplateColumns = 'minmax(0, 1fr)';
+    return;
+  }
+  const preferredColumnWidth = Math.min(requiredWidth, 360);
+  const availableContentWidth = maxDialogWidth - dialogWidthOverhead;
+  const columns = Math.max(
+    1,
+    Math.min(entries.length, Math.floor((availableContentWidth + gap) / (preferredColumnWidth + gap)))
+  );
+  const desiredDialogWidth =
+    columns > 1
+      ? dialogWidthOverhead + preferredColumnWidth * columns + gap * (columns - 1)
+      : compactDialogWidth;
+  elements.shopDialog.style.width = `${desiredDialogWidth}px`;
+  entryList.classList.remove('measuring');
+  entryList.style.gridTemplateColumns = `repeat(${columns}, minmax(0, 1fr))`;
 }
 
 function closeShopDialog() {
@@ -4900,7 +5797,16 @@ function createTreeSubInfo(recipe, neededQty, producedQty, unitCost, unitTimes) 
   return subInfo;
 }
 
-function appendRecipeChildren(container, recipe, neededQty, depth, pathKey, showCraftBadgeOnlyAtRoot, showPins) {
+function appendRecipeChildren(
+  container,
+  recipe,
+  neededQty,
+  depth,
+  pathKey,
+  showCraftBadgeOnlyAtRoot,
+  showPins,
+  selectionList = null
+) {
   const isExchange = EXCHANGE_CRAFT_TYPES.has(recipe.craftType);
   const craftTimes = calculateCraft(neededQty, recipe.yield).craftTimes;
 
@@ -4921,7 +5827,8 @@ function appendRecipeChildren(container, recipe, neededQty, depth, pathKey, show
         isExchange ? ingredient.qty : null,
         isExchange ? craftTimes : null,
         showCraftBadgeOnlyAtRoot,
-        showPins
+        showPins,
+        selectionList
       )
     );
   });
@@ -4936,11 +5843,13 @@ function buildNode(
   unitCost = null,
   unitTimes = null,
   showCraftBadgeOnlyAtRoot = false,
-  showPins = true
+  showPins = true,
+  selectionList = null
 ) {
-  const master = itemMaster[name] || { method: '', icon: '', craftType: '' };
   const recipe = recipes[name];
+  const master = recipeVariantMaster(name, recipe) || { method: '', icon: '', craftType: '' };
   const hasChildren = Boolean(recipe);
+  const selector = createRecipeMethodSelector(name, { list: selectionList });
 
   const node = document.createElement('div');
   node.className = 'tree-node';
@@ -4958,17 +5867,30 @@ function buildNode(
       name,
       neededQty,
       createTreeSubInfo(recipe, neededQty, producedQty, unitCost, unitTimes),
-      createTreeBadge(master.method, hideCraftBadge)
+      selector ? null : createTreeBadge(master.method, hideCraftBadge)
     )
   );
   appendItemActionButtons(row, createShopInfoButton(name), createGatheringTimerButton(name));
   node.appendChild(row);
+  if (selector) {
+    node.classList.add('has-recipe-method');
+    node.appendChild(selector);
+  }
 
   if (!hasChildren) return node;
 
   const children = document.createElement('div');
   children.className = 'node-children';
-  appendRecipeChildren(children, recipe, neededQty, depth, pathKey, showCraftBadgeOnlyAtRoot, showPins);
+  appendRecipeChildren(
+    children,
+    recipe,
+    neededQty,
+    depth,
+    pathKey,
+    showCraftBadgeOnlyAtRoot,
+    showPins,
+    selectionList
+  );
 
   if (recipe.craftType === '9') {
     const expanded = exchangeTreeState.get(pathKey) === true;
@@ -4996,10 +5918,6 @@ function methodBadgeClass(method) {
   return 'badge-gather';
 }
 
-function encodeBytesBase36(bytes) {
-  return [...bytes].map(byte => byte.toString(36).toUpperCase().padStart(2, '0')).join('');
-}
-
 function decodeBytesBase36(str) {
   if (str.length % 2 !== 0 || !/^[0-9A-Z]+$/.test(str)) return null;
   const bytes = [];
@@ -5011,14 +5929,108 @@ function decodeBytesBase36(str) {
   return new Uint8Array(bytes);
 }
 
+function encodeVarUint(value) {
+  let remaining = Number(value);
+  if (!Number.isSafeInteger(remaining) || remaining < 0) throw new RangeError('可変長整数の値が不正です');
+  const bytes = [];
+  do {
+    let byte = remaining % 128;
+    remaining = Math.floor(remaining / 128);
+    if (remaining > 0) byte += 128;
+    bytes.push(byte);
+  } while (remaining > 0);
+  return bytes;
+}
+
+function decodeVarUint(bytes, state) {
+  let value = 0;
+  let multiplier = 1;
+  for (let count = 0; count < 8; count += 1) {
+    if (state.offset >= bytes.length) throw new Error('可変長整数が途中で終了しました');
+    const byte = bytes[state.offset];
+    state.offset += 1;
+    value += (byte & 0x7f) * multiplier;
+    if ((byte & 0x80) === 0) {
+      if (!Number.isSafeInteger(value)) throw new Error('可変長整数が大きすぎます');
+      return value;
+    }
+    multiplier *= 128;
+  }
+  throw new Error('可変長整数が長すぎます');
+}
+
+function crc16Ccitt(bytes) {
+  let crc = 0xffff;
+  for (const byte of bytes) {
+    crc ^= byte << 8;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc & 0x8000) !== 0 ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff;
+    }
+  }
+  return crc;
+}
+
+function bytesToBase64Url(bytes) {
+  let binary = '';
+  for (let index = 0; index < bytes.length; index += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function base64UrlToBytes(value) {
+  if (!/^[A-Za-z0-9_-]+$/.test(value)) return null;
+  const padded = value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (value.length % 4)) % 4);
+  try {
+    const binary = atob(padded);
+    return Uint8Array.from(binary, character => character.charCodeAt(0));
+  } catch {
+    return null;
+  }
+}
+
+function compactRecipeSelections(list) {
+  const reachableItemIds = new Set(
+    reachableMultiRecipeNames(
+      normalizeItemIds(list?.itemIds).map(itemNameForId).filter(Boolean),
+      list?.recipeSelections || {}
+    ).map(name => String(itemIdForName(name)))
+  );
+  return Object.entries(normalizeRecipeSelections(list?.recipeSelections))
+    .filter(([itemId]) => reachableItemIds.has(itemId))
+    .map(([itemId, recipeId]) => {
+      const name = itemNameForId(itemId);
+      const variant = (recipeVariants[name] || []).find(candidate => candidate.recipeId === recipeId);
+      const craftType = Number(variant?.craftType);
+      return Number.isInteger(craftType) && craftType >= 0 && craftType <= 7
+        ? { itemId: Number(itemId), craftType }
+        : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.itemId - b.itemId);
+}
+
 function encodeFavoriteList(list) {
   if (!list) return '';
-  const payload = JSON.stringify({
-    n: list.name,
-    i: normalizeItemIds(list.itemIds)
+  const nameBytes = new TextEncoder().encode(normalizeFavoriteListName(list.name));
+  const itemIds = normalizeItemIds(list.itemIds);
+  const selections = compactRecipeSelections(list);
+  const payload = [
+    1,
+    ...encodeVarUint(nameBytes.length),
+    ...nameBytes,
+    ...encodeVarUint(itemIds.length),
+    ...itemIds.flatMap(encodeVarUint),
+    ...encodeVarUint(selections.length)
+  ];
+  let previousItemId = 0;
+  selections.forEach(selection => {
+    payload.push(...encodeVarUint((selection.itemId - previousItemId) * 8 + selection.craftType));
+    previousItemId = selection.itemId;
   });
-  const bytes = new TextEncoder().encode(payload);
-  return `Z${bytes.length.toString(36).toUpperCase().padStart(4, '0')}${encodeBytesBase36(bytes)}`;
+  const checksum = crc16Ccitt(payload);
+  const bytes = Uint8Array.from([...payload, checksum >> 8, checksum & 0xff]);
+  return `Y${bytesToBase64Url(bytes)}`;
 }
 
 // Settings and favorite sharing
@@ -5032,6 +6044,7 @@ function decodeOldFavorites(str) {
   return {
     name: '',
     itemIds: names.map(itemIdForName).filter(Boolean),
+    recipeSelections: {},
     needsName: true
   };
 }
@@ -5048,6 +6061,55 @@ function decodeNewFavoriteList(str) {
     return {
       name: normalizeFavoriteListName(payload.n),
       itemIds: normalizeItemIds(payload.i).filter(id => itemNameForId(id)),
+      recipeSelections: {},
+      needsName: false
+    };
+  } catch {
+    return null;
+  }
+}
+
+function decodeCompactFavoriteList(str) {
+  if (!str.startsWith('Y')) return null;
+  const bytes = base64UrlToBytes(str.slice(1));
+  if (!bytes || bytes.length < 5) return null;
+  const payload = bytes.subarray(0, -2);
+  const expectedChecksum = (bytes[bytes.length - 2] << 8) | bytes[bytes.length - 1];
+  if (crc16Ccitt(payload) !== expectedChecksum) return null;
+
+  try {
+    const state = { offset: 0 };
+    const version = payload[state.offset];
+    state.offset += 1;
+    if (version !== 1) return null;
+    const nameLength = decodeVarUint(payload, state);
+    if (nameLength < 0 || state.offset + nameLength > payload.length) return null;
+    const name = normalizeFavoriteListName(new TextDecoder().decode(payload.subarray(state.offset, state.offset + nameLength)));
+    state.offset += nameLength;
+
+    const itemCount = decodeVarUint(payload, state);
+    if (itemCount > 10000) return null;
+    const itemIds = [];
+    for (let index = 0; index < itemCount; index += 1) itemIds.push(decodeVarUint(payload, state));
+
+    const selectionCount = decodeVarUint(payload, state);
+    if (selectionCount > 10000) return null;
+    const recipeSelections = {};
+    let previousItemId = 0;
+    for (let index = 0; index < selectionCount; index += 1) {
+      const packed = decodeVarUint(payload, state);
+      const craftType = packed % 8;
+      const itemId = previousItemId + Math.floor(packed / 8);
+      previousItemId = itemId;
+      const itemName = itemNameForId(itemId);
+      const matches = (recipeVariants[itemName] || []).filter(variant => Number(variant.craftType) === craftType);
+      if (matches.length === 1) recipeSelections[String(itemId)] = matches[0].recipeId;
+    }
+    if (state.offset !== payload.length) return null;
+    return {
+      name,
+      itemIds: normalizeItemIds(itemIds).filter(id => itemNameForId(id)),
+      recipeSelections,
       needsName: false
     };
   } catch {
@@ -5056,9 +6118,13 @@ function decodeNewFavoriteList(str) {
 }
 
 function decodeFavoriteShareCode(str) {
-  if (!str || !/^[A-Z0-9]+$/.test(str)) return null;
-  if (str.startsWith('Z')) return decodeNewFavoriteList(str);
-  return decodeOldFavorites(str);
+  const source = String(str || '').trim();
+  if (!source) return null;
+  if (source.startsWith('Y')) return decodeCompactFavoriteList(source);
+  const legacy = source.toUpperCase();
+  if (!/^[A-Z0-9]+$/.test(legacy)) return null;
+  if (legacy.startsWith('Z')) return decodeNewFavoriteList(legacy);
+  return decodeOldFavorites(legacy);
 }
 
 function openSettings() {
@@ -5101,10 +6167,10 @@ function isTrustedSharePlazaMessage(event) {
 }
 
 function importFavoriteFromSharePlaza(code) {
-  const decoded = decodeFavoriteShareCode(String(code || '').trim().toUpperCase());
+  const decoded = decodeFavoriteShareCode(code);
   if (!decoded || decoded.needsName || decoded.itemIds.length === 0) return;
   showTextInput('取り込むお気に入りリスト名', decoded.name, name => {
-    const list = createFavoriteList(name, decoded.itemIds);
+    const list = createFavoriteList(name, decoded.itemIds, decoded.recipeSelections);
     renderFavoriteLists();
     renderExportListChoices();
     elements.sharePlazaFrame.contentWindow?.postMessage(
@@ -5230,7 +6296,7 @@ function setImportError(message = '') {
 }
 
 function startImport() {
-  const code = elements.importCode.value.trim().toUpperCase();
+  const code = elements.importCode.value.trim();
   const decoded = decodeFavoriteShareCode(code);
   if (!decoded) {
     setImportError('無効なコードです');
@@ -5242,7 +6308,7 @@ function startImport() {
   }
   setImportError();
   const importAsNewList = name => {
-    const list = createFavoriteList(name, decoded.itemIds);
+    const list = createFavoriteList(name, decoded.itemIds, decoded.recipeSelections);
     closeSettings();
     selectFavoriteList(list.id);
   };
@@ -5404,8 +6470,13 @@ function bindEvents() {
   });
   elements.countDecrease5Btn.addEventListener('click', () => changeCount(-5));
   elements.countDecreaseBtn.addEventListener('click', () => changeCount(-1));
-  elements.countInput.addEventListener('input', () => handleRequestedCountInput(elements.countInput, renderResultView));
-  elements.countInput.addEventListener('blur', () => commitRequestedCountInput(elements.countInput, renderResultView));
+  const renderResultViewPreservingScroll = () => renderResultView({ preserveScroll: true });
+  elements.countInput.addEventListener('input', () =>
+    handleRequestedCountInput(elements.countInput, renderResultViewPreservingScroll)
+  );
+  elements.countInput.addEventListener('blur', () =>
+    commitRequestedCountInput(elements.countInput, renderResultViewPreservingScroll)
+  );
   elements.countInput.addEventListener('keydown', event => {
     if (event.key === 'Enter') elements.countInput.blur();
   });
@@ -5421,11 +6492,12 @@ function bindEvents() {
   });
   elements.materialTreeDecrease5Btn.addEventListener('click', () => changeMaterialTreeCount(-5));
   elements.materialTreeDecreaseBtn.addEventListener('click', () => changeMaterialTreeCount(-1));
+  const renderMaterialTreeDialogPreservingScroll = () => renderMaterialTreeDialog({ preserveScroll: true });
   elements.materialTreeCountInput.addEventListener('input', () => {
-    handleRequestedCountInput(elements.materialTreeCountInput, renderMaterialTreeDialog);
+    handleRequestedCountInput(elements.materialTreeCountInput, renderMaterialTreeDialogPreservingScroll);
   });
   elements.materialTreeCountInput.addEventListener('blur', () => {
-    commitRequestedCountInput(elements.materialTreeCountInput, renderMaterialTreeDialog);
+    commitRequestedCountInput(elements.materialTreeCountInput, renderMaterialTreeDialogPreservingScroll);
   });
   elements.materialTreeCountInput.addEventListener('keydown', event => {
     if (event.key === 'Enter') elements.materialTreeCountInput.blur();
@@ -5448,9 +6520,25 @@ function bindEvents() {
     if (document.hidden) stopGatheringTimerUpdates();
     else startGatheringTimerUpdates();
   });
-  window.addEventListener('pagehide', stopGatheringTimerUpdates);
+  Object.entries(scrollPositionContainers()).forEach(([key, container]) => {
+    container.addEventListener(
+      'scroll',
+      () => {
+        if (!isScrollPositionActive(key)) return;
+        viewScrollPositions[key] = container.scrollTop;
+        scheduleScrollStateSave();
+      },
+      { passive: true }
+    );
+  });
+  window.addEventListener('pagehide', () => {
+    saveViewState();
+    stopGatheringTimerUpdates();
+  });
   window.addEventListener('resize', () => {
     if (elements.favoriteLists.classList.contains('open')) updateFavoriteListsMaxHeight();
+    const shopEntries = elements.shopContent.querySelector('.shop-entry-list');
+    if (elements.shopOverlay.classList.contains('open') && shopEntries) layoutShopEntries(shopEntries);
   });
   elements.usesBtn.addEventListener('click', () => showUsesPanel(selectedRecipe));
   elements.updateReloadBtn.addEventListener('click', () => {

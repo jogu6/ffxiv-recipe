@@ -1,0 +1,15 @@
+{
+  "repository": "xivapi/ffxiv-datamining",
+  "branch": "master",
+  "language": "ja",
+  "schemaRepository": "xivdev/EXDSchema",
+  "schemaBranch": "latest",
+  "downloadConcurrency": 4,
+  "downloadRetries": 8,
+  "requestTimeoutMs": 900000,
+  "statusWriteIntervalMs": 1000,
+  "nonInteractiveProgressIntervalMs": 30000,
+  "relationDepth": 3,
+  "sampleValueLimit": 5,
+  "distinctValueLimit": 10000
+}

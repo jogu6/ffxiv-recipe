@@ -276,6 +276,48 @@
     return { states, roots, exchangeTypes };
   }
 
+  function mergeSummedRequirements(results) {
+    if (!Array.isArray(results)) throw new TypeError('results must be an array');
+    const states = new Map();
+    const roots = new Set();
+    const exchangeTypes = new Set();
+
+    results.forEach((result, resultIndex) => {
+      if (!(result?.states instanceof Map) || !(result.roots instanceof Set)) {
+        throw new TypeError(`Invalid requirement result: ${resultIndex}`);
+      }
+      result.roots.forEach(name => roots.add(name));
+      result.exchangeTypes?.forEach(type => exchangeTypes.add(type));
+      result.states.forEach((state, name) => {
+        const current = states.get(name);
+        if (!current) {
+          states.set(name, {
+            ...state,
+            parents: new Set(state.parents),
+            recipeAlternatives: state.recipe ? [state.recipe] : []
+          });
+          return;
+        }
+        current.needed = checkedAdd(current.needed, state.needed, `${name} summed demand`);
+        current.craftTimes = checkedAdd(current.craftTimes, state.craftTimes, `${name} summed craft times`);
+        current.produced = checkedAdd(current.produced, state.produced, `${name} summed production`);
+        current.surplus = checkedAdd(current.surplus, state.surplus, `${name} summed surplus`);
+        current.parents = new Set([...current.parents, ...state.parents]);
+        current.isRoot = current.isRoot || state.isRoot;
+        current.isExchange = current.isExchange || state.isExchange;
+        current.isTerminal = current.isTerminal && state.isTerminal;
+        if (
+          state.recipe &&
+          !current.recipeAlternatives.some(recipe => recipe.recipeId && recipe.recipeId === state.recipe.recipeId)
+        ) {
+          current.recipeAlternatives.push(state.recipe);
+        }
+      });
+    });
+
+    return { states, roots, exchangeTypes };
+  }
+
   function createIntermediateForest(result, predicate = () => true) {
     const nodes = new Map();
     result.states.forEach(state => {
@@ -305,6 +347,7 @@
     calculateRequirements,
     createIntermediateForest,
     mergeAlternativeRequirements,
+    mergeSummedRequirements,
     validateRequestedCount
   };
 });

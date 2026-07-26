@@ -6,6 +6,8 @@ import path from 'node:path';
 import {
   extractLodestoneCraftInfo,
   extractLodestoneEquipmentInfo,
+  extractLodestoneIsEx,
+  extractLodestoneRecipeData,
   extractLodestoneRecipePaths,
   extractLodestoneShopInfo,
   compressLodestoneHtml,
@@ -13,6 +15,7 @@ import {
   applyEquipmentRoleOverrides,
   equipmentRoleDecision,
   findUnresolvedEquipmentRoleGroups,
+  hasExistingLodestoneInfo,
   isConditionalLodestoneShop,
   mergeFriendlyTribeShopInfo,
   mergeHousingShopInfo,
@@ -55,6 +58,21 @@ test('mergePublishItems keeps existing items that are absent from the candidate'
   assert.deepEqual(mergePublishItems(baseItems, candidateItems), [
     { ID: 1, Name: '既存A', IconFile: 'a.webp', Recipe: { Ingredients: [{ ItemID: 2, Name: '素材', Amount: 1 }] }, ShopInfo: { price: 9, shops: [{ shopName: '素材屋' }] } },
     { ID: 2, Name: '既存B', IconFile: 'b.webp' }
+  ]);
+});
+
+test('mergePublishItems applies EX information from a partial Lodestone candidate', () => {
+  const baseItems = [
+    { ID: 1, Name: 'EX素材', IconFile: 'a.webp', IsEx: true, LodestoneInfoVersion: 1 },
+    { ID: 2, Name: '通常素材', IconFile: 'b.webp' }
+  ];
+  const candidateItems = [
+    { ID: 1, IsEx: false, LodestoneInfoVersion: 1 },
+    { ID: 2, IsEx: true, LodestoneInfoVersion: 1 }
+  ];
+  assert.deepEqual(mergePublishItems(baseItems, candidateItems), [
+    { ID: 1, Name: 'EX素材', IconFile: 'a.webp', IsEx: false, LodestoneInfoVersion: 1 },
+    { ID: 2, Name: '通常素材', IconFile: 'b.webp', IsEx: true, LodestoneInfoVersion: 1 }
   ]);
 });
 
@@ -257,11 +275,20 @@ test('shop condition memory cache reuses decisions and stops admitting entries a
 });
 
 test('extractLodestoneCraftInfo reads job, level, and masterbook only', () => {
-  const html = '<title>エオルゼアデータベース「インダガトル・クラフターコート」 | FINAL FANTASY XIV, The Lodestone</title><main>製作手帳 裁縫師 秘伝書 秘伝書:第10巻 インダガトル・クラフターコート <section>裁縫師 Lv 90 インダガトル・クラフターコート</section></main>';
+  const html = '<title>エオルゼアデータベース「インダガトル・クラフターコート」 | FINAL FANTASY XIV, The Lodestone</title><main>製作手帳 裁縫師 秘伝書 秘伝書:第10巻 インダガトル・クラフターコート <section>裁縫師 Lv 90 <p class="db-view__recipe__text__book_name">裁縫秘伝書:第10巻</p><h2>インダガトル・クラフターコート</h2></section></main>';
   assert.deepEqual(extractLodestoneCraftInfo(html), {
     job: '裁縫師',
     level: 90,
-    masterbook: '秘伝書:第10巻'
+    masterbook: '裁縫秘伝書:第10巻'
+  });
+});
+
+test('extractLodestoneCraftInfo keeps non-numbered masterbook names', () => {
+  const html = '<main><section><p>錬金術師 Lv 50</p><p class="db-view__recipe__text__book_name">錬成秘伝書:デミマテリア</p></section></main>';
+  assert.deepEqual(extractLodestoneCraftInfo(html), {
+    job: '錬金術師',
+    level: 50,
+    masterbook: '錬成秘伝書:デミマテリア'
   });
 });
 
@@ -271,6 +298,90 @@ test('extractLodestoneCraftInfo ignores masterbook menu entries', () => {
     job: '鍛冶師',
     level: 1
   });
+});
+
+test('extractLodestoneRecipeData reads a Lodestone recipe variant and resolves ingredient keys', () => {
+  const html = `
+    <main>
+      <p>木工師 Lv 15</p>
+      <p class="db-view__recipe__text__book_name">木工秘伝書:ミラージュプリズム</p>
+      <span class="js__complete_craft_count">1</span>
+      <div data-name="クリアプリズム" class="js__material db-tree" data-depth="1" data-num="1" data-key="clear"></div>
+      <div class="db-tree js__material" data-key="lumber" data-num="2" data-depth="1" data-name="ウォルナット材"></div>
+      <div class="js__material db-tree" data-key="nested" data-num="3" data-depth="2" data-name="下位素材"></div>
+    </main>`;
+  assert.deepEqual(
+    extractLodestoneRecipeData('/lodestone/playguide/db/recipe/0e351054234/', html, {
+      craftTypeByJob: new Map([['木工師', '0']]),
+      itemIdByLodestoneKey: new Map([
+        ['clear', '7671'],
+        ['lumber', '5371']
+      ])
+    }),
+    {
+      RecipeID: '0e351054234',
+      CraftType: '0',
+      CraftInfo: { job: '木工師', level: 15, masterbook: '木工秘伝書:ミラージュプリズム' },
+      AmountResult: '1',
+      Ingredients: [
+        { ItemID: '7671', Name: 'クリアプリズム', Amount: '1' },
+        { ItemID: '5371', Name: 'ウォルナット材', Amount: '2' }
+      ]
+    }
+  );
+});
+
+test('extractLodestoneIsEx reads EX only from the item header', () => {
+  const exHtml = `
+    <div class="related-item"><span class="ex_bind">EX</span></div>
+    <div class="db-view__item__header clearfix">
+      <div class="db-view__item__text">
+        <div class="db-view__item__text__element ja"><span class="ex_bind">EX</span></div>
+        <h2>改良用のアイアンネイル</h2>
+      </div>
+    </div>
+  `;
+  const normalHtml = `
+    <div class="related-item"><span class="ex_bind">EX</span></div>
+    <div class="db-view__item__header clearfix"><h2>アイアンネイル</h2></div>
+    <div class="related-item"><span class="ex_bind">EX</span></div>
+  `;
+  assert.equal(extractLodestoneIsEx(exHtml), true);
+  assert.equal(extractLodestoneIsEx(normalHtml), false);
+  assert.equal(extractLodestoneIsEx('<main>EX</main>'), null);
+});
+
+test('hasExistingLodestoneInfo requires the current item flag schema', () => {
+  assert.equal(hasExistingLodestoneInfo({ LodestoneInfoCheckedAt: '2026-01-01T00:00:00.000Z' }), false);
+  assert.equal(
+    hasExistingLodestoneInfo({
+      LodestoneInfoCheckedAt: '2026-01-01T00:00:00.000Z',
+      LodestoneInfoVersion: 2,
+      IsEx: false
+    }),
+    true
+  );
+  assert.equal(
+    hasExistingLodestoneInfo({
+      LodestoneInfoCheckedAt: '2026-01-01T00:00:00.000Z',
+      LodestoneInfoVersion: 2,
+      IsEx: false,
+      CraftInfo: [{ job: '木工師', level: 1 }]
+    }),
+    true
+  );
+  assert.equal(
+    hasExistingLodestoneInfo({
+      LodestoneInfoCheckedAt: '2026-01-01T00:00:00.000Z',
+      LodestoneInfoVersion: 2,
+      IsEx: false,
+      CraftInfo: [
+        { job: '鍛冶師', level: 1 },
+        { job: '甲冑師', level: 1 }
+      ]
+    }),
+    false
+  );
 });
 
 test('extractLodestoneEquipmentInfo reads item level, equip level, jobs, and primary stats', () => {

@@ -42,6 +42,14 @@ pipeline/config/*.local.json
 pipeline/legacy-powershell/
 site/__tmp_icon_quality/
 
+# Local XIVAPI analysis inputs and resumable working data
+xivapi-analysis/source/
+xivapi-analysis/cache/
+xivapi-analysis/logs/
+xivapi-analysis/state/
+xivapi-analysis/output/
+xivapi-analysis/reports/
+
 # Machine-local Task Scheduler files
 tools/xivapi-update-monitor-task.xml
 tools/run-xivapi-update-monitor.vbs

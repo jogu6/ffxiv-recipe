@@ -7,6 +7,7 @@ const {
   calculateRequirements,
   createIntermediateForest,
   mergeAlternativeRequirements,
+  mergeSummedRequirements,
   validateRequestedCount
 } = require('../site/calculation.js');
 const { loverWeapons } = require('./fixtures/favorite-share-codes.js');
@@ -318,6 +319,28 @@ test('alternative requirements reject unsafe terminal-material totals', () => {
   ];
 
   assert.throws(() => mergeAlternativeRequirements(results), /safe integer range/);
+});
+
+test('adds requirements calculated with different recipe selections', () => {
+  const carpenterRecipes = {
+    Product: { ...recipe(1, [{ name: 'Lumber', qty: 2 }]), recipeId: 'carpenter' }
+  };
+  const alchemistRecipes = {
+    Product: { ...recipe(1, [{ name: 'Solution', qty: 3 }], '6'), recipeId: 'alchemist' }
+  };
+  const result = mergeSummedRequirements([
+    requirements(carpenterRecipes, [{ name: 'Product', qty: 1 }]),
+    requirements(alchemistRecipes, [{ name: 'Product', qty: 2 }])
+  ]);
+
+  assert.equal(result.states.get('Product').needed, 3);
+  assert.equal(result.states.get('Product').craftTimes, 3);
+  assert.equal(result.states.get('Lumber').needed, 2);
+  assert.equal(result.states.get('Solution').needed, 6);
+  assert.deepEqual(
+    result.states.get('Product').recipeAlternatives.map(entry => entry.recipeId),
+    ['carpenter', 'alchemist']
+  );
 });
 
 test('shared-code fixture keeps enough materials for every displayed G4 potion', () => {

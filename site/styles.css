@@ -1120,6 +1120,25 @@ li.reorder-drop-after {
   cursor: default;
   border-bottom: 1px solid rgba(58, 58, 58, 0.4);
 }
+#recipeList li.search-list-empty {
+  display: grid;
+  align-items: stretch;
+  gap: 10px;
+  cursor: default;
+}
+#recipeList li.search-list-empty:hover {
+  background: none;
+}
+.search-empty-message {
+  color: var(--muted);
+}
+.search-empty-scope {
+  padding: 8px 10px;
+  color: var(--soft-text);
+  background: rgba(201, 170, 72, 0.08);
+  border-left: 3px solid var(--accent);
+  line-height: 1.5;
+}
 
 /* Used-in panel */
 .panel-middle {
@@ -1423,6 +1442,15 @@ li.ingredient-row.selected {
 .materials-section-title {
   overflow-wrap: anywhere;
 }
+.materials-list li.materials-bulk-actions { padding: 6px 10px; background: rgba(255, 255, 255, 0.02); }
+.bulk-action-row { display: flex; align-items: center; gap: 6px; }
+.bulk-action-row button {
+  flex: 1 1 0; min-width: 0; border: 1px solid var(--border); border-radius: 4px;
+  background: var(--bg); color: var(--text); cursor: pointer; font-size: 12px;
+  line-height: 1.2; padding: 6px 8px; white-space: nowrap;
+}
+.bulk-action-row button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.bulk-action-row button:disabled { cursor: default; opacity: 0.38; }
 .materials-list li.intermediate-tree-node {
   display: block;
   padding: 0;
@@ -1477,6 +1505,13 @@ li.ingredient-row.selected {
 .intermediate-tree-row .material-primary,
 .intermediate-tree-row .material-supplement-row {
   flex-wrap: wrap;
+}
+.material-name-quantity {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
 }
 .material-usage-detail {
   color: var(--muted);
@@ -1647,6 +1682,7 @@ li.ingredient-row.selected {
   max-width: 720px;
   margin-bottom: 8px;
 }
+.favorite-ring-bulk-actions { margin: 0 12px 8px; }
 .favorite-ring-separator {
   max-width: 720px;
   margin: 0 0 8px;
@@ -1899,6 +1935,14 @@ li.ingredient-row.selected {
   align-items: center;
   gap: 0.3em;
 }
+.craft-job-label { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; font-size: inherit; line-height: 1; }
+.craft-job-label > .job-icon {
+  width: 1.154em; height: 1.154em; flex-basis: 1.154em; align-self: center;
+}
+.masterbook-job-label { gap: 3px; }
+.masterbook-job-icons { display: inline-flex; align-items: center; gap: 1px; }
+.masterbook-job-icons > .job-icon { width: 1.154em; height: 1.154em; flex: 0 0 1.154em; }
+.favorite-item-label .craft-job-label { font-size: 12px; }
 .job-icon {
   display: block;
   width: 1em;
@@ -1929,6 +1973,14 @@ li.ingredient-row.selected {
 .badge-equipment {
   background: #222b1a;
   color: #9fdb82;
+}
+.badge-masterbook {
+  background: #29203a;
+  color: #d5b5ff;
+}
+.badge-ex {
+  background: #321616;
+  color: #ffaaa2;
 }
 .gathering-method-mining {
   background: #102030;
@@ -2055,6 +2107,16 @@ li.ingredient-row.selected {
 .material-tree-root-summary {
   margin-bottom: 6px;
 }
+.result-root-summary {
+  max-width: 720px;
+}
+.result-root-summary.recipe-method-root,
+.material-tree-root-summary.recipe-method-root {
+  padding: 4px 0 1px;
+  border: 1px solid rgba(200, 168, 75, 0.24);
+  border-radius: 4px;
+  background: rgba(200, 168, 75, 0.08);
+}
 .result-root-summary .node-row,
 .material-tree-root-summary .node-row {
   display: flex;
@@ -2064,6 +2126,143 @@ li.ingredient-row.selected {
   border: 1px solid rgba(200, 168, 75, 0.24);
   border-radius: 4px;
   background: rgba(200, 168, 75, 0.08);
+}
+.result-root-summary.recipe-method-root .node-row,
+.material-tree-root-summary.recipe-method-root .node-row {
+  border: 0;
+  background: transparent;
+}
+.root-item-main {
+  flex: 1 1 auto;
+}
+.root-item-title {
+  align-items: center;
+  justify-content: flex-start;
+}
+.root-item-display-label {
+  flex: 0 1 auto;
+  gap: 3px;
+}
+.root-item-display-label .list-name {
+  flex: 0 1 auto;
+  font-size: 14px;
+}
+.recipe-method-control {
+  display: block;
+  min-width: 0;
+  margin: 3px 4px 7px 58px;
+  font-size: 12px;
+  line-height: 1.3;
+}
+.result-root-summary > .recipe-method-control,
+.material-tree-root-summary > .recipe-method-control {
+  margin-left: 54px;
+}
+.recipe-method-selector {
+  position: relative;
+  width: var(--recipe-method-selector-width, 180px);
+  min-width: 0;
+  max-width: min(100%, 360px);
+}
+.recipe-method-summary {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 28px 4px 8px;
+  border: 1px solid rgba(200, 168, 75, 0.4);
+  border-radius: 4px;
+  background: #24231d;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+.recipe-method-summary::after {
+  position: absolute;
+  right: 9px;
+  color: var(--accent);
+  content: "▼";
+}
+.recipe-method-selector.open > .recipe-method-summary::after {
+  content: "▲";
+}
+.recipe-method-selector.open > .recipe-method-summary {
+  border-radius: 4px 4px 0 0;
+}
+.recipe-method-visual {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  white-space: nowrap;
+}
+.recipe-method-choices {
+  position: absolute;
+  z-index: 80;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  max-height: min(45vh, 300px);
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid #4d4632;
+  border-top: 0;
+  border-radius: 0 0 4px 4px;
+  background: #1d1d1d;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
+}
+.recipe-method-choice {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  min-height: 30px;
+  padding: 5px 8px 5px 5px;
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.recipe-method-choice:hover {
+  background: var(--hover-bg);
+}
+.recipe-method-choice.selected {
+  border-left-color: var(--accent);
+  background: rgba(200, 168, 75, 0.12);
+}
+.recipe-method-check {
+  width: 14px;
+  color: var(--accent);
+  text-align: center;
+  flex: 0 0 14px;
+}
+.recipe-method-control.open {
+  position: relative;
+  z-index: 100;
+}
+.recipe-method-width-measure {
+  position: fixed;
+  top: -10000px;
+  left: -10000px;
+  visibility: hidden;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.materials-list li.intermediate-tree-node.has-recipe-method {
+  position: relative;
+  border-bottom: 1px solid rgba(58, 58, 58, 0.4);
+}
+.materials-list li.intermediate-tree-node.has-recipe-method > .intermediate-tree-row {
+  border-bottom: 0;
+}
+.materials-list li.intermediate-tree-node.has-recipe-method:has(> .recipe-method-control.open) {
+  z-index: 100;
+  overflow: visible;
 }
 .favorite-material-root-or {
   color: var(--muted);
@@ -2699,7 +2898,7 @@ li.ingredient-row.selected {
 #shopDialog {
   width: max-content;
   min-width: min(300px, calc(100vw - 24px));
-  max-width: min(440px, calc(100vw - 24px));
+  max-width: min(880px, calc(100vw - 24px));
   max-height: calc(100dvh - 24px);
   display: flex;
   flex-direction: column;
@@ -2732,6 +2931,9 @@ li.ingredient-row.selected {
   display: grid;
   gap: 8px;
 }
+.shop-entry-list { display: grid; align-items: stretch; gap: 8px; }
+.shop-entry-list.measuring { display: block; }
+.shop-entry-list.measuring .shop-entry { width: max-content; margin-bottom: 8px; }
 .shop-list-section {
   min-height: 0;
   overflow: auto;
@@ -2808,6 +3010,9 @@ li.ingredient-row.selected {
 }
 .shop-entry {
   display: grid;
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
   gap: 3px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border);
@@ -3225,5 +3430,41 @@ li.ingredient-row.selected {
     overflow-y: auto;
     background: var(--bg);
     padding-bottom: var(--footer-space);
+  }
+  .recipe-method-control,
+  .result-root-summary > .recipe-method-control,
+  .material-tree-root-summary > .recipe-method-control {
+    position: relative;
+    display: block;
+    margin-right: 64px;
+    margin-left: 58px;
+  }
+  .result-root-summary > .recipe-method-control,
+  .material-tree-root-summary > .recipe-method-control {
+    margin-right: 62px;
+    margin-left: 54px;
+  }
+  .recipe-method-selector {
+    position: relative;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+  .recipe-method-choices {
+    position: absolute;
+    width: 100%;
+    max-height: min(42vh, 280px);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
+  }
+  .recipe-method-control.open {
+    z-index: 100;
+  }
+  .materials-list li.intermediate-tree-node.has-recipe-method:has(> .recipe-method-control.open) {
+    max-height: none;
+    overflow: visible;
+  }
+  .node-children:has(.recipe-method-control.open) {
+    max-height: none;
+    overflow: visible;
   }
 }
