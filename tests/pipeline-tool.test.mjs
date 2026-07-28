@@ -13,6 +13,7 @@ import {
   compressLodestoneHtml,
   decompressLodestoneHtml,
   applyEquipmentRoleOverrides,
+  applyPublicationPolicy,
   equipmentRoleDecision,
   findUnresolvedEquipmentRoleGroups,
   hasExistingLodestoneInfo,
@@ -24,11 +25,136 @@ import {
   nextLodestoneSearchUrl,
   openLodestoneShopCacheStore,
   parseCsv,
+  projectPublicItems,
+  publicationReviewItems,
   readLodestoneShopCacheEntry,
   resolveLodestoneShopCondition,
   resolveLodestoneItemDetail,
   writeLodestoneShopCacheEntry
 } from '../pipeline/tool/pipeline-tool.mjs';
+
+test('publication policy preserves unconfirmed existing data and withholds unconfirmed new items', () => {
+  const baseItems = [
+    { ID: '1', Name: '既存', IconFile: '000001.webp' },
+    { ID: '2', Name: '除外対象', IconFile: '000002.webp' }
+  ];
+  const candidateItems = [
+    { ID: '1', Name: '未確認の変更', IconFile: '000001.webp' },
+    { ID: '2', Name: '除外対象', IconFile: '000002.webp' },
+    { ID: '3', Name: '未確認の新規', IconFile: '000003.webp' },
+    {
+      ID: '4',
+      Name: 'Lodestone確認済み',
+      IconFile: '000004.webp',
+      IsEx: false,
+      LodestoneInfoVersion: 2,
+      LodestoneInfoCheckedAt: '2026-07-28T00:00:00.000Z'
+    },
+    { ID: '5', Name: '明示例外', IconFile: '000005.webp' }
+  ];
+  const result = applyPublicationPolicy({
+    baseItems,
+    candidateItems,
+    decisions: {
+      version: 1,
+      items: {
+        2: { decision: 'exclude', reason: 'unused', iconSource: 'none' },
+        5: { decision: 'keep', reason: 'exchange-currency', iconSource: 'xivapi' }
+      }
+    }
+  });
+  assert.deepEqual(result.published.map(item => [item.ID, item.Name]), [
+    ['1', '既存'],
+    ['4', 'Lodestone確認済み'],
+    ['5', '明示例外']
+  ]);
+  assert.deepEqual(result.withheld.map(item => item.ID), ['1', '3']);
+  assert.deepEqual(result.excluded.map(item => item.ID), ['2']);
+});
+
+test('publication review includes unchanged legacy items that still lack Lodestone confirmation', () => {
+  const baseItems = [
+    { ID: '1', Name: '同一', IconFile: '000001.webp' },
+    { ID: '2', Name: '変更前', IconFile: '000002.webp' }
+  ];
+  const rows = publicationReviewItems({
+    baseItems,
+    candidateItems: [
+      { ID: '1', Name: '同一', IconFile: '000001.webp' },
+      { ID: '2', Name: '変更後', IconFile: '000002.webp' },
+      { ID: '3', Name: '新規', IconFile: '000003.webp', Recipe: { Ingredients: [{ ItemID: '2', Amount: '1' }] } }
+    ],
+    decisions: {}
+  });
+  assert.deepEqual(rows.map(row => [row.id, row.status, row.existing]), [
+    ['3', 'unreviewed', false],
+    ['1', 'legacy-unverified', true],
+    ['2', 'unreviewed', true]
+  ]);
+});
+
+test('projectPublicItems removes pipeline-only and derivable runtime data without changing its source', () => {
+  const source = [{
+    ID: '1',
+    Name: '完成品',
+    Description: '説明',
+    LevelEquip: '10',
+    ItemUICategory: '1',
+    ItemUICategoryName: '素材',
+    ItemSearchCategory: '2',
+    ItemSearchCategoryName: '検索',
+    IsEx: false,
+    LodestoneInfoVersion: 2,
+    LodestoneInfoCheckedAt: '2026-01-01T00:00:00.000Z',
+    Recipe: {
+      Ingredients: [
+        { ItemID: '2', Name: '素材', Amount: '3' },
+        { ItemID: '0', Name: '軍票', Amount: '200' }
+      ]
+    },
+    Recipes: [{
+      Ingredients: [{ ItemID: '2', Name: '素材', Amount: '3' }]
+    }],
+    EquipmentInfo: {
+      statsVersion: 2,
+      stats: { STR: 10, VIT: 0 },
+      performance: { physicalDamage: 0, magicalDamage: 0 }
+    }
+  }, {
+    ID: '2',
+    Name: '素材',
+    IsEx: true
+  }];
+
+  const projected = projectPublicItems(source);
+
+  assert.deepEqual(projected, [{
+    ID: '1',
+    Name: '完成品',
+    ItemUICategory: '1',
+    ItemUICategoryName: '素材',
+    Recipe: {
+      Ingredients: [
+        { ItemID: '2', Amount: '3' },
+        { ItemID: '0', Name: '軍票', Amount: '200' }
+      ]
+    },
+    Recipes: [{
+      Ingredients: [{ ItemID: '2', Amount: '3' }]
+    }],
+    EquipmentInfo: {
+      stats: { STR: 10 }
+    }
+  }, {
+    ID: '2',
+    Name: '素材',
+    IsEx: true
+  }]);
+  assert.equal(source[0].Description, '説明');
+  assert.equal(source[0].Recipe.Ingredients[0].Name, '素材');
+  assert.equal(source[0].EquipmentInfo.stats.VIT, 0);
+  assert.deepEqual(projectPublicItems(projected), projected);
+});
 
 test('parseCsv handles commas, escaped quotes, and newlines in quoted fields', () => {
   const rows = parseCsv('A,B,C\r\n1,"two, too","line1\r\nline2"\r\n2,"say ""hi""",3\r\n');

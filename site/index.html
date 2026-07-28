@@ -18,7 +18,7 @@
       <img class="app-title-icon" src="./assets/app-icons/favicon.png" alt="">
       <h1>FF14 レシピ素材ツリー</h1>
     </div>
-    <span id="appVersion"></span>
+    <span id="loadStatus">データ読み込み中...</span>
   </div>
   <button id="popupBtn">⧉ 小窓で開く</button>
   <button id="mobileBackBtn" type="button">◀ 戻る</button>
@@ -157,7 +157,7 @@
     </div>
     <div class="settings-title-row">
       <h2>⚙ 設定</h2>
-      <span id="loadStatus">データ読み込み中...</span>
+      <span id="appVersion"></span>
     </div>
     <div class="settings-section">
       <div class="settings-label">シェアするお気に入りリストを選ぶ</div>
@@ -178,6 +178,16 @@
       </div>
       <div id="importErr" class="settings-err"></div>
       <button class="settings-btn share-plaza-open-btn" id="sharePlazaOpenBtn" type="button">シェアコード広場を開く</button>
+    </div>
+    <div class="settings-section">
+      <div class="settings-label">お気に入りリストの一括入出力</div>
+      <div class="settings-note">登録済みの全お気に入りリストを、1つのファイルに書き出したり、まとめて読み込んだりできます。</div>
+      <div class="settings-row favorite-list-file-actions">
+        <button class="settings-btn" id="exportAllFavoritesBtn" type="button">全リストを書き出す</button>
+        <button class="settings-btn" id="importAllFavoritesBtn" type="button">ファイルから読み込む</button>
+      </div>
+      <input id="importAllFavoritesFile" type="file" accept=".txt,text/plain,application/json" hidden>
+      <div id="favoriteListFileStatus" class="settings-file-status" role="status" aria-live="polite"></div>
     </div>
     <div class="settings-close">
       <button class="confirm-btn no" id="settingsCloseBtn">閉じる</button>

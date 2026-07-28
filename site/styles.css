@@ -550,7 +550,7 @@ header h1 {
 .favorite-list-name {
   flex: 0 1 auto;
   min-width: 0;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.35;
   margin-right: auto;
   overflow-wrap: anywhere;
@@ -1443,6 +1443,10 @@ li.ingredient-row.selected {
   overflow-wrap: anywhere;
 }
 .materials-list li.materials-bulk-actions { padding: 6px 10px; background: rgba(255, 255, 255, 0.02); }
+.materials-list li.materials-bulk-actions.collapsed {
+  padding-top: 0;
+  padding-bottom: 0;
+}
 .bulk-action-row { display: flex; align-items: center; gap: 6px; }
 .bulk-action-row button {
   flex: 1 1 0; min-width: 0; border: 1px solid var(--border); border-radius: 4px;
@@ -1682,7 +1686,39 @@ li.ingredient-row.selected {
   max-width: 720px;
   margin-bottom: 8px;
 }
-.favorite-ring-bulk-actions { margin: 0 12px 8px; }
+.favorite-ring-bulk-actions { margin: 0 10px 8px; }
+.favorite-ring-section {
+  max-width: 720px;
+}
+.favorite-ring-section > .favorite-ring-bulk-actions {
+  width: calc(100% - 20px);
+  max-width: 700px;
+  margin-top: 8px;
+}
+.favorite-ring-section > .favorite-ring-controls {
+  width: calc(100% - 10px);
+  margin-left: 10px;
+  margin-top: 8px;
+}
+.favorite-ring-section .favorite-list-production-block {
+  margin: 8px 0 0 12px;
+  padding-left: 12px;
+  border-left: 1px solid rgba(200, 168, 75, 0.5);
+}
+.favorite-ring-section > .favorite-ring-bulk-actions + .favorite-list-production-block {
+  margin-top: 0;
+}
+.favorite-ring-section .favorite-list-root-summary {
+  margin-bottom: 4px;
+}
+.favorite-ring-section .favorite-list-root-summary .node-row {
+  padding: 2px 0 4px;
+  border: 0;
+  background: transparent;
+}
+.favorite-ring-section .favorite-list-production-block .favorite-ring-controls {
+  margin-left: 0;
+}
 .favorite-ring-separator {
   max-width: 720px;
   margin: 0 0 8px;
@@ -2267,8 +2303,8 @@ li.ingredient-row.selected {
 .favorite-material-root-or {
   color: var(--muted);
   font-size: 11px;
-  line-height: 1;
-  margin: -3px 0 4px 72px;
+  line-height: 1.2;
+  margin: 4px 0 4px 48px;
 }
 .production-content-section {
   max-width: 720px;
@@ -2303,8 +2339,25 @@ li.ingredient-row.selected {
   padding-top: 8px;
   transition: padding-top 180ms ease;
 }
+.production-content-section > .production-content-clip:not(.collapsed) > .production-content-body {
+  padding-bottom: 8px;
+}
 .production-content-clip.collapsed .production-content-body {
   padding-top: 0;
+}
+.production-content-section .production-list-block {
+  width: calc(100% - 12px);
+  margin-left: 12px;
+  padding-left: 12px;
+  border-left: 1px solid rgba(200, 168, 75, 0.5);
+}
+.production-list-block.collapsible .favorite-list-root-summary {
+  margin-bottom: 0;
+  cursor: pointer;
+}
+.production-list-block.collapsible .favorite-list-root-summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 .favorite-list-production-block .favorite-ring-controls {
   margin: 0 0 8px 12px;
@@ -2412,6 +2465,49 @@ li.ingredient-row.selected {
   display: flex;
   flex-direction: column;
 }
+#confirmOverlay.recipe-resolution-info #confirmDialog {
+  width: max-content;
+  min-width: min(300px, calc(100vw - 24px));
+  max-width: min(420px, calc(100vw - 24px));
+  border-color: rgba(200, 168, 75, 0.7);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+.recipe-resolution-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.recipe-resolution-message {
+  overflow-wrap: anywhere;
+}
+.recipe-resolution-list {
+  max-height: min(42vh, 320px);
+  overflow-y: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  text-align: left;
+}
+.recipe-resolution-group + .recipe-resolution-group {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.recipe-resolution-list-name {
+  margin-bottom: 4px;
+  color: var(--accent);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.recipe-resolution-list ul {
+  margin: 0;
+  padding-left: 1.5em;
+}
+.recipe-resolution-list li {
+  overflow-wrap: anywhere;
+}
 #confirmMsg {
   font-size: 14px;
   margin-bottom: 16px;
@@ -2472,6 +2568,8 @@ li.ingredient-row.selected {
 }
 #settingsDialog {
   max-width: 460px;
+  max-height: 88vh;
+  overflow-y: auto;
   position: relative;
 }
 #settingsDialog h2 {
@@ -2529,6 +2627,50 @@ li.ingredient-row.selected {
 .settings-row {
   display: flex;
   gap: 6px;
+}
+.favorite-list-file-actions > .settings-btn {
+  flex: 1 1 0;
+}
+.settings-file-status {
+  min-height: 16px;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.settings-file-status.error {
+  color: #ff8a80;
+}
+.favorite-list-file-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.favorite-list-file-import-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+}
+.favorite-list-file-preview {
+  max-height: 160px;
+  margin: 0;
+  padding: 6px 8px 6px 28px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  font-size: 12px;
+  text-align: left;
+}
+.favorite-list-file-preview li {
+  padding: 2px 0;
+  overflow-wrap: anywhere;
+}
+.favorite-list-file-import-modes label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
 }
 .settings-dropdown {
   position: relative;
@@ -3119,6 +3261,16 @@ li.ingredient-row.selected {
   max-width: 300px;
   text-align: center;
 }
+#favoriteTargetDialog {
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
+#favoriteTargetChoices {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: none;
+}
 #textInputMsg,
 #favoriteTargetMsg {
   font-size: 14px;
@@ -3207,6 +3359,9 @@ li.ingredient-row.selected {
 
 /* Mobile layout */
 @media (max-width: 600px) {
+  .favorite-list-file-actions {
+    flex-direction: column;
+  }
   body {
     height: 100svh;
     min-height: 100svh;

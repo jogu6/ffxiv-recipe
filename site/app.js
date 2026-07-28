@@ -1,4 +1,4 @@
-const DATA_CACHE_VERSION = 'ff14recipe-data-7.50-fb8a6c57';
+const DATA_CACHE_VERSION = 'ff14recipe-data-7.50-6e392bcc';
 const DATA_FILE = `./data/Item.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 const TIPS_FILE = './data/tips.md';
 const ABOUT_URL = ['127.0.0.1', 'localhost'].includes(location.hostname)
@@ -16,6 +16,10 @@ const FAVORITE_NAME_MAX = 50;
 const RECENT_LIST_ID = 'SYSTEM_RECENT_ITEMS';
 const RECENT_LIST_NAME = '検索履歴';
 const RECENT_LIST_LIMIT = 100;
+const FAVORITE_LIST_FILE_TITLE = 'FF14 レシピ素材ツリー お気に入りリスト';
+const FAVORITE_LIST_FILE_SEPARATOR = '\n\n----------------------------------------\n\n';
+const FAVORITE_LIST_FILE_MAX_BYTES = 1024 * 1024;
+const FAVORITE_LIST_FILE_MAX_LISTS = 1000;
 const MOBILE_BREAKPOINT = 600;
 const LICENSE_NOTICE_FILE = './docs/license-notice.md';
 const PRIVACY_POLICY_FILE = './docs/privacy-policy.md';
@@ -124,6 +128,10 @@ const elements = {
   importCode: document.getElementById('importCode'),
   startImportBtn: document.getElementById('startImportBtn'),
   importErr: document.getElementById('importErr'),
+  exportAllFavoritesBtn: document.getElementById('exportAllFavoritesBtn'),
+  importAllFavoritesBtn: document.getElementById('importAllFavoritesBtn'),
+  importAllFavoritesFile: document.getElementById('importAllFavoritesFile'),
+  favoriteListFileStatus: document.getElementById('favoriteListFileStatus'),
   sharePlazaOpenBtn: document.getElementById('sharePlazaOpenBtn'),
   sharePlazaOverlay: document.getElementById('sharePlazaOverlay'),
   sharePlazaFrame: document.getElementById('sharePlazaFrame'),
@@ -210,6 +218,7 @@ let favoriteMaterialCalcMode = 'sum';
 let checkedFavoriteMaterialCalcMode = 'sum';
 let favoriteAnyItemProductionExpanded = true;
 let favoriteAnyListProductionExpanded = true;
+let favoriteListProductionExpanded = {};
 const expandedFavoriteCountRows = new Set();
 let gatheringTimerIntervalId = null;
 let canSaveViewState = false;
@@ -535,7 +544,12 @@ function saveViewState() {
       calcMode: favoriteMaterialCalcMode,
       checkedCalcMode: checkedFavoriteMaterialCalcMode,
       anyItemProductionExpanded: favoriteAnyItemProductionExpanded,
-      anyListProductionExpanded: favoriteAnyListProductionExpanded
+      anyListProductionExpanded: favoriteAnyListProductionExpanded,
+      listProductionExpanded: Object.fromEntries(
+        Object.entries(favoriteListProductionExpanded).filter(
+          ([listId, expanded]) => findFavoriteList(listId) && typeof expanded === 'boolean'
+        )
+      )
     },
     materials: {
       sections: Object.fromEntries(materialSectionState),
@@ -596,6 +610,7 @@ function clearViewState() {
   };
   purchasedIntermediateContext = '';
   purchasedIntermediateNames.clear();
+  favoriteListProductionExpanded = {};
 }
 
 function restoreViewState() {
@@ -675,6 +690,11 @@ function restoreViewState() {
     checkedFavoriteMaterialCalcMode = state.favoriteMaterials?.checkedCalcMode === 'any-one' ? 'any-one' : 'sum';
     favoriteAnyItemProductionExpanded = state.favoriteMaterials?.anyItemProductionExpanded !== false;
     favoriteAnyListProductionExpanded = state.favoriteMaterials?.anyListProductionExpanded !== false;
+    favoriteListProductionExpanded = Object.fromEntries(
+      Object.entries(state.favoriteMaterials?.listProductionExpanded || {}).filter(
+        ([listId, expanded]) => findFavoriteList(listId) && typeof expanded === 'boolean'
+      )
+    );
     if (restoreFavoriteMaterials && favoriteMaterialsListIds.length === 0 && favoriteList) {
       getFavoriteCountState(favoriteList).enabled = favoriteMaterialCalcMode !== 'sum';
     }
@@ -1734,6 +1754,7 @@ function saveEquipmentSearchAsFavorite() {
 }
 
 function showConfirm(msg, onYes) {
+  elements.confirmOverlay.classList.remove('recipe-resolution-info');
   elements.confirmMsg.classList.remove('markdown-content');
   elements.confirmMsg.textContent = msg;
   pendingConfirmAction = onYes;
@@ -1745,6 +1766,7 @@ function showConfirm(msg, onYes) {
 }
 
 function showConfirmContent(content, onYes) {
+  elements.confirmOverlay.classList.remove('recipe-resolution-info');
   elements.confirmMsg.classList.remove('markdown-content');
   elements.confirmMsg.replaceChildren(content);
   pendingConfirmAction = onYes;
@@ -1756,6 +1778,7 @@ function showConfirmContent(content, onYes) {
 }
 
 function showInfo(msg, { markdown = false } = {}) {
+  elements.confirmOverlay.classList.remove('recipe-resolution-info');
   elements.confirmMsg.classList.toggle('markdown-content', markdown);
   if (markdown) elements.confirmMsg.innerHTML = renderMarkdown(msg);
   else elements.confirmMsg.textContent = msg;
@@ -1766,9 +1789,20 @@ function showInfo(msg, { markdown = false } = {}) {
   elements.confirmOverlay.classList.add('open');
 }
 
+function showRecipeResolutionInfo(content) {
+  elements.confirmMsg.classList.remove('markdown-content');
+  elements.confirmMsg.replaceChildren(content);
+  pendingConfirmAction = null;
+  elements.confirmOverlay.classList.add('info', 'recipe-resolution-info');
+  elements.confirmYes.classList.add('hidden');
+  elements.confirmNo.textContent = '閉じる';
+  elements.confirmOverlay.classList.add('open');
+}
+
 function closeConfirm() {
   elements.confirmOverlay.classList.remove('open');
   elements.confirmOverlay.classList.remove('info');
+  elements.confirmOverlay.classList.remove('recipe-resolution-info');
   elements.confirmMsg.textContent = '';
   elements.confirmMsg.classList.remove('markdown-content');
   elements.confirmYes.classList.remove('hidden');
@@ -2111,6 +2145,7 @@ function deleteFavoriteList(listId) {
     const wasDisplayed = getDisplayedFavoriteList()?.id === listId;
     favoriteStore.lists = favoriteStore.lists.filter(entry => entry.id !== listId);
     favoriteMaterialsListIds = favoriteMaterialsListIds.filter(id => id !== listId);
+    delete favoriteListProductionExpanded[listId];
     if (favoriteStore.selectedListId === listId) {
       favoriteStore.selectedListId = null;
     }
@@ -2724,7 +2759,13 @@ function recipeVariantMaster(name, variant = null) {
 
 function createItemDisplayLabel(
   name,
-  { favorite = false, recipeVariant = null, provisional = false, hideCraftRequirement = false } = {}
+  {
+    favorite = false,
+    recipeVariant = null,
+    provisional = false,
+    hideCraftRequirement = false,
+    hideEquipmentParameters = false
+  } = {}
 ) {
   const master = recipeVariant ? recipeVariantMaster(name, recipeVariant) : itemMaster[name] || {};
   const wrapper = document.createElement('span');
@@ -2772,7 +2813,11 @@ function createItemDisplayLabel(
   const nameElement = createTextElement('span', favorite ? 'favorite-item-name list-name' : 'list-name', name);
   if (badges.childElementCount > 0) wrapper.appendChild(badges);
   wrapper.appendChild(nameElement);
-  if ((listMode === 'equipment' || listMode === 'fav') && equipmentParameterDisplayNames.has(name)) {
+  if (
+    !hideEquipmentParameters &&
+    (listMode === 'equipment' || listMode === 'fav') &&
+    equipmentParameterDisplayNames.has(name)
+  ) {
     const comparisonKey = equipmentParameterComparisonKey(name);
     const peers = [...equipmentParameterDisplayNames].filter(
       peerName => equipmentParameterComparisonKey(peerName) === comparisonKey
@@ -3299,10 +3344,10 @@ function normalizedRecipeVariant(rawRecipe, fallbackCraftInfo = null) {
     craftType,
     craftInfo,
     ingredients: rawRecipe.Ingredients.map(ingredient => ({
-      name: ingredient.Name,
+      name: ingredient.Name || itemNameForId(ingredient.ItemID),
       qty: toNumeric(ingredient.Amount, 1),
       itemId: ingredient.ItemID
-    }))
+    })).filter(ingredient => ingredient.name)
   };
 }
 
@@ -3424,8 +3469,9 @@ function buildItemAndRecipeMasters(rawList, idToItem) {
   rawList.forEach(item => {
     const sourceRecipes = Array.isArray(item.Recipes) && item.Recipes.length > 0 ? item.Recipes : [item.Recipe];
     sourceRecipes.flatMap(recipe => recipe?.Ingredients || []).forEach(ingredient => {
-      if (itemMaster[ingredient.Name]) return;
-      itemMaster[ingredient.Name] = {
+      const ingredientName = ingredient.Name || itemNameForId(ingredient.ItemID);
+      if (!ingredientName || itemMaster[ingredientName]) return;
+      itemMaster[ingredientName] = {
         method: '',
         icon: iconPath(idToItem[ingredient.ItemID]),
         craftType: '',
@@ -3477,8 +3523,9 @@ function buildApplicationData(rawList) {
 }
 
 function updatePatchStatus(maxPatch) {
+  const patch = `${String(maxPatch).slice(0, -2)}.${String(maxPatch).slice(-2)}`.replace(/0$/, '');
   elements.loadStatus.textContent =
-    maxPatch > 0 ? `patch ${String(maxPatch).slice(0, -2)}.${String(maxPatch).slice(-2)} 対応` : '';
+    maxPatch > 0 ? `patch ${patch} 対応` : '';
 }
 
 function showLoadError(error) {
@@ -4268,6 +4315,40 @@ function renderFavoriteRingBulkControls(container, lists = []) {
   container.appendChild(controls);
 }
 
+function createFavoriteRingSection(lists = []) {
+  if (favoriteMaterialsListIds.length === 0 && favoriteCountEnabled()) return null;
+  const activeLists = lists.filter(Boolean);
+  const ringLists = activeLists
+    .map(list => ({ list, ringNames: getFavoriteMaterialRingNames(list) }))
+    .filter(entry => entry.ringNames.length > 0);
+  if (ringLists.length === 0) return null;
+
+  const section = document.createElement('section');
+  section.className = 'favorite-ring-section';
+  const header = document.createElement('div');
+  header.className = 'production-content-toggle materials-section-header';
+  header.appendChild(createTextElement('span', 'materials-section-title', '指輪'));
+  section.appendChild(header);
+  renderFavoriteRingBulkControls(
+    section,
+    ringLists.map(entry => entry.list)
+  );
+
+  const showListRoots = activeLists.length > 1;
+  ringLists.forEach(({ list }) => {
+    if (!showListRoots) {
+      renderFavoriteRingControls(section, list);
+      return;
+    }
+    const block = document.createElement('div');
+    block.className = 'favorite-list-production-block';
+    block.appendChild(createFavoriteListRootSummary(list));
+    renderFavoriteRingControls(block, list);
+    section.appendChild(block);
+  });
+  return section;
+}
+
 function recipeMapForSelections(recipeSelections = {}) {
   const contextualRecipes = { ...recipes };
   Object.entries(recipeVariants).forEach(([name, variants]) => {
@@ -4557,13 +4638,26 @@ function resolveAndReportRecipeSelections(lists) {
     .join('|');
   if (autoSelectedRecipeNoticeKeys.has(key)) return;
   autoSelectedRecipeNoticeKeys.add(key);
-  const details = entries
-    .flatMap(({ list, resolved }) => [
-      ...(entries.length > 1 ? [list.name] : []),
-      ...resolved.map(({ name, recipe }) => `・${name}：${recipeSelectionLabel(name, recipe)}`)
-    ])
-    .join('\n');
-  showInfo(`製作方法情報がなかったため、次の製作方法に設定しました。\n\n${details}`);
+  const content = document.createElement('div');
+  content.className = 'recipe-resolution-notice';
+  content.appendChild(
+    createTextElement('div', 'recipe-resolution-message', '製作方法情報がなかったため、次の製作方法に設定しました。')
+  );
+  const details = document.createElement('div');
+  details.className = 'recipe-resolution-list';
+  entries.forEach(({ list, resolved }) => {
+    const group = document.createElement('div');
+    group.className = 'recipe-resolution-group';
+    if (entries.length > 1) group.appendChild(createTextElement('div', 'recipe-resolution-list-name', list.name));
+    const itemList = document.createElement('ul');
+    resolved.forEach(({ name, recipe }) =>
+      itemList.appendChild(createTextElement('li', '', `${name}：${recipeSelectionLabel(name, recipe)}`))
+    );
+    group.appendChild(itemList);
+    details.appendChild(group);
+  });
+  content.appendChild(details);
+  showRecipeResolutionInfo(content);
 }
 
 function intermediateUsageEntries(result, state) {
@@ -4803,22 +4897,59 @@ function createProductionContentSection(kind) {
   return { section, body };
 }
 
-function appendFavoriteListProduction(target, list) {
+function appendFavoriteListProduction(target, list, { collapsible = false } = {}) {
   const block = document.createElement('div');
-  block.className = 'favorite-list-production-block';
-  block.appendChild(createFavoriteListRootSummary(list));
+  block.className = 'favorite-list-production-block production-list-block';
+  const rootSummary = createFavoriteListRootSummary(list);
+  block.appendChild(rootSummary);
+  const contentTarget = document.createElement('div');
   getFavoriteListMaterialRoots(list).forEach(root => {
-    block.appendChild(
+    contentTarget.appendChild(
       createResultRootSummary(
         root.name,
         root.qty,
         'result-root-summary favorite-material-root-summary',
         false,
-        list
+        list,
+        { hideEquipmentParameters: true }
       )
     );
   });
-  renderFavoriteRingControls(block, list);
+  if (collapsible) {
+    block.classList.add('collapsible');
+    const rootRow = rootSummary.querySelector('.node-row');
+    const toggle = createTextElement('span', 'materials-section-toggle production-list-toggle', '');
+    const clip = document.createElement('div');
+    clip.className = 'production-content-clip';
+    const body = document.createElement('div');
+    body.className = 'production-content-body';
+    body.append(...contentTarget.childNodes);
+    clip.appendChild(body);
+    const applyState = expanded => {
+      toggle.textContent = expanded ? '▼' : '▶';
+      rootSummary.setAttribute('aria-expanded', String(expanded));
+      clip.classList.toggle('collapsed', !expanded);
+    };
+    const toggleState = () => {
+      const expanded = rootSummary.getAttribute('aria-expanded') !== 'true';
+      favoriteListProductionExpanded[list.id] = expanded;
+      applyState(expanded);
+      saveViewState();
+    };
+    rootRow.prepend(toggle);
+    rootSummary.setAttribute('role', 'button');
+    rootSummary.tabIndex = 0;
+    rootSummary.addEventListener('click', toggleState);
+    rootSummary.addEventListener('keydown', event => {
+      if (!['Enter', ' '].includes(event.key)) return;
+      event.preventDefault();
+      toggleState();
+    });
+    applyState(favoriteListProductionExpanded[list.id] === true);
+    block.appendChild(clip);
+  } else {
+    block.append(...contentTarget.childNodes);
+  }
   target.appendChild(block);
 }
 
@@ -4880,15 +5011,13 @@ function renderMaterialsList() {
     const activeLists = getActiveFavoriteMaterialLists();
     if (favoriteMaterialsListIds.length >= 1) {
       const production = createProductionContentSection('list');
-      renderFavoriteRingBulkControls(production.body, activeLists);
+      const collapsibleLists = activeLists.length > 1;
       activeLists.forEach((list, index) => {
         if (checkedFavoriteMaterialCalcMode === 'any-one' && index > 0)
           production.body.appendChild(createTextElement('div', 'favorite-material-root-or', 'もしくは'));
-        appendFavoriteListProduction(production.body, list);
+        appendFavoriteListProduction(production.body, list, { collapsible: collapsibleLists });
       });
       elements.treeContainer.appendChild(production.section);
-    } else {
-      renderFavoriteRingControls(elements.treeContainer);
     }
     if (favoriteMaterialsListIds.length === 0) {
       const roots = getFavoriteMaterialRoots();
@@ -4904,12 +5033,15 @@ function renderMaterialsList() {
             root.qty,
             'result-root-summary favorite-material-root-summary',
             false,
-            getDisplayedFavoriteList()
+            getDisplayedFavoriteList(),
+            { hideEquipmentParameters: true }
           )
         );
       });
       elements.treeContainer.appendChild(production.section);
     }
+    const ringSection = createFavoriteRingSection(activeLists);
+    if (ringSection) elements.treeContainer.appendChild(ringSection);
   } else {
     elements.treeContainer.appendChild(createResultRootSummary(selectedRecipe, count, 'result-root-summary', true));
   }
@@ -5302,7 +5434,8 @@ function createResultRootSummary(
   neededQty,
   className = 'result-root-summary',
   showPin = false,
-  selectionList = currentRecipeSelectionList()
+  selectionList = currentRecipeSelectionList(),
+  { hideEquipmentParameters = false } = {}
 ) {
   const master = recipeVariantMaster(name);
   const recipe = recipes[name];
@@ -5321,7 +5454,8 @@ function createResultRootSummary(
   title.className = 'node-title root-item-title';
   const display = createItemDisplayLabel(name, {
     recipeVariant: recipe,
-    hideCraftRequirement: Boolean(selector)
+    hideCraftRequirement: Boolean(selector),
+    hideEquipmentParameters
   });
   display.classList.add('root-item-display-label');
   title.append(display, createTextElement('span', 'node-qty', `× ${formatNumber(producedQty)}`));
@@ -6153,6 +6287,7 @@ function openSettings() {
   elements.copyExportBtn.textContent = 'コピー';
   elements.importCode.value = '';
   setImportError();
+  setFavoriteListFileStatus();
   closeExportListDropdown();
   renderExportListChoices();
   elements.settingsOverlay.classList.add('open');
@@ -6312,6 +6447,178 @@ function renderExportListChoices() {
 function setImportError(message = '') {
   elements.importErr.textContent = message;
   elements.importErr.classList.toggle('visible', Boolean(message));
+}
+
+function setFavoriteListFileStatus(message = '', { error = false } = {}) {
+  elements.favoriteListFileStatus.textContent = message;
+  elements.favoriteListFileStatus.classList.toggle('error', Boolean(message) && error);
+}
+
+function localDateStamp(date = new Date()) {
+  const pad = value => String(value).padStart(2, '0');
+  return [date.getFullYear(), pad(date.getMonth() + 1), pad(date.getDate())].join('-');
+}
+
+function favoriteListFileBlock(list) {
+  const itemNames = list.itemIds.map(itemNameForId).filter(Boolean);
+  const itemLines = itemNames.length > 0 ? itemNames.map(name => `・${name}`).join('\n') : '・（アイテムなし）';
+  return `【${list.name}】\n登録アイテム:\n${itemLines}\n\n復元コード:\n${encodeFavoriteList(list)}`;
+}
+
+function exportAllFavoriteLists() {
+  const lists = favoriteStore.lists.filter(list => !isRecentList(list));
+  if (lists.length === 0) {
+    setFavoriteListFileStatus('書き出せるお気に入りリストがありません', { error: true });
+    return;
+  }
+  const text = `${FAVORITE_LIST_FILE_TITLE}\n\n${lists.map(favoriteListFileBlock).join(FAVORITE_LIST_FILE_SEPARATOR)}\n`;
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `favorite-lists-${localDateStamp()}.txt`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+  setFavoriteListFileStatus(`${lists.length}件のお気に入りリストを書き出しました`);
+}
+
+function decodeFavoriteListFile(source) {
+  const normalized = String(source || '').replace(/\r\n?/g, '\n').trim();
+  const prefix = `${FAVORITE_LIST_FILE_TITLE}\n\n`;
+  if (!normalized.startsWith(prefix)) return null;
+  const blocks = normalized.slice(prefix.length).split(FAVORITE_LIST_FILE_SEPARATOR);
+  if (blocks.length === 0 || blocks.length > FAVORITE_LIST_FILE_MAX_LISTS) return null;
+  const names = new Set();
+  const lists = [];
+  for (const block of blocks) {
+    const match = block.match(/^【(.+)】\n登録アイテム:\n([\s\S]+?)\n\n復元コード:\n(\S+)$/);
+    if (!match) return null;
+    const [, displayedName, displayedItems, shareCode] = match;
+    const decoded = decodeFavoriteShareCode(shareCode);
+    const itemNames = decoded?.itemIds.map(itemNameForId).filter(Boolean) || [];
+    const expectedItems = itemNames.length > 0 ? itemNames.map(name => `・${name}`).join('\n') : '・（アイテムなし）';
+    if (
+      !decoded ||
+      decoded.needsName ||
+      normalizeFavoriteListName(displayedName) !== decoded.name ||
+      displayedItems !== expectedItems ||
+      names.has(decoded.name)
+    ) {
+      return null;
+    }
+    names.add(decoded.name);
+    lists.push(decoded);
+  }
+  return lists;
+}
+
+function applyFavoriteListFileImport(decodedLists, mode) {
+  const previousLists = favoriteStore.lists;
+  const previousSelectedListId = favoriteStore.selectedListId;
+  const replacedListIds =
+    mode === 'replace' ? new Set(previousLists.filter(list => !isRecentList(list)).map(list => list.id)) : new Set();
+  if (mode === 'replace') {
+    const recent = previousLists.find(isRecentList) || createRecentList();
+    favoriteStore.lists = [recent];
+    favoriteStore.selectedListId = null;
+  }
+
+  const imported = decodedLists.map(decoded => {
+    const list = {
+      id: createFavoriteListId(),
+      name: uniqueFavoriteListName(decoded.name),
+      itemIds: normalizeItemIds(decoded.itemIds),
+      recipeSelections: normalizeRecipeSelections(decoded.recipeSelections),
+      materialSelected: false
+    };
+    favoriteStore.lists.push(list);
+    return list;
+  });
+  if (mode === 'replace') favoriteStore.selectedListId = imported[0]?.id || RECENT_LIST_ID;
+
+  if (!saveFavorites()) {
+    favoriteStore.lists = previousLists;
+    favoriteStore.selectedListId = previousSelectedListId;
+    setFavoriteListFileStatus('お気に入りリストを保存できませんでした', { error: true });
+    return;
+  }
+  if (mode === 'replace') {
+    replacedListIds.forEach(listId => {
+      delete favoriteItemCountStore.lists[listId];
+      delete favoriteListProductionExpanded[listId];
+      delete favoriteMaterialsRingCounts[listId];
+    });
+    favoriteMaterialsListIds = favoriteMaterialsListIds.filter(listId => !replacedListIds.has(listId));
+    saveFavoriteItemCountStore();
+  }
+  renderFavoriteLists();
+  renderExportListChoices();
+  updateFavoriteButtonState();
+  if (listMode === 'fav') {
+    renderList();
+    renderResultView();
+  }
+  setFavoriteListFileStatus(
+    `${imported.length}件のお気に入りリストを${mode === 'replace' ? '置き換えて' : '追加して'}読み込みました`
+  );
+}
+
+function confirmFavoriteListFileImport(decodedLists) {
+  const content = document.createElement('div');
+  content.className = 'favorite-list-file-confirm';
+  content.appendChild(createTextElement('div', '', `${decodedLists.length}件のお気に入りリストを読み込みます`));
+  const preview = document.createElement('ul');
+  preview.className = 'favorite-list-file-preview';
+  decodedLists.forEach(list => preview.appendChild(createTextElement('li', '', list.name)));
+  content.appendChild(preview);
+  const choices = document.createElement('div');
+  choices.className = 'favorite-list-file-import-modes';
+  const createChoice = (value, text, checked = false) => {
+    const label = document.createElement('label');
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = 'favorite-list-file-import-mode';
+    input.value = value;
+    input.checked = checked;
+    label.append(input, document.createTextNode(text));
+    return label;
+  };
+  choices.append(
+    createChoice('add', '既存を残して追加', true),
+    createChoice('replace', '既存をすべて削除して置き換える')
+  );
+  content.appendChild(choices);
+  showConfirmContent(content, () => {
+    const mode = choices.querySelector('input:checked')?.value === 'replace' ? 'replace' : 'add';
+    applyFavoriteListFileImport(decodedLists, mode);
+  });
+  elements.confirmYes.textContent = '読み込む';
+}
+
+async function importAllFavoriteLists(event) {
+  const file = event.target.files?.[0];
+  event.target.value = '';
+  if (!file) return;
+  if (file.size > FAVORITE_LIST_FILE_MAX_BYTES) {
+    setFavoriteListFileStatus('ファイルサイズが大きすぎます', { error: true });
+    return;
+  }
+  let source;
+  try {
+    source = await file.text();
+  } catch {
+    setFavoriteListFileStatus('ファイルを読み込めませんでした', { error: true });
+    return;
+  }
+  const decodedLists = decodeFavoriteListFile(source);
+  if (!decodedLists) {
+    setFavoriteListFileStatus('対応していない、または内容が不正なファイルです', { error: true });
+    return;
+  }
+  setFavoriteListFileStatus();
+  confirmFavoriteListFileImport(decodedLists);
 }
 
 function startImport() {
@@ -6572,6 +6879,9 @@ function bindEvents() {
   });
   elements.copyExportBtn.addEventListener('click', copyExportCode);
   elements.startImportBtn.addEventListener('click', startImport);
+  elements.exportAllFavoritesBtn.addEventListener('click', exportAllFavoriteLists);
+  elements.importAllFavoritesBtn.addEventListener('click', () => elements.importAllFavoritesFile.click());
+  elements.importAllFavoritesFile.addEventListener('change', importAllFavoriteLists);
   elements.sharePlazaOpenBtn.addEventListener('click', openSharePlaza);
   window.addEventListener('message', handleSharePlazaMessage);
   elements.contactBtn.addEventListener('click', openContactLink);

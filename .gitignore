@@ -36,6 +36,8 @@ pipeline/reference/csv-headers/*.txt
 pipeline/reference/expected/*.json
 pipeline/cache/
 pipeline/logs/*.txt
+pipeline/logs/runs/
+pipeline/logs/latest.log
 pipeline/state/*.json
 pipeline/reports/
 pipeline/config/*.local.json

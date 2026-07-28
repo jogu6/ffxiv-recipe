@@ -61,14 +61,26 @@ test('combined favorite materials opens directly without confirmation dialog', a
   await expect(page.locator('#confirmMsg')).toContainText(
     '製作方法情報がなかったため、次の製作方法に設定しました'
   );
+  const resolutionDialogLayout = await page.locator('#confirmDialog').evaluate(dialog => ({
+    width: dialog.getBoundingClientRect().width,
+    borderWidth: getComputedStyle(dialog).borderTopWidth,
+    listBorderWidth: getComputedStyle(dialog.querySelector('.recipe-resolution-list')).borderTopWidth
+  }));
+  expect(resolutionDialogLayout.width).toBeLessThanOrEqual(420);
+  expect(resolutionDialogLayout.borderWidth).toBe('1px');
+  expect(resolutionDialogLayout.listBorderWidth).toBe('1px');
   await page.locator('#confirmNo').click();
   await expect(
-    page.locator('.favorite-list-root-summary').filter({ hasText: 'コートリーブーツ・ディフェンダー' })
+    page
+      .locator('.production-content-section .favorite-list-root-summary')
+      .filter({ hasText: 'コートリーブーツ・ディフェンダー' })
   ).toBeVisible();
   await expect(
-    page.locator('.favorite-list-root-summary').filter({ hasText: 'コートリーブーツ・ヒーラー' })
+    page
+      .locator('.production-content-section .favorite-list-root-summary')
+      .filter({ hasText: 'コートリーブーツ・ヒーラー' })
   ).toBeVisible();
-  await expect(page.locator('.production-content-toggle')).toHaveText('▼製作内容');
+  await expect(page.locator('.production-content-section .production-content-toggle')).toHaveText('▼製作内容');
   const listProductionGap = await page.locator('.production-content-section').evaluate(section => {
     const header = section.querySelector('.production-content-toggle').getBoundingClientRect();
     const firstList = section.querySelector('.favorite-list-root-summary').getBoundingClientRect();
@@ -149,12 +161,16 @@ test('checked favorite lists use a dedicated combined materials entry and reset 
   );
   await page.locator('#confirmNo').click();
   await expect(
-    page.locator('.favorite-list-root-summary').filter({ hasText: 'コートリーブーツ・ディフェンダー' })
+    page
+      .locator('.production-content-section .favorite-list-root-summary')
+      .filter({ hasText: 'コートリーブーツ・ディフェンダー' })
   ).toBeVisible();
   await expect(
-    page.locator('.favorite-list-root-summary').filter({ hasText: 'コートリーブーツ・ヒーラー' })
+    page
+      .locator('.production-content-section .favorite-list-root-summary')
+      .filter({ hasText: 'コートリーブーツ・ヒーラー' })
   ).toBeVisible();
-  await expect(page.locator('.production-content-toggle')).toHaveText('▼製作内容');
+  await expect(page.locator('.production-content-section .production-content-toggle')).toHaveText('▼製作内容');
 
   await page.locator('#appTitle').click();
   await expect(page.locator('#checkedFavoriteMaterialsActions')).not.toHaveClass(/visible/);
@@ -207,8 +223,9 @@ test('multiple rings show production bulk controls and preserve purchases when c
   );
   await openApp(page);
   await page.locator('#checkedFavoriteMaterialsBtn').click();
-  const production = page.locator('.production-content-section');
-  await expect(production.locator('.favorite-ring-bulk-actions').getByRole('button')).toHaveText([
+  const ringSection = page.locator('.favorite-ring-section');
+  await expect(ringSection.locator(':scope > .materials-section-header')).toHaveText('指輪');
+  await expect(ringSection.locator('.favorite-ring-bulk-actions').getByRole('button')).toHaveText([
     '全て0',
     '全て1つ',
     '全て2つ'
@@ -220,7 +237,7 @@ test('multiple rings show production bulk controls and preserve purchases when c
   await copper.locator('.shop-info-btn').click();
   await page.getByLabel('この中間素材は購入💰して用意する').check();
   await page.locator('#shopCloseBtn').click();
-  await production.getByRole('button', { name: '全て2つ' }).click();
+  await ringSection.getByRole('button', { name: '全て2つ' }).click();
   await expect(page.locator('.favorite-ring-toggle button.active').filter({ hasText: '2つ' })).toHaveCount(2);
   await expect(
     page
@@ -257,16 +274,42 @@ test('combined favorite materials supports ring count toggles and restores them'
 
   await openApp(page, 423, 780);
   await page.locator('#checkedFavoriteMaterialsBtn').click();
-  await expect(page.locator('.favorite-ring-controls')).toHaveCount(2);
-  await expect(page.locator('.production-content-body > .favorite-ring-bulk-actions')).toBeVisible();
-  await expect(page.locator('.favorite-ring-bulk-actions button')).toHaveText(['全て0', '全て1つ', '全て2つ']);
+  const ringSection = page.locator('.favorite-ring-section');
+  await expect(ringSection.locator('.favorite-ring-controls')).toHaveCount(2);
+  await expect(page.locator('.production-content-section .favorite-ring-controls')).toHaveCount(0);
+  await expect(ringSection.locator(':scope > .favorite-ring-bulk-actions')).toBeVisible();
+  await expect(ringSection.locator('.favorite-ring-bulk-actions button')).toHaveText([
+    '全て0',
+    '全て1つ',
+    '全て2つ'
+  ]);
+  await expect(ringSection.locator('.favorite-list-root-summary')).toHaveText(['指輪A', '指輪B']);
+  const ringSectionLayout = await ringSection.evaluate(section => {
+    const header = section.querySelector(':scope > .materials-section-header').getBoundingClientRect();
+    const bulk = section.querySelector(':scope > .favorite-ring-bulk-actions').getBoundingClientRect();
+    const listBlock = section.querySelector('.favorite-list-production-block');
+    const listRoot = listBlock.querySelector('.favorite-list-root-summary .node-row');
+    return {
+      bulkWidth: bulk.width,
+      headerWidth: header.width,
+      bulkGap: bulk.top - header.bottom,
+      listBorderWidth: getComputedStyle(listBlock).borderLeftWidth,
+      listRootBackground: getComputedStyle(listRoot).backgroundColor,
+      listRootBorderWidth: getComputedStyle(listRoot).borderTopWidth
+    };
+  });
+  expect(ringSectionLayout.bulkWidth).toBeLessThan(ringSectionLayout.headerWidth);
+  expect(ringSectionLayout.bulkGap).toBeGreaterThanOrEqual(8);
+  expect(ringSectionLayout.listBorderWidth).toBe('1px');
+  expect(ringSectionLayout.listRootBackground).toBe('rgba(0, 0, 0, 0)');
+  expect(ringSectionLayout.listRootBorderWidth).toBe('0px');
   const listBox = await page.locator('.favorite-list-root-summary').last().boundingBox();
-  const ringBox = await page.locator('.favorite-ring-controls').last().boundingBox();
+  const ringBox = await ringSection.locator('.favorite-ring-controls').last().boundingBox();
   expect(listBox).toBeTruthy();
   expect(ringBox).toBeTruthy();
   expect(ringBox.y).toBeGreaterThanOrEqual(listBox.y + listBox.height - 1);
-  const firstList = page.locator('.favorite-list-production-block').first();
-  const secondList = page.locator('.favorite-list-production-block').last();
+  const firstList = ringSection.locator('.favorite-list-production-block').first();
+  const secondList = ringSection.locator('.favorite-list-production-block').last();
   await firstList.locator('.favorite-ring-toggle button').filter({ hasText: /^0$/ }).click();
   await expect(firstList.locator('.favorite-ring-toggle button').filter({ hasText: /^0$/ })).toHaveClass(/active/);
   await expect(secondList.locator('.favorite-ring-toggle button').filter({ hasText: '1つ' })).toHaveClass(/active/);
@@ -277,13 +320,13 @@ test('combined favorite materials supports ring count toggles and restores them'
   await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
   await expect(
     page
-      .locator('.favorite-list-production-block')
+      .locator('.favorite-ring-section .favorite-list-production-block')
       .first()
       .locator('.favorite-ring-toggle button')
       .filter({ hasText: /^0$/ })
   ).toHaveClass(/active/);
   await page
-    .locator('.favorite-list-production-block')
+    .locator('.favorite-ring-section .favorite-list-production-block')
     .last()
     .locator('.favorite-ring-toggle button')
     .filter({ hasText: '2つ' })
@@ -292,17 +335,17 @@ test('combined favorite materials supports ring count toggles and restores them'
 
   await page.reload();
   await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
-  await expect(page.locator('.favorite-ring-controls')).toHaveCount(2);
+  await expect(page.locator('.favorite-ring-section .favorite-ring-controls')).toHaveCount(2);
   await expect(
     page
-      .locator('.favorite-list-production-block')
+      .locator('.favorite-ring-section .favorite-list-production-block')
       .first()
       .locator('.favorite-ring-toggle button')
       .filter({ hasText: /^0$/ })
   ).toHaveClass(/active/);
   await expect(
     page
-      .locator('.favorite-list-production-block')
+      .locator('.favorite-ring-section .favorite-list-production-block')
       .last()
       .locator('.favorite-ring-toggle button')
       .filter({ hasText: '2つ' })
@@ -339,27 +382,60 @@ test('checked favorite lists calculate any one list and restore production discl
   await page.locator('#checkedFavoriteAnyOneModeBtn').click();
   await expect(page.locator('#checkedFavoriteAnyOneModeBtn')).toHaveClass(/active/);
   await page.locator('#checkedFavoriteMaterialsBtn').click();
-  await expect(page.locator('.production-content-toggle')).toHaveText('▼製作内容');
-  await expect(page.locator('.favorite-list-root-summary')).toHaveCount(2);
+  await expect(page.locator('.production-content-section .production-content-toggle')).toHaveText('▼製作内容');
+  await expect(page.locator('.production-content-section .favorite-list-root-summary')).toHaveCount(2);
+  await expect(page.locator('.favorite-ring-section .favorite-list-root-summary')).toHaveCount(2);
+  const productionLists = page.locator('.production-content-section .production-list-block');
+  await expect(productionLists.locator('.production-list-toggle')).toHaveText(['▶', '▶']);
+  const productionHierarchy = await page.locator('.production-content-section').evaluate(section => {
+    const header = section.querySelector(':scope > .production-content-toggle').getBoundingClientRect();
+    const firstList = section.querySelector('.production-list-block').getBoundingClientRect();
+    const lastList = [...section.querySelectorAll('.production-list-block')].at(-1).getBoundingClientRect();
+    const ringHeader = document.querySelector('.favorite-ring-section > .materials-section-header').getBoundingClientRect();
+    return {
+      childIndent: firstList.left - header.left,
+      nextSectionGap: ringHeader.top - lastList.bottom
+    };
+  });
+  expect(productionHierarchy.childIndent).toBeGreaterThanOrEqual(12);
+  expect(productionHierarchy.nextSectionGap).toBeGreaterThanOrEqual(8);
+  await expect(productionLists.first().locator(':scope > .production-content-clip')).toHaveClass(/collapsed/);
+  await expect(productionLists.first().locator(':scope > .production-content-clip')).toHaveCSS(
+    'transition-duration',
+    '0.18s'
+  );
+  await productionLists.first().locator(':scope > .favorite-list-root-summary').click();
+  await expect(productionLists.first().locator('.production-list-toggle')).toHaveText('▼');
+  await expect(productionLists.first().locator(':scope > .production-content-clip')).not.toHaveClass(/collapsed/);
   await expect(page.locator('.favorite-material-root-or')).toHaveText('もしくは');
+  const alternativeGap = await page.locator('.favorite-material-root-or').evaluate(separator => {
+    const previous = separator.previousElementSibling.getBoundingClientRect();
+    const current = separator.getBoundingClientRect();
+    const next = separator.nextElementSibling.getBoundingClientRect();
+    return {
+      previousGap: current.top - previous.bottom,
+      nextGap: next.top - current.bottom
+    };
+  });
+  expect(alternativeGap.previousGap).toBeGreaterThanOrEqual(4);
+  expect(alternativeGap.nextGap).toBeGreaterThanOrEqual(4);
   await expect(page.locator('.materials-list')).toContainText(/銅鉱\s*×\s*3/);
 
   await page
-    .locator('.favorite-list-production-block')
+    .locator('.favorite-ring-section .favorite-list-production-block')
     .first()
     .locator('.favorite-ring-toggle button')
     .filter({ hasText: '2つ' })
     .click();
   await expect(page.locator('.materials-list')).toContainText(/銅鉱\s*×\s*6/);
-  await page.locator('.production-content-toggle').click();
-  await expect(page.locator('.production-content-toggle')).toHaveText('▶製作内容');
+  await page.locator('.production-content-section .production-content-toggle').click();
+  await expect(page.locator('.production-content-section .production-content-toggle')).toHaveText('▶製作内容');
+  await expect(page.locator('.favorite-ring-section')).toBeVisible();
   await expect
     .poll(() =>
-      page.locator('.production-content-toggle').evaluate(header => {
-        const firstMaterialsHeader = document.querySelector(
-          '.materials-section-header:not(.production-content-toggle)'
-        );
-        return Math.abs(firstMaterialsHeader.getBoundingClientRect().top - header.getBoundingClientRect().bottom);
+      page.locator('.production-content-section .production-content-toggle').evaluate(header => {
+        const ringHeader = document.querySelector('.favorite-ring-section > .materials-section-header');
+        return Math.abs(ringHeader.getBoundingClientRect().top - header.getBoundingClientRect().bottom);
       })
     )
     .toBeLessThan(1);
@@ -370,7 +446,13 @@ test('checked favorite lists calculate any one list and restore production discl
   await expect(page.locator('#checkedFavoriteAnyOneModeBtn')).toHaveClass(/active/);
   await expect(page.locator('#searchBox')).toBeDisabled();
   await expect(page.locator('#equipmentSearchToggle')).toBeDisabled();
-  await expect(page.locator('.production-content-toggle')).toHaveText('▶製作内容');
+  await expect(page.locator('.production-content-section .production-content-toggle')).toHaveText('▶製作内容');
+  await expect(
+    page.locator('.production-content-section .production-list-block').first().locator('.production-list-toggle')
+  ).toHaveText('▼');
+  await expect(
+    page.locator('.production-content-section .production-list-block').last().locator('.production-list-toggle')
+  ).toHaveText('▶');
   await expect(page.locator('.materials-list')).toContainText(/銅鉱\s*×\s*6/);
 
   await page.locator('#mobileBackBtn').click();
@@ -403,6 +485,9 @@ test('checked favorite materials runs with one list and zero ring count', async 
   await page.locator('#checkedFavoriteMaterialsBtn').click();
   await expect(page.locator('.favorite-list-root-summary')).toContainText('指輪だけ');
   await expect(page.locator('.favorite-material-root-or')).toHaveCount(0);
+  await expect(page.locator('.production-content-section .production-list-toggle')).toHaveCount(0);
+  await expect(page.locator('.favorite-ring-section .favorite-ring-bulk-actions')).toHaveCount(0);
+  await expect(page.locator('.favorite-ring-section .favorite-list-root-summary')).toHaveCount(0);
   await page.locator('.favorite-ring-toggle button').filter({ hasText: /^0$/ }).click();
   await expect(page.locator('.materials-list')).not.toContainText('銅鉱');
 

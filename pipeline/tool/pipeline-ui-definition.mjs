@@ -32,6 +32,79 @@ const definition = {
   ],
   actions: [
     {
+      id: "oxidizer-environment",
+      section: "data",
+      command: "oxidizer-environment",
+      buttonId: "oxidizerEnvironmentBtn",
+      order: "任意",
+      label: "Oxidizer環境確認",
+      description:
+        "Git、Cargo、FF14インストール先、既存Oxidizerを確認します。",
+      behavior: "command",
+      args: [
+        { flag: "--source", inputId: "oxidizerSourceInput", omitEmpty: true },
+        { flag: "--game-path", inputId: "ffxivGamePathInput", omitEmpty: true },
+      ],
+    },
+    {
+      id: "oxidizer-check",
+      section: "data",
+      command: "oxidizer-check",
+      buttonId: "oxidizerCheckBtn",
+      order: "任意",
+      label: "Oxidizer更新確認",
+      description: "上流リポジトリの最新コミットを読み取り専用で確認します。",
+      behavior: "command",
+      args: [],
+    },
+    {
+      id: "oxidizer-refresh",
+      section: "data",
+      command: "oxidizer-refresh",
+      buttonId: "oxidizerRefreshBtn",
+      order: "任意",
+      label: "全CSV再生成",
+      description:
+        "管理用の新規クローンでOxidizerを実行し、全CSVを再生成します。",
+      behavior: "command",
+      confirm:
+        "GitHubからOxidizerとサブモジュールを取得し、Cargoビルドと全CSV生成を実行します。通信と長時間処理が発生します。実行しますか？",
+      args: [
+        { flag: "--game-path", inputId: "ffxivGamePathInput" },
+        { flag: "--force", inputId: "oxidizerForceInput", type: "checkbox" },
+      ],
+    },
+    {
+      id: "oxidizer-import-preview",
+      section: "data",
+      command: "oxidizer-import-preview",
+      buttonId: "oxidizerImportPreviewBtn",
+      order: "任意",
+      label: "CSV取り込み確認",
+      description:
+        "一時候補の差分を表示し、反映前にLodestone情報とアイコンを確認します。",
+      behavior: "oxidizer-import-preview",
+      args: [
+        { flag: "--source", inputId: "oxidizerSourceInput", omitEmpty: true },
+      ],
+    },
+    {
+      id: "oxidizer-import",
+      section: "data",
+      command: "oxidizer-import",
+      buttonId: "oxidizerImportBtn",
+      order: "任意",
+      label: "検証済みCSVを反映",
+      description:
+        "差分とLodestoneを事前確認した同一CSVだけをローカル入力へ反映し、旧CSVを保護します。",
+      behavior: "command",
+      confirm:
+        "確認済みの4つのCSVをpipeline入力へ反映します。既存CSVはローカルバックアップへ保護されます。実行しますか？",
+      args: [
+        { flag: "--source", inputId: "oxidizerSourceInput", omitEmpty: true },
+      ],
+    },
+    {
       id: "check-updates",
       section: "data",
       command: "check-updates",
@@ -85,7 +158,7 @@ const definition = {
       section: "data",
       command: "publish-lodestone-info",
       buttonId: "lodestoneInfoBtn",
-      order: "4",
+      order: "3",
       label: "Lodestone情報反映",
       description:
         "店、製作、装備情報をLodestoneから取得し、ハウジング・友好部族ショップ情報とともに公開候補JSONへ反映します。",
@@ -109,6 +182,17 @@ const definition = {
       behavior: "equipment-role-dialog",
     },
     {
+      id: "publication-review",
+      section: "data",
+      command: "publication-review",
+      buttonId: "publicationReviewBtn",
+      order: "確認",
+      label: "公式公開判定",
+      description:
+        "Lodestone未確認の新規・変更項目を確認し、維持・除外・保留を保存します。",
+      behavior: "publication-review-dialog",
+    },
+    {
       id: "publish",
       section: "data",
       command: "publish",
@@ -127,25 +211,25 @@ const definition = {
       section: "data",
       buttonId: "runBtn",
       order: "一括",
-      label: "全実行",
+      label: "公開工程を続行",
       description:
-        "CSV検証、データ生成、アイコン生成、Lodestone情報反映、公開反映を順番に実行します。",
+        "現在のローカルCSVから公開までを進めます。CSV取得・再生成は行わず、完了済み工程は省略します。",
       behavior: "sequence",
       confirm:
-        "全実行はデータ生成、アイコン生成、Lodestone情報反映、公開反映を行います。時間がかかる場合があります。実行しますか？",
+        "現在のローカルCSVで未完了の公開工程だけを実行します。最後に公開反映まで進みます。実行しますか？",
     },
     {
       id: "icons",
       section: "icons",
       command: "icons",
       buttonId: "iconsBtn",
-      order: "3",
+      order: "4",
       label: "アイコン生成",
       description:
         "Lodestone NQ 画像を優先し、指定サイズの WebP アイコンを生成します。元 PNG はキャッシュします。",
       behavior: "command",
       confirm:
-        "アイコン生成には時間がかかり、不足分は Lodestone または XIVAPI から取得します。実行しますか？",
+        "アイコン生成には時間がかかります。XIVAPIは既存公開項目または明示的な公開例外だけで使用します。実行しますか？",
       args: [
         { flag: "--quality", inputId: "qualityInput" },
         { flag: "--size", inputId: "iconSizeInput" },
@@ -193,8 +277,8 @@ const definition = {
   recommendedSequence: [
     "validate-csv",
     "build",
-    "icons",
     "publish-lodestone-info",
+    "icons",
     "publish",
   ],
   equipmentRoleLabels: {
@@ -256,6 +340,8 @@ export function validatePipelineUiDefinition(value) {
   const behaviors = new Set([
     "command",
     "equipment-role-dialog",
+    "oxidizer-import-preview",
+    "publication-review-dialog",
     "quality-preview",
     "sequence",
   ]);

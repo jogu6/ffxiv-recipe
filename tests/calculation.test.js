@@ -30,11 +30,13 @@ function loadRealRecipeData() {
 
   items.forEach(item => {
     itemNamesById.set(Number(item.ID), item.Name);
+  });
+  items.forEach(item => {
     if (!item.Recipe || item.Recipe.CraftType === undefined) return;
     recipes[item.Name] = recipe(
       Number(item.Recipe.AmountResult || 1),
       item.Recipe.Ingredients.map(ingredient => ({
-        name: ingredient.Name,
+        name: ingredient.Name || itemNamesById.get(Number(ingredient.ItemID)),
         qty: Number(ingredient.Amount || 1)
       })),
       String(item.Recipe.CraftType)

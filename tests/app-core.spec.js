@@ -13,6 +13,9 @@ const {
 test('loading overlay blocks interaction while it is displayed', async ({ page }) => {
   await openApp(page);
   await expect(page.locator('#loadingOverlay')).toHaveCSS('pointer-events', 'auto');
+  await expect(page.locator('header #loadStatus')).toHaveText('patch 7.5 対応');
+  await page.locator('#settingsBtn').click();
+  await expect(page.locator('#settingsDialog #appVersion')).toHaveText('v2.96');
 });
 
 test('shows the transfer and listing restriction badge only for confirmed EX items', async ({ page }) => {

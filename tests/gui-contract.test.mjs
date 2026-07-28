@@ -37,6 +37,29 @@ test('GUI uses the in-app floating confirmation modal', () => {
   assert.match(guiSource, /confirmOverlay/);
 });
 
+test('GUI exposes Oxidizer refresh, safe import, publication review, and persistent logs', () => {
+  for (const command of [
+    'oxidizer-environment',
+    'oxidizer-check',
+    'oxidizer-refresh',
+    'oxidizer-import-preview',
+    'oxidizer-import',
+    'publication-review'
+  ]) {
+    assert.ok(uiDefinition.actions.some(action => action.command === command), `missing GUI action: ${command}`);
+  }
+  assert.match(guiHtml, /id="oxidizerSourceInput"/);
+  assert.match(guiHtml, /id="ffxivGamePathInput"/);
+  assert.match(guiHtml, /id="publicationReviewOverlay"/);
+  assert.match(guiHtml, /id="oxidizerDiffOverlay"/);
+  assert.match(guiHtml, /id="oxidizerDiffLodestoneBtn"/);
+  assert.match(guiHtml, /id="postImportOverlay"/);
+  assert.match(rustSource, /latest\.log/);
+  assert.match(rustSource, /fn\s+read_oxidizer_import_preview\b/);
+  assert.match(rustSource, /fn\s+read_pipeline_workflow_status\b/);
+  assert.match(rustSource, /append_run_log/);
+});
+
 test('GUI preview does not start a local web server', () => {
   assert.equal(guiSource.includes('start_preview_server'), false);
   assert.equal(guiSource.includes('stop_preview_server'), false);
@@ -45,7 +68,7 @@ test('GUI preview does not start a local web server', () => {
 });
 
 test('GUI full run applies Lodestone info before publishing Item.json', () => {
-  assert.deepEqual(uiDefinition.recommendedSequence, ['validate-csv', 'build', 'icons', 'publish-lodestone-info', 'publish']);
+  assert.deepEqual(uiDefinition.recommendedSequence, ['validate-csv', 'build', 'publish-lodestone-info', 'icons', 'publish']);
 });
 
 test('pipeline mjs is the valid source of GUI actions and copy', () => {

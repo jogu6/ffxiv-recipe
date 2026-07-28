@@ -39,23 +39,66 @@ for (const relativePath of [
 }
 
 const items = JSON.parse(fs.readFileSync(requireFile('data/Item.json'), 'utf8'));
+const itemIds = new Set(items.map(item => String(item.ID)));
 fs.readFileSync(requireFile('data/tips.md'), 'utf8');
 JSON.parse(fs.readFileSync(requireFile('manifest.webmanifest'), 'utf8'));
 
 const missingIcons = [];
 const invalidEquipmentPerformance = [];
+const invalidPublicItems = [];
+const pipelineOnlyItemKeys = [
+  'Description',
+  'LevelEquip',
+  'ItemSearchCategory',
+  'ItemSearchCategoryName',
+  'LodestoneInfoCheckedAt',
+  'LodestoneInfoVersion'
+];
+const equipmentPerformanceKeys = new Set([
+  'physicalDamage',
+  'magicalDamage',
+  'physicalDefense',
+  'magicalDefense'
+]);
 for (const item of items) {
+  if (
+    pipelineOnlyItemKeys.some(key => Object.hasOwn(item, key))
+    || item.IsEx === false
+    || Object.hasOwn(item.EquipmentInfo || {}, 'statsVersion')
+    || Object.values(item.EquipmentInfo?.stats || {}).includes(0)
+    || Object.values(item.EquipmentInfo?.performance || {}).includes(0)
+  ) {
+    invalidPublicItems.push(item.Name || item.ID);
+  }
+  for (const recipe of [...(item.Recipe ? [item.Recipe] : []), ...(item.Recipes || [])]) {
+    for (const ingredient of recipe.Ingredients || []) {
+      const isPublishedItem = itemIds.has(String(ingredient.ItemID));
+      if ((isPublishedItem && Object.hasOwn(ingredient, 'Name')) || (!isPublishedItem && !ingredient.Name)) {
+        invalidPublicItems.push(item.Name || item.ID);
+      }
+    }
+  }
   if (item.EquipmentInfo) {
     const performance = item.EquipmentInfo.performance;
     const physicalDamage = Number(performance?.physicalDamage || 0);
     const magicalDamage = Number(performance?.magicalDamage || 0);
-    if (!performance || (physicalDamage > 0 && magicalDamage > 0)) {
+    const entries = Object.entries(performance || {});
+    if (
+      entries.some(([key, value]) =>
+        !equipmentPerformanceKeys.has(key) || !Number.isFinite(Number(value)) || Number(value) < 0
+      )
+      || (physicalDamage > 0 && magicalDamage > 0)
+    ) {
       invalidEquipmentPerformance.push(item.Name || item.ID);
     }
   }
   if (!item.IconFile) continue;
   const relativePath = path.join('assets', 'item-icons', item.IconFile.slice(0, 3), item.IconFile);
   if (!fs.existsSync(path.join(siteRoot, relativePath))) missingIcons.push(relativePath);
+}
+
+if (invalidPublicItems.length > 0) {
+  throw new Error(`Invalid public Item.json projection: ${invalidPublicItems.slice(0, 10).join(', ')}`);
 }
 
 if (invalidEquipmentPerformance.length > 0) {

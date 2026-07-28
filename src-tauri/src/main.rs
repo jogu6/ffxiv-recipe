@@ -2,10 +2,12 @@
 
 use serde_json::Value;
 use serde_json::json;
-use std::io::{BufRead, BufReader};
+use std::fs::{File, OpenOptions};
+use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
 use tauri::Manager;
 
@@ -17,6 +19,51 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 struct PipelineProcess {
     pid: Arc<Mutex<Option<u32>>>,
+}
+
+struct RunLogs {
+    run: File,
+    latest: File,
+}
+
+fn unix_millis() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+}
+
+fn create_run_logs(root: &std::path::Path, command: &str) -> Result<Arc<Mutex<RunLogs>>, String> {
+    let logs_root = root.join("pipeline").join("logs");
+    let runs_root = logs_root.join("runs");
+    std::fs::create_dir_all(&runs_root).map_err(|error| error.to_string())?;
+    let safe_command: String = command
+        .chars()
+        .map(|value| if value.is_ascii_alphanumeric() || value == '-' { value } else { '_' })
+        .collect();
+    let run_path = runs_root.join(format!("{}-{}.log", unix_millis(), safe_command));
+    let run = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(run_path)
+        .map_err(|error| error.to_string())?;
+    let latest = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(logs_root.join("latest.log"))
+        .map_err(|error| error.to_string())?;
+    Ok(Arc::new(Mutex::new(RunLogs { run, latest })))
+}
+
+fn append_run_log(logs: &Arc<Mutex<RunLogs>>, stream: &str, line: &str) {
+    let Ok(mut files) = logs.lock() else {
+        return;
+    };
+    let entry = format!("[{}] [{}] {}\n", unix_millis(), stream, line);
+    let _ = files.run.write_all(entry.as_bytes());
+    let _ = files.latest.write_all(entry.as_bytes());
+    let _ = files.run.flush();
+    let _ = files.latest.flush();
 }
 
 fn write_cancel_request() -> Result<(), String> {
@@ -91,8 +138,10 @@ fn run_pipeline_script(
     args: Vec<String>,
 ) -> Result<String, String> {
     let root = repo_root()?;
+    let logs = create_run_logs(&root, &command)?;
+    append_run_log(&logs, "INFO", &format!("開始: {command} {}", args.join(" ")));
     let script = root.join("pipeline").join("tool").join("pipeline-tool.mjs");
-    let mut command_args = vec!["--expose-gc".to_string(), script.to_string_lossy().to_string(), command];
+    let mut command_args = vec!["--expose-gc".to_string(), script.to_string_lossy().to_string(), command.clone()];
     command_args.extend(args);
     let mut child_command = Command::new("node");
     child_command
@@ -114,9 +163,11 @@ fn run_pipeline_script(
     let stdout = child.stdout.take().ok_or_else(|| "stdout unavailable".to_string())?;
     let stderr = child.stderr.take().ok_or_else(|| "stderr unavailable".to_string())?;
     let app_stdout = app.clone();
+    let stdout_logs = logs.clone();
     let stdout_thread = std::thread::spawn(move || {
         let mut text = String::new();
         for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            append_run_log(&stdout_logs, "OUT", &line);
             let is_eta_line = line.starts_with("__ETA__ ");
             if let Some(app) = app_stdout.as_ref() {
                 if let Err(error) = app.emit("pipeline-output", line.clone()) {
@@ -132,9 +183,11 @@ fn run_pipeline_script(
         text
     });
     let app_stderr = app.clone();
+    let stderr_logs = logs.clone();
     let stderr_thread = std::thread::spawn(move || {
         let mut text = String::new();
         for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+            append_run_log(&stderr_logs, "ERR", &line);
             if let Some(app) = app_stderr.as_ref() {
                 if let Err(error) = app.emit("pipeline-output", line.clone()) {
                     eprintln!("pipeline-output emit failed: {error}");
@@ -153,6 +206,11 @@ fn run_pipeline_script(
     }
     let stdout_text = stdout_thread.join().map_err(|_| "stdout thread failed".to_string())?;
     let stderr_text = stderr_thread.join().map_err(|_| "stderr thread failed".to_string())?;
+    append_run_log(
+        &logs,
+        "INFO",
+        &format!("終了: {command} code={}", status.code().unwrap_or(-1)),
+    );
     if status.success() {
         Ok(stdout_text)
     } else {
@@ -201,6 +259,29 @@ fn read_pipeline_ui_definition() -> Result<Value, String> {
 }
 
 #[tauri::command]
+fn read_pipeline_workflow_status() -> Result<Value, String> {
+    let root = repo_root()?;
+    let script = root
+        .join("pipeline")
+        .join("tool")
+        .join("pipeline-tool.mjs");
+    let mut command = Command::new("node");
+    command
+        .arg(script)
+        .arg("workflow-status")
+        .current_dir(root)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+    let output = command.output().map_err(|error| error.to_string())?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    serde_json::from_slice(&output.stdout).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn read_update_state() -> Result<Value, String> {
     let path = repo_root()?
         .join("pipeline")
@@ -208,6 +289,19 @@ fn read_update_state() -> Result<Value, String> {
         .join("update-check.json");
     if !path.exists() {
         return Ok(serde_json::json!({}));
+    }
+    let text = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
+    serde_json::from_str(&text).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn read_oxidizer_import_preview() -> Result<Value, String> {
+    let path = repo_root()?
+        .join("pipeline")
+        .join("state")
+        .join("oxidizer-import.json");
+    if !path.exists() {
+        return Err("Oxidizer CSVの差分確認結果がありません。".to_string());
     }
     let text = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
     serde_json::from_str(&text).map_err(|error| error.to_string())
@@ -332,6 +426,100 @@ fn save_equipment_role_overrides(overrides: Value) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn read_publication_review() -> Result<Value, String> {
+    let output = run_pipeline_script(None, None, "publication-review".to_string(), Vec::new())?;
+    serde_json::from_str(output.trim()).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn save_publication_decisions(decisions: Value) -> Result<(), String> {
+    let root = repo_root()?;
+    let path = root
+        .join("pipeline")
+        .join("input")
+        .join("publication-decisions.json");
+    let mut current: Value = if path.exists() {
+        let text = std::fs::read_to_string(&path).map_err(|error| error.to_string())?;
+        serde_json::from_str(&text).map_err(|error| error.to_string())?
+    } else {
+        json!({ "version": 1, "items": {} })
+    };
+    let current_items = current
+        .get_mut("items")
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| "既存の公開判定ファイルが不正です".to_string())?;
+    let incoming = decisions
+        .get("items")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "公開判定データが不正です".to_string())?;
+    for (id, decision) in incoming {
+        let kind = decision.get("decision").and_then(Value::as_str).unwrap_or("");
+        let reason = decision.get("reason").and_then(Value::as_str).unwrap_or("").trim();
+        if !matches!(kind, "keep" | "exclude" | "hold") || reason.is_empty() {
+            return Err(format!("{id}: 判定または理由が不正です"));
+        }
+        current_items.insert(id.clone(), decision.clone());
+    }
+    current["version"] = json!(1);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    let text = serde_json::to_string_pretty(&current).map_err(|error| error.to_string())?;
+    std::fs::write(path, format!("{text}\n")).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn open_log_directory() -> Result<(), String> {
+    let path = repo_root()?.join("pipeline").join("logs");
+    std::fs::create_dir_all(&path).map_err(|error| error.to_string())?;
+    let mut command = if cfg!(windows) {
+        let mut command = Command::new("explorer.exe");
+        command.arg(&path);
+        command
+    } else if cfg!(target_os = "macos") {
+        let mut command = Command::new("open");
+        command.arg(&path);
+        command
+    } else {
+        let mut command = Command::new("xdg-open");
+        command.arg(&path);
+        command
+    };
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+    command.spawn().map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn select_directory(initial_path: String) -> Result<String, String> {
+    if !cfg!(windows) {
+        return Err("フォルダー選択は現在Windows版でのみ利用できます".to_string());
+    }
+    let script = r#"
+Add-Type -AssemblyName System.Windows.Forms
+$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+if ($args[0] -and (Test-Path -LiteralPath $args[0])) { $dialog.SelectedPath = $args[0] }
+if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+  [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+  Write-Output $dialog.SelectedPath
+}
+"#;
+    let mut command = Command::new("powershell.exe");
+    command
+        .args(["-NoProfile", "-STA", "-Command", script, initial_path.as_str()])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+    let output = command.output().map_err(|error| error.to_string())?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+#[tauri::command]
 fn open_external_url(url: String) -> Result<(), String> {
     if !url.starts_with("https://jp.finalfantasyxiv.com/lodestone/") {
         return Err("許可されていないURLです".to_string());
@@ -377,7 +565,7 @@ fn main() {
                 let _ = stop_pipeline_process(&process);
             }
         })
-        .invoke_handler(tauri::generate_handler![run_pipeline_command, cancel_pipeline_command, read_pipeline_ui_definition, read_update_state, read_quality_preview_state, read_quality_preview, read_equipment_role_groups, read_equipment_role_summary, save_equipment_role_overrides, open_external_url])
+        .invoke_handler(tauri::generate_handler![run_pipeline_command, cancel_pipeline_command, read_pipeline_ui_definition, read_pipeline_workflow_status, read_update_state, read_oxidizer_import_preview, read_quality_preview_state, read_quality_preview, read_equipment_role_groups, read_equipment_role_summary, save_equipment_role_overrides, read_publication_review, save_publication_decisions, open_log_directory, select_directory, open_external_url])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

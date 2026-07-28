@@ -44,6 +44,104 @@ test('favorites and shares an ingredient while preserving search results', async
   await expect(page.locator('#recipeList')).toContainText('山羊乳');
 });
 
+test('exports and imports all favorite lists through one text file', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'ff14_favorite_lists_v3',
+      JSON.stringify({
+        version: 3,
+        selectedListId: 'file-list-a',
+        lists: [
+          { id: 'file-list-a', name: '一括リストA', itemIds: [4422], recipeSelections: {} },
+          { id: 'file-list-b', name: '一括リストB', itemIds: [4422], recipeSelections: {} }
+        ]
+      })
+    );
+  });
+  await openApp(page);
+  await page.locator('#settingsBtn').click();
+  await expect(page.getByText('お気に入りリストの一括入出力', { exact: true })).toBeVisible();
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.locator('#exportAllFavoritesBtn').click()
+  ]);
+  expect(download.suggestedFilename()).toMatch(/^favorite-lists-\d{4}-\d{2}-\d{2}\.txt$/);
+  const stream = await download.createReadStream();
+  const chunks = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  const fileText = Buffer.concat(chunks).toString('utf8');
+  expect(fileText).toContain('FF14 レシピ素材ツリー お気に入りリスト');
+  expect(fileText).toContain('【一括リストA】');
+  expect(fileText).toContain('登録アイテム:\n・カッパーリング');
+  expect(fileText).toContain('復元コード:\nY');
+  expect(fileText).not.toContain('"format"');
+  expect(fileText).not.toContain('"version"');
+  expect(fileText).not.toContain('createdAt');
+
+  const upload = { name: 'favorite-lists.txt', mimeType: 'text/plain', buffer: Buffer.from(fileText) };
+  await page.locator('#importAllFavoritesFile').setInputFiles(upload);
+  await expect(page.locator('#confirmMsg')).toContainText('2件のお気に入りリストを読み込みます');
+  await expect(page.locator('#confirmYes')).toHaveText('読み込む');
+  await page.locator('#confirmYes').click();
+  await expect(page.locator('#favoriteListFileStatus')).toContainText('2件のお気に入りリストを追加して読み込みました');
+  expect(
+    await page.evaluate(() =>
+      JSON.parse(localStorage.getItem('ff14_favorite_lists_v3')).lists
+        .filter(list => list.id !== 'SYSTEM_RECENT_ITEMS')
+        .map(list => list.name)
+    )
+  ).toEqual(['一括リストA', '一括リストB', '一括リストA（1）', '一括リストB（1）']);
+
+  await page.locator('#importAllFavoritesFile').setInputFiles(upload);
+  await page.locator('#confirmMsg input[value="replace"]').check();
+  await page.locator('#confirmYes').click();
+  await expect(page.locator('#favoriteListFileStatus')).toContainText(
+    '2件のお気に入りリストを置き換えて読み込みました'
+  );
+  expect(
+    await page.evaluate(() =>
+      JSON.parse(localStorage.getItem('ff14_favorite_lists_v3')).lists
+        .filter(list => list.id !== 'SYSTEM_RECENT_ITEMS')
+        .map(list => list.name)
+    )
+  ).toEqual(['一括リストA', '一括リストB']);
+});
+
+test('favorite target dialog grows with list count within the existing viewport limit', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'ff14_favorite_lists_v3',
+      JSON.stringify({
+        version: 3,
+        selectedListId: 'target-list-1',
+        lists: Array.from({ length: 12 }, (_, index) => ({
+          id: `target-list-${index + 1}`,
+          name: `登録先${index + 1}`,
+          itemIds: [4422],
+          recipeSelections: {}
+        }))
+      })
+    );
+  });
+  await openApp(page, 423, 420);
+  await searchFor(page, 'アリペブレ');
+  await page.getByText('アリペブレ', { exact: true }).first().click();
+  await page.locator('.result-root-summary .pin-btn').first().click();
+  await expect(page.locator('#favoriteTargetChoices .choice-list-btn')).toHaveCount(12);
+  const layout = await page.locator('#favoriteTargetDialog').evaluate(dialog => {
+    const choices = dialog.querySelector('#favoriteTargetChoices');
+    return {
+      dialogHeight: dialog.getBoundingClientRect().height,
+      viewportHeight: window.innerHeight,
+      choicesClientHeight: choices.clientHeight,
+      choicesScrollHeight: choices.scrollHeight
+    };
+  });
+  expect(layout.dialogHeight).toBeLessThanOrEqual(layout.viewportHeight * 0.88 + 1);
+  expect(layout.choicesScrollHeight).toBeGreaterThan(layout.choicesClientHeight);
+});
+
 test('reorders favorite lists locally with the rightmost drag handle', async ({ page }) => {
   await openApp(page);
 
@@ -66,6 +164,7 @@ test('reorders favorite lists locally with the rightmost drag handle', async ({ 
   const listB = page.locator('#favoriteLists li').filter({ hasText: 'リストB' }).first();
   await expect(listA).toHaveCSS('user-select', 'text');
   await expect(listA.locator('.favorite-list-curtain')).not.toHaveClass(/expanded/);
+  await expect(listA.locator('.favorite-list-name')).toHaveCSS('font-size', '13px');
   const nameBoxBefore = await listA.locator('.favorite-list-name').boundingBox();
   await listA.locator('.favorite-list-curtain-toggle').click();
   await expect(listA.locator('.favorite-list-curtain')).toHaveClass(/expanded/);
@@ -203,12 +302,43 @@ test('shows favorite list materials mode with set count and ring toggles', async
   await expect(page.locator('#countInput')).toHaveValue('6');
   await expect(page.locator('#materialsViewBtn')).toBeVisible();
   await expect(page.locator('#treeViewBtn')).toBeHidden();
-  await expect(page.locator('.favorite-ring-controls')).toContainText('カッパーリング');
+  const ringSection = page.locator('.favorite-ring-section');
+  await expect(ringSection.locator(':scope > .materials-section-header')).toHaveText('指輪');
+  await expect(ringSection.locator('.favorite-ring-controls')).toContainText('カッパーリング');
+  await expect(ringSection.locator('.favorite-list-root-summary')).toHaveCount(0);
+  await expect(ringSection.locator('.favorite-ring-bulk-actions')).toHaveCount(0);
+  const ringContentGap = await ringSection.evaluate(section => {
+    const header = section.querySelector(':scope > .materials-section-header').getBoundingClientRect();
+    const controls = section.querySelector(':scope > .favorite-ring-controls').getBoundingClientRect();
+    return controls.top - header.bottom;
+  });
+  expect(ringContentGap).toBeGreaterThanOrEqual(8);
+  const ringIconBox = await ringSection.locator('.favorite-ring-row .list-icon').first().boundingBox();
+  const intermediateIconBox = await page.locator('.intermediate-tree-row .list-icon').first().boundingBox();
+  expect(ringIconBox).toBeTruthy();
+  expect(intermediateIconBox).toBeTruthy();
+  expect(Math.abs(ringIconBox.x - intermediateIconBox.x)).toBeLessThan(1);
   await expect(page.locator('.favorite-ring-separator')).toBeVisible();
   await expect(page.locator('.favorite-ring-toggle button')).toHaveCount(3);
   await expect(page.locator('.favorite-ring-toggle button').filter({ hasText: /^0$/ })).toBeVisible();
   await expect(page.locator('.favorite-ring-toggle')).toContainText('1つ');
   await expect(page.locator('.materials-list')).toContainText('ゴールデンイール');
+  const sectionOrder = await page.locator('#treeContainer').evaluate(container => {
+    const production = container.querySelector('.production-content-section');
+    const rings = container.querySelector('.favorite-ring-section');
+    const materials = [...container.querySelectorAll('.materials-section-header')].find(header =>
+      header.textContent.includes('製作する中間素材')
+    );
+    return {
+      productionBeforeRings:
+        Boolean(production && rings) &&
+        Boolean(production.compareDocumentPosition(rings) & Node.DOCUMENT_POSITION_FOLLOWING),
+      ringsBeforeMaterials:
+        Boolean(rings && materials) &&
+        Boolean(rings.compareDocumentPosition(materials) & Node.DOCUMENT_POSITION_FOLLOWING)
+    };
+  });
+  expect(sectionOrder).toEqual({ productionBeforeRings: true, ringsBeforeMaterials: true });
 
   const materialsHeader = page.locator('.materials-section-header').filter({ hasText: '必要素材' });
   await materialsHeader.click();
@@ -281,8 +411,10 @@ test('favorite list count mode excludes zero-count items from materials', async 
 
   await page.locator('#recipeList').getByText('素材リストを表示(1/2)').click();
   await expect(page.locator('.favorite-ring-controls')).toHaveCount(0);
-  await expect(page.locator('.production-content-toggle')).toHaveText('▼製作内容');
-  await expect(page.locator('.production-content-toggle')).toHaveClass(/materials-section-header/);
+  await expect(page.locator('.production-content-section .production-content-toggle')).toHaveText('▼製作内容');
+  await expect(page.locator('.production-content-section .production-content-toggle')).toHaveClass(
+    /materials-section-header/
+  );
   await expect(page.locator('.favorite-material-root-summary')).toHaveCount(1);
   const countProductionGap = await page.locator('.production-content-section').evaluate(section => {
     const header = section.querySelector('.production-content-toggle').getBoundingClientRect();
@@ -330,7 +462,7 @@ test('favorite list count mode excludes zero-count items from materials', async 
   await page.locator('#countInput').blur();
   await expect(page.locator('#countInput')).toHaveValue('2');
   await page.locator('#recipeList').getByText('素材リストを表示').click();
-  await expect(page.locator('.production-content-toggle')).toHaveText('▼製作内容');
+  await expect(page.locator('.production-content-section .production-content-toggle')).toHaveText('▼製作内容');
   await expect(page.locator('.favorite-material-root-summary')).toHaveCount(2);
   await expect(page.locator('.favorite-material-root-or')).toHaveCount(1);
   await expect(page.locator('.favorite-material-root-or')).toHaveText('もしくは');
@@ -339,11 +471,11 @@ test('favorite list count mode excludes zero-count items from materials', async 
   await expect(page.locator('.favorite-material-root-summary').filter({ hasText: 'カッパーリング' })).toContainText(
     '× 2'
   );
-  await page.locator('.production-content-toggle').click();
-  await expect(page.locator('.production-content-toggle')).toHaveText('▶製作内容');
+  await page.locator('.production-content-section .production-content-toggle').click();
+  await expect(page.locator('.production-content-section .production-content-toggle')).toHaveText('▶製作内容');
   await expect
     .poll(() =>
-      page.locator('.production-content-toggle').evaluate(header => {
+      page.locator('.production-content-section .production-content-toggle').evaluate(header => {
         const firstMaterialsHeader = document.querySelector(
           '.materials-section-header:not(.production-content-toggle)'
         );
@@ -355,7 +487,7 @@ test('favorite list count mode excludes zero-count items from materials', async 
   await page.reload();
   await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
   await expect(page.locator('.favorite-material-root-summary')).toHaveCount(2);
-  await expect(page.locator('.production-content-toggle')).toHaveText('▶製作内容');
+  await expect(page.locator('.production-content-section .production-content-toggle')).toHaveText('▶製作内容');
   await expect(page.locator('.favorite-material-root-or')).toHaveText('もしくは');
   await expect(page.locator('.favorite-material-root-summary').filter({ hasText: 'アリペブレ' })).toContainText('× 3');
   await expect(page.locator('.favorite-material-root-summary').filter({ hasText: 'カッパーリング' })).toContainText(

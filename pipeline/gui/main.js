@@ -12,13 +12,21 @@ const ICON_SIZE_KEY = 'ffxiv-pipeline-webp-size';
 const ICON_DELAY_KEY = 'ffxiv-pipeline-icon-delay';
 const LODESTONE_DELAY_KEY = 'ffxiv-pipeline-lodestone-delay';
 const PREVIEW_SIZE_KEY = 'ffxiv-pipeline-preview-size';
+const OXIDIZER_SOURCE_KEY = 'ffxiv-pipeline-oxidizer-source';
+const FFXIV_GAME_PATH_KEY = 'ffxiv-pipeline-game-path';
 
 const elements = {
   appTitle: document.getElementById('appTitle'),
   statusText: document.getElementById('statusText'),
   lastChecked: document.getElementById('lastChecked'),
+  workflowGuide: document.getElementById('workflowGuide'),
   checkUpdatesBtn: document.getElementById('checkUpdatesBtn'),
   downloadCsvBtn: document.getElementById('downloadCsvBtn'),
+  oxidizerSourceInput: document.getElementById('oxidizerSourceInput'),
+  ffxivGamePathInput: document.getElementById('ffxivGamePathInput'),
+  oxidizerForceInput: document.getElementById('oxidizerForceInput'),
+  selectOxidizerSourceBtn: document.getElementById('selectOxidizerSourceBtn'),
+  selectFfxivGamePathBtn: document.getElementById('selectFfxivGamePathBtn'),
   validateCsvBtn: document.getElementById('validateCsvBtn'),
   buildBtn: document.getElementById('buildBtn'),
   publishBtn: document.getElementById('publishBtn'),
@@ -49,6 +57,7 @@ const elements = {
   etaText: document.getElementById('etaText'),
   progressActions: document.getElementById('progressActions'),
   clearLogBtn: document.getElementById('clearLogBtn'),
+  openLogFolderBtn: document.getElementById('openLogFolderBtn'),
   log: document.getElementById('log'),
   confirmOverlay: document.getElementById('confirmOverlay'),
   confirmMessage: document.getElementById('confirmMessage'),
@@ -65,7 +74,21 @@ const elements = {
   equipmentRoleSummary: document.getElementById('equipmentRoleSummary'),
   equipmentRoleList: document.getElementById('equipmentRoleList'),
   equipmentRoleCloseBtn: document.getElementById('equipmentRoleCloseBtn'),
-  equipmentRoleSaveBtn: document.getElementById('equipmentRoleSaveBtn')
+  equipmentRoleSaveBtn: document.getElementById('equipmentRoleSaveBtn'),
+  publicationReviewOverlay: document.getElementById('publicationReviewOverlay'),
+  publicationReviewSummary: document.getElementById('publicationReviewSummary'),
+  publicationReviewList: document.getElementById('publicationReviewList'),
+  publicationReviewCloseBtn: document.getElementById('publicationReviewCloseBtn'),
+  publicationReviewSaveBtn: document.getElementById('publicationReviewSaveBtn'),
+  oxidizerDiffOverlay: document.getElementById('oxidizerDiffOverlay'),
+  oxidizerDiffSummary: document.getElementById('oxidizerDiffSummary'),
+  oxidizerDiffList: document.getElementById('oxidizerDiffList'),
+  oxidizerDiffCloseBtn: document.getElementById('oxidizerDiffCloseBtn'),
+  oxidizerDiffLodestoneBtn: document.getElementById('oxidizerDiffLodestoneBtn'),
+  oxidizerDiffImportBtn: document.getElementById('oxidizerDiffImportBtn'),
+  postImportOverlay: document.getElementById('postImportOverlay'),
+  postImportRunAllBtn: document.getElementById('postImportRunAllBtn'),
+  postImportCloseBtn: document.getElementById('postImportCloseBtn')
 };
 
 let uiDefinition = null;
@@ -90,6 +113,11 @@ let equipmentRoleOverrides = {};
 let equipmentRoleCollapsedKeys = new Set();
 let equipmentRoleSavedSnapshot = '{}';
 let equipmentRoleRefreshCommands = new Set();
+let publicationReviewRows = [];
+let publicationReviewEdits = {};
+let oxidizerDiffReport = null;
+let uiCompatibilityMessages = [];
+let workflowStatus = null;
 
 let equipmentRoleLabels = {};
 
@@ -107,9 +135,7 @@ function validateRuntimeUiDefinition(value) {
   for (const action of value.actions) {
     if (!action.id || actionIds.has(action.id)) throw new Error(`UI操作IDが不正です: ${action.id || ''}`);
     actionIds.add(action.id);
-    if (!action.buttonId || !document.getElementById(action.buttonId)) {
-      throw new Error(`UI操作のボタンが見つかりません: ${action.buttonId || action.id}`);
-    }
+    if (!action.buttonId) throw new Error(`UI操作のボタンIDがありません: ${action.id}`);
   }
 }
 
@@ -122,6 +148,7 @@ function resolveActionArgs(action, property = 'args') {
       continue;
     }
     const value = mapping.inputId ? document.getElementById(mapping.inputId)?.value : mapping.value;
+    if (mapping.omitEmpty && !String(value ?? '').trim()) continue;
     args.push(mapping.flag, String(value ?? ''));
   }
   return args;
@@ -130,16 +157,27 @@ function resolveActionArgs(action, property = 'args') {
 function applyUiDefinition(value) {
   validateRuntimeUiDefinition(value);
   uiDefinition = value;
-  actionDefs = value.actions;
+  uiCompatibilityMessages = [];
+  actionDefs = value.actions.filter(action => {
+    const button = document.getElementById(action.buttonId);
+    const item = document.querySelector(`.action-item[data-step="${action.command || action.id}"]`)
+      || document.querySelector(`.action-item[data-action-id="${action.id}"]`);
+    if (button && item) return true;
+    uiCompatibilityMessages.push(`このexeに未搭載の操作を無視しました: ${action.label || action.id}`);
+    return false;
+  });
   equipmentRoleLabels = value.equipmentRoleLabels;
   stepDefs = actionDefs.map(action => ({ ...action, command: action.command || action.id }));
   equipmentRoleRefreshCommands = new Set(
     actionDefs.filter(action => action.refreshEquipmentRole && action.command).map(action => action.command)
   );
-  recommendedSequence = value.recommendedSequence.map(command => {
+  recommendedSequence = value.recommendedSequence.flatMap(command => {
     const action = actionDefinition(command);
-    if (!action) throw new Error(`推奨実行コマンドがUI定義にありません: ${command}`);
-    return { command, args: () => resolveActionArgs(action, 'sequenceArgs') };
+    if (!action) {
+      uiCompatibilityMessages.push(`このexeに未搭載の一括操作を無視しました: ${command}`);
+      return [];
+    }
+    return [{ command, args: () => resolveActionArgs(action, 'sequenceArgs') }];
   });
 
   document.title = value.application.title;
@@ -149,7 +187,10 @@ function applyUiDefinition(value) {
   for (const section of value.sections) {
     const toggle = document.getElementById(section.toggleId);
     const body = document.getElementById(section.bodyId);
-    if (!toggle || !body) throw new Error(`UIセクションが見つかりません: ${section.id}`);
+    if (!toggle || !body) {
+      uiCompatibilityMessages.push(`このexeに未搭載のセクションを無視しました: ${section.label || section.id}`);
+      continue;
+    }
     toggle.querySelector('span:last-child').textContent = section.label;
     toggle.setAttribute('aria-expanded', String(Boolean(section.expanded)));
   }
@@ -319,7 +360,119 @@ function setButtonsDisabled(disabled) {
   elements.iconDelayInput.disabled = disabled;
   elements.lodestoneDelayInput.disabled = disabled;
   elements.lodestoneForceInput.disabled = disabled;
+  if (!disabled) applyWorkflowControls();
   updateProgressActions();
+}
+
+function workflowCommandComplete(command) {
+  if (!workflowStatus) return false;
+  if (command === 'build') return Boolean(workflowStatus.stages?.build?.complete);
+  if (command === 'publish-lodestone-info') {
+    return Boolean(workflowStatus.stages?.lodestone?.complete) && !elements.lodestoneForceInput.checked;
+  }
+  if (command === 'icons') {
+    const stage = workflowStatus.stages?.icons;
+    return Boolean(
+      stage?.complete
+      && Number(stage.quality) === Number(elements.qualityInput.value)
+      && Number(stage.size) === Number(elements.iconSizeInput.value)
+    );
+  }
+  if (command === 'publish') return Boolean(workflowStatus.stages?.publish?.complete);
+  return false;
+}
+
+function setWorkflowStepState(command, { complete = false, enabled = true } = {}) {
+  const item = document.querySelector(`.action-item[data-step="${command}"]`);
+  if (!item || item.classList.contains('running')) return;
+  if (!complete && (item.classList.contains('failed') || item.classList.contains('interrupted'))) return;
+  const status = item.querySelector('.action-status');
+  item.classList.remove('done', 'failed', 'interrupted');
+  if (complete) {
+    item.classList.add('done');
+    if (status) status.textContent = '✓ 完了済み';
+  } else if (!enabled) {
+    if (status) status.textContent = '— 前の工程を完了してください';
+  } else if (status) {
+    status.textContent = '○ 実行可能';
+  }
+}
+
+function applyWorkflowControls() {
+  if (!uiDefinition || !workflowStatus || running) return;
+  const stages = workflowStatus.stages || {};
+  const inputAvailable = Boolean(workflowStatus.inputAvailable);
+  const iconCompleteForSettings = workflowCommandComplete('icons');
+  const actionButton = id => document.getElementById(actionDefinition(id)?.buttonId || '');
+
+  const importButton = actionButton('oxidizer-import');
+  if (importButton) importButton.disabled = Boolean(workflowStatus.import?.sourceMatchesInput);
+  setWorkflowStepState('oxidizer-import', {
+    complete: Boolean(workflowStatus.import?.sourceMatchesInput),
+    enabled: true
+  });
+
+  const buildButton = actionButton('build');
+  if (buildButton) buildButton.disabled = !inputAvailable || Boolean(stages.build?.complete);
+  setWorkflowStepState('build', { complete: Boolean(stages.build?.complete), enabled: inputAvailable });
+
+  const lodestoneButton = actionButton('publish-lodestone-info');
+  const lodestoneComplete = Boolean(stages.lodestone?.complete);
+  if (lodestoneButton) {
+    lodestoneButton.disabled = !stages.lodestone?.enabled || (lodestoneComplete && !elements.lodestoneForceInput.checked);
+  }
+  setWorkflowStepState('publish-lodestone-info', {
+    complete: lodestoneComplete && !elements.lodestoneForceInput.checked,
+    enabled: Boolean(stages.lodestone?.enabled)
+  });
+
+  const iconsButton = actionButton('icons');
+  if (iconsButton) iconsButton.disabled = !stages.icons?.enabled || iconCompleteForSettings;
+  setWorkflowStepState('icons', {
+    complete: iconCompleteForSettings,
+    enabled: Boolean(stages.icons?.enabled)
+  });
+
+  const reviewButton = actionButton('publication-review');
+  if (reviewButton) reviewButton.disabled = !lodestoneComplete;
+  setWorkflowStepState('publication-review', { enabled: lodestoneComplete });
+
+  const equipmentButton = actionButton('equipment-role-groups');
+  if (equipmentButton) equipmentButton.disabled = !lodestoneComplete;
+  setWorkflowStepState('equipment-role-groups', { enabled: lodestoneComplete });
+
+  const publishButton = actionButton('publish');
+  if (publishButton) publishButton.disabled = !stages.publish?.enabled || Boolean(stages.publish?.complete);
+  setWorkflowStepState('publish', {
+    complete: Boolean(stages.publish?.complete),
+    enabled: Boolean(stages.publish?.enabled)
+  });
+
+  const runAllButton = actionButton('run-all');
+  if (runAllButton) {
+    runAllButton.disabled = !inputAvailable || (Boolean(stages.publish?.complete) && iconCompleteForSettings);
+  }
+
+  const nextLabels = {
+    build: '次の工程: 公開候補を生成します。「公開工程を続行」を実行してください。',
+    'publish-lodestone-info': '次の工程: Lodestone情報を公開候補へ反映します。完了済みの生成処理は再実行しません。',
+    icons: '次の工程: 確認済み項目のアイコンを生成します。Lodestone情報の再取得は不要です。',
+    publish: '次の工程: 公開反映です。必要なら先に「公式公開判定」を確認してください。',
+    complete: 'すべての公開工程が完了しています。同じ入力での再実行は不要です。'
+  };
+  const effectiveNext =
+    stages.lodestone?.complete && !iconCompleteForSettings ? 'icons' : workflowStatus.next;
+  elements.workflowGuide.textContent = nextLabels[effectiveNext] || '工程状態を確認できませんでした。';
+}
+
+async function refreshWorkflowStatus({ silent = false } = {}) {
+  try {
+    workflowStatus = await invoke('read_pipeline_workflow_status');
+    applyWorkflowControls();
+  } catch (error) {
+    workflowStatus = null;
+    if (!silent) appendLog(`工程状態を読み込めませんでした: ${String(error)}`);
+  }
 }
 
 function updateProgressActions() {
@@ -505,6 +658,7 @@ async function runCommand(command, args = [], options = {}) {
     stopEtaCountdown();
     running = false;
     activeCommand = '';
+    await refreshWorkflowStatus({ silent: true });
     setButtonsDisabled(false);
   }
 }
@@ -776,6 +930,280 @@ async function refreshEquipmentRoleCount() {
   }
 }
 
+function renderPublicationReview() {
+  elements.publicationReviewList.replaceChildren();
+  if (!publicationReviewRows.length) {
+    elements.publicationReviewList.append(textEl('p', 'preview-message', '確認が必要な項目はありません。'));
+    elements.publicationReviewSummary.textContent = '未分類 0件';
+    return;
+  }
+  let unreviewed = 0;
+  for (const row of publicationReviewRows) {
+    const edit = publicationReviewEdits[row.id] || {
+      decision: ['keep', 'exclude', 'hold'].includes(row.status) ? row.status : '',
+      reason: row.reason || '',
+      iconSource: row.iconSource || 'none'
+    };
+    publicationReviewEdits[row.id] = edit;
+    if (!edit.decision && row.status !== 'lodestone') unreviewed += 1;
+    const item = document.createElement('section');
+    item.className = 'publication-review-item';
+    const info = document.createElement('div');
+    info.className = 'publication-review-name';
+    info.textContent = `${row.id} ${row.name}`;
+    const meta = document.createElement('div');
+    meta.className = 'publication-review-meta';
+    meta.textContent = [
+      row.lodestoneConfirmed ? 'Lodestone確認済み' : 'Lodestone未確認',
+      row.existing ? '既存' : '新規',
+      `参照レシピ ${row.recipeReferences}件`
+    ].join(' / ');
+    info.append(meta);
+    const options = document.createElement('div');
+    options.className = 'publication-review-options';
+    for (const [decision, label] of [['keep', '維持'], ['exclude', '除外'], ['hold', '保留']]) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = label;
+      button.classList.toggle('active', edit.decision === decision);
+      button.addEventListener('click', () => {
+        edit.decision = decision;
+        renderPublicationReview();
+      });
+      options.append(button);
+    }
+    const iconSource = document.createElement('select');
+    iconSource.setAttribute('aria-label', 'アイコン取得元');
+    for (const [value, label] of [['none', '画像なし'], ['lodestone', 'Lodestone'], ['xivapi', 'XIVAPI']]) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      iconSource.append(option);
+    }
+    iconSource.value = edit.iconSource;
+    iconSource.addEventListener('change', () => {
+      edit.iconSource = iconSource.value;
+    });
+    options.append(iconSource);
+    const reason = document.createElement('input');
+    reason.type = 'text';
+    reason.className = 'publication-review-reason';
+    reason.placeholder = '判断理由（例: exchange-currency）';
+    reason.value = edit.reason;
+    reason.addEventListener('input', () => {
+      edit.reason = reason.value;
+    });
+    item.append(info, options, reason);
+    elements.publicationReviewList.append(item);
+  }
+  elements.publicationReviewSummary.textContent = `対象 ${publicationReviewRows.length}件 / 未分類 ${unreviewed}件`;
+}
+
+async function openPublicationReviewDialog() {
+  if (running) return;
+  markStep('publication-review', 'running');
+  elements.publicationReviewOverlay.classList.add('open');
+  elements.publicationReviewOverlay.setAttribute('aria-hidden', 'false');
+  elements.publicationReviewList.replaceChildren(textEl('p', 'preview-message', '読み込み中...'));
+  try {
+    publicationReviewRows = await invoke('read_publication_review');
+    publicationReviewEdits = {};
+    renderPublicationReview();
+    markStep('publication-review', 'done');
+  } catch (error) {
+    elements.publicationReviewList.replaceChildren(textEl('p', 'preview-message', `読み込みに失敗しました: ${String(error)}`));
+    elements.publicationReviewSummary.textContent = '読み込み失敗';
+    markStep('publication-review', 'failed');
+  }
+}
+
+function closePublicationReviewDialog() {
+  elements.publicationReviewOverlay.classList.remove('open');
+  elements.publicationReviewOverlay.setAttribute('aria-hidden', 'true');
+}
+
+async function savePublicationReview() {
+  const items = {};
+  for (const [id, edit] of Object.entries(publicationReviewEdits)) {
+    if (!edit.decision) continue;
+    if (!String(edit.reason || '').trim()) {
+      appendLog(`${id}: 判断理由を入力してください`);
+      return;
+    }
+    items[id] = {
+      decision: edit.decision,
+      reason: String(edit.reason).trim(),
+      iconSource: edit.iconSource || 'none'
+    };
+  }
+  try {
+    await invoke('save_publication_decisions', { decisions: { version: 1, items } });
+    appendLog(`公式公開判定を保存しました: ${Object.keys(items).length}件`);
+    closePublicationReviewDialog();
+    markStep('publication-review', 'done');
+  } catch (error) {
+    appendLog(`公式公開判定の保存に失敗しました: ${String(error)}`);
+    markStep('publication-review', 'failed');
+  }
+}
+
+function formatDiffValue(value) {
+  if (value === null || value === undefined) return 'なし';
+  if (typeof value === 'string') return value || '（空文字）';
+  return JSON.stringify(value);
+}
+
+function appendOxidizerDiffGroup(title, rows, kind) {
+  const preflightById = new Map(
+    (oxidizerDiffReport?.lodestonePreflight?.results || []).map(row => [String(row.ID), row])
+  );
+  const group = document.createElement('section');
+  group.className = 'oxidizer-diff-group';
+  group.append(textEl('h3', '', `${title} ${rows.length}件`));
+  if (!rows.length) {
+    group.append(textEl('p', 'preview-message', '該当なし'));
+  }
+  for (const row of rows) {
+    const item = document.createElement('div');
+    item.className = 'oxidizer-diff-item';
+    item.append(textEl('strong', '', `${row.ID} ${row.Name || row.BeforeName || '（名称なし）'}`));
+    if (kind !== 'removed') {
+      const preflight = preflightById.get(String(row.ID));
+      const labels = {
+        verified: 'Lodestone・情報・アイコン確認済み',
+        'not-found': 'Lodestone未掲載',
+        'data-failed': 'Lodestone情報取得失敗',
+        'icon-failed': 'Lodestoneアイコン取得失敗'
+      };
+      const status = textEl(
+        'div',
+        `oxidizer-lodestone-status ${preflight?.status || 'unverified'}`,
+        preflight ? labels[preflight.status] || preflight.status : 'Lodestone未確認'
+      );
+      if (preflight?.error) status.title = preflight.error;
+      item.append(status);
+      if (preflight?.info) {
+        item.append(textEl(
+          'div',
+          'oxidizer-lodestone-info',
+          `店 ${preflight.info.shopSales} / 製作 ${preflight.info.craftInfo} / ` +
+          `装備 ${preflight.info.equipmentInfo ? 'あり' : 'なし'} / EX ${preflight.info.isEx ? 'あり' : 'なし'}`
+        ));
+      }
+    }
+    if (kind === 'changed') {
+      const fields = document.createElement('ul');
+      fields.className = 'oxidizer-diff-fields';
+      if (!Array.isArray(row.Fields)) {
+        fields.append(textEl('li', '', '詳細なし。もう一度「CSV取り込み確認」を実行してください。'));
+      } else {
+        for (const field of row.Fields) {
+          const line = document.createElement('li');
+          const label = document.createElement('strong');
+          label.textContent = `${field.field}: `;
+          const values = document.createElement('code');
+          values.textContent = `${formatDiffValue(field.before)} → ${formatDiffValue(field.after)}`;
+          line.append(label, values);
+          fields.append(line);
+        }
+      }
+      item.append(fields);
+    }
+    group.append(item);
+  }
+  elements.oxidizerDiffList.append(group);
+}
+
+function renderOxidizerDiff() {
+  const report = oxidizerDiffReport || {};
+  const preflight = report.lodestonePreflight;
+  elements.oxidizerDiffList.replaceChildren();
+  elements.oxidizerDiffSummary.textContent =
+    `現行 ${report.currentCount || 0}件 / 候補 ${report.candidateCount || 0}件 / ` +
+    `追加 ${report.addedCount || 0}件 / 削除 ${report.removedCount || 0}件 / 変更 ${report.changedCount || 0}件` +
+    (preflight
+      ? ` — Lodestone確認済み ${preflight.verified}件 / 未掲載 ${preflight.notFound}件 / ` +
+        `情報失敗 ${preflight.dataFailed}件 / アイコン失敗 ${preflight.iconFailed}件`
+      : ' — Lodestone未確認');
+  appendOxidizerDiffGroup('追加', report.added || [], 'added');
+  appendOxidizerDiffGroup('変更', report.changed || [], 'changed');
+  appendOxidizerDiffGroup('削除', report.removed || [], 'removed');
+  elements.oxidizerDiffLodestoneBtn.disabled = report.status !== 'previewed';
+  elements.oxidizerDiffLodestoneBtn.textContent = preflight ? 'Lodestoneを再確認' : 'Lodestone事前確認';
+  elements.oxidizerDiffImportBtn.disabled = report.status !== 'previewed' || !preflight;
+  elements.oxidizerDiffImportBtn.textContent =
+    report.status === 'previewed' ? 'CSVをローカル反映' : '反映済み';
+}
+
+async function openOxidizerDiffDialog() {
+  elements.oxidizerDiffOverlay.classList.add('open');
+  elements.oxidizerDiffOverlay.setAttribute('aria-hidden', 'false');
+  elements.oxidizerDiffList.replaceChildren(textEl('p', 'preview-message', '読み込み中...'));
+  elements.oxidizerDiffSummary.textContent = '読み込み中...';
+  try {
+    oxidizerDiffReport = await invoke('read_oxidizer_import_preview');
+    renderOxidizerDiff();
+  } catch (error) {
+    elements.oxidizerDiffList.replaceChildren(
+      textEl('p', 'preview-message', `差分を読み込めませんでした: ${String(error)}`)
+    );
+    elements.oxidizerDiffSummary.textContent = '読み込み失敗';
+    elements.oxidizerDiffImportBtn.disabled = true;
+  }
+}
+
+function closeOxidizerDiffDialog() {
+  elements.oxidizerDiffOverlay.classList.remove('open');
+  elements.oxidizerDiffOverlay.setAttribute('aria-hidden', 'true');
+}
+
+function openPostImportDialog() {
+  elements.postImportOverlay.classList.add('open');
+  elements.postImportOverlay.setAttribute('aria-hidden', 'false');
+}
+
+function closePostImportDialog() {
+  elements.postImportOverlay.classList.remove('open');
+  elements.postImportOverlay.setAttribute('aria-hidden', 'true');
+}
+
+function continueWithFullRun() {
+  closePostImportDialog();
+  const action = actionDefinition('run-all');
+  confirmAndRun(action.confirm, () => runSequence(recommendedSequence));
+}
+
+async function verifyOxidizerDiffWithLodestone() {
+  closeOxidizerDiffDialog();
+  const args = [];
+  const source = elements.oxidizerSourceInput.value.trim();
+  if (source) args.push('--source', source);
+  args.push('--delay', elements.lodestoneDelayInput.value);
+  await runCommand(
+    'oxidizer-lodestone-preview',
+    args,
+    { title: 'Lodestone事前確認' }
+  );
+  await openOxidizerDiffDialog();
+}
+
+async function importReviewedOxidizerCsv() {
+  closeOxidizerDiffDialog();
+  const approved = await showConfirm(
+    '表示中の検証済みCSVをpipeline入力へ反映します。既存CSVはローカルバックアップへ保護されます。実行しますか？'
+  );
+  if (!approved) {
+    await openOxidizerDiffDialog();
+    return;
+  }
+  const succeeded = await runCommand(
+    'oxidizer-import',
+    resolveActionArgs(actionDefinition('oxidizer-import')),
+    { title: actionDefinition('oxidizer-import').label }
+  );
+  if (succeeded) openPostImportDialog();
+}
+
 async function refreshPreviewButton() {
   const previewAction = actionDefinition('tmp-quality-preview');
   try {
@@ -788,6 +1216,7 @@ async function refreshPreviewButton() {
 
 async function runSequence(commands) {
   if (running) return;
+  await refreshWorkflowStatus({ silent: true });
   running = true;
   canResume = false;
   cancellationRequested = false;
@@ -798,6 +1227,13 @@ async function runSequence(commands) {
   try {
     for (let index = 0; index < commands.length; index += 1) {
       const item = commands[index];
+      if (workflowCommandComplete(item.command)) {
+        const label = stepDefs.find(step => step.command === item.command)?.label || item.command;
+        markStep(item.command, 'done');
+        appendLog(`[省略] ${label}: 現在の入力に対して完了済みです`);
+        setProgress(((index + 1) / commands.length) * 100, `${label} 完了済み`);
+        continue;
+      }
       activeCommand = item.command;
       currentRun = {
         startedAt,
@@ -815,6 +1251,7 @@ async function runSequence(commands) {
       await pipelineOutputReady;
       const output = await invoke('run_pipeline_command', { command: item.command, args: resolvedArgs });
       if (output?.trim()) appendLog(`[完了後出力]\n${output.trimEnd()}`);
+      await refreshWorkflowStatus({ silent: true });
       const iconFailureConfirm = item.command === 'icons' ? parseIconFailureConfirm(output || '') : null;
       if (iconFailureConfirm) {
         const shouldContinue = await showConfirm(
@@ -853,6 +1290,7 @@ async function runSequence(commands) {
     stopEtaCountdown();
     running = false;
     activeCommand = '';
+    await refreshWorkflowStatus({ silent: true });
     setButtonsDisabled(false);
   }
 }
@@ -903,6 +1341,18 @@ function bindActionButtons() {
       button.addEventListener('click', openEquipmentRoleDialog);
       continue;
     }
+    if (action.behavior === 'publication-review-dialog') {
+      button.addEventListener('click', openPublicationReviewDialog);
+      continue;
+    }
+    if (action.behavior === 'oxidizer-import-preview') {
+      button.addEventListener('click', async () => {
+        if (await runCommand(action.command, resolveActionArgs(action), { title: action.label })) {
+          await openOxidizerDiffDialog();
+        }
+      });
+      continue;
+    }
     if (action.behavior === 'sequence') {
       button.addEventListener('click', () => confirmAndRun(action.confirm, () => runSequence(recommendedSequence)));
       continue;
@@ -924,7 +1374,10 @@ function bindActionButtons() {
       continue;
     }
     if (action.behavior === 'command') {
-      const run = () => runCommand(action.command, resolveActionArgs(action), { title: action.label });
+      const run = async () => {
+        const succeeded = await runCommand(action.command, resolveActionArgs(action), { title: action.label });
+        if (succeeded && action.command === 'oxidizer-import') openPostImportDialog();
+      };
       button.addEventListener('click', () => {
         if (action.confirm) confirmAndRun(action.confirm, run);
         else run();
@@ -939,13 +1392,17 @@ function bindEvents() {
   elements.iconDelayInput.value = localStorage.getItem(ICON_DELAY_KEY) || '500';
   elements.lodestoneDelayInput.value = localStorage.getItem(LODESTONE_DELAY_KEY) || '100';
   elements.previewSizeInput.value = localStorage.getItem(PREVIEW_SIZE_KEY) || '80';
+  elements.oxidizerSourceInput.value = localStorage.getItem(OXIDIZER_SOURCE_KEY) || '';
+  elements.ffxivGamePathInput.value = localStorage.getItem(FFXIV_GAME_PATH_KEY) || '';
   elements.qualityInput.addEventListener('change', () => {
     elements.qualityInput.value = String(clampNumber(elements.qualityInput.value, 1, 100, 80));
     localStorage.setItem(QUALITY_KEY, elements.qualityInput.value);
+    applyWorkflowControls();
   });
   elements.iconSizeInput.addEventListener('change', () => {
     elements.iconSizeInput.value = String(clampNumber(elements.iconSizeInput.value, 1, 512, 80));
     localStorage.setItem(ICON_SIZE_KEY, elements.iconSizeInput.value);
+    applyWorkflowControls();
   });
   elements.iconDelayInput.addEventListener('change', () => {
     elements.iconDelayInput.value = String(clampNumber(elements.iconDelayInput.value, 0, 60000, 500));
@@ -955,10 +1412,39 @@ function bindEvents() {
     elements.lodestoneDelayInput.value = String(clampNumber(elements.lodestoneDelayInput.value, 0, 60000, 100));
     localStorage.setItem(LODESTONE_DELAY_KEY, elements.lodestoneDelayInput.value);
   });
+  elements.lodestoneForceInput.addEventListener('change', applyWorkflowControls);
   elements.previewSizeInput.addEventListener('change', () => {
     elements.previewSizeInput.value = String(clampNumber(elements.previewSizeInput.value, 1, 512, 80));
     localStorage.setItem(PREVIEW_SIZE_KEY, elements.previewSizeInput.value);
     elements.previewBtn.textContent = actionDefinition('tmp-quality-preview').label;
+  });
+  elements.oxidizerSourceInput.addEventListener('change', () => {
+    localStorage.setItem(OXIDIZER_SOURCE_KEY, elements.oxidizerSourceInput.value.trim());
+  });
+  elements.ffxivGamePathInput.addEventListener('change', () => {
+    localStorage.setItem(FFXIV_GAME_PATH_KEY, elements.ffxivGamePathInput.value.trim());
+  });
+  elements.selectOxidizerSourceBtn.addEventListener('click', async () => {
+    try {
+      const selected = await invoke('select_directory', { initialPath: elements.oxidizerSourceInput.value });
+      if (selected) {
+        elements.oxidizerSourceInput.value = selected;
+        localStorage.setItem(OXIDIZER_SOURCE_KEY, selected);
+      }
+    } catch (error) {
+      appendLog(`フォルダーを選択できませんでした: ${String(error)}`);
+    }
+  });
+  elements.selectFfxivGamePathBtn.addEventListener('click', async () => {
+    try {
+      const selected = await invoke('select_directory', { initialPath: elements.ffxivGamePathInput.value });
+      if (selected) {
+        elements.ffxivGamePathInput.value = selected;
+        localStorage.setItem(FFXIV_GAME_PATH_KEY, selected);
+      }
+    } catch (error) {
+      appendLog(`フォルダーを選択できませんでした: ${String(error)}`);
+    }
   });
   elements.clearLogBtn.addEventListener('click', () => {
     pendingLogLines = [];
@@ -967,6 +1453,13 @@ function bindEvents() {
       logFlushTimer = 0;
     }
     elements.log.replaceChildren();
+  });
+  elements.openLogFolderBtn.addEventListener('click', async () => {
+    try {
+      await invoke('open_log_directory');
+    } catch (error) {
+      appendLog(`ログ保存先を開けませんでした: ${String(error)}`);
+    }
   });
   bindSectionToggles([
     { toggle: elements.csvToggle, body: elements.csvBody },
@@ -987,6 +1480,13 @@ function bindEvents() {
   elements.previewCloseBtn.addEventListener('click', closeQualityPreview);
   elements.equipmentRoleCloseBtn.addEventListener('click', closeEquipmentRoleDialog);
   elements.equipmentRoleSaveBtn.addEventListener('click', saveEquipmentRoleOverrides);
+  elements.publicationReviewCloseBtn.addEventListener('click', closePublicationReviewDialog);
+  elements.publicationReviewSaveBtn.addEventListener('click', savePublicationReview);
+  elements.oxidizerDiffCloseBtn.addEventListener('click', closeOxidizerDiffDialog);
+  elements.oxidizerDiffLodestoneBtn.addEventListener('click', verifyOxidizerDiffWithLodestone);
+  elements.oxidizerDiffImportBtn.addEventListener('click', importReviewedOxidizerCsv);
+  elements.postImportRunAllBtn.addEventListener('click', continueWithFullRun);
+  elements.postImportCloseBtn.addEventListener('click', closePostImportDialog);
   elements.previewOverlay.addEventListener('click', event => {
     if (event.target === elements.previewOverlay) closeQualityPreview();
   });
@@ -1007,6 +1507,21 @@ function bindEvents() {
     if (event.key === 'Escape' && elements.previewOverlay.classList.contains('open')) {
       event.preventDefault();
       closeQualityPreview();
+      return;
+    }
+    if (event.key === 'Escape' && elements.publicationReviewOverlay.classList.contains('open')) {
+      event.preventDefault();
+      closePublicationReviewDialog();
+      return;
+    }
+    if (event.key === 'Escape' && elements.oxidizerDiffOverlay.classList.contains('open')) {
+      event.preventDefault();
+      closeOxidizerDiffDialog();
+      return;
+    }
+    if (event.key === 'Escape' && elements.postImportOverlay.classList.contains('open')) {
+      event.preventDefault();
+      closePostImportDialog();
       return;
     }
     if (!pendingConfirm) return;
@@ -1135,10 +1650,16 @@ async function initialize() {
     setButtonsDisabled(true);
     return;
   }
+  for (const message of uiCompatibilityMessages) appendLog(`互換モード: ${message}`);
 
   pipelineOutputReady = listen('pipeline-output', event => {
     const line = String(event.payload || '');
     if (!line) return;
+    if (line.startsWith('OXIDIZER_OUTPUT_ROOT ')) {
+      const selected = line.slice('OXIDIZER_OUTPUT_ROOT '.length).trim();
+      elements.oxidizerSourceInput.value = selected;
+      localStorage.setItem(OXIDIZER_SOURCE_KEY, selected);
+    }
     const etaProgress = parseEtaProgress(line);
     if (etaProgress) {
       updateEtaProgress(etaProgress);
@@ -1155,6 +1676,7 @@ async function initialize() {
 
   blockBrowserNavigation();
   bindEvents();
+  await refreshWorkflowStatus();
   updateProgressActions();
   restoreWindowSize();
   loadUpdateState();

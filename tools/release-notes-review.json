@@ -1,6 +1,6 @@
 {
-  "version": "v2.95",
-  "baseline": "53214c05",
+  "version": "v2.951",
+  "baseline": "74f2765d",
   "baselineTestFile": "tests/app.spec.js",
   "testFiles": [
     "tests/app-core.spec.js",
@@ -16,104 +16,14 @@
   "instructions": "Every E2E test added after the baseline must be documented in the current release section or explicitly classified as internal with a concrete reason.",
   "reviews": [
     {
-      "test": "shows the transfer and listing restriction badge only for confirmed EX items",
+      "test": "exports and imports all favorite lists through one text file",
       "disposition": "documented",
-      "evidence": ["EX属性を示す譲渡・出品不可情報"]
+      "evidence": ["全お気に入りリストを1つのテキストファイルへ書き出し", "まとめて読み込める"]
     },
     {
-      "test": "shows the confirmed masterbook on recipe item labels",
+      "test": "favorite target dialog grows with list count within the existing viewport limit",
       "disposition": "documented",
-      "evidence": ["製作に必要な秘伝書名"]
-    },
-    {
-      "test": "shows one selectable search row per recipe variant and uses the selected ingredients",
-      "disposition": "documented",
-      "evidence": ["検索結果へ製作方法ごとに表示"]
-    },
-    {
-      "test": "loads all recipe variants from the published item data",
-      "disposition": "documented",
-      "evidence": ["同じアイテムに複数の製作方法"]
-    },
-    {
-      "test": "offers the same recipe selector for an intermediate item in the tree and materials list",
-      "disposition": "documented",
-      "evidence": ["レシピツリーと素材リストから使用する製作方法を選択"]
-    },
-    {
-      "test": "creates a named favorite list from a tree pin and exports a compact share code",
-      "disposition": "documented",
-      "evidence": ["従来より短くなる形式"]
-    },
-    {
-      "test": "converts v2 favorite storage to v3 and removes v2 only after saving it",
-      "disposition": "documented",
-      "evidence": ["旧形式のお気に入り"]
-    },
-    {
-      "test": "round-trips a selected recipe through the compact favorite share code",
-      "disposition": "documented",
-      "evidence": ["製作方法を保存し、素材計算やシェアコードへ反映"]
-    },
-    {
-      "test": "uses the favorite list recipe selection for its material calculation",
-      "disposition": "documented",
-      "evidence": ["製作方法を保存し、素材計算やシェアコードへ反映"]
-    },
-    {
-      "test": "automatically saves a recipe method that minimizes craft job changes",
-      "disposition": "documented",
-      "evidence": ["製作ジョブの切り替えが少なくなる製作方法を自動選択"]
-    },
-    {
-      "test": "finalizes missing legacy recipe methods when restoring a favorite list",
-      "disposition": "documented",
-      "evidence": ["製作方法の情報がない旧形式のお気に入りやシェアコード"]
-    },
-    {
-      "test": "keeps different recipe selections when summing multiple favorite lists",
-      "disposition": "documented",
-      "evidence": ["選択した製作方法を保存し、素材計算"]
-    },
-    {
-      "test": "restores left and right scroll positions after reload",
-      "disposition": "internal",
-      "reason": "This restoration safeguard is intentionally omitted from the concise v2.95 user release notes."
-    },
-    {
-      "test": "single-column shop dialog stays compact at six hundred pixels and expands only for multiple columns",
-      "disposition": "documented",
-      "evidence": ["店舗数と画面幅に応じて見やすい列数と横幅"]
-    },
-    {
-      "test": "bulk purchase controls are collapsible and synchronize disabled state",
-      "disposition": "documented",
-      "evidence": ["中間素材の購入指定を、それぞれ一括で指定・解除"]
-    },
-    {
-      "test": "search result selection preserves applicable purchase flags",
-      "disposition": "internal",
-      "reason": "This is a state-preservation regression safeguard for existing purchase controls."
-    },
-    {
-      "test": "favorite child count changes preserve the list scroll position",
-      "disposition": "documented",
-      "evidence": ["個数を変更すると、アイテム一覧のスクロール位置が最上部へ戻る問題"]
-    },
-    {
-      "test": "multiple rings show production bulk controls and preserve purchases when counts change",
-      "disposition": "documented",
-      "evidence": ["指輪の必要数と中間素材の購入指定を、それぞれ一括で指定・解除"]
-    },
-    {
-      "test": "equipment search reset clears only the conditions",
-      "disposition": "documented",
-      "evidence": ["装備検索のリセットで、検索条件以外"]
-    },
-    {
-      "test": "equipment search maximum item level never decreases as equipment level rises",
-      "disposition": "documented",
-      "evidence": ["装備検索の全対象ジョブ", "最大アイテムレベルが下がる"]
+      "evidence": ["登録先ウィンドウを、リスト数と画面の高さに応じて伸縮"]
     }
   ]
 }

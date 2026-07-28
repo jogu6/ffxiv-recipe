@@ -37,19 +37,112 @@ async function openPipelineGui(page, definition = uiDefinition) {
   });
 
   await page.addInitScript(definition => {
-    window.__pipelineGuiTest = { invokes: [], listeners: {} };
+    window.__pipelineGuiTest = {
+      invokes: [],
+      listeners: {},
+      oxidizerPreflight: false,
+      workflow: {
+        inputAvailable: true,
+        import: { status: 'none', sourceMatchesInput: false, previewDifferenceCount: 0, preflightComplete: false },
+        stages: {
+          build: { complete: false },
+          lodestone: { complete: false, enabled: false },
+          icons: { complete: false, enabled: false, quality: null, size: null },
+          publish: { complete: false, enabled: false }
+        },
+        next: 'build'
+      }
+    };
     window.__TAURI__ = {
       core: {
         invoke: async (command, payload = {}) => {
           window.__pipelineGuiTest.invokes.push({ command, payload });
           if (command === 'read_pipeline_ui_definition') return definition;
+          if (command === 'read_pipeline_workflow_status') return structuredClone(window.__pipelineGuiTest.workflow);
           if (command === 'read_update_state') return {};
           if (command === 'read_quality_preview_state') return { available: false };
           if (command === 'read_equipment_role_summary') return { selected: 0, unselected: 0, total: 0 };
+          if (command === 'read_publication_review') return [];
+          if (command === 'read_oxidizer_import_preview') {
+            const report = {
+              status: 'previewed',
+              currentCount: 10,
+              candidateCount: 11,
+              addedCount: 1,
+              removedCount: 0,
+              changedCount: 1,
+              added: [{ ID: '20', Name: '追加品' }],
+              removed: [],
+              changed: [{
+                ID: '10',
+                Name: '変更品',
+                Fields: [{ field: 'Price', before: 100, after: 120 }]
+              }]
+            };
+            if (window.__pipelineGuiTest.oxidizerPreflight) {
+              report.lodestonePreflight = {
+                verified: 2,
+                notFound: 0,
+                dataFailed: 0,
+                iconFailed: 0,
+                results: [
+                  {
+                    ID: '20',
+                    status: 'verified',
+                    info: { shopSales: 0, craftInfo: 1, equipmentInfo: false, isEx: false }
+                  },
+                  {
+                    ID: '10',
+                    status: 'verified',
+                    info: { shopSales: 1, craftInfo: 0, equipmentInfo: false, isEx: false }
+                  }
+                ]
+              };
+            }
+            return report;
+          }
+          if (command === 'select_directory') return 'C:\\selected-folder';
           if (window.__pipelineGuiTest.holdIcons && command === 'run_pipeline_command' && payload.command === 'icons') {
             return new Promise(resolve => {
               window.__pipelineGuiTest.resolveLongRun = () => resolve('icons ok');
             });
+          }
+          if (command === 'run_pipeline_command' && payload.command === 'oxidizer-lodestone-preview') {
+            window.__pipelineGuiTest.oxidizerPreflight = true;
+          }
+          if (command === 'run_pipeline_command' && payload.command === 'oxidizer-import') {
+            window.__pipelineGuiTest.workflow.import = {
+              status: 'current',
+              sourceMatchesInput: true,
+              previewDifferenceCount: 0,
+              preflightComplete: true
+            };
+          }
+          if (command === 'run_pipeline_command' && payload.command === 'build') {
+            window.__pipelineGuiTest.workflow.stages.build = { complete: true };
+            window.__pipelineGuiTest.workflow.stages.lodestone = { complete: false, enabled: true };
+            window.__pipelineGuiTest.workflow.next = 'publish-lodestone-info';
+          }
+          if (command === 'run_pipeline_command' && payload.command === 'publish-lodestone-info') {
+            window.__pipelineGuiTest.workflow.stages.lodestone = { complete: true, enabled: true };
+            window.__pipelineGuiTest.workflow.stages.icons = { complete: false, enabled: true, quality: null, size: null };
+            window.__pipelineGuiTest.workflow.next = 'icons';
+          }
+          if (command === 'run_pipeline_command' && payload.command === 'icons') {
+            const qualityIndex = payload.args.indexOf('--quality');
+            const sizeIndex = payload.args.indexOf('--size');
+            window.__pipelineGuiTest.workflow.stages.icons = {
+              complete: true,
+              enabled: true,
+              quality: Number(payload.args[qualityIndex + 1]),
+              size: Number(payload.args[sizeIndex + 1])
+            };
+            window.__pipelineGuiTest.workflow.stages.publish = { complete: false, enabled: true };
+            window.__pipelineGuiTest.workflow.next = 'publish';
+          }
+          if (command === 'run_pipeline_command' && payload.command === 'publish') {
+            window.__pipelineGuiTest.workflow.stages.publish = { complete: true, enabled: true };
+            window.__pipelineGuiTest.workflow.next = 'complete';
           }
           return `${payload.command || command} ok`;
         }
@@ -96,10 +189,30 @@ test('pipeline GUI renders action names and descriptions from the mjs definition
   await expect(page.locator('.action-item[data-step="publish"]')).toContainText('mjs定義を起動時に反映します。');
 });
 
+test('pipeline GUI keeps known operations available with a newer UI definition', async ({ page }) => {
+  const definition = structuredClone(uiDefinition);
+  definition.actions.unshift({
+    id: 'future-action',
+    section: 'data',
+    command: 'future-action',
+    buttonId: 'futureActionBtn',
+    order: '将来',
+    label: '将来の操作',
+    description: '現在のexeには未搭載です。',
+    behavior: 'command',
+    args: []
+  });
+  definition.recommendedSequence.unshift('future-action');
+  await openPipelineGui(page, definition);
+
+  await expect(page.locator('#validateCsvBtn')).toBeEnabled();
+  await expect(page.locator('#log')).toContainText('互換モード: このexeに未搭載の操作を無視しました: 将来の操作');
+});
+
 test('pipeline GUI shows operation descriptions without test-only buttons', async ({ page }) => {
   await openPipelineGui(page);
 
-  await expect(page.locator('.action-item', { hasText: '全実行' })).toContainText('CSV検証、データ生成、アイコン生成、Lodestone情報反映、公開反映');
+  await expect(page.locator('.action-item', { hasText: '公開工程を続行' })).toContainText('CSV取得・再生成は行わず、完了済み工程は省略');
   await expect(page.locator('.action-item[data-step="publish"]')).toContainText('候補データを site/data/Item.json に統合します。');
   await expect(page.locator('.log-panel')).toBeVisible();
   await expect(page.locator('.side-panel #resumeBtn')).toHaveCount(0);
@@ -126,6 +239,7 @@ test('pipeline GUI confirms long operations before invoking Tauri', async ({ pag
   await page.locator('#confirmCancelBtn').click();
   expect(await invokes(page)).toEqual([
     { command: 'read_pipeline_ui_definition', payload: {} },
+    { command: 'read_pipeline_workflow_status', payload: {} },
     { command: 'read_update_state', payload: {} },
     { command: 'read_quality_preview_state', payload: {} },
     { command: 'read_equipment_role_summary', payload: {} }
@@ -133,12 +247,59 @@ test('pipeline GUI confirms long operations before invoking Tauri', async ({ pag
 
   await page.locator('#buildBtn').click();
   await page.locator('#confirmOkBtn').click();
-  await expect(page.locator('.action-item[data-step="build"] .action-status')).toHaveText('✓ 完了');
+  await expect(page.locator('.action-item[data-step="build"] .action-status')).toHaveText('✓ 完了済み');
   expect(await invokes(page)).toContainEqual({
     command: 'run_pipeline_command',
     payload: { command: 'build', args: [] }
   });
   expect((await invokes(page)).filter(call => call.command === 'read_equipment_role_summary')).toHaveLength(2);
+});
+
+test('pipeline GUI selects Oxidizer paths and opens publication review without a terminal', async ({ page }) => {
+  await openPipelineGui(page);
+
+  await page.locator('#selectOxidizerSourceBtn').click();
+  await expect(page.locator('#oxidizerSourceInput')).toHaveValue('C:\\selected-folder');
+  await expect(page.locator('#publicationReviewBtn')).toBeDisabled();
+  await page.locator('#buildBtn').click();
+  await page.locator('#confirmOkBtn').click();
+  await expect(page.locator('#buildBtn')).toBeDisabled();
+  await expect(page.locator('#lodestoneInfoBtn')).toBeEnabled();
+  await page.locator('#lodestoneInfoBtn').click();
+  await page.locator('#confirmOkBtn').click();
+  await expect(page.locator('#lodestoneInfoBtn')).toBeDisabled();
+  await expect(page.locator('#iconsBtn')).toBeEnabled();
+  await page.locator('#publicationReviewBtn').click();
+  await expect(page.locator('#publicationReviewOverlay')).toHaveClass(/open/);
+  await expect(page.locator('#publicationReviewSummary')).toHaveText('未分類 0件');
+  expect(await invokes(page)).toContainEqual({
+    command: 'select_directory',
+    payload: { initialPath: '' }
+  });
+  expect(await invokes(page)).toContainEqual({
+    command: 'read_publication_review',
+    payload: {}
+  });
+});
+
+test('pipeline GUI opens the Oxidizer item diff after a safe preview', async ({ page }) => {
+  await openPipelineGui(page);
+
+  await page.locator('#oxidizerImportPreviewBtn').click();
+  await expect(page.locator('#oxidizerDiffOverlay')).toHaveClass(/open/);
+  await expect(page.locator('#oxidizerDiffSummary')).toContainText('追加 1件 / 削除 0件 / 変更 1件');
+  await expect(page.locator('#oxidizerDiffList')).toContainText('20 追加品');
+  await expect(page.locator('#oxidizerDiffList')).toContainText('Price: 100 → 120');
+  await expect(page.locator('#oxidizerDiffImportBtn')).toBeDisabled();
+  await page.locator('#oxidizerDiffLodestoneBtn').click();
+  await expect(page.locator('#oxidizerDiffSummary')).toContainText('Lodestone確認済み 2件');
+  await expect(page.locator('#oxidizerDiffList')).toContainText('Lodestone・情報・アイコン確認済み');
+  await expect(page.locator('#oxidizerDiffImportBtn')).toBeEnabled();
+  await page.locator('#oxidizerDiffImportBtn').click();
+  await expect(page.locator('#confirmOverlay')).toHaveClass(/open/);
+  await page.locator('#confirmOkBtn').click();
+  await expect(page.locator('#postImportOverlay')).toHaveClass(/open/);
+  await expect(page.locator('#postImportOverlay')).toContainText('次へ：公開工程を続行');
 });
 
 test('pipeline GUI runs the recommended sequence with WebP quality', async ({ page }) => {
@@ -157,8 +318,8 @@ test('pipeline GUI runs the recommended sequence with WebP quality', async ({ pa
   expect(runCalls.map(call => call.payload)).toEqual([
     { command: 'validate-csv', args: [] },
     { command: 'build', args: [] },
-    { command: 'icons', args: ['--quality', '70', '--size', '80', '--delay', '500', '--item-json', 'pipeline/intermediate/06-public-items.json'] },
     { command: 'publish-lodestone-info', args: ['--delay', '100', '--force'] },
+    { command: 'icons', args: ['--quality', '70', '--size', '80', '--delay', '500', '--item-json', 'pipeline/intermediate/06-public-items.json'] },
     { command: 'publish', args: [] }
   ]);
 });
@@ -166,6 +327,8 @@ test('pipeline GUI runs the recommended sequence with WebP quality', async ({ pa
 test('pipeline GUI can force Lodestone info refresh without changing cache behavior', async ({ page }) => {
   await openPipelineGui(page);
 
+  await page.locator('#buildBtn').click();
+  await page.locator('#confirmOkBtn').click();
   await page.locator('#lodestoneForceInput').check();
   await page.locator('#lodestoneInfoBtn').click();
   await page.locator('#confirmOkBtn').click();
@@ -175,7 +338,7 @@ test('pipeline GUI can force Lodestone info refresh without changing cache behav
     command: 'publish-lodestone-info',
     args: ['--delay', '100', '--force']
   });
-  expect((await invokes(page)).filter(call => call.command === 'read_equipment_role_summary')).toHaveLength(2);
+  expect((await invokes(page)).filter(call => call.command === 'read_equipment_role_summary')).toHaveLength(3);
 });
 
 test('pipeline GUI defaults icon generation to q80 Lodestone output', async ({ page }) => {
@@ -200,6 +363,10 @@ test('pipeline GUI surfaces cache version updates', async ({ page }) => {
 
 test('pipeline GUI can request cancellation of a running command', async ({ page }) => {
   await openPipelineGui(page);
+  await page.locator('#buildBtn').click();
+  await page.locator('#confirmOkBtn').click();
+  await page.locator('#lodestoneInfoBtn').click();
+  await page.locator('#confirmOkBtn').click();
   await page.evaluate(() => {
     window.__pipelineGuiTest.holdIcons = true;
   });

@@ -210,7 +210,20 @@ test('bulk purchase controls are collapsible and synchronize disabled state', as
   await page.getByRole('button', { name: '購入取消' }).last().click();
   await expect(page.getByRole('button', { name: '購入取消' }).first()).toBeDisabled();
   await header.click();
-  await expect(header.locator('xpath=following-sibling::*[1]')).toHaveClass(/collapsed/);
+  const collapsedBulkActions = header.locator('xpath=following-sibling::*[1]');
+  const nextHeader = page.locator('.materials-section-header').filter({ hasText: '必要素材' });
+  await expect(collapsedBulkActions).toHaveClass(/collapsed/);
+  await expect
+    .poll(async () => Math.round((await collapsedBulkActions.boundingBox())?.height ?? 999))
+    .toBe(0);
+  await expect
+    .poll(async () => {
+      const upper = await header.boundingBox();
+      const lower = await nextHeader.boundingBox();
+      if (!upper || !lower) return 999;
+      return Math.round(lower.y - (upper.y + upper.height));
+    })
+    .toBeLessThanOrEqual(1);
 });
 
 test('search result selection preserves applicable purchase flags', async ({ page }) => {

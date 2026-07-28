@@ -29,6 +29,10 @@ export const itemIconsRoot = path.join(siteRoot, 'assets', 'item-icons');
 
 const sourcesPath = path.join(pipelineRoot, 'sources.json');
 const updateStatePath = path.join(stateRoot, 'update-check.json');
+const oxidizerStatePath = path.join(stateRoot, 'oxidizer.json');
+const oxidizerImportStatePath = path.join(stateRoot, 'oxidizer-import.json');
+const pipelineWorkflowStatePath = path.join(stateRoot, 'pipeline-workflow.json');
+const publicationGateStatePath = path.join(stateRoot, 'publication-gate.json');
 const runStatePath = path.join(stateRoot, 'run-state.json');
 const cancelRequestPath = path.join(stateRoot, 'cancel-requested.json');
 const iconQualityStatePath = path.join(stateRoot, 'icon-quality.json');
@@ -40,11 +44,13 @@ const tmpPreviewManifestPath = path.join(tmpPreviewRoot, 'manifest.json');
 const tmpPreviewDataPath = path.join(tmpPreviewRoot, 'preview-data.json');
 const remoteCsvNames = ['Item.csv', 'Recipe.csv', 'ItemUICategory.csv', 'ItemSearchCategory.csv'];
 const localCsvNames = ['token-items.csv'];
+const oxidizerRepositoryUrl = 'https://github.com/skyborn-industries/xiv-data-oxidizer';
 const gatheringAreaPath = path.join(inputRoot, 'gathering_area.json');
 const gatheringTimerPath = path.join(inputRoot, 'gathering_timer.json');
 const housingShopsPath = path.join(inputRoot, 'housing-shops.json');
 const friendlyTribeShopsPath = path.join(inputRoot, 'friendly-tribe-shops.json');
 const equipmentRoleOverridesPath = path.join(inputRoot, 'equipment-role-overrides.json');
+const publicationDecisionsPath = path.join(inputRoot, 'publication-decisions.json');
 const craftJobsPath = path.join(inputRoot, 'web-app', 'craft-jobs.json');
 const lodestoneItemUrlsPath = path.join(stateRoot, 'lodestone-item-urls.json');
 const defaultIconQuality = 80;
@@ -186,11 +192,249 @@ function writeJsonAtomic(file, value) {
   writeTextAtomic(file, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+function compactNumericMap(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const compact = Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => typeof entry !== 'number' || entry !== 0)
+  );
+  return Object.keys(compact).length > 0 ? compact : undefined;
+}
+
+function compactPublicRecipe(recipe, itemIds) {
+  if (!recipe || typeof recipe !== 'object') return;
+  for (const ingredient of recipe.Ingredients || []) {
+    if (itemIds.has(String(ingredient.ItemID))) delete ingredient.Name;
+  }
+}
+
+export function projectPublicItems(items) {
+  if (!Array.isArray(items)) throw new TypeError('Public Item.json source must be an item array.');
+  const projected = cloneJson(items);
+  const itemIds = new Set(projected.map(item => String(item.ID)));
+  for (const item of projected) {
+    for (const key of [
+      'Description',
+      'LevelEquip',
+      'ItemSearchCategory',
+      'ItemSearchCategoryName',
+      'LodestoneInfoCheckedAt',
+      'LodestoneInfoVersion'
+    ]) delete item[key];
+    if (item.IsEx === false) delete item.IsEx;
+    compactPublicRecipe(item.Recipe, itemIds);
+    for (const recipe of item.Recipes || []) compactPublicRecipe(recipe, itemIds);
+    if (item.EquipmentInfo) {
+      delete item.EquipmentInfo.statsVersion;
+      const stats = compactNumericMap(item.EquipmentInfo.stats);
+      const performance = compactNumericMap(item.EquipmentInfo.performance);
+      if (stats) item.EquipmentInfo.stats = stats;
+      else delete item.EquipmentInfo.stats;
+      if (performance) item.EquipmentInfo.performance = performance;
+      else delete item.EquipmentInfo.performance;
+    }
+  }
+  return projected;
+}
+
+function writePublicItemsAtomic(file, items) {
+  writeTextAtomic(file, `${JSON.stringify(projectPublicItems(items))}\n`);
+}
+
 function writeBytesAtomic(file, bytes) {
   ensureDir(path.dirname(file));
   const temp = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.tmp`);
   fs.writeFileSync(temp, bytes);
   fs.renameSync(temp, file);
+}
+
+function commandExists(command) {
+  const probe = process.platform === 'win32' ? 'where.exe' : 'which';
+  return spawnSync(probe, [command], {
+    encoding: 'utf8',
+    windowsHide: true
+  }).status === 0;
+}
+
+function runExternal(command, args, {
+  cwd = repositoryRoot,
+  allowFailure = false,
+  capture = false
+} = {}) {
+  log(`外部コマンド: ${command} ${args.map(value => JSON.stringify(String(value))).join(' ')}`);
+  const result = spawnSync(command, args.map(String), {
+    cwd,
+    encoding: capture ? 'utf8' : undefined,
+    stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+    windowsHide: true
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0 && !allowFailure) {
+    const detail = capture ? `${result.stdout || ''}${result.stderr || ''}`.trim() : '';
+    throw new Error(`${command} が終了コード ${result.status} で失敗しました${detail ? `: ${detail}` : ''}`);
+  }
+  return result;
+}
+
+function oxidizerGitOutput(args, cwd = repositoryRoot, { allowFailure = false } = {}) {
+  const result = runExternal('git', args, { cwd, allowFailure, capture: true });
+  return {
+    ok: result.status === 0,
+    stdout: String(result.stdout || '').trim(),
+    stderr: String(result.stderr || '').trim(),
+    status: result.status
+  };
+}
+
+function resolveOxidizerCsvRoot(source = '') {
+  const configured = String(source || '').trim();
+  const state = readJson(oxidizerStatePath, {});
+  const candidates = [
+    configured,
+    state.latestOutputRoot,
+    state.latestRepositoryRoot
+  ].filter(Boolean).map(value => path.resolve(String(value)));
+  for (const candidate of candidates) {
+    const roots = [
+      candidate,
+      path.join(candidate, 'output', 'ja'),
+      path.join(candidate, 'ja')
+    ];
+    for (const root of roots) {
+      if (remoteCsvNames.every(name => fs.existsSync(path.join(root, name)))) return root;
+    }
+  }
+  throw new Error('Oxidizer CSVフォルダーを特定できません。output\\ja または4つのCSVがあるフォルダーを指定してください。');
+}
+
+function oxidizerCsvManifest(csvRoot) {
+  return {
+    sourceRoot: path.resolve(csvRoot),
+    files: Object.fromEntries(remoteCsvNames.map(name => {
+      const file = path.join(csvRoot, name);
+      const stat = fs.statSync(file);
+      return [name, {
+        bytes: stat.size,
+        sha256: sha256File(file)
+      }];
+    }))
+  };
+}
+
+function manifestsMatch(left, right) {
+  return remoteCsvNames.every(name =>
+    left?.files?.[name]?.sha256 &&
+    left.files[name].sha256 === right?.files?.[name]?.sha256
+  );
+}
+
+function manifestFingerprint(manifest) {
+  const hashes = remoteCsvNames.map(name => `${name}:${manifest?.files?.[name]?.sha256 || ''}`);
+  return crypto.createHash('sha256').update(hashes.join('\n')).digest('hex');
+}
+
+function currentInputManifest() {
+  try {
+    return oxidizerCsvManifest(inputRoot);
+  } catch {
+    return null;
+  }
+}
+
+function recordWorkflowStage(stage, values = {}) {
+  const order = ['build', 'lodestone', 'icons', 'publish'];
+  const current = readJson(pipelineWorkflowStatePath, { version: 1 });
+  const next = { ...current, version: 1 };
+  const stageIndex = order.indexOf(stage);
+  if (stageIndex >= 0) {
+    for (const later of order.slice(stageIndex + 1)) delete next[later];
+  }
+  next[stage] = { completedAt: nowIso(), ...values };
+  writeJsonAtomic(pipelineWorkflowStatePath, next);
+  return next;
+}
+
+function invalidateWorkflowAfterImport(manifest) {
+  writeJsonAtomic(pipelineWorkflowStatePath, {
+    version: 1,
+    imported: {
+      completedAt: nowIso(),
+      inputFingerprint: manifestFingerprint(manifest)
+    }
+  });
+}
+
+export function pipelineWorkflowStatus() {
+  const inputManifest = currentInputManifest();
+  const inputFingerprint = inputManifest ? manifestFingerprint(inputManifest) : '';
+  const workflow = readJson(pipelineWorkflowStatePath, { version: 1 });
+  const importState = readJson(oxidizerImportStatePath, null);
+  const sourceMatchesInput = Boolean(
+    inputManifest
+    && importState?.manifest
+    && manifestsMatch(importState.manifest, inputManifest)
+  );
+  const previewDifferenceCount =
+    Number(importState?.addedCount || 0)
+    + Number(importState?.removedCount || 0)
+    + Number(importState?.changedCount || 0);
+  const candidateExists = fs.existsSync(publicCandidatePath);
+  const candidateSha256 = candidateExists ? sha256File(publicCandidatePath) : '';
+  const publicExists = fs.existsSync(publicItemJsonPath);
+  const publicSha256 = publicExists ? sha256File(publicItemJsonPath) : '';
+  const buildComplete = Boolean(
+    inputFingerprint
+    && workflow.build?.inputFingerprint === inputFingerprint
+    && candidateExists
+  );
+  const lodestoneComplete = Boolean(
+    buildComplete
+    && workflow.lodestone?.inputFingerprint === inputFingerprint
+    && workflow.lodestone?.candidateSha256 === candidateSha256
+  );
+  const iconsComplete = Boolean(
+    lodestoneComplete
+    && workflow.icons?.candidateSha256 === candidateSha256
+  );
+  const publishComplete = Boolean(
+    iconsComplete
+    && workflow.publish?.candidateSha256 === candidateSha256
+    && workflow.publish?.publicSha256 === publicSha256
+  );
+  const next = !buildComplete
+    ? 'build'
+    : !lodestoneComplete
+      ? 'publish-lodestone-info'
+      : !iconsComplete
+        ? 'icons'
+        : !publishComplete
+          ? 'publish'
+          : 'complete';
+  return {
+    inputAvailable: Boolean(inputManifest),
+    inputFingerprint,
+    import: {
+      status: sourceMatchesInput ? 'current' : String(importState?.status || 'none'),
+      sourceMatchesInput,
+      previewDifferenceCount,
+      preflightComplete: Boolean(importState?.lodestonePreflight)
+    },
+    stages: {
+      build: { complete: buildComplete },
+      lodestone: { complete: lodestoneComplete, enabled: buildComplete },
+      icons: {
+        complete: iconsComplete,
+        enabled: lodestoneComplete,
+        quality: workflow.icons?.quality ?? null,
+        size: workflow.icons?.size ?? null
+      },
+      publish: { complete: publishComplete, enabled: iconsComplete }
+    },
+    next
+  };
+}
+
+function timestampForPath(date = new Date()) {
+  return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
 }
 
 export function compressLodestoneHtml(text, { maxOutputLength = lodestoneHtmlMaxBytes } = {}) {
@@ -631,7 +875,423 @@ export function buildData() {
   log(`検索カテゴリ照合: 一致 ${searchMatches}件、スキップ ${searchSkips}件`);
   log(`採集情報照合: 一致 ${gatheringMatches}件、未一致 ${gatheringUnmatched.length}件`);
   log(`公開候補を作成しました ${path.relative(repositoryRoot, buildOutputs.publicItems)} (${publicItems.length}件)`);
+  const inputManifest = currentInputManifest();
+  if (inputManifest) {
+    recordWorkflowStage('build', {
+      inputFingerprint: manifestFingerprint(inputManifest),
+      candidateSha256: sha256File(buildOutputs.publicItems)
+    });
+  }
   return publicItems;
+}
+
+export function validateOxidizerCsvRoot({ source = '' } = {}) {
+  const csvRoot = resolveOxidizerCsvRoot(source);
+  log(`Oxidizer CSV検証を開始しました: ${csvRoot}`);
+  const results = [];
+  for (const name of remoteCsvNames) {
+    const file = path.join(csvRoot, name);
+    const rows = readCsv(file);
+    if (rows.length < 2) throw new Error(`${name} にデータ行がありません`);
+    const header = rows[0];
+    columnMap(header, csvSchemas[name].required);
+    const width = header.length;
+    const malformed = rows.findIndex((row, index) => index > 0 && row.length !== width);
+    if (malformed >= 0) {
+      throw new Error(`${name} の行 ${malformed + 1} は列数が不正です (${rows[malformed].length}/${width})`);
+    }
+    results.push({ name, rows: rows.length - 1, columns: width });
+    log(`${name}: ${rows.length - 1}行 ${width}列`);
+  }
+  return {
+    csvRoot,
+    manifest: oxidizerCsvManifest(csvRoot),
+    results
+  };
+}
+
+function compareItemCollections(beforeItems, afterItems) {
+  const before = new Map(beforeItems.map(item => [String(item.ID), item]));
+  const after = new Map(afterItems.map(item => [String(item.ID), item]));
+  const added = [...after].filter(([id]) => !before.has(id)).map(([, item]) => item);
+  const removed = [...before].filter(([id]) => !after.has(id)).map(([, item]) => item);
+  const changed = [...after].flatMap(([id, item]) => {
+    const previous = before.get(id);
+    if (!previous || JSON.stringify(previous) === JSON.stringify(item)) return [];
+    const fields = [...new Set([...Object.keys(previous), ...Object.keys(item)])]
+      .filter(field => JSON.stringify(previous[field]) !== JSON.stringify(item[field]))
+      .map(field => ({
+        field,
+        before: previous[field] ?? null,
+        after: item[field] ?? null
+      }));
+    return [{ before: previous, after: item, fields }];
+  });
+  return { added, removed, changed };
+}
+
+function makeOxidizerImportPreview({ csvRoot, manifest }) {
+  const previewRoot = path.join(cacheRoot, 'oxidizer-import-preview', `${timestampForPath()}-${process.pid}`);
+  const previewRepositoryRoot = path.join(previewRoot, 'repository');
+  const previewPipelineRoot = path.join(previewRepositoryRoot, 'pipeline');
+  const previewToolRoot = path.join(previewPipelineRoot, 'tool');
+  const previewInputRoot = path.join(previewPipelineRoot, 'input');
+  ensureDir(previewToolRoot);
+  fs.cpSync(inputRoot, previewInputRoot, { recursive: true });
+  fs.copyFileSync(import.meta.filename, path.join(previewToolRoot, 'pipeline-tool.mjs'));
+  try {
+    runExternal(process.execPath, [
+      path.join(previewToolRoot, 'pipeline-tool.mjs'),
+      'build'
+    ], { cwd: previewRepositoryRoot });
+    const current = readJson(path.join(previewPipelineRoot, 'intermediate', '06-public-items.json'), null);
+    if (!Array.isArray(current)) throw new Error('現行CSVから比較候補を生成できませんでした');
+    for (const name of remoteCsvNames) {
+      fs.copyFileSync(path.join(csvRoot, name), path.join(previewInputRoot, name));
+    }
+    runExternal(process.execPath, [
+      path.join(previewToolRoot, 'pipeline-tool.mjs'),
+      'build'
+    ], { cwd: previewRepositoryRoot });
+    const generated = readJson(path.join(previewPipelineRoot, 'intermediate', '06-public-items.json'), null);
+    if (!Array.isArray(generated)) throw new Error('Oxidizer CSVから公開候補を生成できませんでした');
+    const difference = compareItemCollections(current, generated);
+    const candidateItems = [
+      ...difference.added,
+      ...difference.changed.map(entry => entry.after)
+    ];
+    return {
+      checkedAt: nowIso(),
+      manifest,
+      currentCount: current.length,
+      candidateCount: generated.length,
+      addedCount: difference.added.length,
+      removedCount: difference.removed.length,
+      changedCount: difference.changed.length,
+      added: difference.added.map(item => ({ ID: item.ID, Name: item.Name })),
+      removed: difference.removed.map(item => ({ ID: item.ID, Name: item.Name })),
+      changed: difference.changed.map(({ before, after, fields }) => ({
+        ID: after.ID,
+        Name: after.Name,
+        BeforeName: before.Name,
+        Fields: fields
+      })),
+      candidateItems,
+      lodestonePreflight: null
+    };
+  } finally {
+    fs.rmSync(previewRoot, { recursive: true, force: true });
+  }
+}
+
+export function previewOxidizerImport({ source = '' } = {}) {
+  const validation = validateOxidizerCsvRoot({ source });
+  const report = makeOxidizerImportPreview(validation);
+  const noDifference = report.addedCount === 0 && report.removedCount === 0 && report.changedCount === 0;
+  writeJsonAtomic(oxidizerImportStatePath, {
+    status: noDifference ? 'current' : 'previewed',
+    ...report,
+    lodestonePreflight: noDifference ? {
+      checkedAt: nowIso(),
+      manifest: report.manifest,
+      total: 0,
+      verified: 0,
+      notFound: 0,
+      dataFailed: 0,
+      iconFailed: 0,
+      results: []
+    } : null
+  });
+  log(
+    `Oxidizer CSV差分: 現行 ${report.currentCount}件、候補 ${report.candidateCount}件、` +
+    `追加 ${report.addedCount}件、削除 ${report.removedCount}件、変更 ${report.changedCount}件`
+  );
+  log('実入力は変更していません。内容を確認後にOxidizer CSV反映を実行してください。');
+  return report;
+}
+
+export async function verifyOxidizerLodestonePreview({
+  source = '',
+  delayMs = defaultLodestoneInfoDelayMs
+} = {}) {
+  const validation = validateOxidizerCsvRoot({ source });
+  const preview = readJson(oxidizerImportStatePath, null);
+  if (!preview || preview.status !== 'previewed' || !manifestsMatch(preview.manifest, validation.manifest)) {
+    throw new Error('同じCSVに対する差分確認がありません。先にOxidizer CSV取り込み確認を実行してください。');
+  }
+  if (!Array.isArray(preview.candidateItems)) {
+    throw new Error('Lodestone事前確認に必要な一時候補がありません。Oxidizer CSV取り込み確認をやり直してください。');
+  }
+
+  const items = preview.candidateItems.map(cloneJson);
+  const itemUrls = readJson(lodestoneItemUrlsPath, {});
+  const results = items.map(item => ({
+    ID: String(item.ID),
+    Name: String(item.Name || ''),
+    status: 'unverified',
+    pageVerified: false,
+    dataVerified: false,
+    iconVerified: false,
+    detailUrl: '',
+    iconUrl: '',
+    info: null,
+    error: ''
+  }));
+  lodestoneEtaStats = { fetch: 0, cache: 0, memory: 0 };
+  lodestoneShopConditionCache = new Map();
+  cancellationEnabled = true;
+  log(`Oxidizer候補のLodestone事前確認を開始しました: ${items.length}件 delay=${delayMs}ms`);
+  try {
+    for (let index = 0; index < items.length; index += 1) {
+      assertNotCancelled();
+      const item = items[index];
+      const row = results[index];
+      try {
+        const detail = await resolveLodestoneItemDetail(item, delayMs, { cache: true });
+        row.pageVerified = true;
+        row.detailUrl = detail.detailUrl;
+        row.iconUrl = extractLodestoneNqIconUrl(detail.detailHtml);
+        itemUrls[row.ID] = detail.detailUrl;
+        log(`Lodestoneページ確認 ${index + 1}/${items.length}: ${row.ID} ${row.Name} found`);
+      } catch (error) {
+        row.status = String(error.message).includes('見つけられませんでした') ? 'not-found' : 'data-failed';
+        row.error = error.message;
+        log(`Lodestoneページ確認 ${index + 1}/${items.length}: ${row.ID} ${row.Name} ${row.status}: ${row.error}`);
+      }
+    }
+
+    const recipeLookupMaps = lodestoneRecipeLookupMaps(itemUrls);
+    for (let index = 0; index < items.length; index += 1) {
+      assertNotCancelled();
+      const item = items[index];
+      const row = results[index];
+      if (!row.pageVerified) continue;
+      try {
+        const info = await applyLodestoneInfoToItem(item, delayMs, recipeLookupMaps);
+        row.dataVerified = true;
+        row.detailUrl = info.detailUrl;
+        row.iconUrl = info.iconUrl;
+        row.info = {
+          isEx: info.isEx,
+          shopSales: info.shopSales,
+          craftInfo: info.craftInfo,
+          equipmentInfo: info.equipmentInfo,
+          equipmentStats: info.equipmentStats,
+          equipmentPerformance: info.equipmentPerformance
+        };
+      } catch (error) {
+        row.status = 'data-failed';
+        row.error = error.message;
+      }
+
+      try {
+        if (!row.iconUrl) throw new Error('Lodestone詳細ページにNQアイコン画像がありません');
+        const cachePath = path.join(lodestonePngIconCacheRoot, `${row.ID}.png`);
+        const cached = readVerifiedLodestoneIconCache(item, cachePath);
+        if (!cached) {
+          ensureDir(lodestonePngIconCacheRoot);
+          await sleep(delayMs);
+          const response = await fetch(row.iconUrl, {
+            headers: { 'user-agent': 'ffxiv-recipe-icon-pipeline/1.0' }
+          });
+          if (!response.ok) throw new Error(`Lodestone画像取得に失敗しました: HTTP ${response.status}`);
+          const contentType = response.headers.get('content-type') || '';
+          if (!contentType.includes('image/png')) {
+            throw new Error(`Lodestone画像がPNGではありません: ${contentType || 'content-typeなし'}`);
+          }
+          writeBytesAtomic(cachePath, Buffer.from(await response.arrayBuffer()));
+          writeIconCacheMeta(cachePath, {
+            itemId: row.ID,
+            itemName: row.Name,
+            source: 'lodestone',
+            reusedFromItemId: '',
+            reusedFromName: '',
+            detailUrl: row.detailUrl,
+            detailItemName: row.Name,
+            iconUrl: row.iconUrl,
+            lodestoneError: ''
+          });
+        }
+        row.iconVerified = true;
+      } catch (error) {
+        if (!row.error) row.error = error.message;
+      }
+      row.status = row.dataVerified
+        ? (row.iconVerified ? 'verified' : 'icon-failed')
+        : 'data-failed';
+      log(`Lodestone事前確認 ${index + 1}/${items.length}: ${row.ID} ${row.Name} ${row.status}${row.error ? `: ${row.error}` : ''}`);
+    }
+  } finally {
+    cancellationEnabled = false;
+    lodestoneShopConditionCache?.clear();
+    lodestoneShopConditionCache = null;
+    if (lodestoneShopCacheStore) {
+      try {
+        lodestoneShopCacheStore.close();
+      } finally {
+        lodestoneShopCacheStore = null;
+      }
+    }
+    lodestoneEtaStats = null;
+  }
+
+  writeJsonAtomic(lodestoneItemUrlsPath, itemUrls);
+  const lodestonePreflight = {
+    checkedAt: nowIso(),
+    manifest: validation.manifest,
+    total: results.length,
+    verified: results.filter(row => row.status === 'verified').length,
+    notFound: results.filter(row => row.status === 'not-found').length,
+    dataFailed: results.filter(row => row.status === 'data-failed').length,
+    iconFailed: results.filter(row => row.status === 'icon-failed').length,
+    results
+  };
+  writeJsonAtomic(oxidizerImportStatePath, { ...preview, lodestonePreflight });
+  log(
+    `Lodestone事前確認完了: 確認済み ${lodestonePreflight.verified}件、` +
+    `未掲載 ${lodestonePreflight.notFound}件、情報失敗 ${lodestonePreflight.dataFailed}件、` +
+    `アイコン失敗 ${lodestonePreflight.iconFailed}件`
+  );
+  return lodestonePreflight;
+}
+
+export function importOxidizerCsv({ source = '' } = {}) {
+  const validation = validateOxidizerCsvRoot({ source });
+  const preview = readJson(oxidizerImportStatePath, null);
+  const inputManifest = currentInputManifest();
+  if (inputManifest && manifestsMatch(validation.manifest, inputManifest)) {
+    writeJsonAtomic(oxidizerImportStatePath, {
+      ...(preview || {}),
+      status: 'imported',
+      manifest: validation.manifest,
+      importedAt: preview?.importedAt || nowIso(),
+      alreadyCurrent: true
+    });
+    log('Oxidizer CSVは既にローカル入力へ反映済みです。再反映をスキップしました。');
+    return { imported: [], alreadyCurrent: true, manifest: validation.manifest };
+  }
+  if (!preview || preview.status !== 'previewed' || !manifestsMatch(preview.manifest, validation.manifest)) {
+    throw new Error('同じCSVに対する取り込み確認がありません。先にOxidizer CSV取り込み確認を実行してください。');
+  }
+  if (
+    !preview.lodestonePreflight
+    || !manifestsMatch(preview.lodestonePreflight.manifest, validation.manifest)
+    || preview.lodestonePreflight.total !== preview.candidateItems?.length
+  ) {
+    throw new Error('同じCSVに対するLodestone事前確認がありません。差分画面でLodestone事前確認を実行してください。');
+  }
+  const backupRoot = path.join(cacheRoot, 'oxidizer-import-backups', `${timestampForPath()}-${process.pid}`);
+  ensureDir(backupRoot);
+  const applied = [];
+  try {
+    for (const name of remoteCsvNames) {
+      const target = csvPath(name);
+      if (fs.existsSync(target)) fs.copyFileSync(target, path.join(backupRoot, name));
+      writeBytesAtomic(target, fs.readFileSync(path.join(validation.csvRoot, name)));
+      applied.push(name);
+    }
+  } catch (error) {
+    for (const name of applied) {
+      const backup = path.join(backupRoot, name);
+      if (fs.existsSync(backup)) writeBytesAtomic(csvPath(name), fs.readFileSync(backup));
+    }
+    throw error;
+  }
+  writeJsonAtomic(oxidizerImportStatePath, {
+    ...preview,
+    status: 'imported',
+    importedAt: nowIso(),
+    backupRoot: path.relative(repositoryRoot, backupRoot)
+  });
+  invalidateWorkflowAfterImport(validation.manifest);
+  log(`Oxidizer CSVを反映しました: ${remoteCsvNames.join(', ')}`);
+  log(`反映前CSVを保護しました: ${path.relative(repositoryRoot, backupRoot)}`);
+  return { imported: remoteCsvNames, backupRoot, manifest: validation.manifest };
+}
+
+function readOxidizerRepositoryInfo(repository) {
+  if (!repository || !fs.existsSync(repository)) return null;
+  const rootResult = oxidizerGitOutput(['-C', repository, 'rev-parse', '--show-toplevel'], repository, { allowFailure: true });
+  if (!rootResult.ok) return null;
+  const root = rootResult.stdout;
+  const commit = oxidizerGitOutput(['-C', root, 'rev-parse', 'HEAD'], root).stdout;
+  const schemas = oxidizerGitOutput(['-C', root, 'submodule', 'status', '--', 'schemas'], root, { allowFailure: true });
+  return {
+    root,
+    commit,
+    schemas: schemas.ok ? schemas.stdout.replace(/^[+\- U]?/, '').split(/\s+/)[0] || '' : '',
+    dirty: Boolean(oxidizerGitOutput(['-C', root, 'status', '--porcelain'], root).stdout)
+  };
+}
+
+export function checkOxidizerEnvironment({ source = '', gamePath = '' } = {}) {
+  const checks = {
+    git: commandExists('git'),
+    cargo: commandExists('cargo'),
+    gamePath: Boolean(gamePath && fs.existsSync(path.resolve(gamePath))),
+    source: null
+  };
+  if (source) checks.source = readOxidizerRepositoryInfo(path.resolve(source));
+  log(`Git: ${checks.git ? '利用可能' : '見つかりません'}`);
+  log(`Cargo: ${checks.cargo ? '利用可能' : '見つかりません'}`);
+  log(`FF14インストール先: ${checks.gamePath ? '確認済み' : '未確認'}`);
+  if (source) log(`Oxidizer: ${checks.source ? checks.source.root : 'Gitリポジトリではありません'}`);
+  return checks;
+}
+
+export function checkOxidizerUpdates() {
+  if (!commandExists('git')) throw new Error('Gitが見つかりません');
+  const state = readJson(oxidizerStatePath, {});
+  const result = oxidizerGitOutput(['ls-remote', oxidizerRepositoryUrl, 'HEAD']);
+  const remoteCommit = result.stdout.split(/\s+/)[0] || '';
+  if (!/^[0-9a-f]{40}$/i.test(remoteCommit)) throw new Error('Oxidizerの最新コミットを確認できませんでした');
+  const updateAvailable = !state.oxidizerCommit || state.oxidizerCommit !== remoteCommit;
+  const next = {
+    ...state,
+    checkedAt: nowIso(),
+    remoteCommit,
+    updateAvailable
+  };
+  writeJsonAtomic(oxidizerStatePath, next);
+  log(`Oxidizer更新: ${updateAvailable ? '更新あり' : '更新なし'} remote=${remoteCommit.slice(0, 12)} current=${String(state.oxidizerCommit || '未生成').slice(0, 12)}`);
+  return next;
+}
+
+export function refreshOxidizerData({ gamePath = '', force = false } = {}) {
+  if (!commandExists('git')) throw new Error('Gitが見つかりません');
+  if (!commandExists('cargo')) throw new Error('Cargoが見つかりません');
+  const resolvedGamePath = path.resolve(String(gamePath || ''));
+  if (!gamePath || !fs.existsSync(resolvedGamePath)) throw new Error('FF14インストール先が見つかりません');
+  const update = checkOxidizerUpdates();
+  const state = readJson(oxidizerStatePath, {});
+  if (!force && !update.updateAvailable && state.latestOutputRoot && fs.existsSync(state.latestOutputRoot)) {
+    log('Oxidizerに更新がなく、生成済みCSVがあるため再生成を省略しました');
+    return { ...state, skipped: true };
+  }
+  const runRoot = path.join(cacheRoot, 'oxidizer-managed', `${timestampForPath()}-${process.pid}`);
+  const checkoutRoot = path.join(runRoot, 'repository');
+  ensureDir(runRoot);
+  runExternal('git', ['clone', '--recurse-submodules', oxidizerRepositoryUrl, checkoutRoot]);
+  const info = readOxidizerRepositoryInfo(checkoutRoot);
+  if (!info) throw new Error('取得したOxidizerリポジトリを確認できません');
+  runExternal('cargo', ['run', '--release', '--', resolvedGamePath], { cwd: checkoutRoot });
+  const csvRoot = resolveOxidizerCsvRoot(path.join(checkoutRoot, 'output', 'ja'));
+  const validation = validateOxidizerCsvRoot({ source: csvRoot });
+  const next = {
+    checkedAt: update.checkedAt,
+    generatedAt: nowIso(),
+    repositoryUrl: oxidizerRepositoryUrl,
+    oxidizerCommit: info.commit,
+    schemasCommit: info.schemas,
+    latestRepositoryRoot: checkoutRoot,
+    latestOutputRoot: csvRoot,
+    manifest: validation.manifest,
+    updateAvailable: false
+  };
+  writeJsonAtomic(oxidizerStatePath, next);
+  log(`OXIDIZER_OUTPUT_ROOT ${csvRoot}`);
+  log(`Oxidizer全CSV再生成が完了しました: ${csvRoot}`);
+  return next;
 }
 
 function sourceConfig() {
@@ -1603,12 +2263,30 @@ function flushIconMemory() {
   if (global.gc) global.gc();
 }
 
-async function getProductionIconPng(item, pngName, delayMs, alternatives = []) {
+async function getProductionIconPng(item, pngName, delayMs, alternatives = [], {
+  allowXivapi = true,
+  preferredSource = 'lodestone'
+} = {}) {
   const cachePath = path.join(lodestonePngIconCacheRoot, `${item.ID}.png`);
   const verifiedCache = readVerifiedLodestoneIconCache(item, cachePath);
   if (verifiedCache) return verifiedCache;
   ensureDir(lodestonePngIconCacheRoot);
   const lodestoneErrors = [];
+  if (preferredSource === 'xivapi') {
+    const xivapi = await downloadIconPng(pngName, cachePath, delayMs);
+    writeIconCacheMeta(cachePath, {
+      itemId: String(item.ID),
+      itemName: String(item.Name),
+      source: 'xivapi',
+      reusedFromItemId: '',
+      reusedFromName: '',
+      detailUrl: '',
+      detailItemName: '',
+      iconUrl: xivapi.iconUrl,
+      lodestoneError: '公開例外マスターでXIVAPIを指定'
+    });
+    return { path: cachePath, source: 'xivapi', lodestoneError: '', iconUrl: xivapi.iconUrl };
+  }
   for (const candidate of [item, ...alternatives]) {
     try {
       const lodestone = await downloadLodestoneIconPng(candidate, cachePath, delayMs);
@@ -1630,6 +2308,9 @@ async function getProductionIconPng(item, pngName, delayMs, alternatives = []) {
     } catch (error) {
       lodestoneErrors.push(`${candidate.ID} ${candidate.Name}: ${error.message}`);
     }
+  }
+  if (!allowXivapi) {
+    throw new Error(`Lodestone失敗: ${lodestoneErrors.join(' / ')} / XIVAPI代替は公開判定で許可されていません`);
   }
   try {
     const xivapi = await downloadIconPng(pngName, cachePath, delayMs);
@@ -1724,7 +2405,21 @@ export async function ensureIconsForItemJson({ quality = defaultIconQuality, del
   ensureDir(itemIconsRoot);
   fs.writeFileSync(iconDownloadErrorLog, '', 'utf8');
   const items = readJson(sourceItemJsonPath, []);
-  const iconItems = items.filter(item => item?.ID && item?.Name && item?.IconFile);
+  const decisions = normalizePublicationDecisions();
+  const currentPublicIds = new Set(readJson(publicItemJsonPath, []).map(item => String(item.ID)));
+  const appliesPublicationGate = sourceItemJsonPath === publicCandidatePath;
+  const iconCandidates = items.filter(item => item?.ID && item?.Name && item?.IconFile);
+  const iconItems = iconCandidates.filter(item => {
+    if (!appliesPublicationGate) return true;
+    const decision = decisions.items[String(item.ID)];
+    if (decision?.decision === 'exclude' || decision?.decision === 'hold') return false;
+    return currentPublicIds.has(String(item.ID))
+      || decision?.decision === 'keep'
+      || hasExistingLodestoneInfo(item);
+  });
+  if (appliesPublicationGate && iconItems.length !== iconCandidates.length) {
+    log(`公式未確認のためアイコン生成を保留しました: ${iconCandidates.length - iconItems.length}件`);
+  }
   const progressTotal = iconItems.length + 3;
   const iconGroups = iconGroupsByIconFile(iconItems);
   const generatedIconFiles = new Set();
@@ -1747,7 +2442,17 @@ export async function ensureIconsForItemJson({ quality = defaultIconQuality, del
       detail = `${item.ID} ${item.Name} ${webpName} 同一IconFileのためスキップ`;
     } else {
       try {
-        const png = await getProductionIconPng(item, pngName, delayMs, sameIconAlternatives(item, iconGroups));
+        const decision = decisions.items[String(item.ID)];
+        const png = await getProductionIconPng(
+          item,
+          pngName,
+          delayMs,
+          sameIconAlternatives(item, iconGroups),
+          {
+            allowXivapi: currentPublicIds.has(String(item.ID)) || decision?.iconSource === 'xivapi',
+            preferredSource: decision?.iconSource === 'xivapi' ? 'xivapi' : 'lodestone'
+          }
+        );
         if (png.source === 'cache') cached += 1;
         else if (png.source === 'xivapi') {
           downloaded += 1;
@@ -1792,6 +2497,17 @@ export async function ensureIconsForItemJson({ quality = defaultIconQuality, del
   if (failedRate > iconFailureAllowedRate) {
     log(`ICON_FAILURE_CONFIRM_REQUIRED ${failed}/${iconItems.length} ${(failedRate * 100).toFixed(3)}% allowed=${allowedFailures}`);
     log(`アイコン失敗率が許容範囲を超えました。許容範囲は0.3%まで (${allowedFailures}件まで) です。公開反映へ進む前に、エラー扱いで止めるか確認してください。`);
+  }
+  if (failed === 0 && sourceItemJsonPath === path.resolve(publicCandidatePath)) {
+    const inputManifest = currentInputManifest();
+    if (inputManifest) {
+      recordWorkflowStage('icons', {
+        inputFingerprint: manifestFingerprint(inputManifest),
+        candidateSha256: sha256File(sourceItemJsonPath),
+        quality,
+        size: iconSize
+      });
+    }
   }
   return { cached, downloaded, xivapiFallback, converted, duplicate, failed };
 }
@@ -1932,10 +2648,152 @@ export function verifyPublishMerge({ baseItems, candidateItems, mergedItems } = 
   return { errors, actualCount: mergedItems.length };
 }
 
+function normalizePublicationDecisions(value = readJson(publicationDecisionsPath, {})) {
+  const items = value?.items && typeof value.items === 'object' && !Array.isArray(value.items)
+    ? value.items
+    : {};
+  return {
+    version: 1,
+    items: Object.fromEntries(Object.entries(items).map(([id, entry]) => [
+      String(id),
+      {
+        decision: ['keep', 'exclude', 'hold'].includes(entry?.decision) ? entry.decision : 'hold',
+        reason: String(entry?.reason || ''),
+        iconSource: ['lodestone', 'xivapi', 'none'].includes(entry?.iconSource) ? entry.iconSource : 'none'
+      }
+    ]))
+  };
+}
+
+function itemChanged(left, right) {
+  const normalize = item => {
+    const value = cloneJson(item);
+    for (const recipe of [value.Recipe, ...(value.Recipes || [])]) {
+      for (const ingredient of recipe?.Ingredients || []) delete ingredient.Name;
+    }
+    return Object.fromEntries(
+      ['Name', 'ItemUICategory', 'IconFile', 'ItemUICategoryName', 'Recipe', 'Recipes', 'GatheringTimer']
+        .filter(key => Object.hasOwn(value, key))
+        .map(key => [key, value[key]])
+    );
+  };
+  return JSON.stringify(normalize(left)) !== JSON.stringify(normalize(right));
+}
+
+export function publicationReviewItems({
+  baseItems = readJson(publicItemJsonPath, []),
+  candidateItems = readJson(publicCandidatePath, []),
+  decisions = readJson(publicationDecisionsPath, {})
+} = {}) {
+  const normalized = normalizePublicationDecisions(decisions);
+  const baseById = new Map(baseItems.map(item => [String(item.ID), item]));
+  const rows = [];
+  for (const item of candidateItems) {
+    const id = String(item.ID);
+    const base = baseById.get(id);
+    const decision = normalized.items[id] || null;
+    const lodestoneConfirmed = hasExistingLodestoneInfo(item);
+    const changed = Boolean(base && itemChanged(base, item));
+    if (base && !changed && lodestoneConfirmed && !decision) continue;
+    if (!base || !lodestoneConfirmed || decision) {
+      rows.push({
+        id,
+        name: String(item.Name || ''),
+        status: decision?.decision || (
+          lodestoneConfirmed
+            ? 'lodestone'
+            : (base && !changed ? 'legacy-unverified' : 'unreviewed')
+        ),
+        reason: decision?.reason || '',
+        iconSource: decision?.iconSource || 'none',
+        lodestoneConfirmed,
+        existing: Boolean(base),
+        changed,
+        recipeReferences: 0,
+        iconFile: String(item.IconFile || '')
+      });
+    }
+  }
+  const referenceCounts = new Map();
+  for (const item of candidateItems) {
+    for (const ingredient of item.Recipe?.Ingredients || []) {
+      const id = String(ingredient.ItemID);
+      referenceCounts.set(id, (referenceCounts.get(id) || 0) + 1);
+    }
+  }
+  for (const row of rows) row.recipeReferences = referenceCounts.get(row.id) || 0;
+  return rows.sort((left, right) =>
+    Number(left.existing) - Number(right.existing) ||
+    Number(left.id) - Number(right.id)
+  );
+}
+
+export function applyPublicationPolicy({
+  baseItems,
+  candidateItems,
+  decisions = readJson(publicationDecisionsPath, {})
+}) {
+  const normalized = normalizePublicationDecisions(decisions);
+  const baseById = new Map(baseItems.map(item => [String(item.ID), item]));
+  const candidateById = new Map(candidateItems.map(item => [String(item.ID), item]));
+  const published = [];
+  const withheld = [];
+  const excluded = [];
+
+  for (const base of baseItems) {
+    const id = String(base.ID);
+    const candidate = candidateById.get(id);
+    const decision = normalized.items[id];
+    if (decision?.decision === 'exclude') {
+      excluded.push({ ID: base.ID, Name: base.Name, reason: decision.reason });
+      continue;
+    }
+    if (!candidate) {
+      published.push(base);
+      continue;
+    }
+    if (decision?.decision === 'hold') {
+      published.push(base);
+      withheld.push({ ID: candidate.ID, Name: candidate.Name, reason: decision.reason || 'manual-hold' });
+      continue;
+    }
+    if (decision?.decision === 'keep' || hasExistingLodestoneInfo(candidate)) {
+      published.push(candidate);
+      continue;
+    }
+    published.push(base);
+    withheld.push({ ID: candidate.ID, Name: candidate.Name, reason: 'lodestone-unconfirmed-existing-change' });
+  }
+
+  for (const candidate of candidateItems) {
+    const id = String(candidate.ID);
+    if (baseById.has(id)) continue;
+    const decision = normalized.items[id];
+    if (decision?.decision === 'exclude') {
+      excluded.push({ ID: candidate.ID, Name: candidate.Name, reason: decision.reason });
+      continue;
+    }
+    if (decision?.decision === 'keep' || hasExistingLodestoneInfo(candidate)) {
+      published.push(candidate);
+      continue;
+    }
+    withheld.push({
+      ID: candidate.ID,
+      Name: candidate.Name,
+      reason: decision?.reason || (decision?.decision === 'hold' ? 'manual-hold' : 'lodestone-unconfirmed-new-item')
+    });
+  }
+  return { published, withheld, excluded };
+}
+
+export function printPublicationReview() {
+  process.stdout.write(`${JSON.stringify(publicationReviewItems())}\n`);
+}
+
 export function verifyOutput({ expected = publicItemJsonPath, actual = buildOutputs.publicItems } = {}) {
   log(`Item.json比較を開始しました 比較元=${path.relative(repositoryRoot, expected)} 候補=${path.relative(repositoryRoot, actual)}`);
-  const expectedItems = readJson(expected, []).map(normalizeItemForCompare);
-  const actualItems = readJson(actual, []).map(normalizeItemForCompare);
+  const expectedItems = projectPublicItems(readJson(expected, [])).map(normalizeItemForCompare);
+  const actualItems = projectPublicItems(readJson(actual, [])).map(normalizeItemForCompare);
   const errors = [];
   if (expectedItems.length !== actualItems.length) errors.push(`item count ${expectedItems.length} != ${actualItems.length}`);
   const actualById = new Map(actualItems.map(item => [String(item.ID), item]));
@@ -1945,7 +2803,7 @@ export function verifyOutput({ expected = publicItemJsonPath, actual = buildOutp
       errors.push(`missing item ${expectedItem.ID} ${expectedItem.Name}`);
       continue;
     }
-    for (const key of ['Name', 'Description', 'LevelEquip', 'ItemUICategory', 'ItemSearchCategory', 'IconFile', 'ItemUICategoryName', 'ItemSearchCategoryName']) {
+    for (const key of ['Name', 'ItemUICategory', 'IconFile', 'ItemUICategoryName']) {
       if ((expectedItem[key] ?? '') !== (actualItem[key] ?? '')) errors.push(`${expectedItem.ID} ${key} differs`);
     }
     const expectedRecipe = expectedItem.Recipe || null;
@@ -1963,7 +2821,7 @@ export function verifyOutput({ expected = publicItemJsonPath, actual = buildOutp
       continue;
     }
     for (let i = 0; i < expectedIngredients.length; i += 1) {
-      for (const key of ['ItemID', 'Name', 'Amount']) if ((expectedIngredients[i][key] ?? '') !== (actualIngredients[i][key] ?? '')) errors.push(`${expectedItem.ID} ingredient ${i} ${key} differs`);
+      for (const key of ['ItemID', 'Amount']) if ((expectedIngredients[i][key] ?? '') !== (actualIngredients[i][key] ?? '')) errors.push(`${expectedItem.ID} ingredient ${i} ${key} differs`);
     }
   }
   if (errors.length > 0) {
@@ -1996,9 +2854,27 @@ export function publishItemJson({
   log(`公開候補の装備推奨ロール情報: 自動 ${roleResult.automatic}件、手動反映 ${roleResult.applied}件、未指定 ${roleResult.missing}グループ`);
   const targetItems = fs.existsSync(target) ? readJson(target, null) : [];
   if (!Array.isArray(targetItems)) throw new Error(`Target Item.json is not an item array: ${target}`);
-  const publishItems = targetItems.length ? mergePublishItems(targetItems, candidateItems) : candidateItems;
+  const policy = targetItems.length
+    ? applyPublicationPolicy({ baseItems: targetItems, candidateItems })
+    : { published: candidateItems, withheld: [], excluded: [] };
+  const publishItems = policy.published;
+  writeJsonAtomic(publicationGateStatePath, {
+    checkedAt: nowIso(),
+    publishedCount: publishItems.length,
+    withheldCount: policy.withheld.length,
+    excludedCount: policy.excluded.length,
+    withheld: policy.withheld,
+    excluded: policy.excluded
+  });
+  log(`公式公開判定: 公開 ${publishItems.length}件、保留 ${policy.withheld.length}件、除外 ${policy.excluded.length}件`);
   try {
-    if (targetItems.length) verifyPublishMerge({ baseItems: targetItems, candidateItems, mergedItems: publishItems });
+    if (targetItems.length) {
+      const excludedIds = new Set(policy.excluded.map(item => String(item.ID)));
+      const publishById = new Map(publishItems.map(item => [String(item.ID), item]));
+      const missing = targetItems.filter(item => !excludedIds.has(String(item.ID)) && !publishById.has(String(item.ID)));
+      if (missing.length) throw new Error(`${missing.length} existing item(s) disappeared outside publication exclusions.`);
+      log(`公開統合確認成功: 既存${targetItems.length}件 候補${candidateItems.length}件 公開${publishItems.length}件`);
+    }
     else verifyOutput({ expected, actual: candidate });
   } catch (error) {
     if (!acceptDiff) throw error;
@@ -2006,10 +2882,41 @@ export function publishItemJson({
   }
   protectItemJson({ source: target, target: expectedItemJsonPath });
   writeJsonAtomic(candidate, candidateItems);
-  writeJsonAtomic(target, publishItems);
+  writePublicItemsAtomic(target, publishItems);
   updateDataCacheVersion({ itemJsonPath: target, salt: hashIconFiles(publishItems.map(item => item.IconFile).filter(Boolean)), reason: 'publish' });
   updateRunState({ command: 'publish', status: 'completed', finalOutput: path.relative(repositoryRoot, target) });
+  if (
+    path.resolve(candidate) === path.resolve(publicCandidatePath)
+    && path.resolve(target) === path.resolve(publicItemJsonPath)
+  ) {
+    const inputManifest = currentInputManifest();
+    if (inputManifest) {
+      recordWorkflowStage('publish', {
+        inputFingerprint: manifestFingerprint(inputManifest),
+        candidateSha256: sha256File(candidate),
+        publicSha256: sha256File(target)
+      });
+    }
+  }
   log(`公開反映しました ${path.relative(repositoryRoot, candidate)} -> ${path.relative(repositoryRoot, target)}`);
+}
+
+export function compactPublicItemJson({
+  source = publicItemJsonPath,
+  target = publicItemJsonPath
+} = {}) {
+  const items = readJson(source, null);
+  if (!Array.isArray(items)) throw new Error(`Item JSON is not an item array: ${source}`);
+  const beforeBytes = fs.statSync(source).size;
+  writePublicItemsAtomic(target, items);
+  const afterBytes = fs.statSync(target).size;
+  updateDataCacheVersion({
+    itemJsonPath: target,
+    salt: hashIconFiles(items.map(item => item.IconFile).filter(Boolean)),
+    reason: 'compact-public'
+  });
+  log(`公開Item.jsonを軽量化しました ${formatBytes(beforeBytes)} -> ${formatBytes(afterBytes)}`);
+  return { itemCount: items.length, beforeBytes, afterBytes };
 }
 
 export function publishGatheringTimer({ target = publicItemJsonPath } = {}) {
@@ -2032,7 +2939,7 @@ export function publishGatheringTimer({ target = publicItemJsonPath } = {}) {
   }
   const unmatched = [...gatheringByName.keys()].filter(name => !publicItemNames.has(name));
   unmatched.slice(0, 20).forEach(name => log(`採集情報警告: Item.jsonに一致しない item_name: ${name}`));
-  writeJsonAtomic(target, items);
+  writePublicItemsAtomic(target, items);
   updateDataCacheVersion({ itemJsonPath: target, salt: `gathering-${matched}-${unmatched.length}`, reason: 'gathering' });
   updateRunState({ command: 'publish-gathering', status: 'completed', finalOutput: path.relative(repositoryRoot, target) });
   log(`採集情報を公開反映しました 一致 ${matched}件、未一致 ${unmatched.length}件、削除 ${removed}件`);
@@ -2104,6 +3011,7 @@ async function filterUnconditionalShops(shops, delayMs) {
 async function applyLodestoneInfoToItem(item, delayMs, recipeLookupMaps) {
   assertNotCancelled();
   const { detailUrl, detailHtml } = await resolveLodestoneItemDetail(item, delayMs, { cache: true });
+  const iconUrl = extractLodestoneNqIconUrl(detailHtml);
   const isEx = extractLodestoneIsEx(detailHtml);
   if (isEx == null) throw new Error('Lodestoneアイテム見出しからEX情報を取得できません');
 
@@ -2128,6 +3036,7 @@ async function applyLodestoneInfoToItem(item, delayMs, recipeLookupMaps) {
 
   return {
     detailUrl,
+    iconUrl,
     isEx,
     shopSales: shops.length,
     craftInfo: craftInfos.length,
@@ -2342,13 +3251,23 @@ export async function publishLodestoneInfo({
   writeJsonAtomic(lodestoneItemUrlsPath, itemUrls);
   const roleResult = applyEquipmentRoleOverrides(items);
   log(`装備推奨ロール情報: 自動 ${roleResult.automatic}件、手動対象 ${roleResult.groups}グループ、手動反映 ${roleResult.applied}件、未指定 ${roleResult.missing}グループ`);
-  writeJsonAtomic(target, items);
+  if (path.resolve(target) === publicItemJsonPath) writePublicItemsAtomic(target, items);
+  else writeJsonAtomic(target, items);
   if (path.resolve(target) === publicItemJsonPath) {
     updateDataCacheVersion({ itemJsonPath: target, salt: `lodestone-info-${processed}-${shopMatched}-${craftMatched}-${equipmentMatched}-${equipmentStatsMatched}-${exMatched}-${failed}-${housingResult.shopAdded}-${friendlyTribeResult.shopAdded}`, reason: 'lodestone-info' });
   } else {
     log('公開Item.json以外が対象のため、データキャッシュ版の更新をスキップしました');
   }
   updateRunState({ command: 'publish-lodestone-info', status: 'completed', finalOutput: path.relative(repositoryRoot, target) });
+  if (path.resolve(target) === path.resolve(publicCandidatePath)) {
+    const inputManifest = currentInputManifest();
+    if (inputManifest) {
+      recordWorkflowStage('lodestone', {
+        inputFingerprint: manifestFingerprint(inputManifest),
+        candidateSha256: sha256File(target)
+      });
+    }
+  }
   log(`Lodestone情報を候補反映しました 処理 ${processed}件、スキップ ${skipped}件、店 ${shopMatched}件、製作 ${craftMatched}件、装備 ${equipmentMatched}件、ステータス ${equipmentStatsMatched}件、基本性能 ${equipmentPerformanceMatched}件、EX ${exMatched}件、失敗 ${failed}件`);
 }
 
@@ -2418,7 +3337,8 @@ export function publishLodestoneRecipesFromCache({ target = publicCandidatePath 
     store.close();
   }
 
-  writeJsonAtomic(target, items);
+  if (path.resolve(target) === publicItemJsonPath) writePublicItemsAtomic(target, items);
+  else writeJsonAtomic(target, items);
   log(
     `Lodestoneレシピ候補を作成しました 対象 ${recipeItems}件、複数 ${multiRecipeItems}件、レシピ ${recipeVariants}件`
   );
@@ -2957,8 +3877,23 @@ function printHelp() {
   validate-csv              ローカルCSVを検証しヘッダー参照を出力
   check-updates             公式CSVの更新有無と前回チェック日時を保存
   download-csv [--force]    公式CSVを取得
+  oxidizer-environment [--source path] [--game-path path]
+                             Git、Cargo、FF14、既存Oxidizerを確認
+  oxidizer-check            Oxidizer上流の更新を確認
+  oxidizer-refresh --game-path path [--force]
+                             管理用クローンで全CSVを再生成
+  oxidizer-import-preview [--source path]
+                             Oxidizer CSVを一時複製して差分確認
+  oxidizer-lodestone-preview [--source path] [--delay 100]
+                             一時候補のLodestone情報とアイコンを事前確認
+  oxidizer-import [--source path]
+                             確認済みOxidizer CSVを入力へ反映
+  workflow-status            現在の入力と成果物から工程状態をJSON表示
+  publication-review        Lodestone未確認・保存済み判断対象をJSON表示
   build                     中間JSONと公開候補を生成
   publish [--accept-diff]   検証後 site/data/Item.json をatomicに置換
+  compact-public [--source path] [--target path]
+                             Item.jsonへ軽量スキーマと最小化を適用
   publish-gathering         既存Item.jsonへ採集情報だけを反映
   publish-lodestone-info [--name アイテム名] [--limit 件数] [--delay 100] [--target path] [--force]
                              Lodestone由来の店/製作/装備情報を公開候補JSONへ反映
@@ -2990,6 +3925,30 @@ export async function main(argv = process.argv.slice(2)) {
   if (command === 'validate-csv') return validateCsvFiles();
   if (command === 'check-updates') return checkUpdates();
   if (command === 'download-csv') return downloadCsv({ force: Boolean(args.force) });
+  if (command === 'oxidizer-environment') return checkOxidizerEnvironment({
+    source: args.source ? String(args.source) : '',
+    gamePath: args['game-path'] ? String(args['game-path']) : ''
+  });
+  if (command === 'oxidizer-check') return checkOxidizerUpdates();
+  if (command === 'oxidizer-refresh') return refreshOxidizerData({
+    gamePath: args['game-path'] ? String(args['game-path']) : '',
+    force: Boolean(args.force)
+  });
+  if (command === 'oxidizer-import-preview') return previewOxidizerImport({
+    source: args.source ? String(args.source) : ''
+  });
+  if (command === 'oxidizer-lodestone-preview') return verifyOxidizerLodestonePreview({
+    source: args.source ? String(args.source) : '',
+    delayMs: Number(args.delay || defaultLodestoneInfoDelayMs)
+  });
+  if (command === 'oxidizer-import') return importOxidizerCsv({
+    source: args.source ? String(args.source) : ''
+  });
+  if (command === 'workflow-status') {
+    process.stdout.write(`${JSON.stringify(pipelineWorkflowStatus())}\n`);
+    return;
+  }
+  if (command === 'publication-review') return printPublicationReview();
   if (command === 'build') {
     validateCsvFiles();
     return buildData();
@@ -3004,6 +3963,10 @@ export async function main(argv = process.argv.slice(2)) {
   if (command === 'tmp-quality-preview') return tmpQualityPreview({ force: Boolean(args.force), size: Number(args.size || 80) });
   if (command === 'protect-item-json') return protectItemJson();
   if (command === 'publish') return publishItemJson({ acceptDiff: Boolean(args['accept-diff']) });
+  if (command === 'compact-public') return compactPublicItemJson({
+    source: args.source ? path.resolve(String(args.source)) : publicItemJsonPath,
+    target: args.target ? path.resolve(String(args.target)) : publicItemJsonPath
+  });
   if (command === 'publish-gathering') return publishGatheringTimer();
   if (command === 'publish-lodestone-info') return publishLodestoneInfo({
     target: args.target ? path.resolve(String(args.target)) : publicCandidatePath,
@@ -3052,15 +4015,15 @@ export async function main(argv = process.argv.slice(2)) {
   if (command === 'run') {
     validateCsvFiles();
     buildData();
+    if (!args['skip-lodestone-info']) await publishLodestoneInfo({
+      delayMs: Number(args['lodestone-delay'] || args.delay || defaultLodestoneInfoDelayMs),
+      force: Boolean(args.force)
+    });
     if (!args['skip-icons']) await ensureIconsForItemJson({
       quality: Number(args.quality || defaultIconQuality),
       delayMs: Number(args.delay || defaultIconDelayMs),
       size: Number(args.size || 80),
       itemJsonPath: publicCandidatePath
-    });
-    if (!args['skip-lodestone-info']) await publishLodestoneInfo({
-      delayMs: Number(args['lodestone-delay'] || args.delay || defaultLodestoneInfoDelayMs),
-      force: Boolean(args.force)
     });
     publishItemJson();
     return;

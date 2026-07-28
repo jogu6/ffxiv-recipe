@@ -523,4 +523,6 @@ test('equipment search prefers tenacity or piety and shows only differing tied p
   });
   await expect(page.locator('#recipeList .equipment-parameters')).toHaveCount(2);
   await expect(page.locator('#recipeList')).not.toContainText('STR +9');
+  await page.locator('#recipeList').getByText('素材リストを表示').click();
+  await expect(page.locator('.production-content-section .equipment-parameters')).toHaveCount(0);
 });
