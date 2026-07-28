@@ -34,13 +34,39 @@ Launch the GUI during development:
 npm run pipeline:gui
 ```
 
-Build the standalone exe:
+Run the incremental Rust/Tauri check:
 
 ```bash
+npm run pipeline:gui:check
+```
+
+Build only the standalone exe during development, or build the NSIS distribution:
+
+```bash
+npm run pipeline:gui:build:exe
+npm run pipeline:gui:build:timings
 npm run pipeline:gui:build
 ```
 
-The release binary is `src-tauri/target/release/makeRecipe.exe`. The GUI has three collapsible
+All commands use the same build wrapper. Development and check modes use Cargo incremental
+compilation. Executable, timing, and bundle modes use `sccache` for non-incremental dependency
+crates. The final application crate cannot be cached, so its package-specific release profile
+keeps incremental compilation and uses more parallel code-generation units at optimization level
+one. The wrapper discovers the toolchain-provided `rust-lld`, prints cache statistics after
+cached builds, and falls back to the compiler if the cache server has an I/O failure. The exe-only
+command skips installer bundling. Antivirus exclusions are intentionally not configured by
+repository scripts.
+
+The timing mode passes Cargo's stable `--timings` option through Tauri. Inspect
+`src-tauri/target/cargo-timings/cargo-timing.html` before adding more build optimizations.
+
+The release binary is `src-tauri/target/release/makeRecipe.exe`. Action names, descriptions,
+confirmation copy, argument mappings, and the recommended sequence are defined in
+`pipeline/tool/pipeline-ui-definition.mjs`. Tauri loads and validates that definition at startup;
+the embedded frontend renders it and remains responsible for input, progress, logs, and
+cancellation monitoring. Pipeline work stays in the Node tool.
+
+The GUI has three collapsible
 sections: CSV and data generation, build checks, and icon quality. The first section is open on
 startup; opening another section closes the current one. Long operations ask for confirmation,
 stream progress without repeatedly rebuilding the full log, estimate uncached work separately,

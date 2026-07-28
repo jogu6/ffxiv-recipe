@@ -1,11 +1,16 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
+import {
+  getPipelineUiDefinition,
+  validatePipelineUiDefinition
+} from '../pipeline/tool/pipeline-ui-definition.mjs';
 
 const guiSource = fs.readFileSync('pipeline/gui/main.js', 'utf8');
 const guiHtml = fs.readFileSync('pipeline/gui/index.html', 'utf8');
 const rustSource = fs.readFileSync('src-tauri/src/main.rs', 'utf8');
 const pipelineSource = fs.readFileSync('pipeline/tool/pipeline-tool.mjs', 'utf8');
+const uiDefinition = getPipelineUiDefinition();
 
 test('GUI Tauri invokes are registered by Rust', () => {
   const invokedCommands = new Set(
@@ -40,10 +45,16 @@ test('GUI preview does not start a local web server', () => {
 });
 
 test('GUI full run applies Lodestone info before publishing Item.json', () => {
-  const sequenceMatch = guiSource.match(/const recommendedSequence = \[([\s\S]*?)\];/);
-  assert.ok(sequenceMatch, 'recommendedSequence was not found');
-  const commands = [...sequenceMatch[1].matchAll(/command: '([^']+)'/g)].map(match => match[1]);
-  assert.deepEqual(commands, ['validate-csv', 'build', 'icons', 'publish-lodestone-info', 'publish']);
+  assert.deepEqual(uiDefinition.recommendedSequence, ['validate-csv', 'build', 'icons', 'publish-lodestone-info', 'publish']);
+});
+
+test('pipeline mjs is the valid source of GUI actions and copy', () => {
+  assert.deepEqual(validatePipelineUiDefinition(uiDefinition), []);
+  assert.match(guiSource, /read_pipeline_ui_definition/);
+  assert.match(rustSource, /fn\s+read_pipeline_ui_definition\b/);
+  assert.equal(guiHtml.includes('候補データを site/data/Item.json に統合します。'), false);
+  assert.equal(guiHtml.includes('CSV検証、データ生成、アイコン生成'), false);
+  assert.equal(uiDefinition.actions.find(action => action.command === 'publish').buttonId, 'publishBtn');
 });
 
 test('Item.json publish applies saved and automatic equipment roles', () => {

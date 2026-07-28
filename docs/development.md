@@ -34,7 +34,14 @@ npm run check:js
 npm run check:site
 npm run check:calculation
 npm run check:pipeline
+npm run pipeline:gui:check
+npm run pipeline:gui:build:timings
 ```
+
+The Tauri check retains Cargo incremental compilation. Release builds use sccache for dependency
+crates while retaining package-scoped incremental compilation for the non-cacheable application
+binary. The timing build records Cargo's crate and concurrency timeline under
+`src-tauri/target/cargo-timings/`.
 
 Run Markdown lint:
 
@@ -57,13 +64,26 @@ Run the tests:
 
 ```powershell
 npm run test:e2e
+npm run test:pipeline:gui
 ```
+
+Use `test:pipeline:gui` while changing only the Tauri monitor UI. It runs the eight pipeline GUI
+flows without executing the larger public-site E2E suite. The Node contract suite validates the
+versioned UI definition and build wrapper without constructing an exe; use
+`pipeline:gui:build:exe` only when a release binary itself must be checked.
 
 Playwright starts the same local static server used for LAN device checks:
 
 ```powershell
 py -m http.server 4173 --bind 0.0.0.0 --directory site
 ```
+
+Stable execution policy lives in `playwright.config.js` and the tests are launched only through
+`tools/run-e2e.mjs`. Public-site specs run sequentially within each file and in parallel across
+files, using two to four workers locally according to available CPU and two workers in CI. The
+pipeline GUI suite opts into in-file parallelism because every case owns an isolated page and
+Tauri mock. A compatible server already listening on port 4173 is reused. CLI overrides for the
+worker count, full parallelism, and configuration file are rejected.
 
 The site keeps favorites, search history, favorite item counts, and restorable view state in
 `localStorage`. A version-update reload deliberately discards restorable view state once. Tests

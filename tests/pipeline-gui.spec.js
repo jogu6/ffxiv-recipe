@@ -1,8 +1,15 @@
 const { expect, test } = require('@playwright/test');
+const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
-async function openPipelineGui(page) {
+test.describe.configure({ mode: 'parallel' });
+
+const uiDefinition = JSON.parse(
+  execFileSync(process.execPath, [path.resolve('pipeline/tool/pipeline-ui-definition.mjs')], { encoding: 'utf8' })
+);
+
+async function openPipelineGui(page, definition = uiDefinition) {
   await page.setViewportSize({ width: 1040, height: 720 });
   await page.route('**/__pipeline-gui/index.html', route => {
     route.fulfill({
@@ -29,12 +36,13 @@ async function openPipelineGui(page) {
     });
   });
 
-  await page.addInitScript(() => {
+  await page.addInitScript(definition => {
     window.__pipelineGuiTest = { invokes: [], listeners: {} };
     window.__TAURI__ = {
       core: {
         invoke: async (command, payload = {}) => {
           window.__pipelineGuiTest.invokes.push({ command, payload });
+          if (command === 'read_pipeline_ui_definition') return definition;
           if (command === 'read_update_state') return {};
           if (command === 'read_quality_preview_state') return { available: false };
           if (command === 'read_equipment_role_summary') return { selected: 0, unselected: 0, total: 0 };
@@ -64,7 +72,7 @@ async function openPipelineGui(page) {
         }
       }
     };
-  });
+  }, definition);
 
   await page.goto('/__pipeline-gui/index.html');
   await expect(page.locator('#statusText')).toHaveText('待機中');
@@ -76,6 +84,17 @@ async function openPipelineGui(page) {
 async function invokes(page) {
   return page.evaluate(() => window.__pipelineGuiTest.invokes);
 }
+
+test('pipeline GUI renders action names and descriptions from the mjs definition', async ({ page }) => {
+  const definition = structuredClone(uiDefinition);
+  const publish = definition.actions.find(action => action.command === 'publish');
+  publish.label = '定義からの公開';
+  publish.description = 'mjs定義を起動時に反映します。';
+  await openPipelineGui(page, definition);
+
+  await expect(page.locator('#publishBtn')).toHaveText('定義からの公開');
+  await expect(page.locator('.action-item[data-step="publish"]')).toContainText('mjs定義を起動時に反映します。');
+});
 
 test('pipeline GUI shows operation descriptions without test-only buttons', async ({ page }) => {
   await openPipelineGui(page);
@@ -106,6 +125,7 @@ test('pipeline GUI confirms long operations before invoking Tauri', async ({ pag
   await expect(page.locator('#confirmOverlay')).toHaveClass(/open/);
   await page.locator('#confirmCancelBtn').click();
   expect(await invokes(page)).toEqual([
+    { command: 'read_pipeline_ui_definition', payload: {} },
     { command: 'read_update_state', payload: {} },
     { command: 'read_quality_preview_state', payload: {} },
     { command: 'read_equipment_role_summary', payload: {} }

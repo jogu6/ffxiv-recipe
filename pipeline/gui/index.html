@@ -10,9 +10,9 @@
   <header>
     <div class="app-title">
       <img class="app-title-icon" src="./assets/favicon.png" alt="">
-      <h1>FF14レシピ素材ツリー アイテム情報作成</h1>
+      <h1 id="appTitle"></h1>
     </div>
-    <span id="statusText">待機中</span>
+    <span id="statusText">読み込み中...</span>
   </header>
 
   <main>
@@ -20,39 +20,39 @@
       <section class="panel-section collapsible-section">
         <button id="csvToggle" class="section-toggle" type="button" aria-expanded="true">
           <span class="section-toggle-mark" aria-hidden="true">▼</span>
-          <span>データ更新</span>
+          <span id="csvToggleLabel"></span>
         </button>
         <div id="csvBody" class="collapsible-body">
         <div class="action-item" data-step="check-updates">
-          <span class="order-label">任意</span>
-          <button id="checkUpdatesBtn" type="button">更新チェック</button>
-          <p>公式 CSV の更新有無を確認し、前回チェック日時を保存します。</p>
+          <span class="order-label"></span>
+          <button id="checkUpdatesBtn" type="button"></button>
+          <p></p>
           <span class="action-status">○ 未実行</span>
         </div>
         <dl class="meta-list">
           <div><dt>前回チェック</dt><dd id="lastChecked">-</dd></div>
         </dl>
         <div class="action-item" data-step="download-csv">
-          <span class="order-label">任意</span>
-          <button id="downloadCsvBtn" type="button">CSV取得</button>
-          <p>更新または不足している公式 CSV を取得します。</p>
+          <span class="order-label"></span>
+          <button id="downloadCsvBtn" type="button"></button>
+          <p></p>
           <span class="action-status">○ 未実行</span>
         </div>
         <div class="action-item" data-step="validate-csv">
-          <span class="order-label">1</span>
-          <button id="validateCsvBtn" type="button">CSV検証</button>
-          <p>必須ヘッダーと token-items.csv の形式を確認します。</p>
+          <span class="order-label"></span>
+          <button id="validateCsvBtn" type="button"></button>
+          <p></p>
           <span class="action-status">○ 未実行</span>
         </div>
         <div class="action-item" data-step="build">
-          <span class="order-label">2</span>
-          <button id="buildBtn" type="button">データ生成</button>
-          <p>CSV から公開候補 JSON を作ります。まだ公開データは置き換えません。</p>
+          <span class="order-label"></span>
+          <button id="buildBtn" type="button"></button>
+          <p></p>
           <span class="action-status">○ 未実行</span>
         </div>
         <div class="action-item" data-step="publish-lodestone-info">
-          <span class="order-label">4</span>
-          <button id="lodestoneInfoBtn" type="button">Lodestone情報反映</button>
+          <span class="order-label"></span>
+          <button id="lodestoneInfoBtn" type="button"></button>
           <label class="field quality-field">
             <span>アクセス間隔(ms)</span>
             <input id="lodestoneDelayInput" type="number" min="0" max="60000" step="100" value="100">
@@ -61,26 +61,26 @@
             <span>強制再取得</span>
             <input id="lodestoneForceInput" type="checkbox">
           </label>
-          <p>店、製作、装備情報をLodestoneから取得し、ハウジング・友好部族ショップ情報とともに公開候補JSONへ反映します。</p>
+          <p></p>
           <span class="action-status">○ 未実行</span>
         </div>
         <div class="action-item" data-step="equipment-role-groups">
-          <span class="order-label">確認</span>
-          <button id="equipmentRoleBtn" type="button">推奨ロール確認</button>
-          <p>Lodestone情報反映後、判定不能な広域装備の推奨ロールを指定します。保存後、次回のLodestone情報反映で候補JSONへ反映されます。</p>
+          <span class="order-label"></span>
+          <button id="equipmentRoleBtn" type="button"></button>
+          <p></p>
           <span class="action-status">○ 未実行</span>
           <span id="equipmentRoleCount" class="equipment-role-count">指定状況を読み込み中...</span>
         </div>
         <div class="action-item" data-step="publish">
-          <span class="order-label">5</span>
-          <button id="publishBtn" type="button">公開反映</button>
-          <p>現在の Item.json を自動保護し、候補データを site/data/Item.json に統合します。</p>
+          <span class="order-label"></span>
+          <button id="publishBtn" type="button"></button>
+          <p></p>
           <span class="action-status">○ 未実行</span>
         </div>
-        <div class="action-item">
-          <span class="order-label">一括</span>
-          <button id="runBtn" type="button">全実行</button>
-          <p>CSV検証、データ生成、アイコン生成、Lodestone情報反映、公開反映を順番に実行します。</p>
+        <div class="action-item" data-action-id="run-all">
+          <span class="order-label"></span>
+          <button id="runBtn" type="button"></button>
+          <p></p>
         </div>
         </div>
       </section>
@@ -88,12 +88,12 @@
       <section class="panel-section collapsible-section">
         <button id="buildToggle" class="section-toggle" type="button" aria-expanded="false">
           <span class="section-toggle-mark" aria-hidden="true">▶</span>
-          <span>アイコン生成</span>
+          <span id="buildToggleLabel"></span>
         </button>
         <div id="buildBody" class="collapsible-body" hidden>
         <div class="action-item" data-step="icons">
-          <span class="order-label">3</span>
-          <button id="iconsBtn" type="button">アイコン生成</button>
+          <span class="order-label"></span>
+          <button id="iconsBtn" type="button"></button>
           <label class="field quality-field">
             <span>Quality</span>
             <input id="qualityInput" type="number" min="1" max="100" step="1" value="80">
@@ -106,13 +106,13 @@
             <span>アクセス間隔(ms)</span>
             <input id="iconDelayInput" type="number" min="0" max="60000" step="100" value="500">
           </label>
-          <p>Lodestone NQ 画像を優先し、指定サイズの WebP アイコンを生成します。元 PNG はキャッシュします。</p>
+          <p></p>
           <span class="action-status">○ 未実行</span>
         </div>
         <div class="action-item" data-step="verify">
-          <span class="order-label">確認</span>
-          <button id="verifyBtn" type="button">Item.json比較</button>
-          <p>確認のみ。比較して結果を出しますが、Item.json は変更しません。</p>
+          <span class="order-label"></span>
+          <button id="verifyBtn" type="button"></button>
+          <p></p>
           <span class="action-status">○ 未実行</span>
         </div>
         </div>
@@ -121,17 +121,17 @@
       <section class="panel-section collapsible-section">
         <button id="iconQualityToggle" class="section-toggle" type="button" aria-expanded="false">
           <span class="section-toggle-mark" aria-hidden="true">▶</span>
-          <span>プレビュー</span>
+          <span id="iconQualityToggleLabel"></span>
         </button>
         <div id="iconQualityBody" class="collapsible-body" hidden>
         <div class="action-item" data-step="tmp-quality-preview">
-          <span class="order-label">任意</span>
-          <button id="previewBtn" type="button">比較ページ生成</button>
+          <span class="order-label"></span>
+          <button id="previewBtn" type="button"></button>
           <label class="field quality-field">
             <span>プレビュー生成サイズ(px)</span>
             <input id="previewSizeInput" type="number" min="1" max="512" step="1" value="80">
           </label>
-          <p>PNG と q50/q60/q70/q80 を並べた一時確認ページを作ります。生成サイズを反映します。</p>
+          <p></p>
           <span class="action-status">○ 未実行</span>
         </div>
         </div>
@@ -141,24 +141,24 @@
     <section class="work-panel">
       <div class="progress-area">
         <div class="progress-header">
-          <strong id="progressTitle">進捗</strong>
+          <strong id="progressTitle"></strong>
           <span id="progressPercent">0%</span>
         </div>
         <div class="progress-track" aria-hidden="true"><div id="progressBar"></div></div>
         <div class="progress-details">
-          <span id="progressDetail">未実行</span>
+          <span id="progressDetail"></span>
           <span id="etaText">ETA -</span>
         </div>
         <div id="progressActions" class="progress-actions" hidden>
-          <button id="cancelBtn" type="button">中断</button>
-          <button id="resumeBtn" type="button">再開</button>
+          <button id="cancelBtn" type="button"></button>
+          <button id="resumeBtn" type="button"></button>
         </div>
       </div>
 
       <section class="log-panel">
         <div class="log-header">
           <h2>Log</h2>
-          <button id="clearLogBtn" type="button">クリア</button>
+          <button id="clearLogBtn" type="button"></button>
         </div>
         <div id="log" class="log-view" role="log" aria-live="polite"></div>
       </section>
@@ -168,12 +168,12 @@
   <div id="previewOverlay" class="preview-overlay" aria-hidden="true">
     <section class="preview-modal" role="dialog" aria-modal="true" aria-labelledby="previewTitle">
       <header class="preview-header">
-        <h2 id="previewTitle">アイコン画質比較</h2>
+        <h2 id="previewTitle"></h2>
         <div class="preview-tools">
           <button id="previewScale2" type="button">2x</button>
           <button id="previewScale3" type="button">3x</button>
           <button id="previewThemeBtn" type="button">light</button>
-          <button id="previewCloseBtn" type="button">閉じる</button>
+          <button id="previewCloseBtn" type="button"></button>
         </div>
       </header>
       <main id="previewContent" class="preview-content"></main>
@@ -185,8 +185,8 @@
       <h2 id="confirmTitle">確認</h2>
       <p id="confirmMessage"></p>
       <div class="modal-actions">
-        <button id="confirmOkBtn" class="primary" type="button">実行</button>
-        <button id="confirmCancelBtn" type="button">キャンセル</button>
+        <button id="confirmOkBtn" class="primary" type="button"></button>
+        <button id="confirmCancelBtn" type="button"></button>
       </div>
     </section>
   </div>
@@ -195,14 +195,14 @@
     <section class="modal equipment-role-modal" role="dialog" aria-modal="true" aria-labelledby="equipmentRoleTitle">
       <header class="equipment-role-header">
         <div>
-          <h2 id="equipmentRoleTitle">推奨ロール確認</h2>
+          <h2 id="equipmentRoleTitle"></h2>
           <p id="equipmentRoleSummary">読み込み中...</p>
         </div>
-        <button id="equipmentRoleCloseBtn" type="button">閉じる</button>
+        <button id="equipmentRoleCloseBtn" type="button"></button>
       </header>
       <div id="equipmentRoleList" class="equipment-role-list"></div>
       <div class="modal-actions">
-        <button id="equipmentRoleSaveBtn" class="primary" type="button">保存</button>
+        <button id="equipmentRoleSaveBtn" class="primary" type="button"></button>
       </div>
     </section>
   </div>

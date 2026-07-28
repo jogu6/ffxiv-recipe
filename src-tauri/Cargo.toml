@@ -15,3 +15,18 @@ tauri-build = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = [] }
+
+[profile.dev]
+incremental = true
+
+[profile.release]
+codegen-units = 16
+lto = false
+opt-level = 2
+panic = "abort"
+strip = "symbols"
+
+[profile.release.package.ffxiv-recipe-pipeline]
+codegen-units = 64
+incremental = true
+opt-level = 1

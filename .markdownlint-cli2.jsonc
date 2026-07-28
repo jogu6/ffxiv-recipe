@@ -6,6 +6,8 @@
   "globs": [
     "**/*.md",
     "!node_modules",
-    "!pipeline"
+    "!pipeline",
+    "!site/data/tips.md",
+    "!xivapi-analysis/reports"
   ]
 }

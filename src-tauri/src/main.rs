@@ -179,6 +179,28 @@ fn cancel_pipeline_command(process: tauri::State<PipelineProcess>) -> Result<(),
 }
 
 #[tauri::command]
+fn read_pipeline_ui_definition() -> Result<Value, String> {
+    let root = repo_root()?;
+    let script = root
+        .join("pipeline")
+        .join("tool")
+        .join("pipeline-ui-definition.mjs");
+    let mut command = Command::new("node");
+    command
+        .arg(script)
+        .current_dir(root)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+    let output = command.output().map_err(|error| error.to_string())?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    serde_json::from_slice(&output.stdout).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn read_update_state() -> Result<Value, String> {
     let path = repo_root()?
         .join("pipeline")
@@ -355,7 +377,7 @@ fn main() {
                 let _ = stop_pipeline_process(&process);
             }
         })
-        .invoke_handler(tauri::generate_handler![run_pipeline_command, cancel_pipeline_command, read_update_state, read_quality_preview_state, read_quality_preview, read_equipment_role_groups, read_equipment_role_summary, save_equipment_role_overrides, open_external_url])
+        .invoke_handler(tauri::generate_handler![run_pipeline_command, cancel_pipeline_command, read_pipeline_ui_definition, read_update_state, read_quality_preview_state, read_quality_preview, read_equipment_role_groups, read_equipment_role_summary, save_equipment_role_overrides, open_external_url])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

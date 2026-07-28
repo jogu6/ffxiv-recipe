@@ -51,12 +51,19 @@ py -m http.server 4173 --bind 0.0.0.0 --directory site
 
 ## Data pipeline
 
-データ生成はこのWebアプリ専用の Node.js/Tauri ツールで実行します。Tauri exe はリポジトリ全体のバージョンとは別に、アイテム情報作成ツール単体として `v1.0` を扱います。
+データ生成はこのWebアプリ専用の Node.js/Tauri ツールで実行します。Tauri exe はリポジトリ全体のバージョンとは別に、アイテム情報作成ツール単体として `v1.0` を扱います。機能名、説明、ボタン名、確認文、引数、推奨実行順は`pipeline/tool/pipeline-ui-definition.mjs`を正本とし、exeは起動時に読み込んでUIと実行監視へ反映します。
 
 ```powershell
 npm run pipeline:gui
+npm run pipeline:gui:check
+npm run pipeline:gui:build:exe
+npm run pipeline:gui:build:timings
 npm run pipeline:gui:build
 ```
+
+`pipeline:gui:check`はRust/Tauriの増分チェック、`pipeline:gui:build:exe`はインストーラーを作らない高速なexe生成、`pipeline:gui:build`はNSISインストーラーを含む配布ビルドです。`pipeline:gui:build:timings`はexeを生成し、`src-tauri/target/cargo-timings/`へCargoの計測結果を出力します。
+
+共通ラッパーはツールチェーン内の`rust-lld`を検出します。開発・検査ではCargoのincrementalを使い、exe・配布ビルドでは依存クレートを`sccache`へ保存します。キャッシュ不能な最終アプリだけは専用プロファイルでincrementalを維持します。ビルド後にはsccacheの統計を表示し、キャッシュ障害時は通常コンパイルへ退避します。
 
 詳細は [docs/data-pipeline.md](docs/data-pipeline.md) を参照してください。
 
@@ -68,7 +75,7 @@ Node.js 24以降で依存関係をインストールします。
 npm install
 ```
 
-標準チェックを実行します。JavaScript構文チェック、サイトデータ検証、計算ロジックのNode.jsテスト、パイプラインツールのNode.jsテストをまとめて実行します。
+標準チェックを実行します。JavaScript構文チェック、サイトデータ検証、計算ロジックのNode.jsテスト、パイプラインツールのNode.jsテスト、リリースノート監査をまとめて実行します。
 
 ```powershell
 npm run check
@@ -81,13 +88,20 @@ npm run check:js
 npm run check:site
 npm run check:calculation
 npm run check:pipeline
+npm run check:release-notes
+npm run pipeline:gui:check
 ```
 
 PlaywrightによるブラウザUI回帰テストを実行します。
 
 ```powershell
 npm run test:e2e
+npm run test:pipeline:gui
 ```
+
+安定実行設定は`playwright.config.js`へ集約しています。公開サイトE2Eはファイル単位で並列化し、ローカルではCPUに応じて2～4ワーカー、CIでは2ワーカーを使用します。独立したTauriモックを使うpipeline GUI E2Eはファイル内も並列化します。互換性のあるテスト用サーバーが4173番ポートで動作済みの場合は再利用します。ワーカー数と設定ファイルはコマンドラインから上書きできません。
+
+ユーザーに見える機能追加・仕様変更・バグ修正には、その挙動を表す固有名のE2Eテストを追加してください。リリースノート監査は、`tools/release-notes-review.json`の基準コミット以降に追加されたE2Eテストを検出します。各テストについて、現在の`tips.md`に掲載した根拠文、または掲載不要と判断した具体的な理由を同ファイルへ記録してください。未確認のテスト、存在しない根拠文、理由のない掲載除外が1件でもある場合、ローカルの標準チェックとGitHub Actionsは失敗します。新しいリリースを開始する際は、`version`と`baseline`を直前の公開版へ更新し、`reviews`を新しい差分に合わせて作り直します。
 
 開発ツールの詳細は [docs/development.md](docs/development.md) を参照してください。
 

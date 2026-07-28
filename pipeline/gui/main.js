@@ -14,6 +14,7 @@ const LODESTONE_DELAY_KEY = 'ffxiv-pipeline-lodestone-delay';
 const PREVIEW_SIZE_KEY = 'ffxiv-pipeline-preview-size';
 
 const elements = {
+  appTitle: document.getElementById('appTitle'),
   statusText: document.getElementById('statusText'),
   lastChecked: document.getElementById('lastChecked'),
   checkUpdatesBtn: document.getElementById('checkUpdatesBtn'),
@@ -67,25 +68,10 @@ const elements = {
   equipmentRoleSaveBtn: document.getElementById('equipmentRoleSaveBtn')
 };
 
-const stepDefs = [
-  { command: 'validate-csv', order: '1', label: 'CSV検証', description: '必須ヘッダーと token-items.csv の形式を確認します。' },
-  { command: 'build', order: '2', label: '候補生成', description: '公開候補 JSON を作成します。Item.json はまだ置き換えません。' },
-  { command: 'icons', order: '3', label: 'アイコン生成', description: 'Lodestone NQ 画像を優先し、指定サイズの WebP アイコンを生成します。' },
-  { command: 'publish-lodestone-info', order: '4', label: 'Lodestone情報反映', description: 'Lodestone情報とハウジング・友好部族ショップ情報を公開候補JSONへ反映します。' },
-  { command: 'equipment-role-groups', order: '確認', label: '推奨ロール確認', description: '判定不能な広域装備の推奨ロールを指定します。' },
-  { command: 'publish', order: '5', label: '公開反映', description: '現在の Item.json を自動保護し、比較に通った候補で置き換えます。' },
-  { command: 'verify', order: '確認', label: 'Item.json比較', description: '比較だけを実行します。site/data/Item.json は変更しません。' },
-  { command: 'check-updates', order: '任意', label: '更新チェック', description: '公式 CSV の更新有無と前回チェック日時を確認します。' },
-  { command: 'download-csv', order: '任意', label: 'CSV取得', description: '更新または不足した公式 CSV を取得します。' },
-  { command: 'tmp-quality-preview', order: '任意', label: '画質比較', description: 'PNG と q50/q60/q70/q80 の一時比較ページを作ります。' }
-];
-const recommendedSequence = [
-  { command: 'validate-csv' },
-  { command: 'build' },
-  { command: 'icons', args: () => ['--quality', elements.qualityInput.value, '--size', elements.iconSizeInput.value, '--delay', elements.iconDelayInput.value, '--item-json', 'pipeline/intermediate/06-public-items.json'] },
-  { command: 'publish-lodestone-info', args: lodestoneInfoArgs },
-  { command: 'publish' }
-];
+let uiDefinition = null;
+let actionDefs = [];
+let stepDefs = [];
+let recommendedSequence = [];
 const accordionSections = [];
 let running = false;
 let currentRun = null;
@@ -103,17 +89,98 @@ let equipmentRoleGroups = [];
 let equipmentRoleOverrides = {};
 let equipmentRoleCollapsedKeys = new Set();
 let equipmentRoleSavedSnapshot = '{}';
-const equipmentRoleRefreshCommands = new Set(['build', 'publish-lodestone-info', 'publish']);
+let equipmentRoleRefreshCommands = new Set();
 
-const EQUIPMENT_ROLE_LABELS = {
-  tank: 'タンク',
-  healer: 'ヒーラー',
-  striker_slayer: 'ストライカー&スレイヤー',
-  scout_ranger: 'スカウト&レンジャー',
-  caster: 'キャスター',
-  fighter: 'ファイター',
-  sorcerer: 'ソーサラー'
-};
+let equipmentRoleLabels = {};
+
+function actionDefinition(idOrCommand) {
+  return actionDefs.find(action => action.id === idOrCommand || action.command === idOrCommand);
+}
+
+function validateRuntimeUiDefinition(value) {
+  if (!value || value.schemaVersion !== 1) throw new Error('未対応のUI定義です。');
+  if (!value.application?.title || !value.application?.idleStatus) throw new Error('UI定義にアプリ情報がありません。');
+  if (!Array.isArray(value.sections) || !Array.isArray(value.actions) || !Array.isArray(value.recommendedSequence)) {
+    throw new Error('UI定義の配列が不正です。');
+  }
+  const actionIds = new Set();
+  for (const action of value.actions) {
+    if (!action.id || actionIds.has(action.id)) throw new Error(`UI操作IDが不正です: ${action.id || ''}`);
+    actionIds.add(action.id);
+    if (!action.buttonId || !document.getElementById(action.buttonId)) {
+      throw new Error(`UI操作のボタンが見つかりません: ${action.buttonId || action.id}`);
+    }
+  }
+}
+
+function resolveActionArgs(action, property = 'args') {
+  const mappings = action?.[property] || action?.args || [];
+  const args = [];
+  for (const mapping of mappings) {
+    if (mapping.type === 'checkbox') {
+      if (document.getElementById(mapping.inputId)?.checked) args.push(mapping.flag);
+      continue;
+    }
+    const value = mapping.inputId ? document.getElementById(mapping.inputId)?.value : mapping.value;
+    args.push(mapping.flag, String(value ?? ''));
+  }
+  return args;
+}
+
+function applyUiDefinition(value) {
+  validateRuntimeUiDefinition(value);
+  uiDefinition = value;
+  actionDefs = value.actions;
+  equipmentRoleLabels = value.equipmentRoleLabels;
+  stepDefs = actionDefs.map(action => ({ ...action, command: action.command || action.id }));
+  equipmentRoleRefreshCommands = new Set(
+    actionDefs.filter(action => action.refreshEquipmentRole && action.command).map(action => action.command)
+  );
+  recommendedSequence = value.recommendedSequence.map(command => {
+    const action = actionDefinition(command);
+    if (!action) throw new Error(`推奨実行コマンドがUI定義にありません: ${command}`);
+    return { command, args: () => resolveActionArgs(action, 'sequenceArgs') };
+  });
+
+  document.title = value.application.title;
+  elements.appTitle.textContent = value.application.title;
+  elements.statusText.textContent = value.application.idleStatus;
+
+  for (const section of value.sections) {
+    const toggle = document.getElementById(section.toggleId);
+    const body = document.getElementById(section.bodyId);
+    if (!toggle || !body) throw new Error(`UIセクションが見つかりません: ${section.id}`);
+    toggle.querySelector('span:last-child').textContent = section.label;
+    toggle.setAttribute('aria-expanded', String(Boolean(section.expanded)));
+  }
+
+  for (const action of actionDefs) {
+    const button = document.getElementById(action.buttonId);
+    const item = document.querySelector(`.action-item[data-step="${action.command || action.id}"]`)
+      || document.querySelector(`.action-item[data-action-id="${action.id}"]`);
+    if (!item) throw new Error(`UI操作領域が見つかりません: ${action.id}`);
+    button.textContent = action.label;
+    item.querySelector('.order-label').textContent = action.order;
+    item.querySelector(':scope > p').textContent = action.description;
+  }
+
+  elements.progressTitle.textContent = value.chrome.progressTitle;
+  elements.progressDetail.textContent = value.chrome.progressIdle;
+  elements.cancelBtn.textContent = value.chrome.cancel;
+  elements.resumeBtn.textContent = value.chrome.resume;
+  elements.clearLogBtn.textContent = value.chrome.clearLog;
+  elements.confirmOkBtn.textContent = value.chrome.confirmOk;
+  elements.confirmCancelBtn.textContent = value.chrome.confirmCancel;
+  document.getElementById('previewTitle').textContent = value.chrome.previewTitle;
+  elements.previewCloseBtn.textContent = value.chrome.previewClose;
+  document.getElementById('equipmentRoleTitle').textContent = value.chrome.equipmentRoleTitle;
+  elements.equipmentRoleCloseBtn.textContent = value.chrome.equipmentRoleClose;
+  elements.equipmentRoleSaveBtn.textContent = value.chrome.equipmentRoleSave;
+}
+
+async function loadUiDefinition() {
+  applyUiDefinition(await invoke('read_pipeline_ui_definition'));
+}
 
 function createAdaptiveThrottle() {
   return {
@@ -253,12 +320,6 @@ function setButtonsDisabled(disabled) {
   elements.lodestoneDelayInput.disabled = disabled;
   elements.lodestoneForceInput.disabled = disabled;
   updateProgressActions();
-}
-
-function lodestoneInfoArgs() {
-  const args = ['--delay', elements.lodestoneDelayInput.value];
-  if (elements.lodestoneForceInput.checked) args.push('--force');
-  return args;
 }
 
 function updateProgressActions() {
@@ -528,7 +589,7 @@ function closeQualityPreview() {
 }
 
 function roleLabel(role) {
-  return EQUIPMENT_ROLE_LABELS[role] || role;
+  return equipmentRoleLabels[role] || role;
 }
 
 function updateEquipmentRoleSummary() {
@@ -716,11 +777,12 @@ async function refreshEquipmentRoleCount() {
 }
 
 async function refreshPreviewButton() {
+  const previewAction = actionDefinition('tmp-quality-preview');
   try {
     const state = await invoke('read_quality_preview_state');
-    elements.previewBtn.textContent = state?.available ? '比較ページ表示' : '比較ページ生成';
+    elements.previewBtn.textContent = state?.available ? previewAction.availableLabel : previewAction.label;
   } catch {
-    elements.previewBtn.textContent = '比較ページ生成';
+    elements.previewBtn.textContent = previewAction.label;
   }
 }
 
@@ -834,6 +896,43 @@ async function restoreWindowSize() {
   });
 }
 
+function bindActionButtons() {
+  for (const action of actionDefs) {
+    const button = document.getElementById(action.buttonId);
+    if (action.behavior === 'equipment-role-dialog') {
+      button.addEventListener('click', openEquipmentRoleDialog);
+      continue;
+    }
+    if (action.behavior === 'sequence') {
+      button.addEventListener('click', () => confirmAndRun(action.confirm, () => runSequence(recommendedSequence)));
+      continue;
+    }
+    if (action.behavior === 'quality-preview') {
+      button.addEventListener('click', () => {
+        const available = button.textContent === action.availableLabel;
+        confirmAndRun(available ? action.availableConfirm : action.confirm, async () => {
+          if (available) {
+            await openQualityPreview();
+            return;
+          }
+          if (await runCommand(action.command, resolveActionArgs(action), { title: action.label })) {
+            await refreshPreviewButton();
+            await openQualityPreview();
+          }
+        });
+      });
+      continue;
+    }
+    if (action.behavior === 'command') {
+      const run = () => runCommand(action.command, resolveActionArgs(action), { title: action.label });
+      button.addEventListener('click', () => {
+        if (action.confirm) confirmAndRun(action.confirm, run);
+        else run();
+      });
+    }
+  }
+}
+
 function bindEvents() {
   elements.qualityInput.value = localStorage.getItem(QUALITY_KEY) || '80';
   elements.iconSizeInput.value = localStorage.getItem(ICON_SIZE_KEY) || '80';
@@ -859,7 +958,7 @@ function bindEvents() {
   elements.previewSizeInput.addEventListener('change', () => {
     elements.previewSizeInput.value = String(clampNumber(elements.previewSizeInput.value, 1, 512, 80));
     localStorage.setItem(PREVIEW_SIZE_KEY, elements.previewSizeInput.value);
-    elements.previewBtn.textContent = '比較ページ生成';
+    elements.previewBtn.textContent = actionDefinition('tmp-quality-preview').label;
   });
   elements.clearLogBtn.addEventListener('click', () => {
     pendingLogLines = [];
@@ -874,51 +973,9 @@ function bindEvents() {
     { toggle: elements.buildToggle, body: elements.buildBody },
     { toggle: elements.iconQualityToggle, body: elements.iconQualityBody }
   ]);
-  elements.validateCsvBtn.addEventListener('click', () => runCommand('validate-csv', [], { title: 'CSV検証' }));
-  elements.checkUpdatesBtn.addEventListener('click', () => runCommand('check-updates', [], { title: '更新チェック' }));
-  elements.downloadCsvBtn.addEventListener('click', () => confirmAndRun(
-    'CSVをダウンロードします。通信が発生します。実行しますか？',
-    () => runCommand('download-csv', [], { title: 'CSV取得' })
-  ));
-  elements.buildBtn.addEventListener('click', () => confirmAndRun(
-    'データ生成には時間がかかる場合があります。実行しますか？',
-    () => runCommand('build', [], { title: 'データ生成' })
-  ));
-  elements.publishBtn.addEventListener('click', () => confirmAndRun(
-    '検証後に site/data/Item.json を置き換えます。実行しますか？',
-    () => runCommand('publish', [], { title: '公開反映' })
-  ));
-  elements.iconsBtn.addEventListener('click', () => confirmAndRun(
-    'アイコン生成には時間がかかり、不足分は Lodestone または XIVAPI から取得します。実行しますか？',
-    () => runCommand('icons', ['--quality', elements.qualityInput.value, '--size', elements.iconSizeInput.value, '--delay', elements.iconDelayInput.value], { title: 'アイコン生成' })
-  ));
-  elements.lodestoneInfoBtn.addEventListener('click', () => confirmAndRun(
-    'Lodestone情報とハウジング・友好部族ショップ情報を公開候補JSONに反映します。公開データはまだ置き換えません。時間がかかります。実行しますか？',
-    () => runCommand('publish-lodestone-info', lodestoneInfoArgs(), { title: 'Lodestone情報反映' })
-  ));
-  elements.equipmentRoleBtn.addEventListener('click', openEquipmentRoleDialog);
-  elements.verifyBtn.addEventListener('click', () => runCommand('verify', [], { title: 'Item.json比較' }));
-  elements.previewBtn.addEventListener('click', () => confirmAndRun(
-    elements.previewBtn.textContent === '比較ページ表示'
-      ? '作成済みの比較ページを表示します。実行しますか？'
-      : '比較ページ生成には時間がかかり、不足PNGを通信で取得する場合があります。実行しますか？',
-    async () => {
-      if (elements.previewBtn.textContent === '比較ページ表示') {
-        await openQualityPreview();
-        return;
-      }
-      if (await runCommand('tmp-quality-preview', ['--size', elements.previewSizeInput.value], { title: '比較ページ生成' })) {
-        await refreshPreviewButton();
-        await openQualityPreview();
-      }
-    }
-  ));
-  elements.runBtn.addEventListener('click', () => confirmAndRun(
-    '全実行はデータ生成、アイコン生成、Lodestone情報反映、公開反映を行います。時間がかかる場合があります。実行しますか？',
-    () => runSequence(recommendedSequence)
-  ));
+  bindActionButtons();
   elements.resumeBtn.addEventListener('click', () => confirmAndRun(
-    '再開は安全な推奨順を再実行します。元画像キャッシュは再利用されます。実行しますか？',
+    uiDefinition.chrome.resumeConfirm,
     () => runSequence(recommendedSequence)
   ));
   elements.cancelBtn.addEventListener('click', cancelCurrentRun);
@@ -1069,27 +1126,40 @@ function blockBrowserNavigation() {
   }, true);
 }
 
-pipelineOutputReady = listen('pipeline-output', event => {
-  const line = String(event.payload || '');
-  if (!line) return;
-  const etaProgress = parseEtaProgress(line);
-  if (etaProgress) {
-    updateEtaProgress(etaProgress);
+async function initialize() {
+  try {
+    await loadUiDefinition();
+  } catch (error) {
+    elements.statusText.textContent = '定義読込失敗';
+    appendLog(`UI定義を読み込めませんでした: ${String(error)}`);
+    setButtonsDisabled(true);
     return;
   }
-  appendLog(line);
-  const progress = parseProgress(line);
-  if (progress) updateTimedProgress(progress.completed, progress.total, progress.detail);
-  const cacheUpdate = parseCacheVersionUpdate(line);
-  if (cacheUpdate) showCacheVersionUpdate(cacheUpdate);
-}).catch(error => {
-  appendLog(`実行ログの受信準備に失敗しました: ${String(error)}`);
-});
 
-blockBrowserNavigation();
-bindEvents();
-updateProgressActions();
-restoreWindowSize();
-loadUpdateState();
-refreshPreviewButton();
-refreshEquipmentRoleCount();
+  pipelineOutputReady = listen('pipeline-output', event => {
+    const line = String(event.payload || '');
+    if (!line) return;
+    const etaProgress = parseEtaProgress(line);
+    if (etaProgress) {
+      updateEtaProgress(etaProgress);
+      return;
+    }
+    appendLog(line);
+    const progress = parseProgress(line);
+    if (progress) updateTimedProgress(progress.completed, progress.total, progress.detail);
+    const cacheUpdate = parseCacheVersionUpdate(line);
+    if (cacheUpdate) showCacheVersionUpdate(cacheUpdate);
+  }).catch(error => {
+    appendLog(`実行ログの受信準備に失敗しました: ${String(error)}`);
+  });
+
+  blockBrowserNavigation();
+  bindEvents();
+  updateProgressActions();
+  restoreWindowSize();
+  loadUpdateState();
+  refreshPreviewButton();
+  refreshEquipmentRoleCount();
+}
+
+initialize();
