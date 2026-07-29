@@ -39,7 +39,7 @@ test('intermediate materials follow craft order, show usage, and open an indepen
   expect(Math.abs(craftBadgeSizes.iconWidth / craftBadgeSizes.fontSize - 1.154)).toBeLessThan(0.01);
   expect(Math.abs(craftBadgeSizes.iconHeight / craftBadgeSizes.fontSize - 1.154)).toBeLessThan(0.01);
   await expect(bastardNode).not.toContainText('ブラスバスタードソードに使用');
-  await expect(bastardNode.locator('.material-primary > .item-action-buttons')).toHaveCount(1);
+  await expect(bastardNode.locator(':scope > .item-action-buttons')).toHaveCount(1);
 
   await intermediateHeader.click();
   await expect(bastardNode.locator('..')).toHaveClass(/collapsed/);
@@ -190,6 +190,10 @@ test('materials list shows exchange supplements and summary totals', async ({ pa
 
   await page.locator('#materialsViewBtn').click();
   const spiritSandRow = page.locator('.materials-list li').filter({ hasText: '紫電の霊砂' }).first();
+  await expect(spiritSandRow.locator(':scope > .checkable-item-icon')).toHaveCount(1);
+  await expect(spiritSandRow.locator('.material-supplement .checkable-item-icon')).toHaveCount(0);
+  await spiritSandRow.locator(':scope > .checkable-item-icon').click();
+  await expect(spiritSandRow.locator(':scope > .checkable-item-icon')).toHaveAttribute('aria-pressed', 'true');
   await expect(spiritSandRow.locator('.supplement-refine-label')).toContainText('精選、または');
   await expect(spiritSandRow.locator('.supplement-refine-label')).toHaveCSS('color', 'rgb(91, 213, 200)');
   await expect(spiritSandRow).toContainText('ギャザラースクリップ:橙貨');
@@ -199,6 +203,7 @@ test('materials list shows exchange supplements and summary totals', async ({ pa
   await expect(summaryHeader).toContainText('▶');
   await summaryHeader.click();
   const summaryRow = page.locator('.materials-summary-row').filter({ hasText: 'ギャザラースクリップ:橙貨' }).first();
+  await expect(summaryRow.locator('.checkable-item-icon')).toHaveCount(0);
   await expect(summaryRow.locator('.material-refine-row')).toContainText('精選、または');
   await expect(summaryRow.locator('.material-primary')).toContainText('ギャザラースクリップ:橙貨');
   await expect(summaryRow.locator('.material-primary')).toContainText('× 300');
@@ -365,4 +370,101 @@ test('restricts requested counts to integers from 1 through 999', async ({ page 
   await page.locator('#countInput').fill('');
   await page.locator('#countInput').press('Enter');
   await expect(page.locator('#countInput')).toHaveValue('1');
+});
+
+test('item image checks act as independent temporary notes and restore only for the same target', async ({ page }) => {
+  await openApp(page);
+  await searchFor(page, 'ブラスバスタードソード');
+  await page.getByText('ブラスバスタードソード', { exact: true }).first().click();
+
+  const treeChecks = page.locator('#treeContainer .checkable-item-icon');
+  await expect(treeChecks.first()).toBeVisible();
+  await treeChecks.first().click();
+  await expect(treeChecks.first()).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#treeContainer .checkable-item-icon.checked')).toHaveCount(1);
+
+  await page.locator('#materialsViewBtn').click();
+  await expect(page.locator('.materials-list .checkable-item-icon.checked')).toHaveCount(0);
+  const materialCheck = page.locator('.materials-list .checkable-item-icon').first();
+  await materialCheck.click();
+  const imageCheck = materialCheck.locator('.item-image-check');
+  await expect(imageCheck).toContainText('✔');
+  await expect(imageCheck).toHaveCSS('font-size', '16px');
+  await expect(imageCheck).toHaveCSS('font-weight', '900');
+  await expect(imageCheck).toHaveCSS('right', '2px');
+  await expect(imageCheck).toHaveCSS('bottom', '2px');
+  await expect(imageCheck).toHaveCSS('color', 'rgb(67, 224, 95)');
+  await expect(imageCheck).toHaveCSS('-webkit-text-stroke-width', '0.75px');
+  await page.locator('#countIncreaseBtn').click();
+  await expect(page.locator('.materials-list .checkable-item-icon.checked')).toHaveCount(1);
+
+  await page.locator('.intermediate-material-tree-btn').first().click();
+  await expect(page.locator('#materialTreeContent .checkable-item-icon')).toHaveCount(0);
+  await page.locator('#materialTreeCloseBtn').click();
+
+  await page.reload();
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await expect(page.locator('.materials-list .checkable-item-icon.checked')).toHaveCount(1);
+
+  await searchFor(page, 'バスタードソード');
+  await page.locator('#recipeList').getByText('バスタードソード', { exact: true }).click();
+  await page.locator('#materialsViewBtn').click();
+  await expect(page.locator('.materials-list .checkable-item-icon.checked')).toHaveCount(0);
+});
+
+test('otherwise equivalent intermediate materials sort normal recipe levels before numeric masterbook volumes', async ({
+  page
+}) => {
+  await page.route('**/data/Item.json*', async route => {
+    const response = await route.fetch();
+    const items = await response.json();
+    const intermediate = (ID, Name, level, masterbook = '', ItemUICategory = 44) => ({
+      ID,
+      Name,
+      IconFile: '000000.webp',
+      ItemUICategory,
+      ItemUICategoryName: 'その他',
+      Recipe: { RecipeID: `R${ID}`, CraftType: '1', AmountResult: '1', Ingredients: [] },
+      CraftInfo: [{ job: '鍛冶師', level, masterbook }]
+    });
+    items.push(
+      intermediate('990101', '試験用レベル10素材', 10, '', 48),
+      intermediate('990104', '試験用レベル34素材', 34, '', 49),
+      intermediate('990105', '試験用レベル40素材', 40, '', 48),
+      intermediate('990102', '試験用第十巻素材', 1, '鍛冶秘伝書:第10巻'),
+      intermediate('990103', '試験用第二巻素材', 100, '鍛冶秘伝書:第2巻'),
+      {
+        ID: '990100',
+        Name: '試験用並び順完成品',
+        IconFile: '000000.webp',
+        ItemUICategory: 44,
+        ItemUICategoryName: 'その他',
+        Recipe: {
+          RecipeID: 'R990100',
+          CraftType: '1',
+          AmountResult: '1',
+          Ingredients: [
+            { ItemID: '990101', Name: '試験用レベル10素材', Amount: '1' },
+            { ItemID: '990104', Name: '試験用レベル34素材', Amount: '1' },
+            { ItemID: '990105', Name: '試験用レベル40素材', Amount: '1' },
+            { ItemID: '990102', Name: '試験用第十巻素材', Amount: '1' },
+            { ItemID: '990103', Name: '試験用第二巻素材', Amount: '1' }
+          ]
+        },
+        CraftInfo: [{ job: '鍛冶師', level: 100 }]
+      }
+    );
+    await route.fulfill({ response, contentType: 'application/json', body: JSON.stringify(items) });
+  });
+  await openApp(page);
+  await searchFor(page, '試験用並び順完成品');
+  await page.getByText('試験用並び順完成品', { exact: true }).click();
+  await page.locator('#materialsViewBtn').click();
+  await expect(page.locator('.intermediate-tree-row .material-name')).toHaveText([
+    '試験用レベル10素材',
+    '試験用レベル34素材',
+    '試験用レベル40素材',
+    '試験用第二巻素材',
+    '試験用第十巻素材'
+  ]);
 });

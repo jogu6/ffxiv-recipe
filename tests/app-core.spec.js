@@ -15,7 +15,7 @@ test('loading overlay blocks interaction while it is displayed', async ({ page }
   await expect(page.locator('#loadingOverlay')).toHaveCSS('pointer-events', 'auto');
   await expect(page.locator('header #loadStatus')).toHaveText('patch 7.5 対応');
   await page.locator('#settingsBtn').click();
-  await expect(page.locator('#settingsDialog #appVersion')).toHaveText('v2.96');
+  await expect(page.locator('#settingsDialog #appVersion')).toHaveText('v2.97');
 });
 
 test('shows the transfer and listing restriction badge only for confirmed EX items', async ({ page }) => {
@@ -183,23 +183,37 @@ test('offers the same recipe selector for an intermediate item in the tree and m
   await expect(materialIntermediate.locator('.material-primary > .craft-job-label')).toHaveCount(0);
   await expect(materialIntermediate.getByText('製作方法', { exact: true })).toHaveCount(0);
   const materialMethodLayout = await materialIntermediate.evaluate(node => {
-    const item = node.querySelector(':scope > .intermediate-tree-row').getBoundingClientRect();
+    const item = node.getBoundingClientRect();
+    const icon = node.querySelector('.checkable-item-icon, .intermediate-tree-row > .list-icon').getBoundingClientRect();
+    const actions = node.querySelector('.intermediate-tree-row > .item-action-buttons').getBoundingClientRect();
     const method = node.querySelector(':scope > .recipe-method-control').getBoundingClientRect();
     const itemBorder = getComputedStyle(node.querySelector(':scope > .intermediate-tree-row')).borderBottomWidth;
     const nodeBorder = getComputedStyle(node).borderBottomWidth;
     return {
-      belowItem: method.top >= item.bottom - 1,
       indented: method.left > item.left,
+      iconCenter: icon.top + icon.height / 2 - (item.top + item.height / 2),
+      actionCenter: actions.top + actions.height / 2 - (item.top + item.height / 2),
+      selectorActionGap: actions.left - method.right,
+      trailingSpace: item.right - actions.right,
       itemBorder,
       nodeBorder
     };
   });
-  expect(materialMethodLayout).toEqual({
-    belowItem: true,
-    indented: true,
-    itemBorder: '0px',
-    nodeBorder: '1px'
-  });
+  expect(materialMethodLayout.indented).toBe(true);
+  expect(Math.abs(materialMethodLayout.iconCenter)).toBeLessThan(1);
+  expect(Math.abs(materialMethodLayout.actionCenter)).toBeLessThan(1);
+  expect(materialMethodLayout.selectorActionGap).toBeGreaterThanOrEqual(0);
+  expect(materialMethodLayout.trailingSpace).toBeGreaterThan(20);
+  expect(materialMethodLayout.itemBorder).toBe('0px');
+  expect(materialMethodLayout.nodeBorder).toBe('1px');
+
+  const intermediateHeader = page.locator('.materials-section-header').filter({ hasText: '製作する中間素材' });
+  await intermediateHeader.click();
+  await expect(materialIntermediate).toHaveClass(/collapsed/);
+  await expect(materialIntermediate.locator('.checkable-item-icon')).toBeHidden();
+  await expect.poll(() => materialIntermediate.evaluate(node => node.getBoundingClientRect().height)).toBe(0);
+  await intermediateHeader.click();
+  await expect(materialIntermediate).not.toHaveClass(/collapsed/);
 
   const rootAndListWidths = await page.evaluate(() => {
     const root = document.querySelector('.result-root-summary').getBoundingClientRect();
@@ -239,6 +253,21 @@ test('offers the same recipe selector for an intermediate item in the tree and m
   expect(mobileMethodLayout.pushesNextRow).toBe(false);
   expect(mobileMethodLayout.nameAlignment).toBeLessThanOrEqual(3);
   expect(mobileMethodLayout.actionGap).toBeGreaterThanOrEqual(0);
+  await page.setViewportSize({ width: 320, height: 780 });
+  const narrowLayout = await mobileMaterialIntermediate.evaluate(node => {
+    const nodeBox = node.getBoundingClientRect();
+    const icon = node.querySelector('.checkable-item-icon, .intermediate-tree-row > .list-icon').getBoundingClientRect();
+    const actions = node.querySelector('.intermediate-tree-row > .item-action-buttons').getBoundingClientRect();
+    const selector = node.querySelector(':scope > .recipe-method-control').getBoundingClientRect();
+    return {
+      iconCenter: icon.top + icon.height / 2 - (nodeBox.top + nodeBox.height / 2),
+      actionCenter: actions.top + actions.height / 2 - (nodeBox.top + nodeBox.height / 2),
+      selectorActionGap: actions.left - selector.right
+    };
+  });
+  expect(Math.abs(narrowLayout.iconCenter)).toBeLessThan(1);
+  expect(Math.abs(narrowLayout.actionCenter)).toBeLessThan(1);
+  expect(narrowLayout.selectorActionGap).toBeGreaterThanOrEqual(0);
 });
 
 test('opens the license notice from settings', async ({ page }) => {

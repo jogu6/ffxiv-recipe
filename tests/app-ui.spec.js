@@ -87,6 +87,54 @@ test('hides the popup button when launched as a desktop PWA', async ({ page }) =
   await expect(page.locator('#popupBtn')).toBeHidden();
 });
 
+test('mobile header combines and hides left controls while preserving right-panel navigation', async ({ page }) => {
+  await openApp(page, 320, 700);
+  await expect(page.locator('#settingsBtn')).toHaveText('⚙');
+  await expect(page.locator('#settingsBtn')).toHaveAttribute('aria-label', '共有・データ管理などを開く');
+  const leftHeaderLayout = await page.evaluate(() => {
+    const title = document.querySelector('.header-primary-row').getBoundingClientRect();
+    const settings = document.querySelector('#settingsBtn').getBoundingClientRect();
+    return {
+      sameRow: Math.abs(title.top + title.height / 2 - (settings.top + settings.height / 2)),
+      overlap: title.right - settings.left
+    };
+  });
+  expect(leftHeaderLayout.sameRow).toBeLessThan(1);
+  expect(leftHeaderLayout.overlap).toBeLessThanOrEqual(0);
+  await searchFor(page, 'ア');
+  await page.locator('#recipeList').evaluate(list => {
+    list.scrollTop = 12;
+    list.dispatchEvent(new Event('scroll'));
+  });
+  await expect(page.locator('header')).toHaveClass(/mobile-title-hidden/);
+  await expect(page.locator('#settingsBtn')).toBeHidden();
+  await expect(page.locator('#settingsBtn')).toHaveJSProperty('inert', true);
+
+  await page.locator('#recipeList').evaluate(list => {
+    list.scrollTop = 1;
+    list.dispatchEvent(new Event('scroll'));
+  });
+  await expect(page.locator('header')).toHaveClass(/mobile-title-hidden/);
+
+  await page.locator('#recipeList').evaluate(list => {
+    list.scrollTop = 0;
+    list.dispatchEvent(new Event('scroll'));
+  });
+  await expect(page.locator('header')).not.toHaveClass(/mobile-title-hidden/);
+  await expect(page.locator('#settingsBtn')).toBeVisible();
+
+  await searchFor(page, 'バスタードソード');
+  await page.getByText('バスタードソード', { exact: true }).first().click();
+  await page.locator('#panelRight').evaluate(panel => {
+    panel.scrollTop = 12;
+    panel.dispatchEvent(new Event('scroll'));
+  });
+  await expect(page.locator('header')).toHaveClass(/mobile-title-hidden/);
+  await expect(page.locator('#mobileBackBtn')).toBeVisible();
+  await expect(page.locator('#settingsBtn')).toBeVisible();
+  await expect(page.locator('header')).toHaveCSS('padding-top', '3px');
+});
+
 test('crossing the responsive breakpoint resets to startup view', async ({ page }) => {
   await openApp(page, 601, 700);
   await searchFor(page, 'バスタードソード');

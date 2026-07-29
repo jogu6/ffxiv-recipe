@@ -194,7 +194,7 @@ test('purchased intermediate keeps rows visible and marks its unused materials',
   await expect(restoredPurchasedNode.locator('.shop-info-btn')).toHaveText('🛒');
 });
 
-test('bulk purchase controls are collapsible and synchronize disabled state', async ({ page }) => {
+test('intermediate and necessary-material bulk purchases stay independent and collapsible', async ({ page }) => {
   await openApp(page);
   await searchFor(page, 'ブラスバスタードソード');
   await page.getByText('ブラスバスタードソード', { exact: true }).first().click();
@@ -203,12 +203,17 @@ test('bulk purchase controls are collapsible and synchronize disabled state', as
   await expect(header.locator('xpath=following-sibling::*[1]')).toHaveClass(/materials-bulk-actions/);
   await expect(page.getByRole('button', { name: '購入取消' })).toHaveCount(2);
   await expect(page.getByRole('button', { name: '購入取消' }).first()).toBeDisabled();
-  await page.getByRole('button', { name: '全中間素材購入' }).click();
-  await expect(page.getByRole('button', { name: '全中間素材購入' })).toBeDisabled();
-  await expect(page.getByRole('button', { name: '全素材購入' })).toBeDisabled();
-  await expect(page.getByRole('button', { name: '購入取消' }).first()).toBeEnabled();
-  await page.getByRole('button', { name: '購入取消' }).last().click();
-  await expect(page.getByRole('button', { name: '購入取消' }).first()).toBeDisabled();
+  const intermediateBulk = header.locator('xpath=following-sibling::*[1]');
+  const materialHeader = page.locator('.materials-section-header').filter({ hasText: '必要素材' });
+  const materialBulk = materialHeader.locator('xpath=following-sibling::*[1]');
+  await materialBulk.getByRole('button', { name: '全て購入' }).click();
+  await expect(materialBulk.getByRole('button', { name: '全て購入' })).toBeDisabled();
+  await expect(intermediateBulk.getByRole('button', { name: '全て購入' })).toBeEnabled();
+  await expect(materialBulk.getByRole('button', { name: '購入取消' })).toBeEnabled();
+  await intermediateBulk.getByRole('button', { name: '全て購入' }).click();
+  await expect(intermediateBulk.getByRole('button', { name: '全て購入' })).toBeDisabled();
+  await expect(materialHeader.locator('xpath=following-sibling::*[1]')).not.toHaveClass(/materials-bulk-actions/);
+  await intermediateBulk.getByRole('button', { name: '購入取消' }).click();
   await header.click();
   const collapsedBulkActions = header.locator('xpath=following-sibling::*[1]');
   const nextHeader = page.locator('.materials-section-header').filter({ hasText: '必要素材' });
@@ -226,7 +231,7 @@ test('bulk purchase controls are collapsible and synchronize disabled state', as
     .toBeLessThanOrEqual(1);
 });
 
-test('search result selection preserves applicable purchase flags', async ({ page }) => {
+test('selecting another search result clears purchase flags', async ({ page }) => {
   await openApp(page);
   await searchFor(page, 'ブラスバスタードソード');
   await page.getByText('ブラスバスタードソード', { exact: true }).first().click();
@@ -242,7 +247,36 @@ test('search result selection preserves applicable purchase flags', async ({ pag
   await searchFor(page, 'バスタードソード');
   await page.locator('#recipeList').getByText('バスタードソード', { exact: true }).click();
   await page.locator('#materialsViewBtn').click();
-  await expect(maple()).toHaveClass(/purchase-selected/);
+  await expect(maple()).not.toHaveClass(/purchase-selected/);
+});
+
+test('necessary-material purchases are visual-only, persist for the same target, and clear for another target', async ({
+  page
+}) => {
+  await openApp(page);
+  await searchFor(page, 'ブラスバスタードソード');
+  await page.getByText('ブラスバスタードソード', { exact: true }).first().click();
+  await page.locator('#materialsViewBtn').click();
+  const copper = () =>
+    page
+      .locator('.materials-list > li')
+      .filter({ has: page.getByText('銅鉱', { exact: true }) })
+      .first();
+  const quantityBefore = await copper().locator('.material-qty').textContent();
+  await copper().locator('.shop-info-btn').click();
+  await page.getByLabel('この素材は購入💰して用意する').check();
+  await page.locator('#shopCloseBtn').click();
+  await expect(copper()).toHaveClass(/purchase-selected/);
+  await expect(copper().locator('.material-qty')).toHaveText(quantityBefore);
+
+  await page.reload();
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await expect(copper()).toHaveClass(/purchase-selected/);
+
+  await searchFor(page, 'バスタードソード');
+  await page.locator('#recipeList').getByText('バスタードソード', { exact: true }).click();
+  await page.locator('#materialsViewBtn').click();
+  await expect(page.locator('.materials-list > li.purchase-selected')).toHaveCount(0);
 });
 
 test('purchased intermediate status is visible on mobile', async ({ page }) => {

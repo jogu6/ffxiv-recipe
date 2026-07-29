@@ -198,7 +198,9 @@ let selectedUsesItem = null;
 let equipmentSearchOpen = false;
 let equipmentSearchResults = [];
 let equipmentSearchIndex = new Map();
+let equipmentSearchResultSignature = '';
 let equipmentParameterDisplayNames = new Set();
+let equipmentDuplicateSlots = new Set();
 let floatingDialogScrollState = null;
 let maxEquipmentLevel = 1;
 let favoriteMaterialsRingCounts = {};
@@ -216,15 +218,22 @@ let favoriteMaterialsListIds = [];
 const autoSelectedRecipeNoticeKeys = new Set();
 let favoriteMaterialCalcMode = 'sum';
 let checkedFavoriteMaterialCalcMode = 'sum';
-let favoriteAnyItemProductionExpanded = true;
-let favoriteAnyListProductionExpanded = true;
+let favoriteMaterialReturnListId = null;
+let favoriteAnyItemProductionExpanded = false;
+let favoriteAnyListProductionExpanded = false;
 let favoriteListProductionExpanded = {};
+let favoriteProductionContext = '';
 const expandedFavoriteCountRows = new Set();
 let gatheringTimerIntervalId = null;
 let canSaveViewState = false;
 let suppressViewStateSave = false;
 let purchasedIntermediateContext = '';
 let purchasedIntermediateNames = new Set();
+let purchasedMaterialContext = '';
+let purchasedMaterialNames = new Set();
+let imageCheckContext = '';
+let checkedImageKeys = new Set();
+let imageCheckRenderCounts = new Map();
 let searchInputTimerId = 0;
 let searchCompositionActive = false;
 let scrollStateSaveFrame = 0;
@@ -554,7 +563,11 @@ function saveViewState() {
     materials: {
       sections: Object.fromEntries(materialSectionState),
       purchasedContext: purchasedIntermediateContext,
-      purchasedNames: [...purchasedIntermediateNames]
+      purchasedNames: [...purchasedIntermediateNames],
+      purchasedMaterialContext,
+      purchasedMaterialNames: [...purchasedMaterialNames],
+      imageCheckContext,
+      checkedImageKeys: [...checkedImageKeys]
     },
     equipmentSearch: {
       open: equipmentSearchOpen,
@@ -610,6 +623,10 @@ function clearViewState() {
   };
   purchasedIntermediateContext = '';
   purchasedIntermediateNames.clear();
+  purchasedMaterialContext = '';
+  purchasedMaterialNames.clear();
+  imageCheckContext = '';
+  checkedImageKeys.clear();
   favoriteListProductionExpanded = {};
 }
 
@@ -688,8 +705,8 @@ function restoreViewState() {
     favoriteMaterialCalcMode =
       restoreFavoriteMaterials && favoriteMaterialsListIds.length === 0 ? restoredFavoriteMaterialCalcMode : 'sum';
     checkedFavoriteMaterialCalcMode = state.favoriteMaterials?.checkedCalcMode === 'any-one' ? 'any-one' : 'sum';
-    favoriteAnyItemProductionExpanded = state.favoriteMaterials?.anyItemProductionExpanded !== false;
-    favoriteAnyListProductionExpanded = state.favoriteMaterials?.anyListProductionExpanded !== false;
+    favoriteAnyItemProductionExpanded = state.favoriteMaterials?.anyItemProductionExpanded === true;
+    favoriteAnyListProductionExpanded = state.favoriteMaterials?.anyListProductionExpanded === true;
     favoriteListProductionExpanded = Object.fromEntries(
       Object.entries(state.favoriteMaterials?.listProductionExpanded || {}).filter(
         ([listId, expanded]) => findFavoriteList(listId) && typeof expanded === 'boolean'
@@ -708,6 +725,19 @@ function restoreViewState() {
     purchasedIntermediateNames = new Set(
       Array.isArray(state.materials?.purchasedNames)
         ? state.materials.purchasedNames.filter(name => typeof name === 'string')
+        : []
+    );
+    purchasedMaterialContext =
+      typeof state.materials?.purchasedMaterialContext === 'string' ? state.materials.purchasedMaterialContext : '';
+    purchasedMaterialNames = new Set(
+      Array.isArray(state.materials?.purchasedMaterialNames)
+        ? state.materials.purchasedMaterialNames.filter(name => typeof name === 'string')
+        : []
+    );
+    imageCheckContext = typeof state.materials?.imageCheckContext === 'string' ? state.materials.imageCheckContext : '';
+    checkedImageKeys = new Set(
+      Array.isArray(state.materials?.checkedImageKeys)
+        ? state.materials.checkedImageKeys.filter(key => typeof key === 'string')
         : []
     );
     if (resultSourceMode === 'favorite-materials') {
@@ -875,6 +905,11 @@ function uniqueFavoriteListName(name, excludeId = null) {
   return withDuplicateSuffix(baseName, Date.now() % 1000);
 }
 
+function uniqueFavoriteCopyName(name) {
+  const familyName = normalizeFavoriteListName(name).replace(/（\d+）$/u, '');
+  return uniqueFavoriteListName(familyName);
+}
+
 function isRecentList(listOrId) {
   return (typeof listOrId === 'string' ? listOrId : listOrId?.id) === RECENT_LIST_ID;
 }
@@ -969,7 +1004,7 @@ function clearMaterialSelectedFavoriteLists() {
   favoriteMaterialsListIds = [];
   favoriteMaterialsRingCounts = {};
   checkedFavoriteMaterialCalcMode = 'sum';
-  favoriteAnyListProductionExpanded = true;
+  favoriteAnyListProductionExpanded = false;
   saveFavorites();
   renderFavoriteLists();
   updateCheckedFavoriteMaterialsButton();
@@ -1608,7 +1643,17 @@ function updateEquipmentSearchButtons() {
     customSelectValue(elements.equipmentSlotSelect)
   );
   elements.equipmentSearchBtn.disabled = !ready;
-  elements.saveEquipmentSearchBtn.disabled = equipmentSearchResults.length === 0;
+  elements.saveEquipmentSearchBtn.disabled =
+    equipmentSearchResults.length === 0 || equipmentSearchResultSignature !== equipmentSearchConditionSignature();
+}
+
+function equipmentSearchConditionSignature() {
+  return [
+    customSelectValue(elements.equipmentJobSelect),
+    equipmentLevelInputValue(),
+    selectedEquipmentItemLevel(),
+    customSelectValue(elements.equipmentSlotSelect)
+  ].join('\u001f');
 }
 
 function setEquipmentSearchOpen(open) {
@@ -1631,6 +1676,7 @@ function setEquipmentSearchOpen(open) {
 }
 
 function resetEquipmentSearch() {
+  equipmentSearchResultSignature = '';
   elements.searchBox.value = '';
   elements.searchClearBtn.classList.remove('visible');
   setCustomSelectValue(elements.equipmentJobSelect, '');
@@ -1724,6 +1770,7 @@ function runEquipmentSearch() {
   });
 
   equipmentSearchResults = sortEquipmentNames([...new Set(results)]);
+  equipmentSearchResultSignature = equipmentSearchConditionSignature();
   listMode = 'equipment';
   favoriteStore.selectedListId = null;
   selectedRecipe = null;
@@ -1744,7 +1791,12 @@ function defaultEquipmentFavoriteListName() {
 }
 
 function saveEquipmentSearchAsFavorite() {
-  if (equipmentSearchResults.length === 0) return;
+  if (
+    equipmentSearchResults.length === 0 ||
+    equipmentSearchResultSignature !== equipmentSearchConditionSignature()
+  ) {
+    return;
+  }
   const itemIds = equipmentSearchResults.map(itemIdForName).filter(Boolean);
   showTextInput('お気に入りリスト名', defaultEquipmentFavoriteListName(), value => {
     const list = createFavoriteList(value, itemIds, {}, { captureSelections: true });
@@ -2118,6 +2170,10 @@ function selectFavoriteList(listId) {
   resolveAndReportRecipeSelections([selectedList].filter(Boolean));
   applyRecipeSelectionContext(selectedList?.recipeSelections || {});
   if (changedList) resetCountInput();
+  if (changedList) {
+    favoriteAnyItemProductionExpanded = false;
+    favoriteProductionContext = '';
+  }
   saveFavorites();
   listMode = 'fav';
   updateFavoriteButtonState();
@@ -2288,7 +2344,6 @@ function createFavoriteMaterialsRow() {
     favoriteItemReorderEnabled = false;
     countState.enabled = enable;
     favoriteMaterialCalcMode = enable ? 'counts' : 'sum';
-    if (enable) favoriteAnyItemProductionExpanded = true;
     expandedFavoriteCountRows.clear();
     if (countState.enabled) {
       list.itemIds.forEach(itemId => expandedFavoriteCountRows.add(itemId));
@@ -2309,7 +2364,6 @@ function createFavoriteMaterialsRow() {
     favoriteItemReorderEnabled = false;
     countState.enabled = enable;
     favoriteMaterialCalcMode = enable ? 'any-one' : 'sum';
-    if (enable) favoriteAnyItemProductionExpanded = true;
     expandedFavoriteCountRows.clear();
     if (enable) {
       list.itemIds.forEach(itemId => expandedFavoriteCountRows.add(itemId));
@@ -2423,8 +2477,8 @@ function addNewFavoriteList() {
 function saveSelectedFavoriteListAs() {
   const source = getDisplayedFavoriteList();
   if (!source) return;
-  showTextInput('新規リストとして保存', source.name, value => {
-    const list = createFavoriteList(value, source.itemIds, source.recipeSelections);
+  showTextInput('新規リストとして保存', uniqueFavoriteCopyName(source.name), value => {
+    const list = createFavoriteList(uniqueFavoriteCopyName(value), source.itemIds, source.recipeSelections);
     selectFavoriteList(list.id);
   });
 }
@@ -2432,11 +2486,20 @@ function saveSelectedFavoriteListAs() {
 function renderFavoriteLists() {
   const frag = document.createDocumentFragment();
   let normalIndex = 0;
+  const materialSelectionActive = hasMaterialSelectedFavoriteLists();
+  if (materialSelectionActive && isRecentList(favoriteStore.selectedListId)) {
+    favoriteStore.selectedListId =
+      getMaterialSelectedFavoriteLists()[0]?.id ||
+      favoriteStore.lists.find(list => !isRecentList(list))?.id ||
+      null;
+    listMode = 'fav';
+  }
 
-  if (favoriteStore.lists.length === 0) {
+  if (favoriteStore.lists.filter(list => !materialSelectionActive || !isRecentList(list)).length === 0) {
     frag.appendChild(createEmptyListItem('お気に入りリストがありません'));
   } else {
     favoriteStore.lists.forEach(list => {
+      if (materialSelectionActive && isRecentList(list)) return;
       const li = document.createElement('li');
       const recent = isRecentList(list);
       li.classList.toggle('recent-favorite-list', recent);
@@ -2496,7 +2559,24 @@ function renderFavoriteLists() {
       });
       materialSelect.addEventListener('change', event => {
         event.stopPropagation();
+        const hadSelections = hasMaterialSelectedFavoriteLists();
+        if (materialSelect.checked && !hadSelections) {
+          const displayed = getDisplayedFavoriteList();
+          favoriteMaterialReturnListId = displayed && !isRecentList(displayed) ? displayed.id : list.id;
+          favoriteStore.selectedListId = favoriteMaterialReturnListId;
+          listMode = 'fav';
+        }
         list.materialSelected = materialSelect.checked;
+        const hasSelections = hasMaterialSelectedFavoriteLists();
+        if (!hasSelections) {
+          const target =
+            findFavoriteList(favoriteMaterialReturnListId) ||
+            favoriteStore.lists.find(candidate => !isRecentList(candidate)) ||
+            null;
+          favoriteStore.selectedListId = target?.id || null;
+          listMode = 'fav';
+          favoriteMaterialReturnListId = null;
+        }
         saveFavorites();
         renderFavoriteLists();
         updateCheckedFavoriteMaterialsButton();
@@ -2669,6 +2749,60 @@ function createItemIcon(iconPath, className = 'list-icon') {
   return image;
 }
 
+function imageCheckTargetContext() {
+  if (resultSourceMode === 'favorite-materials') {
+    const lists =
+      favoriteMaterialsListIds.length > 0
+        ? favoriteMaterialsListIds.map(findFavoriteList).filter(Boolean)
+        : [getDisplayedFavoriteList()].filter(Boolean);
+    return `favorite:${lists
+      .map(list => `${list.id}:${JSON.stringify(normalizeStoredRecipeSelections(list.recipeSelections))}`)
+      .join('|')}`;
+  }
+  return selectedRecipe ? `recipe:${selectedRecipe}:${selectedRecipeId || ''}` : '';
+}
+
+function prepareImageCheckRender() {
+  const context = imageCheckTargetContext();
+  if (imageCheckContext !== context) {
+    imageCheckContext = context;
+    checkedImageKeys.clear();
+  }
+  imageCheckRenderCounts = new Map();
+}
+
+function isImageCheckEligible(name) {
+  return Boolean(name && itemMaster[name]?.icon);
+}
+
+function createCheckableItemIcon(name, className = 'list-icon') {
+  if (!isImageCheckEligible(name)) return createItemIcon(itemMaster[name]?.icon, className);
+  const occurrence = imageCheckRenderCounts.get(name) || 0;
+  imageCheckRenderCounts.set(name, occurrence + 1);
+  const key = `${resultViewMode}:${name}:${occurrence}`;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `checkable-item-icon ${className === 'node-icon' ? 'checkable-node-icon' : ''}`;
+  button.setAttribute('aria-label', `${name}にメモ用チェックを付ける`);
+  button.setAttribute('aria-pressed', String(checkedImageKeys.has(key)));
+  const image = createItemIcon(itemMaster[name]?.icon, className);
+  const mark = createTextElement('span', 'item-image-check', '✔︎');
+  mark.setAttribute('aria-hidden', 'true');
+  button.classList.toggle('checked', checkedImageKeys.has(key));
+  image?.addEventListener('error', () => button.classList.add('hidden'));
+  button.append(image, mark);
+  button.addEventListener('click', event => {
+    event.stopPropagation();
+    const checked = !checkedImageKeys.has(key);
+    if (checked) checkedImageKeys.add(key);
+    else checkedImageKeys.delete(key);
+    button.classList.toggle('checked', checked);
+    button.setAttribute('aria-pressed', String(checked));
+    saveViewState();
+  });
+  return button;
+}
+
 function createJobIcon(jobName) {
   const icon = createItemIcon(JOB_ICON_PATHS[jobName], 'job-icon');
   if (icon) icon.setAttribute('aria-hidden', 'true');
@@ -2764,7 +2898,8 @@ function createItemDisplayLabel(
     recipeVariant = null,
     provisional = false,
     hideCraftRequirement = false,
-    hideEquipmentParameters = false
+    hideEquipmentParameters = false,
+    showEquipmentDuplicateWarning = false
   } = {}
 ) {
   const master = recipeVariant ? recipeVariantMaster(name, recipeVariant) : itemMaster[name] || {};
@@ -2813,6 +2948,9 @@ function createItemDisplayLabel(
   const nameElement = createTextElement('span', favorite ? 'favorite-item-name list-name' : 'list-name', name);
   if (badges.childElementCount > 0) wrapper.appendChild(badges);
   wrapper.appendChild(nameElement);
+  if (showEquipmentDuplicateWarning && equipmentDuplicateSlots.has(equipmentSlotForItem(master))) {
+    wrapper.appendChild(createTextElement('span', 'equipment-duplicate-warning', '部位が重複しています'));
+  }
   if (
     !hideEquipmentParameters &&
     (listMode === 'equipment' || listMode === 'fav') &&
@@ -2846,7 +2984,8 @@ function createItemListRow(name, className = '', { recipeVariant = null, provisi
     createItemDisplayLabel(name, {
       favorite: className.split(/\s+/).includes('fav-item-row'),
       recipeVariant,
-      provisional
+      provisional,
+      showEquipmentDuplicateWarning: listMode === 'equipment'
     })
   );
   return row;
@@ -2928,6 +3067,17 @@ function renderList({ preserveScroll = false } = {}) {
   const scrollTop = elements.recipeList.scrollTop;
   const frag = document.createDocumentFragment();
   const names = getDisplayList();
+  equipmentDuplicateSlots = new Set();
+  if (listMode === 'equipment') {
+    const slotCounts = new Map();
+    names.forEach(name => {
+      const slot = equipmentSlotForItem(itemMaster[name]);
+      if (slot) slotCounts.set(slot, (slotCounts.get(slot) || 0) + 1);
+    });
+    slotCounts.forEach((count, slot) => {
+      if (count > 1) equipmentDuplicateSlots.add(slot);
+    });
+  }
   updateListEquipmentParameterNames(names);
   const showMobileTips = listMode === 'none' && isMobile();
 
@@ -3138,6 +3288,7 @@ function makeIngredientLi(name) {
 
 function makeEquipmentLi(name) {
   const li = recipes[name] ? makeRecipeLi(name) : makeIngredientLi(name);
+  li.classList.toggle('equipment-duplicate-row', equipmentDuplicateSlots.has(equipmentSlotForItem(itemMaster[name])));
   return li;
 }
 
@@ -3234,7 +3385,6 @@ function returnToList() {
 }
 
 function selectRecipe(name, li, recipeId = '') {
-  const preservePurchasedIntermediates = listMode === 'search';
   const variant = activateRecipeVariant(name, recipeId);
   const nextRecipeId = variant?.recipeId || '';
   recordViewedItem(name);
@@ -3251,7 +3401,6 @@ function selectRecipe(name, li, recipeId = '') {
   selectedRecipeId = nextRecipeId;
   closeUsesPanel();
   leaveFavoriteMaterialsMode();
-  if (preservePurchasedIntermediates) purchasedIntermediateContext = currentMaterialPurchaseContext();
   resetRightPanelViewState();
   setResultViewMode('tree');
   markRecipeListSelection(li);
@@ -3280,7 +3429,10 @@ function selectRecipeByName(name, recipeId = '') {
   selectedRecipeId = nextRecipeId;
   closeUsesPanel();
   leaveFavoriteMaterialsMode();
+  purchasedIntermediateNames.clear();
   purchasedIntermediateContext = currentMaterialPurchaseContext();
+  purchasedMaterialNames.clear();
+  purchasedMaterialContext = currentMaterialPurchaseContext();
   resetRightPanelViewState();
   setResultViewMode('tree');
   renderList();
@@ -3595,7 +3747,44 @@ function showMobilePanel(panelName) {
   visibleScrollKeys.forEach(key => {
     scrollPositionContainers()[key].scrollTop = viewScrollPositions[key];
   });
+  updateMobileHeaderVisibility();
   saveViewState();
+}
+
+function activeMobileScrollTop() {
+  switch (elements.mobileBackBtn.dataset.panel || 'left') {
+    case 'middle':
+      return elements.usesList.scrollTop;
+    case 'right':
+      return Math.max(elements.panelRight.scrollTop, elements.treeContainer.scrollTop);
+    default:
+      return elements.recipeList.scrollTop;
+  }
+}
+
+function updateMobileHeaderVisibility() {
+  const header = document.querySelector('header');
+  if (!isMobile()) {
+    header?.classList.remove('mobile-title-hidden', 'mobile-left-panel');
+    document.querySelector('.header-primary-row')?.removeAttribute('aria-hidden');
+    if (document.querySelector('.header-primary-row')) document.querySelector('.header-primary-row').inert = false;
+    elements.settingsBtn.removeAttribute('aria-hidden');
+    elements.settingsBtn.inert = false;
+    return;
+  }
+  const leftPanel = currentMobilePanel() === 'left';
+  header?.classList.toggle('mobile-left-panel', leftPanel);
+  const scrollTop = activeMobileScrollTop();
+  if (scrollTop === 0) header?.classList.remove('mobile-title-hidden');
+  else if (scrollTop >= 8) header?.classList.add('mobile-title-hidden');
+  const titleHidden = header?.classList.contains('mobile-title-hidden') || false;
+  const primaryRow = document.querySelector('.header-primary-row');
+  primaryRow?.setAttribute('aria-hidden', String(titleHidden));
+  if (primaryRow) primaryRow.inert = titleHidden;
+  const settingsHidden = leftPanel && titleHidden;
+  if (settingsHidden) elements.settingsBtn.setAttribute('aria-hidden', 'true');
+  else elements.settingsBtn.removeAttribute('aria-hidden');
+  elements.settingsBtn.inert = settingsHidden;
 }
 
 function clearMobilePanels() {
@@ -3719,13 +3908,21 @@ function requestFavoriteMaterialsMode() {
 function openCheckedFavoriteMaterialsMode() {
   const selectedLists = getMaterialSelectedFavoriteLists();
   if (selectedLists.length === 0) return;
-  favoriteAnyListProductionExpanded = true;
   openFavoriteMaterialsMode({ listIds: selectedLists.map(list => list.id) });
 }
 
 function openFavoriteMaterialsMode({ listIds = [] } = {}) {
   const checkedIds = listIds.filter(id => findFavoriteList(id) && !isRecentList(id));
   if (checkedIds.length < 1 && !getDisplayedFavoriteList()) return;
+  const nextProductionContext =
+    checkedIds.length > 0
+      ? `lists:${[...checkedIds].sort().join('|')}`
+      : `list:${getDisplayedFavoriteList()?.id || ''}`;
+  if (favoriteProductionContext !== nextProductionContext) {
+    if (checkedIds.length > 0) favoriteAnyListProductionExpanded = false;
+    else favoriteAnyItemProductionExpanded = false;
+    favoriteProductionContext = nextProductionContext;
+  }
   if (resultSourceMode !== 'favorite-materials') resetCountInput();
   favoriteMaterialsListIds = checkedIds;
   selectedRecipe = null;
@@ -3806,6 +4003,7 @@ function renderResultView({ preserveScroll = false } = {}) {
     elements.treeContainer.scrollTop = 0;
     elements.panelRight.scrollTop = 0;
   }
+  prepareImageCheckRender();
   clearRenderedTree();
   updateResultHeader();
 
@@ -3933,6 +4131,33 @@ function compareMaterialRows(a, b) {
   return compareItemNames(a.name, b.name);
 }
 
+function intermediateRecipeSortKey(name, recipeMap = recipes) {
+  const recipe = recipeMap[name];
+  const master = recipeVariantMaster(name, recipe);
+  const masterbook = String(master.masterbook || '');
+  const volumeMatch = masterbook.match(/第(\d+)巻/u);
+  return {
+    level: toNumeric(master.craftLevel),
+    masterbookKind: masterbook ? (volumeMatch ? 1 : 2) : 0,
+    masterbookVolume: volumeMatch ? toNumeric(volumeMatch[1]) : 0,
+    masterbook
+  };
+}
+
+function compareIntermediateRecipeOrder(a, b, recipeMap = recipes) {
+  const left = intermediateRecipeSortKey(a.name, recipeMap);
+  const right = intermediateRecipeSortKey(b.name, recipeMap);
+  const recipeKindDiff = left.masterbookKind - right.masterbookKind;
+  const normalRecipeLevelDiff =
+    left.masterbookKind === 0 && right.masterbookKind === 0 ? left.level - right.level : 0;
+  return (
+    recipeKindDiff ||
+    normalRecipeLevelDiff ||
+    left.masterbookVolume - right.masterbookVolume ||
+    left.masterbook.localeCompare(right.masterbook, 'ja')
+  );
+}
+
 function compareIntermediateRows(a, b, recipeMap = recipes) {
   const leftRecipe = recipeMap[a.name];
   const rightRecipe = recipeMap[b.name];
@@ -3941,6 +4166,7 @@ function compareIntermediateRows(a, b, recipeMap = recipes) {
 
   return (
     toNumeric(leftRecipe?.craftType) - toNumeric(rightRecipe?.craftType) ||
+    compareIntermediateRecipeOrder(a, b, recipeMap) ||
     left.uiCategory - right.uiCategory ||
     left.id - right.id ||
     a.name.localeCompare(b.name, 'ja')
@@ -3966,6 +4192,8 @@ function compareAvailableIntermediateRows(
   if (leftSameCraftType !== rightSameCraftType) return leftSameCraftType - rightSameCraftType;
 
   if (previous && leftSameCraftType === 0) {
+    const recipeOrder = compareIntermediateRecipeOrder(a, b, recipeMap);
+    if (recipeOrder !== 0) return recipeOrder;
     const previousCategory = itemSortKey(previous.name).uiCategory;
     const leftSameCategory = itemSortKey(a.name).uiCategory === previousCategory ? 0 : 1;
     const rightSameCategory = itemSortKey(b.name).uiCategory === previousCategory ? 0 : 1;
@@ -4261,7 +4489,7 @@ function renderFavoriteRingControls(container, list = null) {
     const row = document.createElement('div');
     row.className = 'favorite-ring-row';
 
-    const icon = createItemIcon(itemMaster[name]?.icon);
+    const icon = createCheckableItemIcon(name);
     if (icon) row.appendChild(icon);
     row.appendChild(createTextElement('span', 'favorite-ring-name', name));
 
@@ -4276,6 +4504,7 @@ function renderFavoriteRingControls(container, list = null) {
       button.addEventListener('click', () => {
         setFavoriteMaterialRingCount(name, value, list);
         purchasedIntermediateContext = currentMaterialPurchaseContext();
+        purchasedMaterialContext = currentMaterialPurchaseContext();
         saveViewState();
         renderResultView({ preserveScroll: true });
       });
@@ -4307,6 +4536,7 @@ function renderFavoriteRingBulkControls(container, lists = []) {
     button.addEventListener('click', () => {
       targets.forEach(({ list, name }) => setFavoriteMaterialRingCount(name, value, list));
       purchasedIntermediateContext = currentMaterialPurchaseContext();
+      purchasedMaterialContext = currentMaterialPurchaseContext();
       saveViewState();
       renderResultView({ preserveScroll: true });
     });
@@ -4547,6 +4777,8 @@ function selectRecipeMethod(name, recipeId, list = null) {
   if (name === selectedRecipe) selectedRecipeId = recipeId;
   purchasedIntermediateNames.clear();
   purchasedIntermediateContext = currentMaterialPurchaseContext();
+  purchasedMaterialNames.clear();
+  purchasedMaterialContext = currentMaterialPurchaseContext();
   renderList({ preserveScroll: true });
   renderResultView({ preserveScroll: true });
 }
@@ -4974,6 +5206,10 @@ function renderMaterialsList() {
     purchasedIntermediateContext = purchaseContext;
     purchasedIntermediateNames.clear();
   }
+  if (purchasedMaterialContext !== purchaseContext) {
+    purchasedMaterialContext = purchaseContext;
+    purchasedMaterialNames.clear();
+  }
   let requirementsAfterPurchases = purchasedIntermediateNames.size
     ? getCurrentMaterialRequirements(purchasedIntermediateNames)
     : requirements;
@@ -4989,6 +5225,14 @@ function renderMaterialsList() {
   }
   const originalRows = materialRowsFromRequirements(requirements);
   const recalculatedRows = materialRowsFromRequirements(requirementsAfterPurchases);
+  const activeMaterialNames = new Set(
+    recalculatedRows.filter(row => row.type === 'item' && hasShopInfo(row.name)).map(row => row.name)
+  );
+  const removedMaterialPurchases = [...purchasedMaterialNames].filter(name => !activeMaterialNames.has(name));
+  if (removedMaterialPurchases.length > 0) {
+    removedMaterialPurchases.forEach(name => purchasedMaterialNames.delete(name));
+    saveViewState();
+  }
   const recalculatedRowsByKey = new Map(recalculatedRows.map(row => [`${row.type}:${row.name}`, row]));
   const rows = originalRows.map(row => recalculatedRowsByKey.get(`${row.type}:${row.name}`) || row);
   const originalIntermediateRows = orderedIntermediateRows(requirements);
@@ -5076,8 +5320,10 @@ function renderMaterialsList() {
     const li = document.createElement('li');
     if (row.type === 'item') {
       const noLongerNeeded = !requirementsAfterPurchases.states.has(row.name);
+      const materialPurchased = purchasedMaterialNames.has(row.name) && !noLongerNeeded;
       if (noLongerNeeded) li.classList.add('purchase-unneeded');
-      const icon = createItemIcon(itemMaster[row.name]?.icon);
+      if (materialPurchased) li.classList.add('purchase-selected');
+      const icon = createCheckableItemIcon(row.name);
       if (icon) li.appendChild(icon);
       const content = document.createElement('div');
       content.className = 'material-content';
@@ -5117,7 +5363,11 @@ function renderMaterialsList() {
       }
 
       li.appendChild(content);
-      appendItemActionButtons(li, createShopInfoButton(row.name), createGatheringTimerButton(row.name));
+      appendItemActionButtons(
+        li,
+        createShopInfoButton(row.name, { materialPurchase: !noLongerNeeded }),
+        createGatheringTimerButton(row.name)
+      );
     } else {
       li.appendChild(createMaterialChoiceContent(row));
     }
@@ -5135,8 +5385,11 @@ function renderMaterialsList() {
     if (noLongerNeeded) li.classList.add('purchase-unneeded');
     const rowElement = document.createElement('div');
     rowElement.className = 'intermediate-tree-row';
-    const icon = createItemIcon(itemMaster[row.name]?.icon);
-    if (icon) rowElement.appendChild(icon);
+    const icon = createCheckableItemIcon(row.name);
+    if (icon) {
+      li.classList.add('has-item-icon');
+      rowElement.appendChild(icon);
+    }
     const content = document.createElement('div');
     content.className = 'material-content';
     const primary = document.createElement('div');
@@ -5174,7 +5427,7 @@ function renderMaterialsList() {
           createTextElement('span', 'material-sub-label', `${entry.label} `),
           createTextElement(
             'span',
-            `material-sub-num ${entry.kind === 'surplus' ? 'material-sub-surplus' : ''}`,
+            `material-sub-num ${entry.kind === 'surplus' ? 'material-sub-surplus' : ''} ${entry.kind === 'craft' ? 'material-craft-count' : ''}`,
             formatNumber(entry.qty)
           ),
           createTextElement('span', 'material-sub-label', ` ${entry.suffix}`)
@@ -5226,8 +5479,9 @@ function renderMaterialsList() {
       event.stopPropagation();
       openMaterialTree(row.name, row.qty);
     });
+    rowElement.appendChild(content);
     appendItemActionButtons(
-      primary,
+      rowElement,
       createShopInfoButton(row.name, {
         intermediatePurchase: {
           disabled: noLongerNeeded,
@@ -5239,7 +5493,6 @@ function renderMaterialsList() {
       createGatheringTimerButton(row.name),
       treeButton
     );
-    rowElement.appendChild(content);
     li.appendChild(rowElement);
     if (selector) {
       li.classList.add('has-recipe-method');
@@ -5256,8 +5509,8 @@ function renderMaterialsList() {
     exchangeSourceRows.length > 0 && exchangeSourceRows.every(row => itemMaster[row.name]?.craftType === '9');
 
   const purchasableIntermediateNames = originalIntermediateRows.filter(row => hasShopInfo(row.name)).map(row => row.name);
-  const createBulkPurchaseRow = purchaseLabel => {
-    if (purchasableIntermediateNames.length < 2) return [];
+  const createIntermediateBulkPurchaseRow = purchaseLabel => {
+    if (purchasableIntermediateNames.length < 1) return [];
     const row = createTextElement('li', 'materials-bulk-actions bulk-action-row', '');
     const purchaseAllButton = document.createElement('button');
     purchaseAllButton.type = 'button';
@@ -5286,8 +5539,44 @@ function renderMaterialsList() {
     row.append(purchaseAllButton, cancelButton);
     return [row];
   };
-  appendSectionHeader('製作する中間素材', false, intermediateSectionRows, createBulkPurchaseRow('全中間素材購入'));
-  appendSectionHeader('必要素材', false, materialSectionRows, createBulkPurchaseRow('全素材購入'));
+  const purchasableMaterialNames = [...categorizedRows.normal, ...categorizedRows.exchange]
+    .filter(row => row.type === 'item' && activeMaterialNames.has(row.name))
+    .map(row => row.name);
+  const createMaterialBulkPurchaseRow = () => {
+    if (purchasableMaterialNames.length < 1) return [];
+    const row = createTextElement('li', 'materials-bulk-actions bulk-action-row', '');
+    const purchaseAllButton = document.createElement('button');
+    purchaseAllButton.type = 'button';
+    purchaseAllButton.textContent = '全て購入';
+    purchaseAllButton.disabled = purchasableMaterialNames.every(name => purchasedMaterialNames.has(name));
+    purchaseAllButton.addEventListener('click', event => {
+      event.stopPropagation();
+      purchasedMaterialContext = currentMaterialPurchaseContext();
+      purchasableMaterialNames.forEach(name => purchasedMaterialNames.add(name));
+      saveViewState();
+      renderResultView({ preserveScroll: true });
+    });
+    const cancelButton = document.createElement('button');
+    cancelButton.type = 'button';
+    cancelButton.textContent = '購入取消';
+    cancelButton.disabled = purchasedMaterialNames.size === 0;
+    cancelButton.addEventListener('click', event => {
+      event.stopPropagation();
+      purchasedMaterialContext = currentMaterialPurchaseContext();
+      purchasedMaterialNames.clear();
+      saveViewState();
+      renderResultView({ preserveScroll: true });
+    });
+    row.append(purchaseAllButton, cancelButton);
+    return [row];
+  };
+  appendSectionHeader(
+    '製作する中間素材',
+    false,
+    intermediateSectionRows,
+    createIntermediateBulkPurchaseRow('全て購入')
+  );
+  appendSectionHeader('必要素材', false, materialSectionRows, createMaterialBulkPurchaseRow());
   appendSectionHeader('必要なシャード/クリスタル/クラスター', true, crystalSectionRows);
 
   if (exchangeSummary.fixed.size > 0 || exchangeSummary.choices.size > 0) {
@@ -5445,7 +5734,9 @@ function createResultRootSummary(
   wrapper.className = className;
   const row = document.createElement('div');
   row.className = 'node-row';
-  const icon = createItemIcon(master.icon, 'node-icon');
+  const icon = className.includes('material-tree-root-summary')
+    ? createItemIcon(master.icon, 'node-icon')
+    : createCheckableItemIcon(name, 'node-icon');
   if (showPin) row.appendChild(createTreePin(name));
   if (icon) row.appendChild(icon);
   const main = document.createElement('span');
@@ -5585,19 +5876,23 @@ function hasShopInfo(name) {
   return (itemMaster[name]?.shopInfo?.shops || []).length > 0;
 }
 
-function createShopInfoButton(name, { allowIntermediatePurchase = false, intermediatePurchase = null } = {}) {
+function createShopInfoButton(
+  name,
+  { allowIntermediatePurchase = false, intermediatePurchase = null, materialPurchase = false } = {}
+) {
   if (!hasShopInfo(name)) return null;
   const button = document.createElement('button');
   button.className = 'shop-info-btn';
   button.type = 'button';
-  const purchaseEnabled = allowIntermediatePurchase || Boolean(intermediatePurchase);
-  const purchased = purchaseEnabled && purchasedIntermediateNames.has(name);
+  const purchaseEnabled = allowIntermediatePurchase || Boolean(intermediatePurchase) || materialPurchase;
+  const purchased =
+    purchaseEnabled && (materialPurchase ? purchasedMaterialNames.has(name) : purchasedIntermediateNames.has(name));
   button.textContent = purchased ? '💰🛒' : '🛒';
   button.title = `${name}の店情報`;
   button.setAttribute('aria-label', `${name}の店情報`);
   button.addEventListener('click', event => {
     event.stopPropagation();
-    showShopDialog(name, { allowIntermediatePurchase, intermediatePurchase });
+    showShopDialog(name, { allowIntermediatePurchase, intermediatePurchase, materialPurchase });
   });
   return button;
 }
@@ -5782,7 +6077,10 @@ function closeGatheringDialog() {
   restoreFloatingDialogScroll();
 }
 
-function showShopDialog(name, { allowIntermediatePurchase = false, intermediatePurchase = null } = {}) {
+function showShopDialog(
+  name,
+  { allowIntermediatePurchase = false, intermediatePurchase = null, materialPurchase = false } = {}
+) {
   rememberFloatingDialogScroll();
   const shopInfo = itemMaster[name]?.shopInfo;
   const shops = shopInfo?.shops || [];
@@ -5802,19 +6100,24 @@ function showShopDialog(name, { allowIntermediatePurchase = false, intermediateP
       );
       elements.shopPriceHeader.appendChild(priceBlock);
     }
-    if (allowIntermediatePurchase || intermediatePurchase) {
+    if (allowIntermediatePurchase || intermediatePurchase || materialPurchase) {
       const purchaseLabel = createTextElement('label', 'shop-purchase-option', '');
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
-      checkbox.checked = purchasedIntermediateNames.has(name);
+      checkbox.checked = materialPurchase ? purchasedMaterialNames.has(name) : purchasedIntermediateNames.has(name);
       checkbox.disabled = Boolean(intermediatePurchase?.disabled);
-      checkbox.setAttribute('aria-label', 'この中間素材は購入💰して用意する');
+      checkbox.setAttribute(
+        'aria-label',
+        materialPurchase ? 'この素材は購入💰して用意する' : 'この中間素材は購入💰して用意する'
+      );
       const qty = intermediatePurchase?.qty;
       const text = checkbox.disabled
         ? '現在は購入指定できません'
         : Number.isFinite(qty)
           ? `${formatNumber(qty)}個を購入💰して用意する`
-          : 'この中間素材は購入💰して用意する';
+          : materialPurchase
+            ? 'この素材は購入💰して用意する'
+            : 'この中間素材は購入💰して用意する';
       purchaseLabel.append(checkbox, document.createTextNode(text));
       if (intermediatePurchase?.reducedQty > 0) {
         const blockerText = intermediatePurchase.blockers?.length
@@ -5831,9 +6134,15 @@ function showShopDialog(name, { allowIntermediatePurchase = false, intermediateP
         );
       }
       checkbox.addEventListener('change', () => {
-        purchasedIntermediateContext = currentMaterialPurchaseContext();
-        if (checkbox.checked) purchasedIntermediateNames.add(name);
-        else purchasedIntermediateNames.delete(name);
+        if (materialPurchase) {
+          purchasedMaterialContext = currentMaterialPurchaseContext();
+          if (checkbox.checked) purchasedMaterialNames.add(name);
+          else purchasedMaterialNames.delete(name);
+        } else {
+          purchasedIntermediateContext = currentMaterialPurchaseContext();
+          if (checkbox.checked) purchasedIntermediateNames.add(name);
+          else purchasedIntermediateNames.delete(name);
+        }
         saveViewState();
         renderResultView({ preserveScroll: true });
       });
@@ -5916,12 +6225,12 @@ function createTreeMain(name, producedQty, subInfo, badge) {
   return main;
 }
 
-function createTreeSubRow(prefix, number, suffix) {
+function createTreeSubRow(prefix, number, suffix, className = '') {
   const row = document.createElement('span');
   row.className = 'node-sub-row';
   row.append(
     createTextElement('span', 'node-sub-label', prefix),
-    createTextElement('span', 'node-sub-num', number),
+    createTextElement('span', `node-sub-num ${className}`, number),
     createTextElement('span', 'node-sub-label', suffix)
   );
   return row;
@@ -5940,7 +6249,7 @@ function createTreeSubInfo(recipe, neededQty, producedQty, unitCost, unitTimes) 
     rows.push(createTreeSubRow('(↩', ` ${formatNumber(surplus)} `, '個余り)'));
   }
   if (!isExchange && craftTimes >= 1) {
-    rows.push(createTreeSubRow('(🔨', ` ${formatNumber(craftTimes)} `, '回制作)'));
+    rows.push(createTreeSubRow('(🔨', ` ${formatNumber(craftTimes)} `, '回製作)', 'node-craft-count'));
   }
   if (rows.length === 0) return null;
 
@@ -6012,7 +6321,10 @@ function buildNode(
   const hideCraftBadge = showCraftBadgeOnlyAtRoot && depth > 0 && CRAFT_JOBS_SET.has(master.method);
 
   row.appendChild(toggle);
-  const icon = createItemIcon(master.icon, 'node-icon');
+  const icon =
+    showPins && unitCost === null
+      ? createCheckableItemIcon(name, 'node-icon')
+      : createItemIcon(master.icon, 'node-icon');
   if (icon) row.appendChild(icon);
   if (showPins) row.appendChild(createTreePin(name));
   row.appendChild(
@@ -6401,11 +6713,26 @@ function copyExportCode() {
 
 function closeExportListDropdown() {
   elements.exportListChoices.classList.remove('open');
+  elements.exportListToggle.setAttribute('aria-expanded', 'false');
 }
 
 function toggleExportListDropdown() {
   renderExportListChoices();
-  elements.exportListChoices.classList.toggle('open');
+  const open = !elements.exportListChoices.classList.contains('open');
+  elements.exportListChoices.classList.toggle('open', open);
+  elements.exportListToggle.setAttribute('aria-expanded', String(open));
+  if (!open) return;
+  const rect = elements.exportListToggle.getBoundingClientRect();
+  const maxHeight = Math.min(370, Math.max(74, window.innerHeight - 16));
+  const below = window.innerHeight - rect.bottom - 8;
+  const desired = Math.min(elements.exportListChoices.scrollHeight, maxHeight);
+  const top = below >= desired || below >= rect.top ? rect.bottom + 4 : Math.max(8, rect.top - desired - 4);
+  elements.exportListChoices.style.left = `${rect.left}px`;
+  elements.exportListChoices.style.top = `${top}px`;
+  elements.exportListChoices.style.width = `${rect.width}px`;
+  elements.exportListChoices.style.maxHeight = `${maxHeight}px`;
+  const rows = [...elements.exportListChoices.querySelectorAll('li[role="option"]')];
+  (rows.find(row => row.classList.contains('active')) || rows[0])?.focus();
 }
 
 function selectExportList(listId) {
@@ -6437,7 +6764,25 @@ function renderExportListChoices() {
       li.classList.toggle('active', list.id === selectedExportListId);
       li.textContent = list.name;
       li.title = list.name;
+      li.tabIndex = -1;
+      li.setAttribute('role', 'option');
+      li.setAttribute('aria-selected', String(list.id === selectedExportListId));
       li.addEventListener('click', () => selectExportList(list.id));
+      li.addEventListener('keydown', event => {
+        const rows = [...elements.exportListChoices.querySelectorAll('li[role="option"]')];
+        const index = rows.indexOf(li);
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault();
+          rows[(index + (event.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length]?.focus();
+        } else if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          li.click();
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          closeExportListDropdown();
+          elements.exportListToggle.focus();
+        }
+      });
       frag.appendChild(li);
     });
   }
@@ -6764,7 +7109,6 @@ function bindEvents() {
   });
   elements.checkedFavoriteAnyOneModeBtn.addEventListener('click', () => {
     checkedFavoriteMaterialCalcMode = 'any-one';
-    favoriteAnyListProductionExpanded = true;
     updateCheckedFavoriteMaterialsButton();
   });
   elements.checkedFavoriteMaterialsHelpBtn.addEventListener('click', () => {
@@ -6783,10 +7127,21 @@ function bindEvents() {
   });
   elements.checkedFavoriteMaterialsBtn.addEventListener('click', openCheckedFavoriteMaterialsMode);
   elements.clearFavoriteMaterialChecksBtn.addEventListener('click', () => {
+    const returnList =
+      findFavoriteList(favoriteMaterialReturnListId) ||
+      (getDisplayedFavoriteList() && !isRecentList(getDisplayedFavoriteList()) ? getDisplayedFavoriteList() : null) ||
+      favoriteStore.lists.find(list => !isRecentList(list)) ||
+      null;
     clearMaterialSelectedFavoriteLists();
     leaveFavoriteMaterialsMode();
-    renderList();
-    renderResultView();
+    favoriteMaterialReturnListId = null;
+    if (returnList) selectFavoriteList(returnList.id);
+    else {
+      listMode = 'fav';
+      renderFavoriteLists();
+      renderList();
+      renderResultView();
+    }
   });
   elements.usesBackBtn.addEventListener('click', returnToList);
   elements.backBtn.addEventListener('click', goBack);
@@ -6852,6 +7207,7 @@ function bindEvents() {
       () => {
         if (!isScrollPositionActive(key)) return;
         viewScrollPositions[key] = container.scrollTop;
+        updateMobileHeaderVisibility();
         scheduleScrollStateSave();
       },
       { passive: true }
@@ -6893,6 +7249,11 @@ function bindEvents() {
   elements.licenseCloseBtn.addEventListener('click', closeLicenseNotice);
   elements.settingsCloseBtn.addEventListener('click', closeSettings);
   elements.exportListToggle.addEventListener('click', toggleExportListDropdown);
+  elements.exportListToggle.addEventListener('keydown', event => {
+    if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
+    event.preventDefault();
+    if (!elements.exportListChoices.classList.contains('open')) toggleExportListDropdown();
+  });
   elements.textInputOkBtn.addEventListener('click', submitTextInput);
   elements.textInputCancelBtn.addEventListener('click', closeTextInput);
   elements.textInputField.addEventListener('keydown', event => {

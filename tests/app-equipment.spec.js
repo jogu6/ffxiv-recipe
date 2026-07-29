@@ -10,12 +10,15 @@ const {
   routeMirageRecipeVariants,
   searchFor
 } = require('./helpers/app.js');
+
+const FIXTURE_ITEM_LEVEL_CAP = 770;
 test('equipment search lists target gear and saves results as a favorite list', async ({ page }) => {
   await openApp(page);
 
   await page.locator('#equipmentSearchToggle').click();
   await expect(page.locator('#equipmentSearchToggle')).toHaveText('▲');
   await expect(page.locator('#searchBox')).toBeDisabled();
+  await expect(page.locator('#saveEquipmentSearchBtn')).toBeDisabled();
   await expect(page.locator('#equipmentJobSelect')).toContainText('剣術士');
   await chooseCustomOption(page, 'equipmentJobSelect', 'ナイト');
   await page.locator('#equipmentLevelInput').fill('100');
@@ -58,7 +61,7 @@ test('equipment search reset clears only the conditions', async ({ page }) => {
   await expect(page.locator('#equipmentSearchPanel')).toHaveClass(/open/);
   await expect(page.locator('#recipeList')).toContainText('コートリーラヴァー・ソード');
   await expect(page.locator('.result-root-summary')).toContainText('コートリーラヴァー・ソード');
-  await expect(page.locator('#saveEquipmentSearchBtn')).toBeEnabled();
+  await expect(page.locator('#saveEquipmentSearchBtn')).toBeDisabled();
 });
 
 test('equipment search uses custom dropdowns and recommended roles', async ({ page }) => {
@@ -151,13 +154,24 @@ test('equipment search uses custom dropdowns and recommended roles', async ({ pa
   await expect(page.locator('#recipeList')).not.toContainText('ラピスラズリイヤリング');
 });
 
-test('desktop left panel widens only on large layouts', async ({ page }) => {
+test('desktop left panel keeps the confirmed minimum width and widens on large layouts', async ({ page }) => {
   await openApp(page, 1024, 800);
   await expect(page.locator('#panelLeft')).toHaveCSS('width', '336px');
   const setupDuration = await page.evaluate(() => performance.getEntriesByName('application-data-setup')[0]?.duration);
   expect(setupDuration).toBeLessThan(2500);
   await page.setViewportSize({ width: 800, height: 800 });
-  await expect(page.locator('#panelLeft')).toHaveCSS('width', '280px');
+  await expect(page.locator('#panelLeft')).toHaveCSS('width', '328px');
+  await page.locator('#equipmentSearchToggle').click();
+  const equipmentWidths = await page.locator('.equipment-search-grid').evaluate(grid => {
+    const [job, level] = [...grid.children].map(element => element.getBoundingClientRect());
+    return {
+      job: job.width,
+      level: level.width,
+      gap: level.left - job.right,
+      grid: grid.getBoundingClientRect().width
+    };
+  });
+  expect(equipmentWidths).toEqual({ job: 123, level: 166, gap: 6, grid: 295 });
 });
 
 test('equipment custom dropdown stays inside a mobile viewport', async ({ page }) => {
@@ -455,7 +469,7 @@ test('equipment search prefers tenacity or piety and shows only differing tied p
       EquipmentInfo: {
         jobs: ['ナイト'],
         equipLevel: 50,
-        itemLevel: 999,
+        itemLevel: FIXTURE_ITEM_LEVEL_CAP,
         stats,
         performance: {
           physicalDamage: 0,
@@ -492,7 +506,7 @@ test('equipment search prefers tenacity or piety and shows only differing tied p
   await chooseCustomOption(page, 'equipmentJobSelect', 'ナイト');
   await page.locator('#equipmentLevelInput').fill('50');
   await page.locator('#equipmentLevelInput').dispatchEvent('input');
-  await chooseCustomOption(page, 'equipmentItemLevelSelect', '999');
+  await chooseCustomOption(page, 'equipmentItemLevelSelect', String(FIXTURE_ITEM_LEVEL_CAP));
   await chooseCustomOption(page, 'equipmentSlotSelect', 'head');
   await page.locator('#equipmentSearchBtn').click();
 
@@ -500,6 +514,8 @@ test('equipment search prefers tenacity or piety and shows only differing tied p
   await expect(page.locator('#recipeList')).not.toContainText('試験用専門なし頭');
   await expect(page.locator('#recipeList')).toContainText('試験用同値頭A');
   await expect(page.locator('#recipeList')).toContainText('試験用同値頭B');
+  await expect(page.locator('#recipeList .equipment-duplicate-row')).toHaveCount(2);
+  await expect(page.locator('#recipeList .equipment-duplicate-warning')).toHaveCount(2);
   await expect(page.locator('#recipeList')).toContainText('DEX +3');
   await expect(page.locator('#recipeList')).toContainText('MND +4');
   await expect(page.locator('#recipeList')).not.toContainText('STR +9');
@@ -507,6 +523,7 @@ test('equipment search prefers tenacity or piety and shows only differing tied p
   await expect(page.locator('#recipeList')).not.toContainText('物理防御');
   await page.locator('#saveEquipmentSearchBtn').click();
   await page.locator('#textInputOkBtn').click();
+  await expect(page.locator('#recipeList .equipment-duplicate-warning')).toHaveCount(0);
   await expect(page.locator('#recipeList .equipment-parameters')).toHaveCount(2);
   await page
     .locator('#recipeList li')

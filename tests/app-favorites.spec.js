@@ -140,6 +140,47 @@ test('favorite target dialog grows with list count within the existing viewport 
   });
   expect(layout.dialogHeight).toBeLessThanOrEqual(layout.viewportHeight * 0.88 + 1);
   expect(layout.choicesScrollHeight).toBeGreaterThan(layout.choicesClientHeight);
+  await page.locator('#favoriteTargetCancelBtn').click();
+  await page.locator('#settingsBtn').click();
+  const settingsHeight = await page.locator('#settingsDialog').evaluate(dialog => dialog.getBoundingClientRect().height);
+  await page.locator('#exportListToggle').click();
+  await expect
+    .poll(() => page.locator('#exportListChoices').evaluate(list => list.getBoundingClientRect().height))
+    .toBeGreaterThan(180);
+  const exportListLayout = await page.locator('#exportListChoices').evaluate(list => ({
+    height: list.getBoundingClientRect().height,
+    scrollHeight: list.scrollHeight
+  }));
+  expect(exportListLayout.height).toBeGreaterThan(180);
+  expect(exportListLayout.height).toBeLessThanOrEqual(370);
+  expect(exportListLayout.scrollHeight).toBeGreaterThan(exportListLayout.height);
+  await expect
+    .poll(() => page.locator('#settingsDialog').evaluate(dialog => dialog.getBoundingClientRect().height))
+    .toBe(settingsHeight);
+});
+
+test('save-as starts with the next non-nested duplicate name', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'ff14_favorite_lists_v3',
+      JSON.stringify({
+        version: 3,
+        selectedListId: 'a',
+        lists: [
+          { id: 'a', name: '装備案', itemIds: [1602], recipeSelections: {}, materialSelected: false },
+          { id: 'a1', name: '装備案（1）', itemIds: [4422], recipeSelections: {}, materialSelected: false }
+        ]
+      })
+    );
+  });
+  await openApp(page);
+  await page.locator('#favBtn').click();
+  await page.locator('#favoriteLists').getByText('装備案', { exact: true }).click();
+  await dismissInfoDialog(page);
+  await page.getByRole('button', { name: '新規リストとして保存' }).click();
+  await expect(page.locator('#textInputField')).toHaveValue('装備案（2）');
+  await page.locator('#textInputOkBtn').click();
+  await expect(page.locator('#favBtn')).toContainText('装備案（2）');
 });
 
 test('reorders favorite lists locally with the rightmost drag handle', async ({ page }) => {
@@ -411,17 +452,22 @@ test('favorite list count mode excludes zero-count items from materials', async 
 
   await page.locator('#recipeList').getByText('素材リストを表示(1/2)').click();
   await expect(page.locator('.favorite-ring-controls')).toHaveCount(0);
+  await expect(page.locator('.production-content-section .production-content-toggle')).toHaveText('▶製作内容');
+  await page.locator('.production-content-section .production-content-toggle').click();
   await expect(page.locator('.production-content-section .production-content-toggle')).toHaveText('▼製作内容');
   await expect(page.locator('.production-content-section .production-content-toggle')).toHaveClass(
     /materials-section-header/
   );
   await expect(page.locator('.favorite-material-root-summary')).toHaveCount(1);
-  const countProductionGap = await page.locator('.production-content-section').evaluate(section => {
-    const header = section.querySelector('.production-content-toggle').getBoundingClientRect();
-    const firstItem = section.querySelector('.favorite-material-root-summary').getBoundingClientRect();
-    return firstItem.top - header.bottom;
-  });
-  expect(countProductionGap).toBeGreaterThan(4);
+  await expect
+    .poll(() =>
+      page.locator('.production-content-section').evaluate(section => {
+        const header = section.querySelector('.production-content-toggle').getBoundingClientRect();
+        const firstItem = section.querySelector('.favorite-material-root-summary').getBoundingClientRect();
+        return firstItem.top - header.bottom;
+      })
+    )
+    .toBeGreaterThan(4);
   await expect(page.locator('.favorite-material-root-summary')).toContainText('カッパーリング');
   await expect(page.locator('.favorite-material-root-summary')).not.toContainText('アリペブレ');
   await expect(page.locator('.favorite-material-root-summary .node-icon')).toHaveCSS('width', '40px');
@@ -441,6 +487,18 @@ test('favorite list count mode excludes zero-count items from materials', async 
   await expect(page.locator('.favorite-material-curtain-actions').getByText('どれか1アイテム')).toHaveClass(/active/);
   await expect(page.locator('.favorite-material-curtain-actions').getByText('個数指定')).not.toHaveClass(/active/);
   await expect(page.locator('.favorite-material-curtain-actions').getByText('全てOn')).toBeVisible();
+  const bulkButtonLayout = await page.locator('.favorite-material-bulk-group').evaluate(group => {
+    const box = group.getBoundingClientRect();
+    const [first, second] = [...group.querySelectorAll('button')].map(button => button.getBoundingClientRect());
+    return {
+      left: first.left - box.left,
+      right: box.right - second.right,
+      widthDifference: Math.abs(first.width - second.width)
+    };
+  });
+  expect(bulkButtonLayout.left).toBeLessThan(1);
+  expect(bulkButtonLayout.right).toBeLessThan(1);
+  expect(bulkButtonLayout.widthDifference).toBeLessThan(1);
   await expect(page.locator('.favorite-item-count-controls input[type="checkbox"]')).toHaveCount(2);
   await page.locator('.favorite-material-curtain-actions').getByText('全てOn').click();
   await expect(page.locator('.favorite-item-count-controls input[type="checkbox"]:checked')).toHaveCount(2);
@@ -462,6 +520,8 @@ test('favorite list count mode excludes zero-count items from materials', async 
   await page.locator('#countInput').blur();
   await expect(page.locator('#countInput')).toHaveValue('2');
   await page.locator('#recipeList').getByText('素材リストを表示').click();
+  await expect(page.locator('.production-content-section .production-content-toggle')).toHaveText('▶製作内容');
+  await page.locator('.production-content-section .production-content-toggle').click();
   await expect(page.locator('.production-content-section .production-content-toggle')).toHaveText('▼製作内容');
   await expect(page.locator('.favorite-material-root-summary')).toHaveCount(2);
   await expect(page.locator('.favorite-material-root-or')).toHaveCount(1);

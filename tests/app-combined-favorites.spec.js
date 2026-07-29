@@ -80,13 +80,17 @@ test('combined favorite materials opens directly without confirmation dialog', a
       .locator('.production-content-section .favorite-list-root-summary')
       .filter({ hasText: 'コートリーブーツ・ヒーラー' })
   ).toBeVisible();
-  await expect(page.locator('.production-content-section .production-content-toggle')).toHaveText('▼製作内容');
-  const listProductionGap = await page.locator('.production-content-section').evaluate(section => {
-    const header = section.querySelector('.production-content-toggle').getBoundingClientRect();
-    const firstList = section.querySelector('.favorite-list-root-summary').getBoundingClientRect();
-    return firstList.top - header.bottom;
-  });
-  expect(listProductionGap).toBeGreaterThan(4);
+  await expect(page.locator('.production-content-section .production-content-toggle')).toHaveText('▶製作内容');
+  await page.locator('.production-content-section .production-content-toggle').click();
+  await expect
+    .poll(() =>
+      page.locator('.production-content-section').evaluate(section => {
+        const header = section.querySelector('.production-content-toggle').getBoundingClientRect();
+        const firstList = section.querySelector('.favorite-list-root-summary').getBoundingClientRect();
+        return firstList.top - header.bottom;
+      })
+    )
+    .toBeGreaterThan(4);
 });
 
 test('checked favorite lists use a dedicated combined materials entry and reset on main navigation', async ({
@@ -145,6 +149,7 @@ test('checked favorite lists use a dedicated combined materials entry and reset 
   expect(Math.abs(modeLayout.separation)).toBeLessThan(1);
   await page.locator('#favBtn').click();
   await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
+  await expect(page.locator('#favoriteLists')).not.toContainText('検索履歴');
   await page.locator('#checkedFavoriteMaterialsHelpBtn').click();
   await expect(page.locator('#licenseText')).toContainText('チェックした複数のお気に入りリスト');
   await expect(page.locator('#licenseText')).toContainText('どれか1リスト');
@@ -170,7 +175,7 @@ test('checked favorite lists use a dedicated combined materials entry and reset 
       .locator('.production-content-section .favorite-list-root-summary')
       .filter({ hasText: 'コートリーブーツ・ヒーラー' })
   ).toBeVisible();
-  await expect(page.locator('.production-content-section .production-content-toggle')).toHaveText('▼製作内容');
+  await expect(page.locator('.production-content-section .production-content-toggle')).toHaveText('▶製作内容');
 
   await page.locator('#appTitle').click();
   await expect(page.locator('#checkedFavoriteMaterialsActions')).not.toHaveClass(/visible/);
@@ -382,7 +387,8 @@ test('checked favorite lists calculate any one list and restore production discl
   await page.locator('#checkedFavoriteAnyOneModeBtn').click();
   await expect(page.locator('#checkedFavoriteAnyOneModeBtn')).toHaveClass(/active/);
   await page.locator('#checkedFavoriteMaterialsBtn').click();
-  await expect(page.locator('.production-content-section .production-content-toggle')).toHaveText('▼製作内容');
+  await expect(page.locator('.production-content-section .production-content-toggle')).toHaveText('▶製作内容');
+  await page.locator('.production-content-section .production-content-toggle').click();
   await expect(page.locator('.production-content-section .favorite-list-root-summary')).toHaveCount(2);
   await expect(page.locator('.favorite-ring-section .favorite-list-root-summary')).toHaveCount(2);
   const productionLists = page.locator('.production-content-section .production-list-block');
@@ -390,15 +396,20 @@ test('checked favorite lists calculate any one list and restore production discl
   const productionHierarchy = await page.locator('.production-content-section').evaluate(section => {
     const header = section.querySelector(':scope > .production-content-toggle').getBoundingClientRect();
     const firstList = section.querySelector('.production-list-block').getBoundingClientRect();
-    const lastList = [...section.querySelectorAll('.production-list-block')].at(-1).getBoundingClientRect();
-    const ringHeader = document.querySelector('.favorite-ring-section > .materials-section-header').getBoundingClientRect();
-    return {
-      childIndent: firstList.left - header.left,
-      nextSectionGap: ringHeader.top - lastList.bottom
-    };
+    return { childIndent: firstList.left - header.left };
   });
   expect(productionHierarchy.childIndent).toBeGreaterThanOrEqual(12);
-  expect(productionHierarchy.nextSectionGap).toBeGreaterThanOrEqual(8);
+  await expect
+    .poll(() =>
+      page.locator('.production-content-section').evaluate(section => {
+        const lastList = [...section.querySelectorAll('.production-list-block')].at(-1).getBoundingClientRect();
+        const ringHeader = document
+          .querySelector('.favorite-ring-section > .materials-section-header')
+          .getBoundingClientRect();
+        return ringHeader.top - lastList.bottom;
+      })
+    )
+    .toBeGreaterThanOrEqual(8);
   await expect(productionLists.first().locator(':scope > .production-content-clip')).toHaveClass(/collapsed/);
   await expect(productionLists.first().locator(':scope > .production-content-clip')).toHaveCSS(
     'transition-duration',
@@ -524,6 +535,36 @@ test('favorite any-list materials cover shared ingredients for every distinct in
   }
   await expect(page.locator('.materials-list')).toContainText(/ガーデン・ソフトウォーター\s*×\s*15/);
   await expect(page.locator('.materials-list')).toContainText(/ヤクテル天然水\s*×\s*5/);
+});
+
+test('removing the last material-list check returns to a normal favorite list and restores search history', async ({
+  page
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'ff14_favorite_lists_v3',
+      JSON.stringify({
+        version: 3,
+        selectedListId: 'SYSTEM_RECENT_ITEMS',
+        lists: [
+          {
+            id: 'checked-list',
+            name: '確認対象',
+            itemIds: [1602],
+            recipeSelections: {},
+            materialSelected: true
+          }
+        ]
+      })
+    );
+  });
+  await openApp(page);
+  await page.locator('#favBtn').click();
+  await expect(page.locator('#favoriteLists')).not.toContainText('検索履歴');
+  await page.locator('#favoriteLists .favorite-list-material-checkbox').uncheck();
+  await expect(page.locator('#checkedFavoriteMaterialsActions')).not.toHaveClass(/visible/);
+  await expect(page.locator('#favoriteLists')).toContainText('検索履歴');
+  await expect(page.locator('#favoriteLists').getByText('確認対象', { exact: true }).locator('..')).toHaveClass(/active/);
 });
 
 test('favorite dropdown max height stays within the viewport with checked-list buttons', async ({ page }) => {

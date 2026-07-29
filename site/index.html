@@ -22,7 +22,7 @@
   </div>
   <button id="popupBtn">⧉ 小窓で開く</button>
   <button id="mobileBackBtn" type="button">◀ 戻る</button>
-  <button id="settingsBtn">⚙ 設定</button>
+  <button id="settingsBtn" type="button" title="共有・データ管理などを開く" aria-label="共有・データ管理などを開く">⚙</button>
 </header>
 
 <div class="main">
@@ -64,7 +64,7 @@
           <button id="equipmentSearchBtn" type="button">検索</button>
           <button id="equipmentSearchResetBtn" type="button">リセット</button>
         </div>
-        <button id="saveEquipmentSearchBtn" type="button">検索結果をお気に入り登録</button>
+        <button id="saveEquipmentSearchBtn" type="button" disabled>検索結果をお気に入り登録</button>
       </div>
       <ul id="searchHistory"></ul>
       <button id="favBtn" title="お気に入り">📌 お気に入り</button>
@@ -144,7 +144,7 @@
 </div>
 
 <div id="settingsOverlay">
-  <div id="settingsDialog">
+  <div id="settingsDialog" role="dialog" aria-modal="true" aria-labelledby="settingsDialogTitle">
     <div class="settings-top-actions">
       <button class="settings-corner-btn" id="contactBtn" type="button" title="報告・お問い合わせ">
         <span>報告・お問い合わせ</span>
@@ -156,14 +156,14 @@
       <button class="settings-corner-btn" id="licenseBtn" type="button">LICENSE</button>
     </div>
     <div class="settings-title-row">
-      <h2>⚙ 設定</h2>
+      <h2 id="settingsDialogTitle"><span aria-hidden="true">⚙</span><span class="visually-hidden">共有・データ管理など</span></h2>
       <span id="appVersion"></span>
     </div>
     <div class="settings-section">
       <div class="settings-label">シェアするお気に入りリストを選ぶ</div>
       <div class="settings-dropdown">
-        <button id="exportListToggle" class="settings-dropdown-toggle" type="button">リストを選択...</button>
-        <ul id="exportListChoices" class="settings-dropdown-list"></ul>
+        <button id="exportListToggle" class="settings-dropdown-toggle" type="button" aria-haspopup="listbox" aria-expanded="false">リストを選択...</button>
+        <ul id="exportListChoices" class="settings-dropdown-list" role="listbox"></ul>
       </div>
       <div class="settings-row">
         <input id="exportCode" class="settings-input" type="text" readonly>
