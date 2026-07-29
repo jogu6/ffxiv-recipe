@@ -6,6 +6,7 @@ const {
   dismissInfoDialog,
   dragHandleAfter,
   importFavoriteFromPlaza,
+  loadPublishedItems,
   openApp,
   routeMirageRecipeVariants,
   searchFor
@@ -382,8 +383,7 @@ test('equipment search does not mix all-class crafter gear into battle class res
 
 test('equipment search keeps classes separate and falls back per slot', async ({ page }) => {
   await page.route('**/data/Item.json*', async route => {
-    const response = await route.fetch();
-    const items = (await response.json()).filter(item => !item.EquipmentInfo);
+    const items = (await loadPublishedItems()).filter(item => !item.EquipmentInfo);
     const equipment = (ID, Name, category, jobs, equipLevel, itemLevel) => ({
       ID,
       Name,
@@ -413,7 +413,6 @@ test('equipment search keeps classes separate and falls back per slot', async ({
       equipment('990007', '試験用呪術盾', '盾', ['呪術士'], 30, 100)
     );
     await route.fulfill({
-      response,
       contentType: 'application/json',
       body: JSON.stringify(items)
     });
@@ -453,8 +452,7 @@ test('equipment search keeps classes separate and falls back per slot', async ({
 
 test('equipment search prefers tenacity or piety and shows only differing tied parameters', async ({ page }) => {
   await page.route('**/data/Item.json*', async route => {
-    const response = await route.fetch();
-    const items = await response.json();
+    const items = await loadPublishedItems();
     const equipment = (ID, Name, defense, stats) => ({
       ID,
       Name,
@@ -496,7 +494,6 @@ test('equipment search prefers tenacity or piety and shows only differing tied p
       })
     );
     await route.fulfill({
-      response,
       contentType: 'application/json',
       body: JSON.stringify(items)
     });

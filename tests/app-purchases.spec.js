@@ -6,6 +6,7 @@ const {
   dismissInfoDialog,
   dragHandleAfter,
   importFavoriteFromPlaza,
+  loadPublishedItems,
   openApp,
   routeMirageRecipeVariants,
   searchFor
@@ -34,8 +35,7 @@ test('single-column shop dialog stays compact at six hundred pixels and expands 
 
 test('shows shop info button and dialog for items with ShopInfo', async ({ page }) => {
   await page.route('**/data/Item.json*', async route => {
-    const response = await route.fetch();
-    const items = await response.json();
+    const items = await loadPublishedItems();
     const target = items.find(item => item.Name === 'アリペブレ');
     target.ShopInfo = {
       price: 4,

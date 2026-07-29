@@ -11,6 +11,7 @@ module.exports = defineConfig({
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: 'http://127.0.0.1:4173',
+    serviceWorkers: 'block',
     trace: 'on-first-retry',
   },
   webServer: {

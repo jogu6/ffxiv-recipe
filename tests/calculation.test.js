@@ -82,6 +82,24 @@ test('propagates integer demand through multiple recipe levels', () => {
   assert.equal(result.states.get('Ore').needed, 8);
 });
 
+test('calculates contextual recipe overrides inherited from an immutable default map', () => {
+  const defaults = Object.freeze({
+    Product: recipe(1, [{ name: 'Part', qty: 2 }]),
+    Part: recipe(1, [{ name: 'DefaultOre', qty: 3 }])
+  });
+  const contextualRecipes = Object.create(defaults);
+  Object.defineProperty(contextualRecipes, 'Part', {
+    enumerable: true,
+    value: recipe(2, [{ name: 'SelectedOre', qty: 5 }])
+  });
+  const result = requirements(contextualRecipes, [{ name: 'Product', qty: 1 }]);
+
+  assert.equal(result.states.get('Part').needed, 2);
+  assert.equal(result.states.get('Part').craftTimes, 1);
+  assert.equal(result.states.get('SelectedOre').needed, 5);
+  assert.equal(result.states.has('DefaultOre'), false);
+});
+
 test('aggregates shared intermediate demand before rounding craft counts', () => {
   const recipes = {
     A: recipe(1, [{ name: 'Shared', qty: 1 }]),

@@ -10,6 +10,7 @@ const {
   routeMirageRecipeVariants,
   searchFor
 } = require('./helpers/app.js');
+const { favoriteList, favoriteStore, seedAppStorage } = require('./helpers/app-storage.js');
 test('favorites and shares an ingredient while preserving search results', async ({ page }) => {
   await openApp(page);
   await searchFor(page, '山羊乳');
@@ -558,21 +559,18 @@ test('favorite list count mode excludes zero-count items from materials', async 
 });
 
 test('favorite child count changes preserve the list scroll position', async ({ page }) => {
-  await page.addInitScript(() => {
-    localStorage.setItem(
-      'ff14_favorite_lists_v2',
-      JSON.stringify({
-        version: 2,
-        selectedListId: 'count-scroll',
-        lists: [
-          {
-            id: 'count-scroll',
-            name: '個数スクロール',
-            itemIds: ['2834', '3425', '3648', '3870', '4126', '4254', '4353', '4422', '46253']
-          }
-        ]
-      })
-    );
+  await seedAppStorage(page, {
+    favoritesV2: favoriteStore({
+      version: 2,
+      selectedListId: 'count-scroll',
+      lists: [
+        favoriteList({
+          id: 'count-scroll',
+          name: '個数スクロール',
+          itemIds: ['2834', '3425', '3648', '3870', '4126', '4254', '4353', '4422', '46253']
+        })
+      ]
+    })
   });
   await openApp(page, 900, 400);
   await page.locator('#favBtn').click();

@@ -114,12 +114,6 @@ header h1 {
 .loading-title {
   color: var(--accent);
   font-weight: bold;
-  margin-bottom: 6px;
-}
-.loading-note {
-  color: var(--soft-text);
-  font-size: 12px;
-  line-height: 1.6;
 }
 #popupBtn {
   margin-left: auto;

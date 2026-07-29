@@ -10,6 +10,18 @@ const {
   routeMirageRecipeVariants,
   searchFor
 } = require('./helpers/app.js');
+const { favoriteList, favoriteStore, seedAppStorage } = require('./helpers/app-storage.js');
+
+async function seedFavoriteLists(page, lists, selectedListId = lists[0]?.id || null) {
+  await seedAppStorage(page, {
+    favoritesV2: favoriteStore({
+      version: 2,
+      selectedListId,
+      lists: lists.map(favoriteList)
+    })
+  });
+}
+
 test('selecting an item in the left panel closes and resets the middle panel', async ({ page }) => {
   await openApp(page);
   await searchFor(page, '岩塩');
@@ -31,29 +43,20 @@ test('selecting an item in the left panel closes and resets the middle panel', a
 });
 
 test('combined favorite materials opens directly without confirmation dialog', async ({ page }) => {
-  await page.addInitScript(() => {
-    localStorage.setItem(
-      'ff14_favorite_lists_v2',
-      JSON.stringify({
-      version: 2,
-      selectedListId: 'list-defense',
-      lists: [
-        {
-          id: 'list-defense',
-          name: 'コートリーブーツ・ディフェンダー',
-          itemIds: [1602],
-          materialSelected: true
-        },
-        {
-          id: 'list-healer',
-          name: 'コートリーブーツ・ヒーラー',
-          itemIds: [4422],
-          materialSelected: true
-        }
-      ]
-      })
-    );
-  });
+  await seedFavoriteLists(page, [
+    {
+      id: 'list-defense',
+      name: 'コートリーブーツ・ディフェンダー',
+      itemIds: [1602],
+      materialSelected: true
+    },
+    {
+      id: 'list-healer',
+      name: 'コートリーブーツ・ヒーラー',
+      itemIds: [4422],
+      materialSelected: true
+    }
+  ]);
 
   await openApp(page, 423, 780);
   await page.locator('#checkedFavoriteMaterialsBtn').click();
@@ -96,29 +99,20 @@ test('combined favorite materials opens directly without confirmation dialog', a
 test('checked favorite lists use a dedicated combined materials entry and reset on main navigation', async ({
   page
 }) => {
-  await page.addInitScript(() => {
-    localStorage.setItem(
-      'ff14_favorite_lists_v2',
-      JSON.stringify({
-      version: 2,
-      selectedListId: 'list-defense',
-      lists: [
-        {
-          id: 'list-defense',
-          name: 'コートリーブーツ・ディフェンダー',
-          itemIds: [1602],
-          materialSelected: true
-        },
-        {
-          id: 'list-healer',
-          name: 'コートリーブーツ・ヒーラー',
-          itemIds: [4422],
-          materialSelected: true
-        }
-      ]
-      })
-    );
-  });
+  await seedFavoriteLists(page, [
+    {
+      id: 'list-defense',
+      name: 'コートリーブーツ・ディフェンダー',
+      itemIds: [1602],
+      materialSelected: true
+    },
+    {
+      id: 'list-healer',
+      name: 'コートリーブーツ・ヒーラー',
+      itemIds: [4422],
+      materialSelected: true
+    }
+  ]);
 
   await openApp(page, 423, 780);
   await expect(page.locator('#checkedFavoriteMaterialsActions')).toHaveClass(/visible/);
@@ -216,16 +210,9 @@ test('checked favorite lists use a dedicated combined materials entry and reset 
 });
 
 test('multiple rings show production bulk controls and preserve purchases when counts change', async ({ page }) => {
-  await page.addInitScript(() =>
-    localStorage.setItem(
-      'ff14_favorite_lists_v2',
-      JSON.stringify({
-        version: 2,
-        selectedListId: 'multi-ring',
-        lists: [{ id: 'multi-ring', name: '複数指輪', itemIds: [4422, 4430], materialSelected: true }]
-      })
-    )
-  );
+  await seedFavoriteLists(page, [
+    { id: 'multi-ring', name: '複数指輪', itemIds: [4422, 4430], materialSelected: true }
+  ]);
   await openApp(page);
   await page.locator('#checkedFavoriteMaterialsBtn').click();
   const ringSection = page.locator('.favorite-ring-section');
@@ -253,29 +240,10 @@ test('multiple rings show production bulk controls and preserve purchases when c
 });
 
 test('combined favorite materials supports ring count toggles and restores them', async ({ page }) => {
-  await page.addInitScript(() => {
-    localStorage.setItem(
-      'ff14_favorite_lists_v2',
-      JSON.stringify({
-      version: 2,
-      selectedListId: 'list-ring-a',
-      lists: [
-        {
-          id: 'list-ring-a',
-          name: '指輪A',
-          itemIds: [4422],
-          materialSelected: true
-        },
-        {
-          id: 'list-ring-b',
-          name: '指輪B',
-          itemIds: [4422],
-          materialSelected: true
-        }
-      ]
-      })
-    );
-  });
+  await seedFavoriteLists(page, [
+    { id: 'list-ring-a', name: '指輪A', itemIds: [4422], materialSelected: true },
+    { id: 'list-ring-b', name: '指輪B', itemIds: [4422], materialSelected: true }
+  ]);
 
   await openApp(page, 423, 780);
   await page.locator('#checkedFavoriteMaterialsBtn').click();
@@ -359,29 +327,10 @@ test('combined favorite materials supports ring count toggles and restores them'
 });
 
 test('checked favorite lists calculate any one list and restore production disclosure state', async ({ page }) => {
-  await page.addInitScript(() => {
-    localStorage.setItem(
-      'ff14_favorite_lists_v2',
-      JSON.stringify({
-        version: 2,
-        selectedListId: 'list-ring-a',
-        lists: [
-          {
-            id: 'list-ring-a',
-            name: '指輪A',
-            itemIds: [4422],
-            materialSelected: true
-          },
-          {
-            id: 'list-ring-b',
-            name: '指輪B',
-            itemIds: [4422],
-            materialSelected: true
-          }
-        ]
-      })
-    );
-  });
+  await seedFavoriteLists(page, [
+    { id: 'list-ring-a', name: '指輪A', itemIds: [4422], materialSelected: true },
+    { id: 'list-ring-b', name: '指輪B', itemIds: [4422], materialSelected: true }
+  ]);
 
   await openApp(page, 423, 780);
   await page.locator('#checkedFavoriteAnyOneModeBtn').click();
@@ -473,23 +422,9 @@ test('checked favorite lists calculate any one list and restore production discl
 });
 
 test('checked favorite materials runs with one list and zero ring count', async ({ page }) => {
-  await page.addInitScript(() => {
-    localStorage.setItem(
-      'ff14_favorite_lists_v2',
-      JSON.stringify({
-        version: 2,
-        selectedListId: 'list-ring',
-        lists: [
-          {
-            id: 'list-ring',
-            name: '指輪だけ',
-            itemIds: [4422],
-            materialSelected: true
-          }
-        ]
-      })
-    );
-  });
+  await seedFavoriteLists(page, [
+    { id: 'list-ring', name: '指輪だけ', itemIds: [4422], materialSelected: true }
+  ]);
 
   await openApp(page, 423, 780);
   await page.locator('#checkedFavoriteAnyOneModeBtn').click();
@@ -509,22 +444,15 @@ test('checked favorite materials runs with one list and zero ring count', async 
 });
 
 test('favorite any-list materials cover shared ingredients for every distinct intermediate', async ({ page }) => {
-  await page.addInitScript(() => {
-    const itemIds = [49251, 49250, 49258, 49254, 49256];
-    localStorage.setItem(
-      'ff14_favorite_lists_v2',
-      JSON.stringify({
-        version: 2,
-        selectedListId: 'lover-list-0',
-        lists: itemIds.map((itemId, index) => ({
-          id: `lover-list-${index}`,
-          name: `宝水確認${index + 1}`,
-          itemIds: [itemId],
-          materialSelected: true
-        }))
-      })
-    );
-  });
+  await seedFavoriteLists(
+    page,
+    [49251, 49250, 49258, 49254, 49256].map((itemId, index) => ({
+      id: `lover-list-${index}`,
+      name: `宝水確認${index + 1}`,
+      itemIds: [itemId],
+      materialSelected: true
+    }))
+  );
 
   await openApp(page);
   await page.locator('#checkedFavoriteAnyOneModeBtn').click();
@@ -568,21 +496,16 @@ test('removing the last material-list check returns to a normal favorite list an
 });
 
 test('favorite dropdown max height stays within the viewport with checked-list buttons', async ({ page }) => {
-  await page.addInitScript(() => {
-    localStorage.setItem(
-      'ff14_favorite_lists_v2',
-      JSON.stringify({
-      version: 2,
-      selectedListId: null,
-      lists: Array.from({ length: 40 }, (_, index) => ({
+  await seedFavoriteLists(
+    page,
+    Array.from({ length: 40 }, (_, index) => ({
         id: `list-${index}`,
         name: `お気に入りリスト${index + 1}`,
         itemIds: [1602],
         materialSelected: index < 2
-      }))
-      })
-    );
-  });
+    })),
+    null
+  );
 
   await openApp(page, 423, 780);
   await page.locator('#favBtn').click();

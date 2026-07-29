@@ -1,4 +1,16 @@
+const { readFile } = require('node:fs/promises');
+const path = require('node:path');
 const { expect } = require('@playwright/test');
+
+let publishedItemJsonPromise;
+
+async function loadPublishedItems() {
+  publishedItemJsonPromise ||= readFile(
+    path.resolve(__dirname, '../../site/data/Item.json'),
+    'utf8'
+  );
+  return JSON.parse(await publishedItemJsonPromise);
+}
 
 async function openApp(page, width = 900, height = 700) {
   await page.setViewportSize({ width, height });
@@ -15,8 +27,7 @@ async function searchFor(page, value) {
 
 async function routeMirageRecipeVariants(page, { parentName = '', includeVariantMaterial = true } = {}) {
   await page.route('**/data/Item.json*', async route => {
-    const response = await route.fetch();
-    const items = await response.json();
+    const items = await loadPublishedItems();
     const target = items.find(item => item.Name === 'ミラージュプリズム');
     const itemId = name => items.find(item => item.Name === name).ID;
     const materials = [
@@ -44,7 +55,7 @@ async function routeMirageRecipeVariants(page, { parentName = '', includeVariant
       const parent = items.find(item => item.Name === parentName);
       parent.Recipe.Ingredients = [{ ItemID: target.ID, Name: target.Name, Amount: '1' }];
     }
-    await route.fulfill({ response, json: items });
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify(items) });
   });
 }
 
@@ -101,11 +112,7 @@ async function dragHandleAfter(page, handle, targetRow) {
 
 async function dismissInfoDialog(page) {
   const overlay = page.locator('#confirmOverlay.info.open');
-  const appeared = await overlay
-    .waitFor({ state: 'visible', timeout: 3000 })
-    .then(() => true)
-    .catch(() => false);
-  if (!appeared) return;
+  if (!(await overlay.isVisible())) return;
   await page.locator('#confirmNo').click();
   await expect(overlay).not.toBeVisible();
 }
@@ -116,6 +123,7 @@ module.exports = {
   dismissInfoDialog,
   dragHandleAfter,
   importFavoriteFromPlaza,
+  loadPublishedItems,
   openApp,
   routeMirageRecipeVariants,
   searchFor

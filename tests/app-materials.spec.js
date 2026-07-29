@@ -6,6 +6,7 @@ const {
   dismissInfoDialog,
   dragHandleAfter,
   importFavoriteFromPlaza,
+  loadPublishedItems,
   openApp,
   routeMirageRecipeVariants,
   searchFor
@@ -95,8 +96,85 @@ test('intermediate materials follow craft order, show usage, and open an indepen
   await expect(page.locator('#materialTreeCountInput')).toHaveValue('');
   await page.locator('#materialTreeCountInput').pressSequentially('300');
   await expect(page.locator('#materialTreeCountInput')).toHaveValue('300');
+  await page.locator('#treeContainer').evaluate(element => {
+    element.scrollTop = Math.min(120, element.scrollHeight - element.clientHeight);
+  });
+  const scrollBeforeClose = await page.locator('#treeContainer').evaluate(element => element.scrollTop);
+  expect(scrollBeforeClose).toBeGreaterThan(0);
   await page.locator('#materialTreeCloseBtn').click();
   await expect(page.locator('#materialTreeOverlay')).not.toHaveClass(/open/);
+  await expect.poll(() => page.locator('#treeContainer').evaluate(element => element.scrollTop)).toBe(scrollBeforeClose);
+
+  await bastardNode.locator('.intermediate-material-tree-btn').first().click();
+  await expect(page.locator('#materialTreeOverlay')).toHaveClass(/open/);
+  await page.locator('#materialTreeOverlay').click({ position: { x: 2, y: 2 } });
+  await expect(page.locator('#materialTreeOverlay')).not.toHaveClass(/open/);
+  await expect.poll(() => page.locator('#treeContainer').evaluate(element => element.scrollTop)).toBe(scrollBeforeClose);
+});
+
+test('updating the search list preserves the current result scroll position', async ({ page }) => {
+  await openApp(page);
+  await searchFor(page, 'アリペブレ');
+  await page.getByText('アリペブレ', { exact: true }).first().click();
+  await page.locator('#materialsViewBtn').click();
+  await page.locator('.materials-section-header').filter({ hasText: '必要なシャード' }).click();
+  await page.locator('#treeContainer').evaluate(element => {
+    element.scrollTop = Math.min(120, element.scrollHeight - element.clientHeight);
+  });
+  const scrollBeforeSearch = await page.locator('#treeContainer').evaluate(element => element.scrollTop);
+  expect(scrollBeforeSearch).toBeGreaterThan(0);
+
+  await searchFor(page, 'バスタードソード');
+
+  await expect.poll(() => page.locator('#treeContainer').evaluate(element => element.scrollTop)).toBe(scrollBeforeSearch);
+  await expect(page.locator('#materialsViewBtn')).toHaveClass(/active/);
+});
+
+test('closing floating dialogs does not move the current result', async ({ page }) => {
+  await openApp(page);
+  await searchFor(page, 'アリペブレ');
+  await page.getByText('アリペブレ', { exact: true }).first().click();
+  await page.locator('#materialsViewBtn').click();
+  await page.locator('.materials-section-header').filter({ hasText: '必要なシャード' }).click();
+  await page.locator('#treeContainer').evaluate(element => {
+    element.scrollTop = Math.min(120, element.scrollHeight - element.clientHeight);
+  });
+  const scrollBeforeDialogs = await page.locator('#treeContainer').evaluate(element => element.scrollTop);
+  expect(scrollBeforeDialogs).toBeGreaterThan(0);
+  const expectUnmoved = () =>
+    expect.poll(() => page.locator('#treeContainer').evaluate(element => element.scrollTop)).toBe(scrollBeforeDialogs);
+
+  await page.evaluate(() => showShopDialog('オーク材'));
+  await page.locator('#shopCloseBtn').click();
+  await expectUnmoved();
+  await page.evaluate(() => showShopDialog('オーク材'));
+  await page.locator('#shopOverlay').click({ position: { x: 2, y: 2 } });
+  await expectUnmoved();
+
+  await page.locator('#settingsBtn').click();
+  await page.locator('#privacyBtn').click();
+  await page.locator('#licenseCloseBtn').click();
+  await expectUnmoved();
+  await page.locator('#settingsOverlay').click({ position: { x: 2, y: 2 } });
+  await expectUnmoved();
+
+  await page.evaluate(() => showConfirm('確認', () => {}));
+  await page.locator('#confirmNo').click();
+  await expectUnmoved();
+
+  await page.evaluate(() => showTextInput('入力', '', () => {}));
+  await page.locator('#textInputCancelBtn').click();
+  await expectUnmoved();
+
+  await page.evaluate(() => openFavoriteTarget('オーク材'));
+  await page.locator('#favoriteTargetCancelBtn').click();
+  await expectUnmoved();
+
+  await page.evaluate(() => openSharePlaza());
+  await expect(page.locator('#sharePlazaOverlay')).toHaveClass(/open/);
+  await page.evaluate(() => closeSharePlaza());
+  await expect(page.locator('#sharePlazaOverlay')).not.toHaveClass(/open/);
+  await expectUnmoved();
 });
 
 test('timed gathering dialog uses gatherer icons only for its gathering methods', async ({ page }) => {
@@ -416,8 +494,7 @@ test('otherwise equivalent intermediate materials sort normal recipe levels befo
   page
 }) => {
   await page.route('**/data/Item.json*', async route => {
-    const response = await route.fetch();
-    const items = await response.json();
+    const items = await loadPublishedItems();
     const intermediate = (ID, Name, level, masterbook = '', ItemUICategory = 44) => ({
       ID,
       Name,
@@ -454,7 +531,7 @@ test('otherwise equivalent intermediate materials sort normal recipe levels befo
         CraftInfo: [{ job: '鍛冶師', level: 100 }]
       }
     );
-    await route.fulfill({ response, contentType: 'application/json', body: JSON.stringify(items) });
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify(items) });
   });
   await openApp(page);
   await searchFor(page, '試験用並び順完成品');

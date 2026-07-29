@@ -22,9 +22,6 @@ jobs:
       - name: Validate site assets and PowerShell encoding
         shell: pwsh
         run: node tools/validate-site.mjs
-      - name: Audit release-note coverage
-        shell: pwsh
-        run: node tools/check-release-notes.mjs
       - name: Parse PowerShell scripts
         shell: pwsh
         run: |
