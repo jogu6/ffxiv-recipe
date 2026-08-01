@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="ja" data-font-size-level="2">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#252525">
+<title>FF14 レシピ素材ツリー</title>
+<link rel="icon" href="./assets/app-icons/favicon.png" type="image/png">
+<link rel="apple-touch-icon" href="./assets/app-icons/favicon.png">
+<link rel="manifest" href="./manifest.webmanifest">
+<script src="./font-size-settings.js"></script>
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+
+<header>
+  <div class="header-primary-row">
+    <div class="app-title" id="appTitle" role="button" tabindex="0" title="初期画面に戻る">
+      <img class="app-title-icon" src="./assets/app-icons/favicon.png" alt="">
+      <h1>FF14 レシピ素材ツリー</h1>
+    </div>
+    <span id="loadStatus">データ読み込み中...</span>
+  </div>
+  <button id="popupBtn">⧉ 小窓で開く</button>
+  <button id="mobileBackBtn" type="button">◀ 戻る</button>
+  <button id="settingsBtn" type="button" title="共有・データ管理などを開く" aria-label="共有・データ管理などを開く">⚙</button>
+</header>
+
+<div class="main">
+  <div class="panel-left" id="panelLeft">
+    <div class="panel-left-header">
+      <div class="search-row">
+        <div class="search-wrap">
+          <input type="text" id="searchBox" placeholder="絞り込み...">
+          <button id="searchClearBtn" type="button" title="検索をクリア" aria-label="検索をクリア">×</button>
+        </div>
+        <button id="equipmentSearchToggle" type="button" title="装備検索" aria-expanded="false">▼</button>
+      </div>
+      <div id="equipmentSearchPanel" class="equipment-search-panel">
+        <div class="equipment-search-grid">
+          <label>
+            <span>ジョブ</span>
+            <div id="equipmentJobSelect" class="custom-select" data-value=""></div>
+          </label>
+          <div class="equipment-search-field">
+            <span>装備レベル</span>
+            <div class="equipment-level-control">
+              <button id="equipmentLevelDown5Btn" type="button">-5</button>
+              <button id="equipmentLevelDownBtn" type="button">－</button>
+              <input id="equipmentLevelInput" type="number" min="1" inputmode="numeric">
+              <button id="equipmentLevelUpBtn" type="button">＋</button>
+              <button id="equipmentLevelUp5Btn" type="button">+5</button>
+            </div>
+          </div>
+          <label>
+            <span>アイテムレベル</span>
+            <div id="equipmentItemLevelSelect" class="custom-select" data-value=""></div>
+          </label>
+          <label>
+            <span>部位</span>
+            <div id="equipmentSlotSelect" class="custom-select" data-value="all"></div>
+          </label>
+        </div>
+        <div class="equipment-search-actions">
+          <button id="equipmentSearchBtn" type="button">検索</button>
+          <button id="equipmentSearchResetBtn" type="button">リセット</button>
+        </div>
+        <button id="saveEquipmentSearchBtn" type="button" disabled>検索結果をお気に入り登録</button>
+      </div>
+      <ul id="searchHistory"></ul>
+      <button id="favBtn" title="お気に入り">📌 お気に入り</button>
+      <div id="checkedFavoriteMaterialsActions" class="checked-favorite-materials-actions">
+        <div class="checked-favorite-materials-header">
+          <span>拡張機能</span>
+          <button id="checkedFavoriteMaterialsHelpBtn" class="favorite-material-help-btn" type="button" aria-label="拡張機能について">?</button>
+        </div>
+        <div class="checked-favorite-materials-mode" role="group" aria-label="素材リストの計算方法">
+          <button id="checkedFavoriteSumModeBtn" class="active" type="button">合算</button>
+          <button id="checkedFavoriteAnyOneModeBtn" type="button">どれか1リスト</button>
+        </div>
+        <div class="checked-favorite-materials-run">
+          <button id="checkedFavoriteMaterialsBtn" type="button">素材リストを表示</button>
+          <button id="clearFavoriteMaterialChecksBtn" type="button">戻る</button>
+        </div>
+      </div>
+      <ul id="favoriteLists"></ul>
+    </div>
+    <ul id="recipeList"></ul>
+    <div class="tips-msg mobile-tips-msg hidden" id="mobileTipsMsg"></div>
+  </div>
+  <div class="panel-middle" id="panelMiddle">
+    <div class="panel-middle-header">
+      <button id="usesBackBtn">◀ 戻る</button>
+      <span id="usesTitle"></span>
+    </div>
+    <ul id="usesList"></ul>
+  </div>
+  <div class="panel-right" id="panelRight">
+    <div class="result-header">
+      <div class="result-main-row">
+        <span id="resultTitle"></span>
+        <button id="backBtn">◀ 戻る</button>
+        <label id="countLabel">個数:</label>
+        <div class="count-control">
+          <button class="count-btn count-step-wide" id="countDecrease5Btn">-5</button>
+          <button class="count-btn" id="countDecreaseBtn">－</button>
+          <input type="number" id="countInput" value="1" min="1" max="999" step="1" inputmode="numeric">
+          <button class="count-btn" id="countIncreaseBtn">＋</button>
+          <button class="count-btn count-step-wide" id="countIncrease5Btn">+5</button>
+        </div>
+      </div>
+      <div class="result-view-row">
+        <div id="resultViewSwitch" class="result-view-switch hidden" role="group" aria-label="表示切替">
+          <button id="treeViewBtn" class="active" type="button">🌲 レシピツリー</button>
+          <button id="materialsViewBtn" type="button">素材リスト</button>
+        </div>
+        <button id="usesBtn">使用先</button>
+      </div>
+    </div>
+    <div id="treeContainer">
+      <div class="tips-msg" id="tipsMsg"></div>
+    </div>
+  </div>
+</div>
+<div class="footer">© SQUARE ENIX / Data: XIVAPI / X: <a href="https://x.com/ff14_recipe" target="_blank" rel="noopener">@ff14_recipe</a></div>
+<div id="loadingOverlay" class="open" role="status" aria-live="polite">
+  <div class="loading-card">
+    <div class="loading-title">データ読み込み中...</div>
+  </div>
+</div>
+<div id="updateNotice" role="status">
+  <span>アプリが更新されました</span>
+  <button id="updateReloadBtn" type="button">再読み込み</button>
+</div>
+
+<div id="confirmOverlay">
+  <div id="confirmDialog">
+    <div id="confirmMsg"></div>
+    <div class="confirm-btns">
+      <button class="confirm-btn yes" id="confirmYes">はい</button>
+      <button class="confirm-btn no" id="confirmNo">いいえ</button>
+    </div>
+  </div>
+</div>
+
+<div id="settingsOverlay">
+  <div id="settingsDialog" role="dialog" aria-modal="true" aria-labelledby="settingsDialogTitle">
+    <div class="settings-top-actions">
+      <button class="settings-corner-btn" id="contactBtn" type="button" title="報告・お問い合わせ">
+        <span>報告・お問い合わせ</span>
+        <svg class="discord-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M19.4 4.9A16.1 16.1 0 0 0 15.5 3l-.2.4c1.4.3 2.1.8 2.1.8a13.7 13.7 0 0 0-10.8 0s.7-.5 2.2-.8L8.5 3a16.1 16.1 0 0 0-3.9 1.9C2.2 8.5 1.6 12 1.9 15.4c1.6 1.2 3.1 1.9 4.6 2.3l.9-1.5c-.5-.2-1-.4-1.5-.7l.4-.3c2.9 1.4 6 1.4 8.8 0l.4.3c-.5.3-1 .5-1.5.7l.9 1.5c1.5-.4 3.1-1.1 4.6-2.3.4-4-.6-7.5-2.1-10.5ZM8.8 13.4c-.8 0-1.5-.8-1.5-1.8s.7-1.8 1.5-1.8 1.5.8 1.5 1.8-.7 1.8-1.5 1.8Zm6.4 0c-.8 0-1.5-.8-1.5-1.8s.7-1.8 1.5-1.8 1.5.8 1.5 1.8-.7 1.8-1.5 1.8Z"/>
+        </svg>
+      </button>
+      <button class="settings-corner-btn" id="privacyBtn" type="button">プライバシー</button>
+      <button class="settings-corner-btn" id="licenseBtn" type="button">LICENSE</button>
+    </div>
+    <div class="settings-title-row">
+      <h2 id="settingsDialogTitle"><span aria-hidden="true">⚙</span><span class="visually-hidden">共有・データ管理など</span></h2>
+      <span id="appVersion"></span>
+    </div>
+    <div class="settings-section font-size-settings-section">
+      <div class="settings-label">フォントサイズ</div>
+      <div class="font-size-level-row">
+        <label for="fontSizeLevelInput">Level <output id="fontSizeLevelOutput" for="fontSizeLevelInput">2</output></label>
+      </div>
+      <input id="fontSizeLevelInput" class="font-size-level-input" type="range" min="1" max="5" step="1" value="2" aria-label="フォントサイズLevel">
+      <div class="font-size-level-marks" aria-hidden="true">
+        <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span>
+      </div>
+      <div id="fontSizePreview" class="font-size-preview" data-font-size-level="2" aria-label="フォントサイズの表示例">
+        <div class="node-row">
+          <button id="fontSizePreviewPin" class="pin-btn" type="button" title="表示例のピン" aria-label="表示例のピン" aria-pressed="true">📌</button>
+          <button id="fontSizePreviewCheck" class="checkable-item-icon checkable-node-icon checked" type="button" title="表示例の画像チェック" aria-label="表示例の画像チェック" aria-pressed="true">
+            <img class="node-icon" src="./assets/item-icons/025/025945.webp" alt="">
+            <span class="item-image-check" aria-hidden="true">✔︎</span>
+          </button>
+          <span class="node-main root-item-main">
+            <span class="node-title root-item-title">
+              <span class="item-list-label root-item-display-label">
+                <span class="item-list-badges">
+                  <span class="craft-job-label">
+                    <img class="job-icon" src="./assets/job-icons/alchemist.webp" alt="" aria-hidden="true">
+                    <span class="badge badge-masterbook job-badge">錬金秘伝書:第6巻</span>
+                  </span>
+                </span>
+                <span class="list-name">オーケストリオン譜:最後の闘い（FINAL FANTASY IV）</span>
+              </span>
+              <span class="node-qty">× 3</span>
+            </span>
+            <span class="node-sub-info">
+              <span class="node-sub-row"><span class="node-sub-label">(🔨</span><span class="node-sub-num node-craft-count"> 2 </span><span class="node-sub-label">回製作)</span></span>
+            </span>
+          </span>
+        </div>
+      </div>
+    </div>
+    <div class="settings-section">
+      <div class="settings-label">シェアするお気に入りリストを選ぶ</div>
+      <div class="settings-dropdown">
+        <button id="exportListToggle" class="settings-dropdown-toggle" type="button" aria-haspopup="listbox" aria-expanded="false">リストを選択...</button>
+        <ul id="exportListChoices" class="settings-dropdown-list" role="listbox"></ul>
+      </div>
+      <div class="settings-row">
+        <input id="exportCode" class="settings-input" type="text" readonly>
+        <button class="settings-btn" id="copyExportBtn">コピー</button>
+      </div>
+    </div>
+    <div class="settings-section">
+      <div class="settings-label">シェアされたお気に入りを取り込む</div>
+      <div class="settings-row">
+        <input id="importCode" class="settings-input" type="text" placeholder="コードを貼り付け...">
+        <button class="settings-btn" id="startImportBtn">取り込む</button>
+      </div>
+      <div id="importErr" class="settings-err"></div>
+      <button class="settings-btn share-plaza-open-btn" id="sharePlazaOpenBtn" type="button">シェアコード広場を開く</button>
+    </div>
+    <div class="settings-section">
+      <div class="settings-label">お気に入りリストの一括入出力</div>
+      <div class="settings-note">登録済みの全お気に入りリストを、1つのファイルに書き出したり、まとめて読み込んだりできます。</div>
+      <div class="settings-row favorite-list-file-actions">
+        <button class="settings-btn" id="exportAllFavoritesBtn" type="button">全リストを書き出す</button>
+        <button class="settings-btn" id="importAllFavoritesBtn" type="button">ファイルから読み込む</button>
+      </div>
+      <input id="importAllFavoritesFile" type="file" accept=".txt,text/plain,application/json" hidden>
+      <div id="favoriteListFileStatus" class="settings-file-status" role="status" aria-live="polite"></div>
+    </div>
+    <div class="settings-close">
+      <button class="confirm-btn yes" id="fontSizeApplyBtn" type="button" disabled>反映</button>
+      <button class="confirm-btn no" id="settingsCloseBtn">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<div id="fontSizeDiscardOverlay">
+  <div id="fontSizeDiscardDialog" role="alertdialog" aria-modal="true" aria-labelledby="fontSizeDiscardMessage">
+    <div id="fontSizeDiscardMessage">変更したフォントサイズはまだ反映されていません。反映せずに設定画面を閉じますか？</div>
+    <div class="confirm-btns">
+      <button class="confirm-btn yes" id="fontSizeDiscardBtn" type="button">反映せず閉じる</button>
+      <button class="confirm-btn no" id="fontSizeContinueBtn" type="button">設定を続ける</button>
+    </div>
+  </div>
+</div>
+
+<div id="sharePlazaOverlay" aria-hidden="true">
+  <iframe id="sharePlazaFrame" title="シェアコード広場" allow="clipboard-write"></iframe>
+</div>
+
+<div id="licenseOverlay">
+  <div id="licenseDialog">
+    <h2 id="licenseTitle">LICENSE / NOTICE</h2>
+    <div id="licenseText" class="document-text"></div>
+    <div class="settings-close">
+      <button class="confirm-btn no" id="licenseCloseBtn">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<div id="textInputOverlay">
+  <div id="textInputDialog">
+    <div id="textInputMsg"></div>
+    <input id="textInputField" class="settings-input" type="text" maxlength="50">
+    <div class="choice-btns">
+      <button class="choice-btn" id="textInputOkBtn">OK</button>
+      <button class="choice-btn" id="textInputCancelBtn">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<div id="favoriteTargetOverlay">
+  <div id="favoriteTargetDialog">
+    <div id="favoriteTargetMsg"></div>
+    <div id="favoriteTargetCreate"></div>
+    <div id="favoriteTargetChoices" class="choice-list"></div>
+    <div class="choice-btns">
+      <button class="choice-btn" id="favoriteTargetCancelBtn">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<div id="gatheringOverlay">
+  <div id="gatheringDialog">
+    <div class="gathering-dialog-header">
+      <span id="gatheringTitle"></span>
+    </div>
+    <div id="gatheringContent"></div>
+    <div class="settings-close">
+      <button class="confirm-btn no" id="gatheringCloseBtn" type="button">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<div id="shopOverlay">
+  <div id="shopDialog">
+    <div class="shop-dialog-header">
+      <span id="shopTitle"></span>
+      <div id="shopPriceHeader"></div>
+    </div>
+    <div id="shopContent"></div>
+    <div class="settings-close">
+      <button class="confirm-btn no" id="shopCloseBtn" type="button">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<div id="materialTreeOverlay">
+  <div id="materialTreeDialog">
+    <div class="material-tree-dialog-header">
+      <span id="materialTreeTitle"></span>
+      <div class="material-tree-count-row">
+        <label for="materialTreeCountInput">個数:</label>
+        <div class="count-control">
+          <button class="count-btn count-step-wide" id="materialTreeDecrease5Btn" type="button">-5</button>
+          <button class="count-btn" id="materialTreeDecreaseBtn" type="button">－</button>
+          <input type="number" id="materialTreeCountInput" value="1" min="1" max="999" step="1" inputmode="numeric">
+          <button class="count-btn" id="materialTreeIncreaseBtn" type="button">＋</button>
+          <button class="count-btn count-step-wide" id="materialTreeIncrease5Btn" type="button">+5</button>
+        </div>
+      </div>
+    </div>
+    <div id="materialTreeContent"></div>
+    <div class="settings-close">
+      <button class="confirm-btn no" id="materialTreeCloseBtn" type="button">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<script src="./app.bundle.min.js"></script>
+<!-- Cloudflare Web Analytics -->
+<script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "decd66c3481c4277a749a59964c307a6"}'></script>
+<!-- End Cloudflare Web Analytics -->
+</body>
+</html>
