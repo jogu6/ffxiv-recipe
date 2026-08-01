@@ -1,8 +1,11 @@
 const DATA_CACHE_VERSION = 'ff14recipe-data-7.50-6e392bcc';
 const DATA_FILE = `./data/Item.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 const TIPS_FILE = './data/tips.md';
-const ABOUT_URL = ['127.0.0.1', 'localhost'].includes(location.hostname)
-  ? `http://${location.hostname}:4174/`
+const DEVELOPMENT_SITE_HOSTS = new Set(['127.0.0.1', 'localhost', '192.168.11.2']);
+const IS_DEVELOPMENT_APP = DEVELOPMENT_SITE_HOSTS.has(location.hostname) && location.port === '4173';
+const DEVELOPMENT_ABOUT_ORIGIN = `${location.protocol}//${location.hostname}:4174`;
+const ABOUT_URL = IS_DEVELOPMENT_APP
+  ? `${DEVELOPMENT_ABOUT_ORIGIN}/`
   : 'https://jogu6.github.io/ffxiv-recipe-about/';
 const LS_FAV = 'ff14_favorites';
 const LS_FAV_LISTS = 'ff14_favorite_lists_v3';
@@ -11,6 +14,8 @@ const LS_FAV_COUNTS = 'ff14_favorite_item_counts_v1';
 const LS_SEARCH_HISTORY = 'ff14_search_history';
 const LS_VIEW_STATE = 'ff14_view_state_v1';
 const SS_SKIP_RESTORE_ONCE = 'ff14_skip_restore_once';
+const fontSizeSettings = FontSizeSettings;
+fontSizeSettings.assertStorageAvailable();
 const SEARCH_HISTORY_LIMIT = 30;
 const FAVORITE_NAME_MAX = 50;
 const RECENT_LIST_ID = 'SYSTEM_RECENT_ITEMS';
@@ -59,9 +64,11 @@ const {
 } = FavoriteCountModel;
 const {
   bindKeyboardActivation,
+  bindInteractionFeedback,
   bindNumericInput,
   bindOverlayDismissal,
-  bindStepButtons
+  bindStepButtons,
+  vibrateInteraction
 } = EventWiring;
 const { createFloatingWindow } = FloatingWindow;
 const { createEquipmentSearchModel } = EquipmentSearchModel;
@@ -184,6 +191,22 @@ const elements = {
   confirmYes: document.getElementById('confirmYes'),
   confirmNo: document.getElementById('confirmNo'),
   settingsOverlay: document.getElementById('settingsOverlay'),
+  settingsDialog: document.getElementById('settingsDialog'),
+  settingsTabPanels: document.getElementById('settingsTabPanels'),
+  settingsShareTab: document.getElementById('settingsShareTab'),
+  settingsDisplayTab: document.getElementById('settingsDisplayTab'),
+  settingsSharePanel: document.getElementById('settingsSharePanel'),
+  settingsDisplayPanel: document.getElementById('settingsDisplayPanel'),
+  fontSizePendingBadge: document.getElementById('fontSizePendingBadge'),
+  fontSizeLevelInput: document.getElementById('fontSizeLevelInput'),
+  fontSizeLevelOutput: document.getElementById('fontSizeLevelOutput'),
+  fontSizePreview: document.getElementById('fontSizePreview'),
+  fontSizePreviewPin: document.getElementById('fontSizePreviewPin'),
+  fontSizePreviewCheck: document.getElementById('fontSizePreviewCheck'),
+  fontSizeApplyBtn: document.getElementById('fontSizeApplyBtn'),
+  fontSizeDiscardOverlay: document.getElementById('fontSizeDiscardOverlay'),
+  fontSizeDiscardBtn: document.getElementById('fontSizeDiscardBtn'),
+  fontSizeContinueBtn: document.getElementById('fontSizeContinueBtn'),
   exportListToggle: document.getElementById('exportListToggle'),
   exportListChoices: document.getElementById('exportListChoices'),
   exportCode: document.getElementById('exportCode'),
@@ -247,6 +270,7 @@ const floatingWindows = {
   gathering: createFloatingWindow(elements.gatheringOverlay, floatingWindowOptions),
   license: createFloatingWindow(elements.licenseOverlay, floatingWindowOptions),
   materialTree: createFloatingWindow(elements.materialTreeOverlay, floatingWindowOptions),
+  fontSizeDiscard: createFloatingWindow(elements.fontSizeDiscardOverlay, floatingWindowOptions),
   settings: createFloatingWindow(elements.settingsOverlay, floatingWindowOptions),
   sharePlaza: createFloatingWindow(elements.sharePlazaOverlay, {
     ...floatingWindowOptions,
@@ -325,6 +349,11 @@ let viewScrollPositions = {
   panelRight: 0
 };
 let recipeSelectionModel = null;
+let appliedFontSizeLevel = fontSizeSettings.normalizeLevel(
+  document.documentElement.getAttribute('data-font-size-level')
+);
+let pendingFontSizeLevel = appliedFontSizeLevel;
+let lastHapticFontSizeLevel = pendingFontSizeLevel;
 
 const treePinMap = new Map();
 const exchangeTreeState = new Map();
@@ -1077,6 +1106,7 @@ function clearMaterialSelectedFavoriteLists() {
 function updateCheckedFavoriteMaterialsButton() {
   if (!elements.checkedFavoriteMaterialsActions) return;
   const active = hasMaterialSelectedFavoriteLists();
+  if (active && equipmentSearchOpen) setEquipmentSearchOpen(false);
   elements.checkedFavoriteMaterialsActions.classList.toggle('visible', active);
   elements.panelLeft
     .querySelector('.panel-left-header')
@@ -1274,6 +1304,7 @@ function renderSearchHistory() {
 
   entries.forEach(value => {
     const li = document.createElement('li');
+    li.dataset.hapticAction = 'true';
     const textEl = document.createElement('span');
     textEl.className = 'history-text';
     textEl.textContent = value;
@@ -1363,7 +1394,7 @@ function setCustomSelectValue(select, value, { notify = false } = {}) {
   const option = [...select.querySelectorAll('.custom-select-option')].find(row => row.dataset.value === normalized);
   if (!option) return false;
   select.dataset.value = normalized;
-  select.querySelector('.custom-select-toggle').textContent = option.textContent;
+  select.querySelector('.custom-select-value').textContent = option.textContent;
   select.querySelectorAll('.custom-select-option').forEach(row => {
     const selected = row === option;
     row.classList.toggle('selected', selected);
@@ -1380,6 +1411,7 @@ function setCustomSelectOptions(select, entries, preferred = '') {
   toggle.className = 'custom-select-toggle';
   toggle.setAttribute('aria-haspopup', 'listbox');
   toggle.setAttribute('aria-expanded', 'false');
+  toggle.appendChild(createTextElement('span', 'custom-select-value', ''));
   const options = document.createElement('div');
   options.className = 'custom-select-options';
   options.setAttribute('role', 'listbox');
@@ -1543,20 +1575,21 @@ function equipmentSearchConditionSignature() {
 
 function setEquipmentSearchOpen(open) {
   if (!elements.equipmentSearchToggle) return;
+  const nextOpen = Boolean(open) && !hasMaterialSelectedFavoriteLists();
   closeAllCustomSelects();
-  equipmentSearchOpen = open;
-  if (open) {
+  equipmentSearchOpen = nextOpen;
+  if (nextOpen) {
     elements.searchBox.value = '';
     elements.searchClearBtn.classList.remove('visible');
     closeSearchHistory();
     closeFavoriteLists();
   }
-  elements.searchBox.disabled = open || hasMaterialSelectedFavoriteLists();
-  elements.equipmentSearchPanel.classList.toggle('open', open);
-  elements.equipmentSearchToggle.classList.toggle('active', open);
-  elements.equipmentSearchToggle.textContent = open ? '▲' : '▼';
-  elements.equipmentSearchToggle.setAttribute('aria-expanded', String(open));
-  elements.panelLeft.querySelector('.panel-left-header')?.classList.toggle('equipment-search-active', open);
+  elements.searchBox.disabled = nextOpen || hasMaterialSelectedFavoriteLists();
+  elements.equipmentSearchPanel.classList.toggle('open', nextOpen);
+  elements.equipmentSearchToggle.classList.toggle('active', nextOpen);
+  elements.equipmentSearchToggle.textContent = nextOpen ? '▲' : '▼';
+  elements.equipmentSearchToggle.setAttribute('aria-expanded', String(nextOpen));
+  elements.panelLeft.querySelector('.panel-left-header')?.classList.toggle('equipment-search-active', nextOpen);
   saveViewState();
 }
 
@@ -1826,6 +1859,7 @@ function startReorderDrag(event, options) {
 
   event.preventDefault();
   event.stopPropagation();
+  if (event.isTrusted !== false) vibrateInteraction();
 
   reorderDrag = {
     ...options,
@@ -2320,6 +2354,7 @@ function renderFavoriteLists() {
 
       const name = createTextElement('span', 'favorite-list-name', list.name);
       if (recent) {
+        li.dataset.hapticAction = 'true';
         li.appendChild(name);
         li.addEventListener('click', () => selectFavoriteList(list.id));
         frag.appendChild(li);
@@ -2434,6 +2469,7 @@ function renderFavoriteLists() {
       curtain.append(curtainToggle, materialSelect, actions);
 
       li.append(name, curtain);
+      li.dataset.hapticAction = 'true';
       li.addEventListener('click', () => selectFavoriteList(list.id));
       frag.appendChild(li);
     });
@@ -3054,6 +3090,7 @@ function makeFavLi(name, index) {
       showUsesPanel(name);
     }
   });
+  if (!countsEnabled) li.dataset.hapticAction = 'true';
   return li;
 }
 
@@ -3065,6 +3102,7 @@ function makeRecipeLi(name, variant = activeRecipeVariant(name)) {
     selectedRecipe === name && (!variant?.recipeId || selectedRecipeId === variant.recipeId)
   );
   appendItemActionButtons(li, createShopInfoButton(name), createGatheringTimerButton(name));
+  li.dataset.hapticAction = 'true';
 
   li.addEventListener('click', () => {
     rememberCurrentSearch();
@@ -3082,6 +3120,7 @@ function makeIngredientLi(name) {
     createGatheringTimerButton(name),
     createUsesListButton(name, li, true)
   );
+  li.dataset.hapticAction = 'true';
   li.addEventListener('click', () => {
     rememberCurrentSearch();
     clearMaterialSelectedFavoriteLists();
@@ -3139,6 +3178,7 @@ function showUsesPanel(ingredientName, options = {}) {
 
   uses.forEach(({ recipeName, variant }) => {
     const li = createItemListRow(recipeName, 'recipe-variant-row', { recipeVariant: variant });
+    li.dataset.hapticAction = 'true';
     li.dataset.recipeId = variant.recipeId || '';
     li.addEventListener('click', () => {
       recordViewedItem(recipeName);
@@ -3260,10 +3300,23 @@ async function loadAppVersion() {
 }
 
 // Data loading and index construction
-async function fetchJson(path, errorMessage) {
+async function cacheFirstLoadResponse(path, response, cacheName) {
+  if (!cacheName || !('caches' in globalThis) || navigator.serviceWorker?.controller) return;
+  try {
+    const cache = await caches.open(cacheName);
+    await cache.put(path, response);
+  } catch (error) {
+    console.warn('[Cache] 初回データ保存失敗:', error);
+  }
+}
+
+async function fetchJson(path, errorMessage, cacheName = '') {
   const response = await fetch(path);
   if (!response.ok) throw new Error(errorMessage(response.status));
-  return response.json();
+  const cacheWrite = cacheFirstLoadResponse(path, response.clone(), cacheName);
+  const data = await response.json();
+  await cacheWrite;
+  return data;
 }
 
 async function loadTips() {
@@ -3355,6 +3408,7 @@ function updatePatchStatus(maxPatch) {
 }
 
 function showLoadError(error) {
+  window.ff14RecipeBoot?.complete();
   elements.loadStatus.textContent = '読み込みエラー';
   hideLoadingOverlay();
   const message = document.createElement('div');
@@ -3381,7 +3435,11 @@ async function init() {
   renderTips();
 
   try {
-    const rawList = await fetchJson(DATA_FILE, status => `Item.json が見つかりません (${status})`);
+    const rawList = await fetchJson(
+      DATA_FILE,
+      status => `Item.json が見つかりません (${status})`,
+      DATA_CACHE_VERSION
+    );
     const applicationDataStartedAt = performance.now();
     updatePatchStatus(buildApplicationData(rawList));
     validateFavoriteRecipeSelections();
@@ -3398,6 +3456,7 @@ async function init() {
       else clearMobilePanels();
       saveViewState();
     }
+    window.ff14RecipeBoot?.complete();
     hideLoadingOverlay();
   } catch (e) {
     showLoadError(e);
@@ -3425,15 +3484,21 @@ function showMobilePanel(panelName) {
   saveViewState();
 }
 
-function activeMobileScrollTop() {
+function activeMobileScrollContainer() {
   switch (elements.mobileBackBtn.dataset.panel || 'left') {
     case 'middle':
-      return elements.usesList.scrollTop;
+      return elements.usesList;
     case 'right':
-      return Math.max(elements.panelRight.scrollTop, elements.treeContainer.scrollTop);
+      return elements.panelRight.scrollTop >= elements.treeContainer.scrollTop
+        ? elements.panelRight
+        : elements.treeContainer;
     default:
-      return elements.recipeList.scrollTop;
+      return elements.recipeList;
   }
+}
+
+function activeMobileScrollTop() {
+  return activeMobileScrollContainer().scrollTop;
 }
 
 function updateMobileHeaderVisibility() {
@@ -3447,15 +3512,27 @@ function updateMobileHeaderVisibility() {
     return;
   }
   const leftPanel = currentMobilePanel() === 'left';
-  header?.classList.toggle('mobile-left-panel', leftPanel);
+  if (header && header.classList.contains('mobile-left-panel') !== leftPanel) {
+    header.classList.toggle('mobile-left-panel', leftPanel);
+  }
   const scrollTop = activeMobileScrollTop();
-  if (scrollTop === 0) header?.classList.remove('mobile-title-hidden');
-  else if (scrollTop >= 8) header?.classList.add('mobile-title-hidden');
   const titleHidden = header?.classList.contains('mobile-title-hidden') || false;
+  let nextTitleHidden = titleHidden;
+  if (scrollTop === 0) nextTitleHidden = false;
+  else if (scrollTop >= 8) {
+    const scrollContainer = activeMobileScrollContainer();
+    const remainingScroll = scrollContainer.scrollHeight - scrollContainer.clientHeight;
+    const stableAfterCollapse = titleHidden || remainingScroll >= 8 + (header?.offsetHeight || 0);
+    if (stableAfterCollapse) nextTitleHidden = true;
+  }
+  if (header && titleHidden !== nextTitleHidden) {
+    header.classList.toggle('mobile-title-hidden', nextTitleHidden);
+  }
+  const resolvedTitleHidden = header?.classList.contains('mobile-title-hidden') || false;
   const primaryRow = document.querySelector('.header-primary-row');
-  primaryRow?.setAttribute('aria-hidden', String(titleHidden));
-  if (primaryRow) primaryRow.inert = titleHidden;
-  const settingsHidden = leftPanel && titleHidden;
+  primaryRow?.setAttribute('aria-hidden', String(resolvedTitleHidden));
+  if (primaryRow) primaryRow.inert = resolvedTitleHidden;
+  const settingsHidden = leftPanel && resolvedTitleHidden;
   if (settingsHidden) elements.settingsBtn.setAttribute('aria-hidden', 'true');
   else elements.settingsBtn.removeAttribute('aria-hidden');
   elements.settingsBtn.inert = settingsHidden;
@@ -4191,23 +4268,33 @@ function createRecipeMethodSelector(name, { list = null } = {}) {
   return control;
 }
 
+function prependRecipeMethodControl(main, selector) {
+  const itemContent = document.createElement('span');
+  itemContent.className = 'node-item-content';
+  itemContent.append(...main.childNodes);
+  main.classList.add('has-recipe-method');
+  main.append(selector, itemContent);
+}
+
 function synchronizeRecipeMethodWidths(container) {
   const selectors = [...container.querySelectorAll('.recipe-method-selector')];
   if (selectors.length === 0) return;
   const measure = document.createElement('div');
   measure.className = 'recipe-method-width-measure';
   document.body.appendChild(measure);
-  let widest = 0;
   selectors.forEach(selector => {
+    let widest = 0;
     selector.querySelectorAll('.recipe-method-visual').forEach(visual => {
       const clone = visual.cloneNode(true);
       measure.appendChild(clone);
       widest = Math.max(widest, clone.getBoundingClientRect().width);
       clone.remove();
     });
+    const checkSize = Number.parseFloat(getComputedStyle(selector).getPropertyValue('--recipe-check-size')) || 14;
+    const controlWidth = Math.ceil(widest + Math.max(38, checkSize + 21));
+    selector.style.setProperty('--recipe-method-selector-width', `${controlWidth}px`);
   });
   measure.remove();
-  container.style.setProperty('--recipe-method-selector-width', `${Math.min(360, Math.ceil(widest + 46))}px`);
 }
 
 function resolveAndReportRecipeSelections(lists) {
@@ -4646,6 +4733,7 @@ function renderMaterialsList() {
     const collapsedState = materialSectionState.has(stateKey) ? materialSectionState.get(stateKey) : initiallyCollapsed;
     const header = document.createElement('li');
     header.className = 'materials-section-header';
+    header.dataset.hapticAction = 'true';
     const toggle = createTextElement('span', 'materials-section-toggle', collapsedState ? '▶' : '▼');
     header.append(toggle, createTextElement('span', 'materials-section-title', title));
     list.appendChild(header);
@@ -4743,6 +4831,10 @@ function renderMaterialsList() {
     primary.className = 'material-primary';
     const master = recipeVariantMaster(row.name);
     const selector = createRecipeMethodSelector(row.name, { list: currentRecipeSelectionList() });
+    if (selector) {
+      li.classList.add('has-recipe-method');
+      content.appendChild(selector);
+    }
     if (!selector) {
       for (const label of createCraftRequirementLabels(master, 'badge')) {
         primary.appendChild(label);
@@ -4841,10 +4933,6 @@ function renderMaterialsList() {
       treeButton
     );
     li.appendChild(rowElement);
-    if (selector) {
-      li.classList.add('has-recipe-method');
-      li.appendChild(selector);
-    }
     return li;
   };
 
@@ -5106,12 +5194,12 @@ function createResultRootSummary(
   main.appendChild(title);
   const subInfo = createTreeSubInfo(recipe, neededQty, producedQty, null, null);
   if (subInfo) main.appendChild(subInfo);
+  if (selector) prependRecipeMethodControl(main, selector);
   row.appendChild(main);
   appendItemActionButtons(row, createShopInfoButton(name), createGatheringTimerButton(name));
   wrapper.appendChild(row);
   if (selector) {
     wrapper.classList.add('recipe-method-root');
-    wrapper.appendChild(selector);
   }
   return wrapper;
 }
@@ -5669,20 +5757,19 @@ function buildNode(
       : createItemIcon(master.icon, 'node-icon');
   if (icon) row.appendChild(icon);
   if (showPins) row.appendChild(createTreePin(name));
-  row.appendChild(
-    createTreeMain(
-      name,
-      neededQty,
-      createTreeSubInfo(recipe, neededQty, producedQty, unitCost, unitTimes),
-      selector ? null : createTreeBadge(master.method, hideCraftBadge)
-    )
+  const main = createTreeMain(
+    name,
+    neededQty,
+    createTreeSubInfo(recipe, neededQty, producedQty, unitCost, unitTimes),
+    selector ? null : createTreeBadge(master.method, hideCraftBadge)
   );
+  if (selector) prependRecipeMethodControl(main, selector);
+  row.appendChild(main);
   appendItemActionButtons(row, createShopInfoButton(name), createGatheringTimerButton(name));
-  node.appendChild(row);
   if (selector) {
     node.classList.add('has-recipe-method');
-    node.appendChild(selector);
   }
+  node.appendChild(row);
 
   if (!hasChildren) return node;
 
@@ -5714,6 +5801,7 @@ function buildNode(
       renderUiChange(UI_CHANGE.EXCHANGE_TREE_TOGGLED);
     }
   });
+  row.dataset.hapticAction = 'true';
   node.appendChild(children);
   return node;
 }
@@ -5767,6 +5855,12 @@ const favoriteListFileCodec = createFavoriteListFileCodec({
 });
 
 function openSettings() {
+  pendingFontSizeLevel = appliedFontSizeLevel;
+  lastHapticFontSizeLevel = pendingFontSizeLevel;
+  elements.fontSizeLevelInput.value = String(pendingFontSizeLevel);
+  resetFontSizePreviewControls();
+  updateFontSizePreview();
+  floatingWindows.fontSizeDiscard.close();
   selectedExportListId = null;
   elements.exportCode.value = '';
   elements.exportListToggle.textContent = 'リストを選択...';
@@ -5776,16 +5870,165 @@ function openSettings() {
   setFavoriteListFileStatus();
   closeExportListDropdown();
   renderExportListChoices();
+  elements.settingsSharePanel.scrollTop = 0;
+  elements.settingsDisplayPanel.scrollTop = 0;
+  selectSettingsTab('share', { focus: false });
   floatingWindows.settings.open();
+  updateSettingsDialogHeight();
 }
 
-function closeSettings() {
+function measureSettingsPanelHeight(panel) {
+  const wasHidden = panel.hidden;
+  const previousStyle = panel.getAttribute('style');
+  panel.hidden = false;
+  panel.style.position = 'absolute';
+  panel.style.visibility = 'hidden';
+  panel.style.pointerEvents = 'none';
+  panel.style.width = `${elements.settingsTabPanels.clientWidth}px`;
+  panel.style.height = 'auto';
+  panel.style.overflow = 'visible';
+  const height = Math.ceil(panel.scrollHeight);
+  if (previousStyle === null) panel.removeAttribute('style');
+  else panel.setAttribute('style', previousStyle);
+  panel.hidden = wasHidden;
+  return height;
+}
+
+function updateSettingsDialogHeight() {
+  if (!floatingWindows.settings.isOpen()) return;
+  const dialog = elements.settingsDialog;
+  dialog.style.removeProperty('--settings-dialog-height');
+  const dialogStyle = getComputedStyle(dialog);
+  const header = dialog.querySelector('.settings-dialog-header');
+  const headerStyle = getComputedStyle(header);
+  const close = elements.settingsCloseBtn.closest('.settings-close');
+  const closeStyle = getComputedStyle(close);
+  const fixedHeight =
+    header.offsetHeight +
+    parseFloat(headerStyle.marginTop) +
+    parseFloat(headerStyle.marginBottom) +
+    dialog.querySelector('.settings-tabs').offsetHeight +
+    close.offsetHeight +
+    parseFloat(closeStyle.marginTop) +
+    parseFloat(dialogStyle.paddingTop) +
+    parseFloat(dialogStyle.paddingBottom) +
+    parseFloat(dialogStyle.borderTopWidth) +
+    parseFloat(dialogStyle.borderBottomWidth);
+  const contentHeight = Math.max(
+    measureSettingsPanelHeight(elements.settingsSharePanel),
+    measureSettingsPanelHeight(elements.settingsDisplayPanel)
+  );
+  const viewportHeight = Math.min(window.innerHeight, window.visualViewport?.height || window.innerHeight);
+  const height = Math.min(Math.ceil(fixedHeight + contentHeight), viewportHeight - 24);
+  dialog.style.setProperty('--settings-dialog-height', `${height}px`);
+}
+
+function hasPendingFontSizeChange() {
+  return pendingFontSizeLevel !== appliedFontSizeLevel;
+}
+
+function resetFontSizePreviewControls() {
+  elements.fontSizePreviewPin.classList.remove('inactive');
+  elements.fontSizePreviewPin.textContent = '📌';
+  elements.fontSizePreviewPin.setAttribute('aria-pressed', 'true');
+  elements.fontSizePreviewCheck.classList.add('checked');
+  elements.fontSizePreviewCheck.setAttribute('aria-pressed', 'true');
+}
+
+function updateFontSizePreview() {
+  const level = fontSizeSettings.normalizeLevel(elements.fontSizeLevelInput.value);
+  pendingFontSizeLevel = level;
+  const percent = Math.round(fontSizeSettings.scaleForLevel(level) * 100);
+  const output = `${level}（${percent}%）`;
+  elements.fontSizeLevelOutput.value = output;
+  elements.fontSizeLevelOutput.textContent = output;
+  elements.fontSizePreview.setAttribute('data-font-size-level', String(level));
+  elements.fontSizeLevelInput.setAttribute('aria-valuetext', `Level ${output}`);
+  elements.fontSizeApplyBtn.disabled = !hasPendingFontSizeChange();
+  elements.fontSizePendingBadge.hidden = !hasPendingFontSizeChange();
+}
+
+function handleFontSizeLevelInput(event) {
+  const level = fontSizeSettings.normalizeLevel(elements.fontSizeLevelInput.value);
+  if (event.isTrusted !== false && level !== lastHapticFontSizeLevel) vibrateInteraction();
+  lastHapticFontSizeLevel = level;
+  updateFontSizePreview();
+}
+
+function selectSettingsTab(name, { focus = true } = {}) {
+  const display = name === 'display';
+  elements.settingsShareTab.classList.toggle('active', !display);
+  elements.settingsDisplayTab.classList.toggle('active', display);
+  elements.settingsShareTab.setAttribute('aria-selected', String(!display));
+  elements.settingsDisplayTab.setAttribute('aria-selected', String(display));
+  elements.settingsShareTab.tabIndex = display ? -1 : 0;
+  elements.settingsDisplayTab.tabIndex = display ? 0 : -1;
+  elements.settingsSharePanel.hidden = display;
+  elements.settingsDisplayPanel.hidden = !display;
+  elements.settingsSharePanel.classList.toggle('active', !display);
+  elements.settingsDisplayPanel.classList.toggle('active', display);
+  if (display) closeExportListDropdown();
+  if (focus) (display ? elements.settingsDisplayTab : elements.settingsShareTab).focus();
+}
+
+function handleSettingsTabKeydown(event) {
+  if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+  event.preventDefault();
+  selectSettingsTab(event.currentTarget === elements.settingsShareTab ? 'display' : 'share');
+}
+
+function closeFontSizeDiscardWarning() {
+  if (!floatingWindows.fontSizeDiscard.close()) return;
+  requestAnimationFrame(() =>
+    (elements.settingsDisplayPanel.hidden ? elements.settingsShareTab : elements.fontSizeLevelInput).focus()
+  );
+}
+
+function closeSettingsImmediately() {
+  closeFontSizeDiscardWarning();
   floatingWindows.settings.close();
   closeExportListDropdown();
 }
 
-const SHARE_PLAZA_URL = ['127.0.0.1', 'localhost'].includes(location.hostname)
-  ? `http://${location.hostname}:4174/share-code-plaza.html`
+function requestCloseSettings() {
+  if (!hasPendingFontSizeChange()) {
+    closeSettingsImmediately();
+    return;
+  }
+  if (floatingWindows.fontSizeDiscard.open()) {
+    requestAnimationFrame(() => elements.fontSizeContinueBtn.focus());
+  }
+}
+
+function discardFontSizeChangeAndClose() {
+  pendingFontSizeLevel = appliedFontSizeLevel;
+  closeSettingsImmediately();
+}
+
+function applyFontSizeChange() {
+  if (!hasPendingFontSizeChange()) return;
+  const level = fontSizeSettings.saveLevel(pendingFontSizeLevel);
+  appliedFontSizeLevel = level;
+  closeSettingsImmediately();
+  fontSizeSettings.applyLevel(level);
+  resetToStartupView();
+}
+
+function toggleFontSizePreviewPin() {
+  const active = elements.fontSizePreviewPin.getAttribute('aria-pressed') !== 'true';
+  elements.fontSizePreviewPin.classList.toggle('inactive', !active);
+  elements.fontSizePreviewPin.textContent = active ? '📌' : '📍';
+  elements.fontSizePreviewPin.setAttribute('aria-pressed', String(active));
+}
+
+function toggleFontSizePreviewCheck() {
+  const checked = elements.fontSizePreviewCheck.getAttribute('aria-pressed') !== 'true';
+  elements.fontSizePreviewCheck.classList.toggle('checked', checked);
+  elements.fontSizePreviewCheck.setAttribute('aria-pressed', String(checked));
+}
+
+const SHARE_PLAZA_URL = IS_DEVELOPMENT_APP
+  ? `${DEVELOPMENT_ABOUT_ORIGIN}/share-code-plaza.html`
   : 'https://jogu6.github.io/ffxiv-recipe-about/share-code-plaza.html';
 
 function openSharePlaza() {
@@ -5800,8 +6043,7 @@ function closeSharePlaza() {
 function isTrustedSharePlazaMessage(event) {
   if (event.source !== elements.sharePlazaFrame.contentWindow) return false;
   if (event.origin === 'https://jogu6.github.io') return true;
-  if (!['127.0.0.1', 'localhost'].includes(location.hostname)) return false;
-  return event.origin === `http://${location.hostname}:4174`;
+  return IS_DEVELOPMENT_APP && event.origin === DEVELOPMENT_ABOUT_ORIGIN;
 }
 
 function importFavoriteFromSharePlaza(code) {
@@ -6116,7 +6358,7 @@ function startImport() {
   setImportError();
   const importAsNewList = name => {
     const list = createFavoriteList(name, decoded.itemIds, decoded.recipeSelections);
-    closeSettings();
+    requestCloseSettings();
     selectFavoriteList(list.id);
   };
   if (decoded.needsName) {
@@ -6143,7 +6385,22 @@ function openPopup() {
 }
 
 // Event wiring and application startup
+function isEquipmentSearchUiTarget(target) {
+  if (target === elements.equipmentSearchToggle || elements.equipmentSearchPanel?.contains(target)) return true;
+  if (listMode !== 'equipment') return false;
+  return (
+    elements.recipeList.contains(target) ||
+    elements.panelRight.contains(target) ||
+    target === elements.mobileBackBtn
+  );
+}
+
+function closeEquipmentSearchForExternalAction(event) {
+  if (equipmentSearchOpen && !isEquipmentSearchUiTarget(event.target)) setEquipmentSearchOpen(false);
+}
+
 function handleDocumentPointerDown(event) {
+  closeEquipmentSearchForExternalAction(event);
   if (!event.target.closest?.('.custom-select')) closeAllCustomSelects();
   if (
     event.target !== elements.searchBox &&
@@ -6167,14 +6424,27 @@ function handleDocumentPointerDown(event) {
 }
 
 function bindEvents() {
+  bindInteractionFeedback(document);
   const standaloneQuery = window.matchMedia('(display-mode: standalone)');
   const overlayQuery = window.matchMedia('(display-mode: window-controls-overlay)');
   standaloneQuery.addEventListener?.('change', updatePopupButtonVisibility);
   overlayQuery.addEventListener?.('change', updatePopupButtonVisibility);
   document.addEventListener('keydown', event => {
     if (event.key !== 'Escape') return;
-    if (floatingWindows.shop.isOpen()) closeShopDialog();
+    if (floatingWindows.fontSizeDiscard.isOpen()) closeFontSizeDiscardWarning();
+    else if (floatingWindows.shop.isOpen()) closeShopDialog();
     else if (floatingWindows.gathering.isOpen()) closeGatheringDialog();
+    else if (
+      floatingWindows.settings.isOpen() &&
+      !floatingWindows.confirm.isOpen() &&
+      !floatingWindows.favoriteTarget.isOpen() &&
+      !floatingWindows.license.isOpen() &&
+      !floatingWindows.materialTree.isOpen() &&
+      !floatingWindows.sharePlaza.isOpen() &&
+      !floatingWindows.textInput.isOpen()
+    ) {
+      requestCloseSettings();
+    }
   });
 
   bindKeyboardActivation(elements.appTitle, resetToStartupView);
@@ -6345,6 +6615,7 @@ function bindEvents() {
     if (elements.favoriteLists.classList.contains('open')) updateFavoriteListsMaxHeight();
     const shopEntries = elements.shopContent.querySelector('.shop-entry-list');
     if (floatingWindows.shop.isOpen() && shopEntries) layoutShopEntries(shopEntries);
+    updateSettingsDialogHeight();
   });
   elements.usesBtn.addEventListener('click', () => showUsesPanel(selectedRecipe));
   elements.updateReloadBtn.addEventListener('click', () => {
@@ -6354,7 +6625,21 @@ function bindEvents() {
   });
   elements.confirmYes.addEventListener('click', confirmPendingAction);
   elements.confirmNo.addEventListener('click', closeConfirm);
-  bindOverlayDismissal(elements.settingsOverlay, closeSettings, elements.settingsCloseBtn);
+  bindOverlayDismissal(elements.settingsOverlay, requestCloseSettings, elements.settingsCloseBtn);
+  elements.settingsShareTab.addEventListener('click', () => selectSettingsTab('share', { focus: false }));
+  elements.settingsDisplayTab.addEventListener('click', () => selectSettingsTab('display', { focus: false }));
+  elements.settingsShareTab.addEventListener('keydown', handleSettingsTabKeydown);
+  elements.settingsDisplayTab.addEventListener('keydown', handleSettingsTabKeydown);
+  elements.fontSizeLevelInput.addEventListener('input', handleFontSizeLevelInput);
+  elements.fontSizeApplyBtn.addEventListener('click', applyFontSizeChange);
+  elements.fontSizePreviewPin.addEventListener('click', toggleFontSizePreviewPin);
+  elements.fontSizePreviewCheck.addEventListener('click', toggleFontSizePreviewCheck);
+  elements.fontSizeDiscardBtn.addEventListener('click', discardFontSizeChangeAndClose);
+  bindOverlayDismissal(
+    elements.fontSizeDiscardOverlay,
+    closeFontSizeDiscardWarning,
+    elements.fontSizeContinueBtn
+  );
   elements.copyExportBtn.addEventListener('click', copyExportCode);
   elements.startImportBtn.addEventListener('click', startImport);
   elements.exportAllFavoritesBtn.addEventListener('click', exportAllFavoriteLists);
@@ -6383,6 +6668,7 @@ function bindEvents() {
   ['pointerdown', 'input', 'wheel'].forEach(eventName => {
     elements.panelLeft.addEventListener(eventName, closeUsesPanel);
   });
+  document.addEventListener('click', closeEquipmentSearchForExternalAction, true);
   document.addEventListener('pointerdown', handleDocumentPointerDown);
   window.addEventListener('resize', handleResize);
 }

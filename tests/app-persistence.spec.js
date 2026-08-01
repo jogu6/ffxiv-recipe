@@ -195,7 +195,7 @@ test('automatically saves a recipe method that minimizes craft job changes', asy
     .locator('.intermediate-tree-node > .intermediate-tree-row .material-name')
     .filter({ hasText: /^ミラージュプリズム$/ })
     .locator('xpath=ancestor::li[contains(@class,"intermediate-tree-node")]')
-    .locator(':scope > .recipe-method-control');
+    .locator('.material-content > .recipe-method-control');
   await intermediateMethod.locator('.recipe-method-summary').click();
   await page
     .locator('.intermediate-tree-node .recipe-method-choice')

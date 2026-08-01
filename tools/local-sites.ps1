@@ -78,11 +78,11 @@ if (-not (Test-Path -LiteralPath $pythonPath)) {
 }
 
 $app = Start-Process -FilePath $pythonPath -ArgumentList @(
-    "-m", "http.server", "4173", "--bind", "0.0.0.0", "--directory", "site"
+    "tools/serve-local-app.py", "--port", "4173", "--bind", "0.0.0.0", "--directory", "site"
 ) -WorkingDirectory $projectRoot -NoNewWindow -PassThru
 try {
     $about = Start-Process -FilePath "node.exe" -ArgumentList @(
-        "tools/serve-site.mjs", "--port", "4174"
+        "tools/serve-site.mjs", "--port", "4174", "--bind", "0.0.0.0"
     ) -WorkingDirectory $aboutRoot -NoNewWindow -PassThru
 } catch {
     Stop-Process -Id $app.Id -ErrorAction SilentlyContinue
@@ -98,6 +98,8 @@ try {
 
 Write-Host "Webアプリ: http://127.0.0.1:4173/"
 Write-Host "使い方ガイド・広場: http://127.0.0.1:4174/"
+Write-Host "LAN Webアプリ: http://192.168.11.2:4173/"
+Write-Host "LAN 使い方ガイド・広場: http://192.168.11.2:4174/"
 Write-Host "Ctrl+Cで両方停止します。"
 
 try {

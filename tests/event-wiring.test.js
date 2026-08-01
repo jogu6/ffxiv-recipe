@@ -4,7 +4,8 @@ const {
   bindKeyboardActivation,
   bindNumericInput,
   bindOverlayDismissal,
-  bindStepButtons
+  bindStepButtons,
+  vibrateInteraction
 } = require('../site/event-wiring.js');
 
 class FakeElement {
@@ -88,4 +89,19 @@ test('step buttons retain their declared deltas', () => {
   down.emit('click');
   up.emit('click');
   assert.deepEqual(changes, [-5, 1]);
+});
+
+test('interaction vibration is short and safely ignored when unsupported or rejected', () => {
+  const patterns = [];
+  assert.equal(vibrateInteraction({ vibrate: value => (patterns.push(value), true) }), true);
+  assert.deepEqual(patterns, [12]);
+  assert.equal(vibrateInteraction({}), false);
+  assert.equal(
+    vibrateInteraction({
+      vibrate() {
+        throw new Error('blocked');
+      }
+    }),
+    false
+  );
 });

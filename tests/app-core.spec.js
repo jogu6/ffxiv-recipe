@@ -14,8 +14,39 @@ test('loading overlay blocks interaction while it is displayed', async ({ page }
   await openApp(page);
   await expect(page.locator('#loadingOverlay')).toHaveCSS('pointer-events', 'auto');
   await expect(page.locator('header #loadStatus')).toHaveText('patch 7.5 対応');
+  const cachedItemRequests = await page.evaluate(async () => {
+    const cache = await caches.open('ff14recipe-data-7.50-6e392bcc');
+    return (await cache.keys()).filter(request => request.url.includes('/data/Item.json?')).length;
+  });
+  expect(cachedItemRequests).toBe(1);
   await page.locator('#settingsBtn').click();
-  await expect(page.locator('#settingsDialog #appVersion')).toHaveText('v2.97');
+  await expect(page.locator('#settingsDialog #appVersion')).toHaveText('v2.98');
+});
+
+test('shows a startup error instead of leaving the loading message indefinitely', async ({ page }) => {
+  await page.route('**/font-size-settings.js*', route =>
+    route.fulfill({ contentType: 'text/javascript', body: 'throw new Error("startup test");' })
+  );
+  await page.goto('/');
+
+  await expect(page.locator('#loadingOverlay')).toHaveClass(/open/);
+  await expect(page.locator('#loadingOverlay .loading-title')).toHaveText(
+    'アプリの起動に失敗しました。再読み込みしてください。'
+  );
+  await expect(page.locator('#loadingErrorDetail')).toContainText('startup test');
+  await expect(page.locator('#loadStatus')).toHaveText('読み込みエラー');
+});
+
+test('does not request Cloudflare analytics outside the public site', async ({ page }) => {
+  const analyticsRequests = [];
+  page.on('request', request => {
+    if (request.url().startsWith('https://static.cloudflareinsights.com/')) {
+      analyticsRequests.push(request.url());
+    }
+  });
+  await openApp(page);
+
+  expect(analyticsRequests).toEqual([]);
 });
 
 test('shows the transfer and listing restriction badge only for confirmed EX items', async ({ page }) => {
@@ -94,21 +125,27 @@ test('shows one selectable search row per recipe variant and uses the selected i
   await expect(page.locator('#treeContainer')).not.toContainText('グロースフォーミュラ・ガンマ');
   const rootSummary = page.locator('.result-root-summary');
   await expect(rootSummary).toHaveClass(/recipe-method-root/);
-  await expect(rootSummary.locator(':scope > .recipe-method-control')).toHaveCount(1);
+  await expect(rootSummary.locator('.root-item-main > .recipe-method-control')).toHaveCount(1);
   await expect(rootSummary.locator('.root-item-display-label .craft-job-label')).toHaveCount(0);
   await expect(rootSummary.getByText('製作方法', { exact: true })).toHaveCount(0);
   await expect(page.locator('.recipe-methods-section')).toHaveCount(0);
   const rootLayout = await rootSummary.evaluate(root => {
     const name = root.querySelector('.list-name').getBoundingClientRect();
     const qty = root.querySelector('.node-qty').getBoundingClientRect();
-    const method = root.querySelector(':scope > .recipe-method-control').getBoundingClientRect();
+    const method = root.querySelector('.root-item-main > .recipe-method-control').getBoundingClientRect();
     const box = root.getBoundingClientRect();
     return {
       quantityGap: qty.left - name.right,
+      methodAboveName: method.bottom <= name.top,
+      methodNameAlignment: Math.abs(method.left - name.left),
+      methodWidthShare: method.width / box.width,
       methodInside: method.left >= box.left && method.right <= box.right && method.bottom <= box.bottom
     };
   });
   expect(rootLayout.quantityGap).toBeLessThanOrEqual(12);
+  expect(rootLayout.methodAboveName).toBe(true);
+  expect(rootLayout.methodNameAlignment).toBeLessThan(1);
+  expect(rootLayout.methodWidthShare).toBeLessThan(0.75);
   expect(rootLayout.methodInside).toBe(true);
   const selectorIconRatio = await page
     .locator('.result-root-summary .recipe-method-summary .craft-job-label')
@@ -117,6 +154,16 @@ test('shows one selectable search row per recipe variant and uses the selected i
   await page.locator('.result-root-summary .recipe-method-summary').click();
   await expect(page.locator('.result-root-summary .recipe-method-choice')).toHaveCount(7);
   await expect(page.locator('.result-root-summary .recipe-method-choice').first()).toBeVisible();
+  const clippedRecipeMethodLabels = await page
+    .locator('.result-root-summary .recipe-method-choice')
+    .evaluateAll(choices =>
+      choices.filter(choice => {
+        const choiceBox = choice.getBoundingClientRect();
+        const visualBox = choice.querySelector('.recipe-method-visual').getBoundingClientRect();
+        return visualBox.left < choiceBox.left || visualBox.right > choiceBox.right;
+      }).length
+    );
+  expect(clippedRecipeMethodLabels).toBe(0);
   const mobileSelectorWidths = await page.locator('.result-root-summary .recipe-method-control').evaluate(control => ({
     control: control.getBoundingClientRect().width,
     choices: control.querySelector('.recipe-method-choices').getBoundingClientRect().width
@@ -162,12 +209,12 @@ test('offers the same recipe selector for an intermediate item in the tree and m
   const intermediate = page.locator('.tree-node').filter({
     has: page.getByText('ミラージュプリズム', { exact: true })
   });
-  await expect(intermediate.locator(':scope > .recipe-method-control')).toHaveCount(1);
-  const methodSummary = intermediate.locator(':scope > .recipe-method-control .recipe-method-summary');
+  await expect(intermediate.locator('.node-main > .recipe-method-control')).toHaveCount(1);
+  const methodSummary = intermediate.locator('.node-main > .recipe-method-control .recipe-method-summary');
   await methodSummary.click();
   await expect(methodSummary).toHaveAttribute('aria-expanded', 'true');
   await intermediate
-    .locator(':scope > .recipe-method-control .recipe-method-choice')
+    .locator('.node-main > .recipe-method-control .recipe-method-choice')
     .filter({ hasText: '木工秘伝書:ミラージュプリズム' })
     .click();
   await expect(page.locator('#countInput')).toHaveValue('6');
@@ -179,18 +226,21 @@ test('offers the same recipe selector for an intermediate item in the tree and m
     .locator('.intermediate-tree-node > .intermediate-tree-row .material-name')
     .filter({ hasText: /^ミラージュプリズム$/ })
     .locator('xpath=ancestor::li[contains(@class,"intermediate-tree-node")]');
-  await expect(materialIntermediate.locator(':scope > .recipe-method-control')).toHaveCount(1);
+  await expect(materialIntermediate.locator('.material-content > .recipe-method-control')).toHaveCount(1);
   await expect(materialIntermediate.locator('.material-primary > .craft-job-label')).toHaveCount(0);
   await expect(materialIntermediate.getByText('製作方法', { exact: true })).toHaveCount(0);
   const materialMethodLayout = await materialIntermediate.evaluate(node => {
     const item = node.getBoundingClientRect();
     const icon = node.querySelector('.checkable-item-icon, .intermediate-tree-row > .list-icon').getBoundingClientRect();
     const actions = node.querySelector('.intermediate-tree-row > .item-action-buttons').getBoundingClientRect();
-    const method = node.querySelector(':scope > .recipe-method-control').getBoundingClientRect();
+    const method = node.querySelector('.material-content > .recipe-method-control').getBoundingClientRect();
+    const name = node.querySelector('.material-name').getBoundingClientRect();
     const itemBorder = getComputedStyle(node.querySelector(':scope > .intermediate-tree-row')).borderBottomWidth;
     const nodeBorder = getComputedStyle(node).borderBottomWidth;
     return {
       indented: method.left > item.left,
+      methodAboveName: method.bottom <= name.top,
+      methodNameAlignment: Math.abs(method.left - name.left),
       iconCenter: icon.top + icon.height / 2 - (item.top + item.height / 2),
       actionCenter: actions.top + actions.height / 2 - (item.top + item.height / 2),
       selectorActionGap: actions.left - method.right,
@@ -200,6 +250,8 @@ test('offers the same recipe selector for an intermediate item in the tree and m
     };
   });
   expect(materialMethodLayout.indented).toBe(true);
+  expect(materialMethodLayout.methodAboveName).toBe(true);
+  expect(materialMethodLayout.methodNameAlignment).toBeLessThan(1);
   expect(Math.abs(materialMethodLayout.iconCenter)).toBeLessThan(1);
   expect(Math.abs(materialMethodLayout.actionCenter)).toBeLessThan(1);
   expect(materialMethodLayout.selectorActionGap).toBeGreaterThanOrEqual(0);
@@ -214,6 +266,21 @@ test('offers the same recipe selector for an intermediate item in the tree and m
   await expect.poll(() => materialIntermediate.evaluate(node => node.getBoundingClientRect().height)).toBe(0);
   await intermediateHeader.click();
   await expect(materialIntermediate).not.toHaveClass(/collapsed/);
+
+  await materialIntermediate.locator('.intermediate-material-tree-btn').click();
+  const materialTreeRoot = page.locator('#materialTreeContent .material-tree-root-summary');
+  await expect(materialTreeRoot.locator('.root-item-main > .recipe-method-control')).toHaveCount(1);
+  const materialTreeMethodLayout = await materialTreeRoot.evaluate(root => {
+    const method = root.querySelector('.root-item-main > .recipe-method-control').getBoundingClientRect();
+    const name = root.querySelector('.list-name').getBoundingClientRect();
+    return {
+      methodAboveName: method.bottom <= name.top,
+      methodNameAlignment: Math.abs(method.left - name.left)
+    };
+  });
+  expect(materialTreeMethodLayout.methodAboveName).toBe(true);
+  expect(materialTreeMethodLayout.methodNameAlignment).toBeLessThan(1);
+  await page.locator('#materialTreeCloseBtn').click();
 
   const rootAndListWidths = await page.evaluate(() => {
     const root = document.querySelector('.result-root-summary').getBoundingClientRect();
@@ -234,7 +301,7 @@ test('offers the same recipe selector for an intermediate item in the tree and m
     .locator('.intermediate-tree-node > .intermediate-tree-row .material-name')
     .filter({ hasText: /^ミラージュプリズム$/ })
     .locator('xpath=ancestor::li[contains(@class,"intermediate-tree-node")]');
-  const materialMethod = mobileMaterialIntermediate.locator(':scope > .recipe-method-control');
+  const materialMethod = mobileMaterialIntermediate.locator('.material-content > .recipe-method-control');
   await materialMethod.locator('.recipe-method-summary').click();
   const mobileMethodLayout = await mobileMaterialIntermediate.evaluate(node => {
     const name = node.querySelector('.material-name').getBoundingClientRect();
@@ -258,7 +325,7 @@ test('offers the same recipe selector for an intermediate item in the tree and m
     const nodeBox = node.getBoundingClientRect();
     const icon = node.querySelector('.checkable-item-icon, .intermediate-tree-row > .list-icon').getBoundingClientRect();
     const actions = node.querySelector('.intermediate-tree-row > .item-action-buttons').getBoundingClientRect();
-    const selector = node.querySelector(':scope > .recipe-method-control').getBoundingClientRect();
+    const selector = node.querySelector('.material-content > .recipe-method-control').getBoundingClientRect();
     return {
       iconCenter: icon.top + icon.height / 2 - (nodeBox.top + nodeBox.height / 2),
       actionCenter: actions.top + actions.height / 2 - (nodeBox.top + nodeBox.height / 2),
@@ -347,7 +414,7 @@ test('number inputs hide native spin buttons', async ({ page }) => {
   await expect(page.locator('#treeContainer .tree-node .node-row').first()).toHaveCSS('white-space', 'normal');
   await page.locator('#materialsViewBtn').click();
   await page.locator('.intermediate-material-tree-btn').first().click();
-  await expect(page.locator('#materialTreeContent .tree-node .node-row').first()).toHaveCSS('white-space', 'nowrap');
+  await expect(page.locator('#materialTreeContent .tree-node .node-row').first()).toHaveCSS('white-space', 'normal');
 
   await page.evaluate(() => openMaterialTree('ローズガーネット', 6));
   const materialTreeRightGap = await page.evaluate(() => {

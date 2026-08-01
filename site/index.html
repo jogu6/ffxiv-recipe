@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="ja" data-font-size-level="2">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,6 +8,68 @@
 <link rel="icon" href="./assets/app-icons/favicon.png" type="image/png">
 <link rel="apple-touch-icon" href="./assets/app-icons/favicon.png">
 <link rel="manifest" href="./manifest.webmanifest">
+<script>
+  (() => {
+    let bootFailed = false;
+    let bootErrorDetail = '';
+
+    function showBootError() {
+      if (!bootFailed || document.documentElement.dataset.appReady === 'true') return;
+      const loadStatus = document.getElementById('loadStatus');
+      const loadingTitle = document.querySelector('#loadingOverlay .loading-title');
+      const loadingDetail = document.getElementById('loadingErrorDetail');
+      if (loadStatus) loadStatus.textContent = '読み込みエラー';
+      if (loadingTitle) loadingTitle.textContent = 'アプリの起動に失敗しました。再読み込みしてください。';
+      if (loadingDetail) {
+        loadingDetail.textContent = bootErrorDetail || '原因を特定できませんでした。';
+        loadingDetail.hidden = false;
+      }
+    }
+
+    function reportBootError(detail) {
+      if (document.documentElement.dataset.appReady === 'true') return;
+      bootFailed = true;
+      if (detail && !bootErrorDetail) bootErrorDetail = String(detail);
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', showBootError, { once: true });
+      } else {
+        showBootError();
+      }
+    }
+
+    window.addEventListener(
+      'error',
+      event => {
+        if (event.target instanceof HTMLScriptElement) {
+          const scriptUrl = new URL(event.target.src, location.href);
+          if (scriptUrl.origin === location.origin) {
+            reportBootError(`必須ファイルを読み込めません: ${scriptUrl.pathname.split('/').pop()}`);
+          }
+          return;
+        }
+        if (event.filename) {
+          if (new URL(event.filename, location.href).origin === location.origin) {
+            reportBootError(event.error?.message || event.message);
+          }
+          return;
+        }
+        if (event.error || (event.message && event.message !== 'Script error.')) {
+          reportBootError(event.error?.message || event.message);
+        }
+      },
+      true
+    );
+    window.addEventListener('unhandledrejection', event => {
+      reportBootError(event.reason?.message || event.reason || '処理中にエラーが発生しました。');
+    });
+    window.ff14RecipeBoot = {
+      complete() {
+        document.documentElement.dataset.appReady = 'true';
+      }
+    };
+  })();
+</script>
+<script src="./font-size-settings.js"></script>
 <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
@@ -125,6 +187,7 @@
 <div id="loadingOverlay" class="open" role="status" aria-live="polite">
   <div class="loading-card">
     <div class="loading-title">データ読み込み中...</div>
+    <div id="loadingErrorDetail" class="loading-error-detail" hidden></div>
   </div>
 </div>
 <div id="updateNotice" role="status">
@@ -144,20 +207,26 @@
 
 <div id="settingsOverlay">
   <div id="settingsDialog" role="dialog" aria-modal="true" aria-labelledby="settingsDialogTitle">
-    <div class="settings-top-actions">
-      <button class="settings-corner-btn" id="contactBtn" type="button" title="報告・お問い合わせ">
-        <span>報告・お問い合わせ</span>
-        <svg class="discord-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M19.4 4.9A16.1 16.1 0 0 0 15.5 3l-.2.4c1.4.3 2.1.8 2.1.8a13.7 13.7 0 0 0-10.8 0s.7-.5 2.2-.8L8.5 3a16.1 16.1 0 0 0-3.9 1.9C2.2 8.5 1.6 12 1.9 15.4c1.6 1.2 3.1 1.9 4.6 2.3l.9-1.5c-.5-.2-1-.4-1.5-.7l.4-.3c2.9 1.4 6 1.4 8.8 0l.4.3c-.5.3-1 .5-1.5.7l.9 1.5c1.5-.4 3.1-1.1 4.6-2.3.4-4-.6-7.5-2.1-10.5ZM8.8 13.4c-.8 0-1.5-.8-1.5-1.8s.7-1.8 1.5-1.8 1.5.8 1.5 1.8-.7 1.8-1.5 1.8Zm6.4 0c-.8 0-1.5-.8-1.5-1.8s.7-1.8 1.5-1.8 1.5.8 1.5 1.8-.7 1.8-1.5 1.8Z"/>
-        </svg>
-      </button>
-      <button class="settings-corner-btn" id="privacyBtn" type="button">プライバシー</button>
-      <button class="settings-corner-btn" id="licenseBtn" type="button">LICENSE</button>
-    </div>
-    <div class="settings-title-row">
-      <h2 id="settingsDialogTitle"><span aria-hidden="true">⚙</span><span class="visually-hidden">共有・データ管理など</span></h2>
+    <div class="settings-dialog-header">
+      <h2 id="settingsDialogTitle" class="visually-hidden">設定</h2>
       <span id="appVersion"></span>
+      <div class="settings-top-actions">
+        <button class="settings-corner-btn" id="contactBtn" type="button" title="報告・お問い合わせ">
+          <span>報告・お問い合わせ</span>
+          <svg class="discord-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M19.4 4.9A16.1 16.1 0 0 0 15.5 3l-.2.4c1.4.3 2.1.8 2.1.8a13.7 13.7 0 0 0-10.8 0s.7-.5 2.2-.8L8.5 3a16.1 16.1 0 0 0-3.9 1.9C2.2 8.5 1.6 12 1.9 15.4c1.6 1.2 3.1 1.9 4.6 2.3l.9-1.5c-.5-.2-1-.4-1.5-.7l.4-.3c2.9 1.4 6 1.4 8.8 0l.4.3c-.5.3-1 .5-1.5.7l.9 1.5c1.5-.4 3.1-1.1 4.6-2.3.4-4-.6-7.5-2.1-10.5ZM8.8 13.4c-.8 0-1.5-.8-1.5-1.8s.7-1.8 1.5-1.8 1.5.8 1.5 1.8-.7 1.8-1.5 1.8Zm6.4 0c-.8 0-1.5-.8-1.5-1.8s.7-1.8 1.5-1.8 1.5.8 1.5 1.8-.7 1.8-1.5 1.8Z"/>
+          </svg>
+        </button>
+        <button class="settings-corner-btn" id="privacyBtn" type="button">プライバシー</button>
+        <button class="settings-corner-btn" id="licenseBtn" type="button">LICENSE</button>
+      </div>
     </div>
+    <div class="settings-tabs" role="tablist" aria-label="設定項目">
+      <button id="settingsShareTab" class="settings-tab active" type="button" role="tab" aria-selected="true" aria-controls="settingsSharePanel" tabindex="0">共有・データ</button>
+      <button id="settingsDisplayTab" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsDisplayPanel" tabindex="-1">表示<span id="fontSizePendingBadge" class="settings-tab-badge" hidden>未反映</span></button>
+    </div>
+    <div id="settingsTabPanels" class="settings-tab-panels">
+    <div id="settingsSharePanel" class="settings-tab-panel active" role="tabpanel" aria-labelledby="settingsShareTab" tabindex="0">
     <div class="settings-section">
       <div class="settings-label">シェアするお気に入りリストを選ぶ</div>
       <div class="settings-dropdown">
@@ -188,8 +257,53 @@
       <input id="importAllFavoritesFile" type="file" accept=".txt,text/plain,application/json" hidden>
       <div id="favoriteListFileStatus" class="settings-file-status" role="status" aria-live="polite"></div>
     </div>
+    </div>
+    <div id="settingsDisplayPanel" class="settings-tab-panel" role="tabpanel" aria-labelledby="settingsDisplayTab" tabindex="0" hidden>
+      <div class="settings-section font-size-settings-section">
+        <div class="font-size-preview-frame">
+          <div class="font-size-preview-label">表示例</div>
+          <div id="fontSizePreview" class="font-size-preview" data-font-size-level="3" aria-label="フォントサイズの表示例">
+            <div class="node-row">
+              <button id="fontSizePreviewPin" class="pin-btn" type="button" title="表示例のピン" aria-label="表示例のピン" aria-pressed="true">📌</button>
+              <button id="fontSizePreviewCheck" class="checkable-item-icon checkable-node-icon checked" type="button" title="表示例の画像チェック" aria-label="表示例の画像チェック" aria-pressed="true">
+                <img class="node-icon" src="./assets/item-icons/025/025945.webp" alt="">
+                <span class="item-image-check" aria-hidden="true">✔︎</span>
+              </button>
+              <span class="node-main root-item-main">
+                <span class="node-title root-item-title">
+                  <span class="item-list-label root-item-display-label">
+                    <span class="item-list-badges"><span class="craft-job-label"><img class="job-icon" src="./assets/job-icons/alchemist.webp" alt="" aria-hidden="true"><span class="badge badge-masterbook job-badge">錬金秘伝書:第6巻</span></span></span>
+                    <span class="list-name">オーケストリオン譜:最後の闘い（FINAL FANTASY IV）</span>
+                  </span>
+                  <span class="node-qty">× 3</span>
+                </span>
+                <span class="node-sub-info"><span class="node-sub-row"><span class="node-sub-label">(🔨</span><span class="node-sub-num node-craft-count"> 2 </span><span class="node-sub-label">回製作)</span></span></span>
+              </span>
+            </div>
+          </div>
+        </div>
+        <div class="font-size-level-row">
+          <label for="fontSizeLevelInput">Level <output id="fontSizeLevelOutput" for="fontSizeLevelInput">3（100%）</output></label>
+        </div>
+        <input id="fontSizeLevelInput" class="font-size-level-input" type="range" min="1" max="10" step="1" value="3" aria-label="フォントサイズLevel">
+        <div class="font-size-level-marks" aria-hidden="true"><span>1</span><span>10</span></div>
+        <div id="fontSizeApplyNote" class="settings-note" role="note">反映すると、表示中の検索・レシピ画面を終了して初期画面に戻ります。保存済みのお気に入りは保持されます。</div>
+        <button class="confirm-btn yes font-size-apply-btn" id="fontSizeApplyBtn" type="button" disabled>反映</button>
+      </div>
+    </div>
+    </div>
     <div class="settings-close">
       <button class="confirm-btn no" id="settingsCloseBtn">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<div id="fontSizeDiscardOverlay">
+  <div id="fontSizeDiscardDialog" role="alertdialog" aria-modal="true" aria-labelledby="fontSizeDiscardMessage">
+    <div id="fontSizeDiscardMessage">変更したフォントサイズはまだ反映されていません。反映せずに設定画面を閉じますか？</div>
+    <div class="confirm-btns">
+      <button class="confirm-btn yes" id="fontSizeDiscardBtn" type="button">反映せず閉じる</button>
+      <button class="confirm-btn no" id="fontSizeContinueBtn" type="button">設定を続ける</button>
     </div>
   </div>
 </div>
@@ -296,7 +410,15 @@
 <script src="./view-state.js"></script>
 <script src="./app.js"></script>
 <!-- Cloudflare Web Analytics -->
-<script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "decd66c3481c4277a749a59964c307a6"}'></script>
+<script>
+  if (location.hostname === 'jogu6.github.io' && location.pathname.startsWith('/ffxiv-recipe/')) {
+    const analyticsScript = document.createElement('script');
+    analyticsScript.defer = true;
+    analyticsScript.src = 'https://static.cloudflareinsights.com/beacon.min.js';
+    analyticsScript.dataset.cfBeacon = JSON.stringify({ token: 'decd66c3481c4277a749a59964c307a6' });
+    document.head.append(analyticsScript);
+  }
+</script>
 <!-- End Cloudflare Web Analytics -->
 </body>
 </html>

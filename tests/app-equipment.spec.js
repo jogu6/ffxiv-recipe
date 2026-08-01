@@ -52,6 +52,7 @@ test('equipment search reset clears only the conditions', async ({ page }) => {
   await page.locator('#equipmentSearchBtn').click();
   await page.locator('#recipeList').getByText('コートリーラヴァー・ソード', { exact: true }).click();
   await expect(page.locator('.result-root-summary')).toContainText('コートリーラヴァー・ソード');
+  await expect(page.locator('#equipmentSearchPanel')).toHaveClass(/open/);
 
   await page.locator('#equipmentSearchResetBtn').click();
   await expect(page.locator('#equipmentJobSelect')).toHaveAttribute('data-value', '');
@@ -163,16 +164,29 @@ test('desktop left panel keeps the confirmed minimum width and widens on large l
   await page.setViewportSize({ width: 800, height: 800 });
   await expect(page.locator('#panelLeft')).toHaveCSS('width', '328px');
   await page.locator('#equipmentSearchToggle').click();
-  const equipmentWidths = await page.locator('.equipment-search-grid').evaluate(grid => {
-    const [job, level] = [...grid.children].map(element => element.getBoundingClientRect());
+  const equipmentLayout = await page.locator('#equipmentSearchPanel').evaluate(panel => {
+    const fields = [...panel.querySelector('.equipment-search-grid').children].map(element =>
+      element.getBoundingClientRect()
+    );
+    const actions = [...panel.querySelector('.equipment-search-actions').children].map(element =>
+      element.getBoundingClientRect()
+    );
+    const verticalCenterDelta = id => {
+      const select = panel.querySelector(id).getBoundingClientRect();
+      const value = panel.querySelector(`${id} .custom-select-value`).getBoundingClientRect();
+      return value.top + value.height / 2 - (select.top + select.height / 2);
+    };
     return {
-      job: job.width,
-      level: level.width,
-      gap: level.left - job.right,
-      grid: grid.getBoundingClientRect().width
+      jobSearchWidthDelta: fields[0].width - actions[0].width,
+      itemSearchWidthDelta: fields[2].width - actions[0].width,
+      equipmentResetWidthDelta: fields[1].width - actions[1].width,
+      slotResetWidthDelta: fields[3].width - actions[1].width,
+      jobVerticalCenter: verticalCenterDelta('#equipmentJobSelect'),
+      itemVerticalCenter: verticalCenterDelta('#equipmentItemLevelSelect'),
+      slotVerticalCenter: verticalCenterDelta('#equipmentSlotSelect')
     };
   });
-  expect(equipmentWidths).toEqual({ job: 123, level: 166, gap: 6, grid: 295 });
+  Object.values(equipmentLayout).forEach(value => expect(Math.abs(value)).toBeLessThan(1));
 });
 
 test('equipment custom dropdown stays inside a mobile viewport', async ({ page }) => {

@@ -57,6 +57,13 @@ test('combined favorite materials opens directly without confirmation dialog', a
       materialSelected: true
     }
   ]);
+  await seedAppStorage(page, {
+    viewState: {
+      v: 1,
+      dataVersion: 'ff14recipe-data-7.50-6e392bcc',
+      equipmentSearch: { open: true }
+    }
+  });
 
   await openApp(page, 423, 780);
   await page.locator('#checkedFavoriteMaterialsBtn').click();
@@ -118,6 +125,7 @@ test('checked favorite lists use a dedicated combined materials entry and reset 
   await expect(page.locator('#checkedFavoriteMaterialsActions')).toHaveClass(/visible/);
   await expect(page.locator('#searchBox')).toBeDisabled();
   await expect(page.locator('#equipmentSearchToggle')).toBeDisabled();
+  await expect(page.locator('#equipmentSearchPanel')).not.toHaveClass(/open/);
   await expect(page.locator('.search-row')).toHaveAttribute('aria-hidden', 'true');
   await expect.poll(() => page.locator('.search-row').evaluate(row => row.getBoundingClientRect().height)).toBe(0);
   await expect(page.locator('#checkedFavoriteMaterialsBtn')).toBeVisible();

@@ -25,5 +25,15 @@ module.exports = defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
+    {
+      name: 'android-chromium-font-size',
+      testMatch: '**/font-size-compat.spec.js',
+      use: { ...devices['Pixel 5'] },
+    },
+    {
+      name: 'iphone-webkit-font-size',
+      testMatch: '**/font-size-compat.spec.js',
+      use: { ...devices['iPhone 13'] },
+    },
   ],
 });

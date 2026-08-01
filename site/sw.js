@@ -1,10 +1,11 @@
-const APP_CACHE_VERSION = 'ff14recipe-app-20260730-v2.971';
+const APP_CACHE_VERSION = 'ff14recipe-app-20260801-v2.98';
 const DATA_CACHE_VERSION = 'ff14recipe-data-7.50-6e392bcc';
 const CACHE_PREFIX = 'ff14recipe-';
 
 const PRECACHE_FILES = [
   './index.html',
   './styles.css',
+  './font-size-settings.js',
   './calculation.js',
   './event-wiring.js',
   './floating-window.js',
@@ -18,6 +19,8 @@ const PRECACHE_FILES = [
   './navigation-state.js',
   './recipe-data-model.js',
   './recipe-selection-model.js',
+  './vendor/marked.umd.js',
+  './vendor/purify.min.js',
   './ui-change-policy.js',
   './view-state.js',
   './app.js',
