@@ -37,8 +37,8 @@ test('intermediate materials follow craft order, show usage, and open an indepen
     iconWidth: primary.querySelector('.job-icon').getBoundingClientRect().width,
     iconHeight: primary.querySelector('.job-icon').getBoundingClientRect().height
   }));
-  expect(Math.abs(craftBadgeSizes.iconWidth / craftBadgeSizes.fontSize - 1.154)).toBeLessThan(0.01);
-  expect(Math.abs(craftBadgeSizes.iconHeight / craftBadgeSizes.fontSize - 1.154)).toBeLessThan(0.01);
+  expect(Math.abs(craftBadgeSizes.iconWidth / craftBadgeSizes.fontSize - 1.27)).toBeLessThan(0.01);
+  expect(Math.abs(craftBadgeSizes.iconHeight / craftBadgeSizes.fontSize - 1.27)).toBeLessThan(0.01);
   await expect(bastardNode).not.toContainText('ブラスバスタードソードに使用');
   await expect(bastardNode.locator(':scope > .item-action-buttons')).toHaveCount(1);
 
@@ -287,6 +287,19 @@ test('materials list shows exchange supplements and summary totals', async ({ pa
   await expect(summaryRow.locator('.material-primary')).toContainText('× 300');
 });
 
+test('exchange materials sold by shops show gil as the first alternative', async ({ page }) => {
+  await openApp(page);
+  await searchFor(page, 'オリエンタル・ディナーセット');
+  await page.getByText('オリエンタル・ディナーセット', { exact: true }).first().click();
+  await page.locator('#materialsViewBtn').click();
+
+  const soySauceRow = page.locator('.materials-list li').filter({ hasText: '醤油' }).first();
+  const shopAlternative = soySauceRow.locator('.supplement-refine-label');
+  await expect(shopAlternative).toHaveText('430ギル、または');
+  await expect(shopAlternative).toHaveCSS('color', 'rgb(91, 213, 200)');
+  await expect(soySauceRow).toContainText('クラフタースクリップ:紫貨');
+});
+
 test('materials list sorts normal items before crystals and shows supplement icons', async ({ page }) => {
   await openApp(page);
   await searchFor(page, 'アリペブレ');
@@ -467,12 +480,23 @@ test('item image checks act as independent temporary notes and restore only for 
   await materialCheck.click();
   const imageCheck = materialCheck.locator('.item-image-check');
   await expect(imageCheck).toContainText('✔');
-  await expect(imageCheck).toHaveCSS('font-size', '16px');
+  await expect(imageCheck).toHaveCSS('font-size', '17.6px');
   await expect(imageCheck).toHaveCSS('font-weight', '900');
-  await expect(imageCheck).toHaveCSS('right', '2px');
-  await expect(imageCheck).toHaveCSS('bottom', '2px');
+  await expect(imageCheck).toHaveCSS('right', '4px');
+  await expect(imageCheck).toHaveCSS('bottom', '4px');
   await expect(imageCheck).toHaveCSS('color', 'rgb(67, 224, 95)');
-  await expect(imageCheck).toHaveCSS('-webkit-text-stroke-width', '0.75px');
+  await expect(imageCheck).toHaveCSS('-webkit-text-stroke-width', '4px');
+  await expect(imageCheck).toHaveCSS('paint-order', 'stroke');
+  const checkClearance = await materialCheck.evaluate(icon => {
+    const mark = icon.querySelector('.item-image-check').getBoundingClientRect();
+    const bounds = icon.getBoundingClientRect();
+    return {
+      right: bounds.right - mark.right,
+      bottom: bounds.bottom - mark.bottom
+    };
+  });
+  expect(checkClearance.right).toBeGreaterThanOrEqual(3.9);
+  expect(checkClearance.bottom).toBeGreaterThanOrEqual(3.9);
   await page.locator('#countIncreaseBtn').click();
   await expect(page.locator('.materials-list .checkable-item-icon.checked')).toHaveCount(1);
 
@@ -531,7 +555,7 @@ test('otherwise equivalent intermediate materials sort normal recipe levels befo
         CraftInfo: [{ job: '鍛冶師', level: 100 }]
       }
     );
-    await route.fulfill({ contentType: 'application/json', body: JSON.stringify(items) });
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ Version: '7.55', Items: items }) });
   });
   await openApp(page);
   await searchFor(page, '試験用並び順完成品');

@@ -1,5 +1,5 @@
-const APP_CACHE_VERSION = 'ff14recipe-app-20260801-v2.98';
-const DATA_CACHE_VERSION = 'ff14recipe-data-7.50-6e392bcc';
+const APP_CACHE_VERSION = 'ff14recipe-app-20260808-v3.0';
+const DATA_CACHE_VERSION = 'ff14recipe-data-7.55-1cc35ab3';
 const CACHE_PREFIX = 'ff14recipe-';
 
 const PRECACHE_FILES = [
@@ -19,6 +19,7 @@ const PRECACHE_FILES = [
   './navigation-state.js',
   './recipe-data-model.js',
   './recipe-selection-model.js',
+  './pwa-update.js',
   './vendor/marked.umd.js',
   './vendor/purify.min.js',
   './ui-change-policy.js',
@@ -29,6 +30,8 @@ const PRECACHE_FILES = [
   './assets/app-icons/favicon.png',
   './assets/app-icons/icon-192.png',
   './assets/app-icons/icon-512.png',
+  './assets/branding/xivca-logo.webp',
+  './assets/check_onoff.png',
   './assets/job-icons/alchemist.webp',
   './assets/job-icons/armorer.webp',
   './assets/job-icons/blacksmith.webp',
@@ -45,14 +48,17 @@ const PRECACHE_FILES = [
 
 const CACHE_FIRST_PATTERNS = [
   /\/data\/Item\.json$/,
+  /\/data\/legacy-item-ids\.json$/,
   /\/assets\/item-icons\//,
 ];
 
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(APP_CACHE_VERSION).then(cache => cache.addAll(PRECACHE_FILES))
+    Promise.all([
+      caches.open(APP_CACHE_VERSION).then(cache => cache.addAll(PRECACHE_FILES)),
+      self.skipWaiting()
+    ])
   );
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
@@ -65,6 +71,10 @@ self.addEventListener('activate', event => {
       )
     ).then(() => self.clients.claim())
   );
+});
+
+self.addEventListener('message', event => {
+  if (event.data?.type === 'SKIP_WAITING') event.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener('fetch', event => {

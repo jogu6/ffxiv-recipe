@@ -1,6 +1,6 @@
 {
-  "name": "FF14 レシピ素材ツリー",
-  "short_name": "FF14レシピ",
+  "name": "FinalFantasy XIV® Crafting Assistant XIVca(シヴカ)",
+  "short_name": "XIVca",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

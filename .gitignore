@@ -31,6 +31,7 @@ pipeline/logs/*.tmp
 pipeline/input/*.csv
 pipeline/input/*.json
 pipeline/input/web-app/*.json
+pipeline/input/manual-item-icons/
 pipeline/intermediate/*.json
 pipeline/reference/csv-headers/*.txt
 pipeline/reference/expected/*.json

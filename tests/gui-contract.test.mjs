@@ -37,25 +37,24 @@ test('GUI uses the in-app floating confirmation modal', () => {
   assert.match(guiSource, /confirmOverlay/);
 });
 
-test('GUI exposes Oxidizer refresh, safe import, publication review, and persistent logs', () => {
+test('GUI exposes only the Lodestone name-key publication actions and persistent logs', () => {
   for (const command of [
-    'oxidizer-environment',
-    'oxidizer-check',
-    'oxidizer-refresh',
-    'oxidizer-import-preview',
-    'oxidizer-import',
-    'publication-review'
+    'lodestone-snapshot',
+    'build-lodestone-candidate',
+    'lodestone-candidate-icons',
+    'publish-lodestone-candidate'
   ]) {
     assert.ok(uiDefinition.actions.some(action => action.command === command), `missing GUI action: ${command}`);
   }
-  assert.match(guiHtml, /id="oxidizerSourceInput"/);
-  assert.match(guiHtml, /id="ffxivGamePathInput"/);
-  assert.match(guiHtml, /id="publicationReviewOverlay"/);
-  assert.match(guiHtml, /id="oxidizerDiffOverlay"/);
-  assert.match(guiHtml, /id="oxidizerDiffLodestoneBtn"/);
-  assert.match(guiHtml, /id="postImportOverlay"/);
+  assert.deepEqual(uiDefinition.actions.map(action => action.id), [
+    'lodestone-snapshot',
+    'build-lodestone-candidate',
+    'lodestone-candidate-icons',
+    'publish-lodestone-candidate',
+    'run-all'
+  ]);
+  assert.match(guiHtml, /id="lodestoneDelayInput"[^>]*value="100"/);
   assert.match(rustSource, /latest\.log/);
-  assert.match(rustSource, /fn\s+read_oxidizer_import_preview\b/);
   assert.match(rustSource, /fn\s+read_pipeline_workflow_status\b/);
   assert.match(rustSource, /append_run_log/);
 });
@@ -67,8 +66,13 @@ test('GUI preview does not start a local web server', () => {
   assert.equal(rustSource.includes('stop_preview_server'), false);
 });
 
-test('GUI full run applies Lodestone info before publishing Item.json', () => {
-  assert.deepEqual(uiDefinition.recommendedSequence, ['validate-csv', 'build', 'publish-lodestone-info', 'icons', 'publish']);
+test('GUI full run uses only the Lodestone name-key publication sequence', () => {
+  assert.deepEqual(uiDefinition.recommendedSequence, [
+    'lodestone-snapshot',
+    'build-lodestone-candidate',
+    'lodestone-candidate-icons',
+    'publish-lodestone-candidate'
+  ]);
 });
 
 test('pipeline mjs is the valid source of GUI actions and copy', () => {
@@ -77,7 +81,7 @@ test('pipeline mjs is the valid source of GUI actions and copy', () => {
   assert.match(rustSource, /fn\s+read_pipeline_ui_definition\b/);
   assert.equal(guiHtml.includes('候補データを site/data/Item.json に統合します。'), false);
   assert.equal(guiHtml.includes('CSV検証、データ生成、アイコン生成'), false);
-  assert.equal(uiDefinition.actions.find(action => action.command === 'publish').buttonId, 'publishBtn');
+  assert.equal(uiDefinition.actions.find(action => action.command === 'publish-lodestone-candidate').buttonId, 'publishLodestoneCandidateBtn');
 });
 
 test('Item.json publish applies saved and automatic equipment roles', () => {
@@ -85,15 +89,6 @@ test('Item.json publish applies saved and automatic equipment roles', () => {
   assert.ok(publishMatch, 'publishItemJson was not found');
   assert.match(publishMatch[0], /applyEquipmentRoleOverrides\(candidateItems\)/);
   assert.match(publishMatch[0], /writeJsonAtomic\(candidate, candidateItems\)/);
-});
-
-test('GUI shows last checked time directly after update check', () => {
-  const checkIndex = guiHtml.indexOf('data-step="check-updates"');
-  const lastCheckedIndex = guiHtml.indexOf('id="lastChecked"');
-  const downloadIndex = guiHtml.indexOf('data-step="download-csv"');
-  assert.ok(checkIndex >= 0, 'update check action was not found');
-  assert.ok(lastCheckedIndex > checkIndex, 'last checked time must follow update check');
-  assert.ok(lastCheckedIndex < downloadIndex, 'last checked time must be before CSV download');
 });
 
 test('Windows release exe and child node process do not open console windows', () => {

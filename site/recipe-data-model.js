@@ -16,14 +16,14 @@
   ) {
     if (!rawRecipe || rawRecipe.CraftType === undefined || !Array.isArray(rawRecipe.Ingredients)) return null;
     return {
-      recipeId: String(rawRecipe.RecipeID || ''),
+      recipeId: String(rawRecipe.RecipeKey || rawRecipe.RecipeID || ''),
       yield: toNumeric(rawRecipe.AmountResult, 1),
       craftType: String(rawRecipe.CraftType),
       craftInfo: rawRecipe.CraftInfo || fallbackCraftInfo || null,
       ingredients: rawRecipe.Ingredients.map(ingredient => ({
         name: ingredient.Name || itemNameForId(ingredient.ItemID),
         qty: toNumeric(ingredient.Amount, 1),
-        itemId: ingredient.ItemID
+        itemId: ingredient.Name || ingredient.ItemID
       })).filter(ingredient => ingredient.name)
     };
   }
@@ -58,6 +58,8 @@
       sortRecipeNames = names => [...names].sort()
     } = {}
   ) {
+    const source = Array.isArray(rawList) ? { Items: rawList, Version: '' } : (rawList || {});
+    rawList = Array.isArray(source.Items) ? source.Items : [];
     const itemMaster = {};
     const recipes = {};
     const recipeVariants = {};
@@ -69,11 +71,13 @@
     let maxPatch = 0;
 
     rawList.forEach(item => {
-      idToItem[item.ID] = item;
+      idToItem[item.Name] = item;
+      if (item.ID !== undefined) idToItem[item.ID] = item;
       const numericId = toNumeric(item.ID, NaN);
       if (!Number.isNaN(numericId)) idToItemName[numericId] = item.Name;
+      idToItemName[item.Name] = item.Name;
     });
-    const itemNameForId = id => idToItemName[parseInt(id, 10)] || null;
+    const itemNameForId = id => idToItemName[id] || idToItemName[parseInt(id, 10)] || null;
 
     rawList.forEach(item => {
       const legacyRecipe = item.Recipe;
@@ -94,10 +98,11 @@
 
       const commonMaster = {
         icon: iconPath(item),
-        id: item.ID,
-        numericId: toNumeric(item.ID),
+        id: item.Name,
+        numericId: toNumeric(item.SortOrder ?? item.ID),
+        sortOrder: toNumeric(item.SortOrder ?? item.ID),
         uiCategory: toNumeric(item.ItemUICategory),
-        uiCategoryName: item.ItemUICategoryName || '',
+        uiCategoryName: item.ItemCategory || item.ItemUICategoryName || '',
         gatheringTimer: item.GatheringTimer || [],
         shopInfo: item.ShopInfo || null,
         equipmentInfo: item.EquipmentInfo || null,
@@ -121,6 +126,7 @@
         defaultRecipeIds[name] = recipe.recipeId;
         const numericId = toNumeric(item.ID, NaN);
         if (!Number.isNaN(numericId)) idToRecipeName[numericId] = name;
+        idToRecipeName[name] = name;
       } else {
         itemMaster[name] = {
           ...commonMaster,
@@ -135,15 +141,16 @@
       sourceRecipes.flatMap(recipe => recipe?.Ingredients || []).forEach(ingredient => {
         const ingredientName = ingredient.Name || itemNameForId(ingredient.ItemID);
         if (!ingredientName || itemMaster[ingredientName]) return;
-        const source = idToItem[ingredient.ItemID] || {};
+        const source = idToItem[ingredient.Name] || idToItem[ingredient.ItemID] || {};
         itemMaster[ingredientName] = {
           method: '',
           icon: iconPath(source),
           craftType: '',
-          id: ingredient.ItemID,
-          numericId: toNumeric(ingredient.ItemID),
+          id: ingredientName,
+          numericId: toNumeric(source.SortOrder ?? ingredient.ItemID),
+          sortOrder: toNumeric(source.SortOrder ?? ingredient.ItemID),
           uiCategory: toNumeric(source.ItemUICategory),
-          uiCategoryName: source.ItemUICategoryName || '',
+          uiCategoryName: source.ItemCategory || source.ItemUICategoryName || '',
           gatheringTimer: source.GatheringTimer || [],
           shopInfo: source.ShopInfo || null,
           equipmentInfo: source.EquipmentInfo || null,
@@ -177,6 +184,7 @@
       ingredientNames,
       itemMaster,
       maxPatch,
+      version: String(source.Version || ''),
       recipeNames,
       recipes,
       recipeVariants,

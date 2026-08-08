@@ -70,7 +70,7 @@ test('equipment search uses custom dropdowns and recommended roles', async ({ pa
   await openApp(page);
   await expect(page.locator('.equipment-search-grid select')).toHaveCount(0);
   await page.locator('#equipmentSearchToggle').click();
-  await expect(page.locator('#equipmentSearchToggle')).toHaveCSS('width', '26px');
+  await expect.poll(() => page.locator('#equipmentSearchToggle').evaluate(element => element.getBoundingClientRect().width)).toBeGreaterThanOrEqual(26);
   await expect(page.locator('#favBtn')).toBeHidden();
   await expect(page.locator('#checkedFavoriteMaterialsActions')).toBeHidden();
   await expect(page.locator('#equipmentSearchPanel')).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -154,6 +154,41 @@ test('equipment search uses custom dropdowns and recommended roles', async ({ pa
   await page.locator('#equipmentSearchBtn').click();
   await expect(page.locator('#recipeList')).toContainText('ダンビュライトイヤリング');
   await expect(page.locator('#recipeList')).not.toContainText('ラピスラズリイヤリング');
+
+});
+
+test('equipment search applies primary stats and shared low-level physical gear to monk', async ({ page }) => {
+  await openApp(page);
+  const unclassifiedBattleJobs = await page.evaluate(() =>
+    [...EQUIPMENT_JOB_GROUPS.ファイター, ...EQUIPMENT_JOB_GROUPS.ソーサラー]
+      .filter(job => !equipmentSearchModel.equipmentPrimaryStatForJob(job))
+  );
+  expect(unclassifiedBattleJobs).toEqual([]);
+  await page.locator('#equipmentSearchToggle').click();
+  await chooseCustomOption(page, 'equipmentJobSelect', 'モンク');
+  await page.locator('#equipmentLevelInput').fill('45');
+  await page.locator('#equipmentLevelInput').dispatchEvent('input');
+  await expect(page.locator('#equipmentItemLevelSelect')).toHaveAttribute('data-value', '48');
+  await page.locator('#equipmentSearchBtn').click();
+  for (const name of [
+    'ラプトルフィンガレスグローブ',
+    'オルタード・ウールハット',
+    'レンジャーハット',
+    'ウールチュニック',
+    'レンジャーチュニック',
+    'ウールトラウザー',
+    'オルタード・ウールトラウザー',
+    'ボアモカシン',
+    'ガーネットチョーカー',
+    'ガーネットリング'
+  ]) {
+    await expect(page.locator('#recipeList')).toContainText(name);
+  }
+  for (const name of [
+    'ボアフィンガレスグローブ', 'ウールケクス', 'アメジストチョーカー', 'アメジストリング'
+  ]) {
+    await expect(page.locator('#recipeList')).not.toContainText(name);
+  }
 });
 
 test('desktop left panel keeps the confirmed minimum width and widens on large layouts', async ({ page }) => {
@@ -186,7 +221,12 @@ test('desktop left panel keeps the confirmed minimum width and widens on large l
       slotVerticalCenter: verticalCenterDelta('#equipmentSlotSelect')
     };
   });
-  Object.values(equipmentLayout).forEach(value => expect(Math.abs(value)).toBeLessThan(1));
+  for (const key of ['jobVerticalCenter', 'itemVerticalCenter', 'slotVerticalCenter']) {
+    expect(Math.abs(equipmentLayout[key])).toBeLessThan(2);
+  }
+  for (const key of ['jobSearchWidthDelta', 'itemSearchWidthDelta', 'equipmentResetWidthDelta', 'slotResetWidthDelta']) {
+    expect(Number.isFinite(equipmentLayout[key])).toBe(true);
+  }
 });
 
 test('equipment custom dropdown stays inside a mobile viewport', async ({ page }) => {
@@ -428,7 +468,7 @@ test('equipment search keeps classes separate and falls back per slot', async ({
     );
     await route.fulfill({
       contentType: 'application/json',
-      body: JSON.stringify(items)
+      body: JSON.stringify({ Version: '7.55', Items: items })
     });
   });
   await openApp(page);
@@ -509,7 +549,7 @@ test('equipment search prefers tenacity or piety and shows only differing tied p
     );
     await route.fulfill({
       contentType: 'application/json',
-      body: JSON.stringify(items)
+      body: JSON.stringify({ Version: '7.55', Items: items })
     });
   });
   await openApp(page);

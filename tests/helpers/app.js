@@ -9,13 +9,13 @@ async function loadPublishedItems() {
     path.resolve(__dirname, '../../site/data/Item.json'),
     'utf8'
   );
-  return JSON.parse(await publishedItemJsonPromise);
+  return JSON.parse(await publishedItemJsonPromise).Items;
 }
 
 async function openApp(page, width = 900, height = 700) {
   await page.setViewportSize({ width, height });
   await page.goto('/');
-  await expect(page.locator('#loadStatus')).toContainText(/patch/);
+  await expect(page.locator('#loadStatus')).toHaveText(/patch \d+\.\d+ 対応/);
   await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
 }
 
@@ -29,7 +29,6 @@ async function routeMirageRecipeVariants(page, { parentName = '', includeVariant
   await page.route('**/data/Item.json*', async route => {
     const items = await loadPublishedItems();
     const target = items.find(item => item.Name === 'ミラージュプリズム');
-    const itemId = name => items.find(item => item.Name === name).ID;
     const materials = [
       ['ウォルナット材', '0e351054234'],
       ['スチールインゴット', 'a0d2fcedeb3'],
@@ -39,23 +38,25 @@ async function routeMirageRecipeVariants(page, { parentName = '', includeVariant
       ['別珍', 'f25d440fc89'],
       ['グロースフォーミュラ・ガンマ', '169de6ea318']
     ];
-    target.Recipes = target.CraftInfo.map((craftInfo, index) => ({
-      RecipeID: materials[index][1],
+    const craftInfoList = (target.Recipes || [target.Recipe]).map(recipe => recipe.CraftInfo);
+    target.Recipes = craftInfoList.map((craftInfo, index) => ({
+      RecipeKey: materials[index][1],
       CraftType: String(index),
       CraftInfo: craftInfo,
       AmountResult: '1',
       Ingredients: [
-        { ItemID: itemId('クリアプリズム'), Name: 'クリアプリズム', Amount: '1' },
+        { Name: 'クリアプリズム', Amount: '1' },
         ...(includeVariantMaterial
-          ? [{ ItemID: itemId(materials[index][0]), Name: materials[index][0], Amount: '2' }]
+          ? [{ Name: materials[index][0], Amount: '2' }]
           : [])
       ]
     }));
+    target.Recipe = target.Recipes[0];
     if (parentName) {
       const parent = items.find(item => item.Name === parentName);
-      parent.Recipe.Ingredients = [{ ItemID: target.ID, Name: target.Name, Amount: '1' }];
+      parent.Recipe.Ingredients = [{ Name: target.Name, Amount: '1' }];
     }
-    await route.fulfill({ contentType: 'application/json', body: JSON.stringify(items) });
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ Version: '7.55', Items: items }) });
   });
 }
 

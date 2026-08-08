@@ -11,18 +11,18 @@ const {
   searchFor
 } = require('./helpers/app.js');
 
-test('current display uses font size level 3 as the unchanged baseline', async ({ page }) => {
+test('current display keeps level 3 while using the enlarged baseline', async ({ page }) => {
   await openApp(page);
 
   await expect(page.locator('html')).toHaveAttribute('data-font-size-level', '3');
-  await expect(page.locator('body')).toHaveCSS('font-size', '14px');
+  await expect(page.locator('body')).toHaveCSS('font-size', '15.4px');
   await expect
     .poll(() =>
       page
         .locator('html')
         .evaluate(element => getComputedStyle(element).getPropertyValue('--font-size-scale').trim())
     )
-    .toBe('1');
+    .toBe('1.1');
 });
 
 test('font size settings preview changes only the isolated example', async ({ page }) => {
@@ -31,19 +31,36 @@ test('font size settings preview changes only the isolated example', async ({ pa
   await page.getByText('バスタードソード', { exact: true }).first().click();
   const appliedName = page.locator('#treeContainer .result-root-summary .list-name');
   const appliedIcon = page.locator('#treeContainer .result-root-summary .checkable-item-icon');
-  await expect(appliedName).toHaveCSS('font-size', '14px');
+  await expect(appliedName).toHaveCSS('font-size', '15.4px');
   await expect(appliedIcon).toHaveCSS('width', '40px');
 
   await page.locator('#settingsBtn').click();
   await page.locator('#settingsDisplayTab').click();
   await page.locator('#fontSizeLevelInput').fill('10');
-  await expect(page.locator('#fontSizeLevelOutput')).toHaveText('10（170%）');
-  await expect(page.locator('#fontSizePreview .list-name')).toHaveCSS('font-size', '23.8px');
+  await expect(page.locator('#fontSizeLevelOutput')).toHaveText('170%');
+  await expect(page.locator('#fontSizeLevelInput')).toHaveAttribute('aria-valuetext', '表示サイズ 170%');
+  await expect(page.locator('.font-size-level-marks')).toHaveText(/小\s*大/);
+  await expect(page.locator('#fontSizePreview .list-name')).toHaveCSS('font-size', '26.18px');
   await expect(page.locator('#fontSizePreview .checkable-item-icon')).toHaveCSS('width', '68px');
-  await expect(appliedName).toHaveCSS('font-size', '14px');
+  await expect(appliedName).toHaveCSS('font-size', '15.4px');
   await expect(appliedIcon).toHaveCSS('width', '40px');
   await expect(page.locator('html')).toHaveAttribute('data-font-size-level', '3');
   await expect(page.locator('#fontSizeApplyBtn')).toBeEnabled();
+  await expect
+    .poll(() =>
+      page.locator('#fontSizeApplyBtn').evaluate(button => {
+        const section = button.closest('.font-size-settings-section');
+        const sectionStyle = getComputedStyle(section);
+        const contentWidth =
+          section.getBoundingClientRect().width -
+          parseFloat(sectionStyle.paddingLeft) -
+          parseFloat(sectionStyle.paddingRight) -
+          parseFloat(sectionStyle.borderLeftWidth) -
+          parseFloat(sectionStyle.borderRightWidth);
+        return Math.abs(button.getBoundingClientRect().width - contentWidth);
+      })
+    )
+    .toBeLessThan(1);
 
   await page.locator('#fontSizePreviewPin').click();
   await expect(page.locator('#fontSizePreviewPin')).toHaveAttribute('aria-pressed', 'false');
@@ -110,7 +127,7 @@ test('applying a font size persists it and returns only that tab to the startup 
 
   await expect(page.locator('#settingsOverlay')).not.toHaveClass(/open/);
   await expect(page.locator('html')).toHaveAttribute('data-font-size-level', '10');
-  await expect(page.locator('body')).toHaveCSS('font-size', '23.8px');
+  await expect(page.locator('body')).toHaveCSS('font-size', '26.18px');
   await expect(page.locator('#searchBox')).toHaveValue('');
   await expect(page.locator('#tipsMsg')).toBeVisible();
   await expect
@@ -221,7 +238,7 @@ test('all font levels preserve fixed spacing and mobile content width', async ({
   test.setTimeout(120000);
   await page.addInitScript(() => localStorage.removeItem('ff14_view_state_v1'));
   const widths = [375, 600, 601, 1280];
-  const expectedNameSizes = ['11.2px', '12.6px', '14px', '15.4px', '16.8px', '18.2px', '19.6px', '21px', '22.4px', '23.8px'];
+  const expectedNameSizes = ['12.32px', '13.86px', '15.4px', '16.94px', '18.48px', '20.02px', '21.56px', '23.1px', '24.64px', '26.18px'];
 
   for (const width of widths) {
     await openApp(page, width, 800);
@@ -303,13 +320,13 @@ test('title returns to the startup view', async ({ page }) => {
   await expect(page.locator('#tipsMsg')).toBeVisible();
 });
 
-test('tips groups releases before v2.5 in a collapsed accordion', async ({ page }) => {
+test('tips groups releases before v3.0 in a collapsed accordion', async ({ page }) => {
   await openApp(page);
   const details = page.locator('#tipsMsg details');
   const summary = details.locator('summary');
 
   await expect(details).toHaveCount(1);
-  await expect(summary).toHaveText('v2.5未満のリリース情報');
+  await expect(summary).toHaveText('v3.0未満のリリース情報');
   await expect(details).not.toHaveAttribute('open', '');
   await expect(details.getByText('v1.384 リリース')).toBeHidden();
   await expect.poll(() => summary.evaluate(element => getComputedStyle(element, '::before').content)).toContain('▶');
@@ -320,20 +337,52 @@ test('tips groups releases before v2.5 in a collapsed accordion', async ({ page 
   await expect.poll(() => summary.evaluate(element => getComputedStyle(element, '::before').content)).toContain('▼');
 });
 
+test('updated app blocks use until the current release notice is accepted', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('ff14_update_reload_pending', '1');
+    localStorage.setItem('ff14_acknowledged_release_version', 'v2.97');
+  });
+  await openApp(page);
+
+  const overlay = page.locator('#releaseNoticeOverlay');
+  const content = page.locator('#releaseNoticeContent');
+  await expect(overlay).toHaveClass(/open/);
+  await expect(content).toContainText('アイテム画像はクリック/タップで ✔ を On/Off');
+  await expect(content).toContainText('v3.0 リリース');
+  await expect(content).not.toContainText('v2.98 リリース');
+  await expect(page.locator('.main')).toHaveJSProperty('inert', true);
+  await expect(page.locator('#releaseNoticeOkBtn')).toBeFocused();
+
+  await page.keyboard.press('Escape');
+  await expect(overlay).toHaveClass(/open/);
+  await overlay.click({ position: { x: 5, y: 5 } });
+  await expect(overlay).toHaveClass(/open/);
+
+  await page.locator('#releaseNoticeOkBtn').click();
+  await expect(overlay).not.toHaveClass(/open/);
+  await expect(page.locator('.main')).toHaveJSProperty('inert', false);
+  await expect(page.locator('#searchBox')).toBeFocused();
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('ff14_acknowledged_release_version')))
+    .toBe('v3.0');
+});
+
 test('tips treats one newline as a line break and keeps indented text in its list item', async ({ page }) => {
   await page.route('**/data/tips.md', route =>
     route.fulfill({
       contentType: 'text/markdown; charset=utf-8',
-      body: '通常行1\n通常行2\n\n- 箇条書き\n  箇条内の改行'
+      body: '通常行1\n通常行2\n\n- 箇条書き\n  箇条内の改行\n\n![更新画像](./assets/app-icons/favicon.png)'
     })
   );
   await openApp(page);
 
-  await expect(page.locator('#tipsMsg p')).toHaveText('通常行1通常行2');
-  await expect(page.locator('#tipsMsg p br')).toHaveCount(1);
+  await expect(page.locator('#tipsMsg p').first()).toHaveText('通常行1通常行2');
+  await expect(page.locator('#tipsMsg p').first().locator('br')).toHaveCount(1);
   await expect(page.locator('#tipsMsg li')).toHaveText('箇条書き箇条内の改行');
   await expect(page.locator('#tipsMsg li br')).toHaveCount(1);
   await expect(page.locator('#tipsMsg li')).toHaveCount(1);
+  await expect(page.locator('#tipsMsg img')).toHaveAttribute('alt', '更新画像');
+  await expect(page.locator('#tipsMsg img')).toHaveCSS('max-width', '100%');
 });
 
 test('hides the popup button when launched as a desktop PWA', async ({ page }) => {
@@ -384,9 +433,16 @@ test('mobile header combines and hides left controls while preserving right-pane
     list.scrollTop = 12;
     list.dispatchEvent(new Event('scroll'));
   });
+  await expect(page.locator('header')).not.toHaveClass(/mobile-title-hidden/);
+  await expect(page.locator('#settingsBtn')).toBeVisible();
+  await page.locator('#recipeList').evaluate(list => {
+    list.scrollTop = 40;
+    list.dispatchEvent(new Event('scroll'));
+  });
   await expect(page.locator('header')).toHaveClass(/mobile-title-hidden/);
   await expect(page.locator('#settingsBtn')).toBeHidden();
   await expect(page.locator('#settingsBtn')).toHaveJSProperty('inert', true);
+  await expect.poll(() => page.locator('header').evaluate(element => element.getBoundingClientRect().height)).toBeLessThanOrEqual(1);
   await page.locator('#recipeList').evaluate(list => {
     list.scrollTop = 24;
     list.dispatchEvent(new Event('scroll'));
@@ -418,6 +474,17 @@ test('mobile header combines and hides left controls while preserving right-pane
 
   await searchFor(page, 'バスタードソード');
   await page.getByText('バスタードソード', { exact: true }).first().click();
+  const navigationHeaderVerticalBudget = await page.evaluate(() => {
+    const header = document.querySelector('header');
+    const style = getComputedStyle(header);
+    return parseFloat(style.rowGap) + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+  });
+  expect(navigationHeaderVerticalBudget).toBeCloseTo(22, 4);
+  await expect.poll(() => page.evaluate(() => {
+    const primary = document.querySelector('.header-primary-row').getBoundingClientRect();
+    const back = document.querySelector('#mobileBackBtn').getBoundingClientRect();
+    return back.top - primary.bottom;
+  })).toBeGreaterThanOrEqual(9.5);
   await page.locator('#usesBtn').click();
   await page.locator('#usesList').evaluate(list => {
     const shortContent = document.createElement('li');
@@ -429,16 +496,40 @@ test('mobile header combines and hides left controls while preserving right-pane
   });
   await expect(page.locator('header')).not.toHaveClass(/mobile-title-hidden/);
 
+  await page.locator('#usesList').evaluate(list => {
+    const tallContent = document.createElement('li');
+    tallContent.style.height = `${list.clientHeight + 100}px`;
+    tallContent.style.flexShrink = '0';
+    list.replaceChildren(tallContent);
+    list.scrollTop = 40;
+    list.dispatchEvent(new Event('scroll'));
+  });
+  await expect(page.locator('header')).toHaveClass(/mobile-title-hidden/);
+  await expect(page.locator('header')).toHaveCSS('row-gap', '0px');
+  await expect.poll(() => page.locator('header').evaluate(element => element.getBoundingClientRect().height)).toBeLessThanOrEqual(48);
+  await expect.poll(() => page.evaluate(() => {
+    const header = document.querySelector('header').getBoundingClientRect();
+    const back = document.querySelector('#mobileBackBtn').getBoundingClientRect();
+    return back.top - header.top;
+  })).toBeLessThanOrEqual(5);
+
   await page.locator('#mobileBackBtn').click();
   await page.getByText('バスタードソード', { exact: true }).first().click();
   await page.locator('#panelRight').evaluate(panel => {
-    panel.scrollTop = 12;
+    panel.scrollTop = 40;
     panel.dispatchEvent(new Event('scroll'));
   });
   await expect(page.locator('header')).toHaveClass(/mobile-title-hidden/);
   await expect(page.locator('#mobileBackBtn')).toBeVisible();
   await expect(page.locator('#settingsBtn')).toBeVisible();
   await expect(page.locator('header')).toHaveCSS('padding-top', '3px');
+  await expect(page.locator('header')).toHaveCSS('row-gap', '0px');
+  await expect.poll(() => page.locator('header').evaluate(element => element.getBoundingClientRect().height)).toBeLessThanOrEqual(48);
+  await expect.poll(() => page.evaluate(() => {
+    const header = document.querySelector('header').getBoundingClientRect();
+    const back = document.querySelector('#mobileBackBtn').getBoundingClientRect();
+    return back.top - header.top;
+  })).toBeLessThanOrEqual(5);
 
   await page.locator('#panelRight').evaluate(panel => {
     panel.scrollTop = 0;

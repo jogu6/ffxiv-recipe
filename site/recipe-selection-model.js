@@ -63,7 +63,7 @@
             const name = itemNameForId(itemId);
             return defaultRecipeIds[name] !== recipeId;
           })
-          .sort(([left], [right]) => Number(left) - Number(right))
+          .sort(([left], [right]) => left.localeCompare(right, 'ja'))
       );
     }
 

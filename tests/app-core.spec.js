@@ -12,15 +12,22 @@ const {
 } = require('./helpers/app.js');
 test('loading overlay blocks interaction while it is displayed', async ({ page }) => {
   await openApp(page);
+  await expect(page).toHaveTitle('FinalFantasy XIV® Crafting Assistant XIVca(シヴカ)');
+  await expect(page.locator('.app-name-logo')).toBeVisible();
+  await expect(page.locator('.app-name-logo')).toHaveAttribute(
+    'alt',
+    'FinalFantasy XIV® Crafting Assistant XIVca(シヴカ)'
+  );
   await expect(page.locator('#loadingOverlay')).toHaveCSS('pointer-events', 'auto');
-  await expect(page.locator('header #loadStatus')).toHaveText('patch 7.5 対応');
+  await expect(page.locator('header #loadStatus')).toHaveText('patch 7.55 対応');
   const cachedItemRequests = await page.evaluate(async () => {
-    const cache = await caches.open('ff14recipe-data-7.50-6e392bcc');
+    const dataCacheName = (await caches.keys()).find(name => name.startsWith('ff14recipe-data-'));
+    const cache = await caches.open(dataCacheName);
     return (await cache.keys()).filter(request => request.url.includes('/data/Item.json?')).length;
   });
   expect(cachedItemRequests).toBe(1);
   await page.locator('#settingsBtn').click();
-  await expect(page.locator('#settingsDialog #appVersion')).toHaveText('v2.98');
+  await expect(page.locator('#settingsDialog #appVersion')).toHaveText('v3.0');
 });
 
 test('shows a startup error instead of leaving the loading message indefinitely', async ({ page }) => {
@@ -259,6 +266,20 @@ test('offers the same recipe selector for an intermediate item in the tree and m
   expect(materialMethodLayout.itemBorder).toBe('0px');
   expect(materialMethodLayout.nodeBorder).toBe('1px');
 
+  await materialIntermediate.locator('.recipe-method-summary').click();
+  const methodChoiceLayout = await materialIntermediate.locator('.recipe-method-choice').first().evaluate(choice => {
+    const check = choice.querySelector('.recipe-method-check').getBoundingClientRect();
+    const visual = choice.querySelector('.recipe-method-visual').getBoundingClientRect();
+    return {
+      flexWrap: getComputedStyle(choice).flexWrap,
+      checkBeforeVisual: check.right <= visual.left + 1,
+      verticallyAligned: check.top < visual.bottom && check.bottom > visual.top
+    };
+  });
+  expect(methodChoiceLayout.flexWrap).toBe('nowrap');
+  expect(methodChoiceLayout.checkBeforeVisual).toBe(true);
+  expect(methodChoiceLayout.verticallyAligned).toBe(true);
+
   const intermediateHeader = page.locator('.materials-section-header').filter({ hasText: '製作する中間素材' });
   await intermediateHeader.click();
   await expect(materialIntermediate).toHaveClass(/collapsed/);
@@ -395,19 +416,19 @@ test('number inputs hide native spin buttons', async ({ page }) => {
   for (const selector of ['#countInput', '#materialTreeCountInput']) {
     await expect(page.locator(selector)).toHaveCSS('appearance', 'textfield');
     await expect(page.locator(selector)).toHaveCSS('color', 'rgb(200, 168, 75)');
-    await expect(page.locator(selector)).toHaveCSS('font-size', '18px');
+    await expect(page.locator(selector)).toHaveCSS('font-size', '19.8px');
     await expect(page.locator(selector)).toHaveCSS('font-weight', '700');
-    await expect(page.locator(selector)).toHaveCSS('height', '26px');
+    await expect.poll(() => page.locator(selector).evaluate(element => Number.parseFloat(getComputedStyle(element).height))).toBeGreaterThanOrEqual(24);
   }
 
   await page.setViewportSize({ width: 600, height: 700 });
   await expect(page.locator('#countInput')).toHaveCSS('appearance', 'textfield');
-  await expect(page.locator('#countInput')).toHaveCSS('font-size', '22px');
-  await expect(page.locator('#countInput')).toHaveCSS('height', '32px');
-  await expect(page.locator('#materialTreeCountInput')).toHaveCSS('font-size', '18px');
-  await expect(page.locator('#materialTreeCountInput')).toHaveCSS('height', '26px');
-  await expect(page.locator('#materialTreeDecreaseBtn')).toHaveCSS('height', '26px');
-  await expect(page.locator('#materialTreeIncreaseBtn')).toHaveCSS('height', '26px');
+  await expect(page.locator('#countInput')).toHaveCSS('font-size', '24.2px');
+  await expect.poll(() => page.locator('#countInput').evaluate(element => Number.parseFloat(getComputedStyle(element).height))).toBeGreaterThanOrEqual(32);
+  await expect(page.locator('#materialTreeCountInput')).toHaveCSS('font-size', '19.8px');
+  for (const selector of ['#materialTreeCountInput', '#materialTreeDecreaseBtn', '#materialTreeIncreaseBtn']) {
+    await expect.poll(() => page.locator(selector).evaluate(element => Number.parseFloat(getComputedStyle(element).height))).toBeGreaterThanOrEqual(24);
+  }
 
   await searchFor(page, 'ブラスバスタードソード');
   await page.getByText('ブラスバスタードソード', { exact: true }).first().click();

@@ -36,7 +36,7 @@ test('creates a named favorite list from a tree pin and exports a compact share 
   await expect(page.locator('#exportListChoices')).not.toContainText('検索履歴');
   await page.locator('#exportListChoices').getByText('剣リスト').click();
   await expect(page.locator('#exportListToggle')).toContainText('剣リスト');
-  await expect(page.locator('#exportCode')).toHaveValue(/^Y[A-Za-z0-9_-]+$/);
+  await expect(page.locator('#exportCode')).toHaveValue(/^N[A-Za-z0-9_-]+$/);
 });
 
 test('converts v2 favorite storage to v3 and removes v2 only after saving it', async ({ page }) => {
@@ -68,9 +68,41 @@ test('converts v2 favorite storage to v3 and removes v2 only after saving it', a
   expect(stored.v3.selectedListId).toBe('old-list');
   expect(stored.v3.lists.find(list => list.id === 'old-list')).toMatchObject({
     name: '旧リスト',
-    itemIds: [1602],
+    itemIds: ['バスタードソード'],
     recipeSelections: {}
   });
+});
+
+test('removes legacy favorites excluded from Lodestone and reports their names', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'ff14_favorite_lists_v3',
+      JSON.stringify({
+        version: 3,
+        selectedListId: 'legacy-excluded',
+        lists: [
+          {
+            id: 'legacy-excluded',
+            name: '旧対象外',
+            itemIds: [45917, 1602],
+            recipeSelections: {},
+            materialSelected: false
+          }
+        ]
+      })
+    );
+  });
+
+  await openApp(page);
+  await expect(page.locator('#loadStatus')).toHaveText('patch 7.55 対応');
+  await expect(page.locator('#loadStatus')).not.toHaveAttribute('title');
+  await expect(page.locator('#confirmOverlay')).toHaveClass(/info/);
+  await expect(page.locator('#confirmMsg')).toHaveText(
+    'お気に入りから、現在の対象データに存在しない1件を除外しました。\n\n・ヘビーアタキサイト'
+  );
+  await page.locator('#confirmNo').click();
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('ff14_favorite_lists_v3')));
+  expect(stored.lists.find(list => list.id === 'legacy-excluded').itemIds).toEqual(['バスタードソード']);
 });
 
 test('round-trips a selected recipe through the compact favorite share code', async ({ page }) => {
@@ -99,7 +131,7 @@ test('round-trips a selected recipe through the compact favorite share code', as
   await page.locator('#exportListToggle').click();
   await page.locator('#exportListChoices').getByText('ミラージュ', { exact: true }).click();
   const shareCode = await page.locator('#exportCode').inputValue();
-  expect(shareCode).toMatch(/^Y[A-Za-z0-9_-]+$/);
+  expect(shareCode).toMatch(/^N[A-Za-z0-9_-]+$/);
   expect(shareCode.length).toBeLessThan(100);
 
   await page.locator('#importCode').fill(shareCode);
@@ -110,8 +142,8 @@ test('round-trips a selected recipe through the compact favorite share code', as
     const store = JSON.parse(localStorage.getItem('ff14_favorite_lists_v3'));
     return store.lists.find(list => list.id !== 'mirage-list' && list.name.startsWith('ミラージュ'));
   });
-  expect(imported.itemIds).toEqual([21800]);
-  expect(imported.recipeSelections).toEqual({ 21800: '0e351054234' });
+  expect(imported.itemIds).toEqual(['ミラージュプリズム']);
+  expect(imported.recipeSelections).toEqual({ ミラージュプリズム: '0e351054234' });
 });
 
 test('uses the favorite list recipe selection for its material calculation', async ({ page }) => {
@@ -187,7 +219,7 @@ test('automatically saves a recipe method that minimizes craft job changes', asy
     const store = JSON.parse(localStorage.getItem('ff14_favorite_lists_v3'));
     return store.lists.find(list => list.id === 'legacy-list').recipeSelections;
   });
-  expect(selections).toEqual({ 21800: 'a0d2fcedeb3' });
+  expect(selections).toEqual({ ミラージュプリズム: 'a0d2fcedeb3' });
 
   await page.locator('#confirmNo').click();
   await page.locator('#recipeList').getByText('素材リストを表示').click();
@@ -205,7 +237,7 @@ test('automatically saves a recipe method that minimizes craft job changes', asy
     const store = JSON.parse(localStorage.getItem('ff14_favorite_lists_v3'));
     return store.lists.find(list => list.id === 'legacy-list').recipeSelections;
   });
-  expect(savedSelections).toEqual({ 21800: '0e351054234' });
+  expect(savedSelections).toEqual({ ミラージュプリズム: '0e351054234' });
 });
 
 test('finalizes missing legacy recipe methods when restoring a favorite list', async ({ page }) => {
@@ -359,7 +391,7 @@ test('restores selected view state after reload without saving calculated materi
     .toBeLessThanOrEqual(2);
 
   await page.reload();
-  await expect(page.locator('#loadStatus')).toContainText(/patch/);
+  await expect(page.locator('#loadStatus')).toHaveText('patch 7.55 対応');
   await expect(page.locator('#searchBox')).toHaveValue('アリペブレ');
   await expect(page.locator('#countInput')).toHaveValue('6');
   await expect(page.locator('.result-root-summary')).toContainText('アリペブレ');
@@ -425,10 +457,11 @@ test('restores left and right scroll positions after reload', async ({ page }) =
 test('limits the protected recent-items list to one hundred entries', async ({ page }) => {
   await openApp(page);
   await page.evaluate(async () => {
-    const items = await fetch('./data/Item.json').then(response => response.json());
+    const items = (await fetch('./data/Item.json').then(response => response.json())).Items;
     const itemIds = items
-      .map(item => Number(item.ID))
-      .filter(id => Number.isInteger(id) && id > 0)
+      .filter(item => item.Recipe)
+      .map(item => item.Name)
+      .filter(Boolean)
       .slice(0, 101);
     localStorage.setItem(
       'ff14_favorite_lists_v3',
@@ -447,7 +480,7 @@ test('limits the protected recent-items list to one hundred entries', async ({ p
     );
   });
   await page.reload();
-  await expect(page.locator('#loadStatus')).toContainText(/patch/);
+  await expect(page.locator('#loadStatus')).toHaveText('patch 7.55 対応');
   await page.locator('#favBtn').click();
   await page.locator('#favoriteLists').getByText('検索履歴', { exact: true }).click();
   await expect(page.locator('#recipeList li.fav-item-row')).toHaveCount(100);

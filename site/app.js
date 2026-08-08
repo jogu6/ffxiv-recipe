@@ -1,5 +1,6 @@
-const DATA_CACHE_VERSION = 'ff14recipe-data-7.50-6e392bcc';
+const DATA_CACHE_VERSION = 'ff14recipe-data-7.55-1cc35ab3';
 const DATA_FILE = `./data/Item.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
+const LEGACY_ITEM_IDS_FILE = `./data/legacy-item-ids.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 const TIPS_FILE = './data/tips.md';
 const DEVELOPMENT_SITE_HOSTS = new Set(['127.0.0.1', 'localhost', '192.168.11.2']);
 const IS_DEVELOPMENT_APP = DEVELOPMENT_SITE_HOSTS.has(location.hostname) && location.port === '4173';
@@ -21,7 +22,7 @@ const FAVORITE_NAME_MAX = 50;
 const RECENT_LIST_ID = 'SYSTEM_RECENT_ITEMS';
 const RECENT_LIST_NAME = '検索履歴';
 const RECENT_LIST_LIMIT = 100;
-const FAVORITE_LIST_FILE_TITLE = 'FF14 レシピ素材ツリー お気に入りリスト';
+const FAVORITE_LIST_FILE_TITLE = 'FinalFantasy XIV® Crafting Assistant XIVca(シヴカ) お気に入りリスト';
 const FAVORITE_LIST_FILE_SEPARATOR = '\n\n----------------------------------------\n\n';
 const FAVORITE_LIST_FILE_MAX_BYTES = 1024 * 1024;
 const FAVORITE_LIST_FILE_MAX_LISTS = 1000;
@@ -105,6 +106,14 @@ const {
 } = NavigationStateModel;
 const { UI_CHANGE, resolveUiChangePolicy } = UiChangePolicy;
 const { inspectViewState } = ViewStateModel;
+const {
+  ACKNOWLEDGED_VERSION_KEY,
+  UPDATE_RELOAD_PENDING_KEY,
+  extractAppVersion,
+  extractReleaseMarkdown,
+  shouldShowRelease,
+  updateBeforeUse
+} = PwaUpdate;
 
 const CRAFT_TYPE_NAME = {
   0: '木工師',
@@ -132,6 +141,7 @@ const elements = {
   appVersion: document.getElementById('appVersion'),
   loadStatus: document.getElementById('loadStatus'),
   loadingOverlay: document.getElementById('loadingOverlay'),
+  loadingTitle: document.getElementById('loadingTitle'),
   popupBtn: document.getElementById('popupBtn'),
   appTitle: document.getElementById('appTitle'),
   settingsBtn: document.getElementById('settingsBtn'),
@@ -184,8 +194,9 @@ const elements = {
   treeContainer: document.getElementById('treeContainer'),
   tipsMsg: document.getElementById('tipsMsg'),
   mobileBackBtn: document.getElementById('mobileBackBtn'),
-  updateNotice: document.getElementById('updateNotice'),
-  updateReloadBtn: document.getElementById('updateReloadBtn'),
+  releaseNoticeOverlay: document.getElementById('releaseNoticeOverlay'),
+  releaseNoticeContent: document.getElementById('releaseNoticeContent'),
+  releaseNoticeOkBtn: document.getElementById('releaseNoticeOkBtn'),
   confirmOverlay: document.getElementById('confirmOverlay'),
   confirmMsg: document.getElementById('confirmMsg'),
   confirmYes: document.getElementById('confirmYes'),
@@ -292,8 +303,12 @@ let selectedRecipeId = '';
 let favoriteStore = { version: 3, selectedListId: null, lists: [] };
 let searchHistory = [];
 let tipsData = [];
+let tipsMarkdown = '';
+let currentAppVersion = '';
+let hadServiceWorkerControllerAtBoot = false;
 let idToRecipeName = {};
 let idToItemName = {};
+let legacyItemNamesById = {};
 let usedIn = {};
 let ingredientNames = [];
 let prevPanel = 'left';
@@ -312,6 +327,7 @@ let maxEquipmentLevel = 1;
 let favoriteMaterialsRingCounts = {};
 let favoriteItemCountStore = { version: 1, lists: {} };
 let pendingConfirmAction = null;
+let pendingRemovedFavoriteNames = [];
 let pendingTextInputAction = null;
 let selectedExportListId = null;
 let wasMobile = isMobile();
@@ -693,7 +709,12 @@ function saveViewState() {
       listMode,
       sourceMode: resultSourceMode,
       resultMode: resultViewMode,
-      mobilePanel: currentMobilePanel()
+      mobilePanel: currentMobilePanel(),
+      favoriteListsOpen: elements.favoriteLists.classList.contains('open'),
+      favoriteListActionsId:
+        expandedFavoriteListActionsId && findFavoriteList(expandedFavoriteListActionsId)
+          ? expandedFavoriteListActionsId
+          : ''
     },
     favoriteMaterials: {
       listIds: favoriteMaterialsListIds,
@@ -808,6 +829,7 @@ function restoreViewState() {
     elements.searchBox.value = equipmentState.open ? '' : search;
     elements.searchClearBtn.classList.toggle('visible', elements.searchBox.value.trim() !== '');
     favoriteStore.selectedListId = favoriteList?.id || null;
+    expandedFavoriteListActionsId = findFavoriteList(state.view.favoriteListActionsId)?.id || null;
 
     setListMode(
       resolveRestoredListMode({
@@ -876,7 +898,7 @@ function restoreViewState() {
     updateFavoriteButtonState();
     renderList();
     renderResultView();
-    if (restoreFavoriteMaterials) {
+    if (state.view.favoriteListsOpen) {
       renderFavoriteLists();
       elements.favoriteLists.classList.add('open');
       updateFavoriteListsMaxHeight();
@@ -973,7 +995,7 @@ function normalizeRecipeSelections(value) {
     const name = itemNameForId(itemId);
     const variants = recipeVariants[name] || [];
     if (variants.length <= 1 || !variants.some(variant => variant.recipeId === recipeId)) return;
-    normalized[itemId] = recipeId;
+    normalized[name] = recipeId;
   });
   return normalized;
 }
@@ -1138,16 +1160,16 @@ function findFavoriteList(id) {
 }
 
 function itemIdForName(name) {
-  const id = parseInt(itemMaster[name]?.id, 10);
-  return Number.isInteger(id) && id > 0 ? id : null;
+  return itemMaster[name] ? name : null;
 }
 
 function recipeNameForId(id) {
-  return idToRecipeName[parseInt(id, 10)] || null;
+  return idToRecipeName[id] || idToRecipeName[parseInt(id, 10)] || legacyItemNamesById[String(id)] || null;
 }
 
 function itemNameForId(id) {
-  return idToItemName[parseInt(id, 10)] || null;
+  if (typeof id === 'string' && itemMaster[id]) return id;
+  return idToItemName[id] || idToItemName[parseInt(id, 10)] || legacyItemNamesById[String(id)] || null;
 }
 
 function createFavoriteList(name, itemIds = [], recipeSelections = {}, { captureSelections = false } = {}) {
@@ -1209,6 +1231,50 @@ function validateFavoriteRecipeSelections() {
     changed = true;
   });
   if (changed) saveFavorites();
+}
+
+function migrateFavoriteItemKeys() {
+  const removed = new Set();
+  let changed = false;
+  favoriteStore.lists.forEach(list => {
+    const names = [];
+    for (const key of normalizeItemIds(list.itemIds)) {
+      const name = itemNameForId(key);
+      if (!name || !recipes[name]) {
+        if (name) removed.add(name);
+        changed = true;
+        continue;
+      }
+      names.push(name);
+      if (key !== name) changed = true;
+    }
+    const normalizedNames = [...new Set(names)];
+    if (JSON.stringify(normalizedNames) !== JSON.stringify(list.itemIds)) changed = true;
+    list.itemIds = normalizedNames;
+    const migratedSelections = {};
+    Object.entries(list.recipeSelections || {}).forEach(([key, recipeId]) => {
+      const name = itemNameForId(key);
+      if (name) migratedSelections[name] = recipeId;
+      if (key !== name) changed = true;
+    });
+    list.recipeSelections = migratedSelections;
+  });
+  Object.values(favoriteItemCountStore?.lists || {}).forEach(state => {
+    for (const field of ['counts', 'anyOneTargets']) {
+      const migrated = {};
+      Object.entries(state[field] || {}).forEach(([key, value]) => {
+        const name = itemNameForId(key);
+        if (name && recipes[name]) migrated[name] = value;
+        if (key !== name) changed = true;
+      });
+      state[field] = migrated;
+    }
+  });
+  if (changed) {
+    saveFavorites();
+    saveFavoriteItemCountStore();
+  }
+  return [...removed];
 }
 
 function loadFavoriteItemCountStore() {
@@ -1980,11 +2046,13 @@ function toggleFav() {
   renderFavoriteLists();
   updateFavoriteListsMaxHeight();
   elements.favoriteLists.classList.toggle('open');
+  saveViewState();
 }
 
 function closeFavoriteLists() {
   elements.favoriteLists.classList.remove('open');
   expandedFavoriteListActionsId = null;
+  saveViewState();
 }
 
 function updateFavoriteListsMaxHeight() {
@@ -2461,6 +2529,7 @@ function renderFavoriteLists() {
         curtainToggle.setAttribute('aria-label', curtainToggle.title);
         curtainToggle.setAttribute('aria-expanded', String(nextExpanded));
         expandedFavoriteListActionsId = nextExpanded ? list.id : null;
+        saveViewState();
       });
 
       const actions = document.createElement('div');
@@ -2883,6 +2952,88 @@ function renderTips() {
   });
 }
 
+function setReleaseNoticeBackgroundInert(active) {
+  document.querySelectorAll('[data-app-content]').forEach(element => {
+    element.inert = active;
+  });
+}
+
+function openReleaseNotice(markdown) {
+  elements.releaseNoticeContent.innerHTML = renderMarkdown(markdown, { breaks: true });
+  elements.loadingOverlay.classList.remove('open');
+  setReleaseNoticeBackgroundInert(true);
+  elements.releaseNoticeOverlay.classList.add('open');
+  elements.releaseNoticeOkBtn.focus();
+}
+
+function closeReleaseNotice() {
+  localStorage.setItem(ACKNOWLEDGED_VERSION_KEY, currentAppVersion);
+  sessionStorage.removeItem(UPDATE_RELOAD_PENDING_KEY);
+  elements.releaseNoticeOverlay.classList.remove('open');
+  setReleaseNoticeBackgroundInert(false);
+  if (!showPendingRemovedFavoritesNotice()) elements.searchBox.focus();
+}
+
+function showPendingReleaseNotice() {
+  const updateReloadPending = sessionStorage.getItem(UPDATE_RELOAD_PENDING_KEY) === '1';
+  const acknowledgedVersion = localStorage.getItem(ACKNOWLEDGED_VERSION_KEY) || '';
+  if (updateReloadPending && !currentAppVersion) {
+    elements.loadingTitle.textContent = '更新内容を読み込めませんでした';
+    elements.loadingErrorDetail.textContent = '通信状態を確認してアプリを再起動してください。';
+    elements.loadingErrorDetail.hidden = false;
+    return true;
+  }
+  const shouldShow = shouldShowRelease({
+    currentVersion: currentAppVersion,
+    acknowledgedVersion,
+    hadController: hadServiceWorkerControllerAtBoot,
+    updateReloadPending
+  });
+
+  if (!shouldShow) {
+    if (currentAppVersion && !acknowledgedVersion && !hadServiceWorkerControllerAtBoot) {
+      localStorage.setItem(ACKNOWLEDGED_VERSION_KEY, currentAppVersion);
+    }
+    sessionStorage.removeItem(UPDATE_RELOAD_PENDING_KEY);
+    return false;
+  }
+
+  const releaseMarkdown = extractReleaseMarkdown(tipsMarkdown, currentAppVersion);
+  if (!releaseMarkdown) {
+    console.warn(`[Release] ${currentAppVersion} のリリース内容を取得できませんでした`);
+    elements.loadingTitle.textContent = '更新内容を読み込めませんでした';
+    elements.loadingErrorDetail.textContent = '通信状態を確認してアプリを再起動してください。';
+    elements.loadingErrorDetail.hidden = false;
+    return true;
+  }
+  openReleaseNotice(releaseMarkdown);
+  return true;
+}
+
+function handleReleaseNoticeKeydown(event) {
+  if (!elements.releaseNoticeOverlay.classList.contains('open')) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    return;
+  }
+  if (event.key !== 'Tab') return;
+  const focusable = [...elements.releaseNoticeOverlay.querySelectorAll('a[href], button:not(:disabled)')];
+  if (focusable.length === 0) {
+    event.preventDefault();
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable.at(-1);
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
 function showTips() {
   elements.tipsMsg.classList.remove('hidden');
   renderTips();
@@ -3292,11 +3443,13 @@ async function loadAppVersion() {
       if (!response.ok) throw new Error(`sw.js (${response.status})`);
       return response.text();
     });
-    const match = source.match(/const\s+APP_CACHE_VERSION\s*=\s*['"][^'"]*?(v\d+(?:\.\d+)*)['"]/i);
-    elements.appVersion.textContent = match ? match[1] : '';
+    currentAppVersion = extractAppVersion(source);
+    elements.appVersion.textContent = currentAppVersion;
   } catch {
+    currentAppVersion = '';
     elements.appVersion.textContent = '';
   }
+  return currentAppVersion;
 }
 
 // Data loading and index construction
@@ -3323,8 +3476,10 @@ async function loadTips() {
   try {
     const response = await fetch(TIPS_FILE, { cache: 'no-store' });
     if (!response.ok) throw new Error(`tips (${response.status})`);
-    tipsData = [{ html: renderMarkdown(await response.text(), { breaks: true }) }];
+    tipsMarkdown = await response.text();
+    tipsData = [{ html: renderMarkdown(tipsMarkdown, { breaks: true }) }];
   } catch {
+    tipsMarkdown = '';
     tipsData = [
       {
         html: renderMarkdown('📌 ピンでお気に入り登録\n\n検索欄でアイテム名検索', {
@@ -3398,18 +3553,34 @@ function buildApplicationData(rawList) {
     normalizeSelections: normalizeRecipeSelections
   });
   buildEquipmentSearchIndexes();
-  return data.maxPatch;
+  return data.version || data.maxPatch;
 }
 
-function updatePatchStatus(maxPatch) {
-  const patch = `${String(maxPatch).slice(0, -2)}.${String(maxPatch).slice(-2)}`.replace(/0$/, '');
-  elements.loadStatus.textContent =
-    maxPatch > 0 ? `patch ${patch} 対応` : '';
+function updatePatchStatus(version) {
+  const source = String(version || '');
+  const patch = source.includes('.')
+    ? source
+    : `${source.slice(0, -2)}.${source.slice(-2)}`.replace(/0$/, '');
+  elements.loadStatus.textContent = source ? `patch ${patch} 対応` : '';
+  elements.loadStatus.removeAttribute('title');
+}
+
+function showPendingRemovedFavoritesNotice() {
+  if (pendingRemovedFavoriteNames.length === 0) return false;
+  const names = pendingRemovedFavoriteNames;
+  pendingRemovedFavoriteNames = [];
+  showInfo(
+    `お気に入りから、現在の対象データに存在しない${names.length}件を除外しました。\n\n${names
+      .map(name => `・${name}`)
+      .join('\n')}`
+  );
+  return true;
 }
 
 function showLoadError(error) {
   window.ff14RecipeBoot?.complete();
   elements.loadStatus.textContent = '読み込みエラー';
+  setReleaseNoticeBackgroundInert(false);
   hideLoadingOverlay();
   const message = document.createElement('div');
   message.className = 'error-msg';
@@ -3435,13 +3606,16 @@ async function init() {
   renderTips();
 
   try {
-    const rawList = await fetchJson(
-      DATA_FILE,
-      status => `Item.json が見つかりません (${status})`,
-      DATA_CACHE_VERSION
-    );
+    const [rawList, legacyItemIds] = await Promise.all([
+      fetchJson(DATA_FILE, status => `Item.json が見つかりません (${status})`, DATA_CACHE_VERSION),
+      fetchJson(LEGACY_ITEM_IDS_FILE, status => `旧ID互換データが見つかりません (${status})`, DATA_CACHE_VERSION)
+    ]);
+    legacyItemNamesById = legacyItemIds?.Items || {};
     const applicationDataStartedAt = performance.now();
-    updatePatchStatus(buildApplicationData(rawList));
+    const dataVersion = buildApplicationData(rawList);
+    const removedFavorites = migrateFavoriteItemKeys();
+    pendingRemovedFavoriteNames = removedFavorites;
+    updatePatchStatus(dataVersion);
     validateFavoriteRecipeSelections();
     setupEquipmentSearchControls();
     performance.measure('application-data-setup', {
@@ -3457,7 +3631,11 @@ async function init() {
       saveViewState();
     }
     window.ff14RecipeBoot?.complete();
-    hideLoadingOverlay();
+    if (!showPendingReleaseNotice()) {
+      setReleaseNoticeBackgroundInert(false);
+      hideLoadingOverlay();
+      window.setTimeout(showPendingRemovedFavoritesNotice, MIN_LOADING_OVERLAY_MS);
+    }
   } catch (e) {
     showLoadError(e);
   }
@@ -3503,10 +3681,11 @@ function activeMobileScrollTop() {
 
 function updateMobileHeaderVisibility() {
   const header = document.querySelector('header');
+  const primaryRow = document.querySelector('.header-primary-row');
   if (!isMobile()) {
     header?.classList.remove('mobile-title-hidden', 'mobile-left-panel');
-    document.querySelector('.header-primary-row')?.removeAttribute('aria-hidden');
-    if (document.querySelector('.header-primary-row')) document.querySelector('.header-primary-row').inert = false;
+    primaryRow?.removeAttribute('aria-hidden');
+    if (primaryRow) primaryRow.inert = false;
     elements.settingsBtn.removeAttribute('aria-hidden');
     elements.settingsBtn.inert = false;
     return;
@@ -3516,20 +3695,21 @@ function updateMobileHeaderVisibility() {
     header.classList.toggle('mobile-left-panel', leftPanel);
   }
   const scrollTop = activeMobileScrollTop();
+  const titleHideThreshold = Math.max(32, Math.ceil(primaryRow?.scrollHeight || 0));
   const titleHidden = header?.classList.contains('mobile-title-hidden') || false;
   let nextTitleHidden = titleHidden;
   if (scrollTop === 0) nextTitleHidden = false;
-  else if (scrollTop >= 8) {
+  else if (scrollTop >= titleHideThreshold) {
     const scrollContainer = activeMobileScrollContainer();
     const remainingScroll = scrollContainer.scrollHeight - scrollContainer.clientHeight;
-    const stableAfterCollapse = titleHidden || remainingScroll >= 8 + (header?.offsetHeight || 0);
+    const stableAfterCollapse =
+      titleHidden || remainingScroll >= titleHideThreshold + (header?.offsetHeight || 0);
     if (stableAfterCollapse) nextTitleHidden = true;
   }
   if (header && titleHidden !== nextTitleHidden) {
     header.classList.toggle('mobile-title-hidden', nextTitleHidden);
   }
   const resolvedTitleHidden = header?.classList.contains('mobile-title-hidden') || false;
-  const primaryRow = document.querySelector('.header-primary-row');
   primaryRow?.setAttribute('aria-hidden', String(resolvedTitleHidden));
   if (primaryRow) primaryRow.inert = resolvedTitleHidden;
   const settingsHidden = leftPanel && resolvedTitleHidden;
@@ -3960,6 +4140,14 @@ function createRefinableSupplementLabel() {
   return createTextElement('span', 'supplement-refine-label badge-exchange', '精選、または');
 }
 
+function createShopAlternativeSupplementLabel(price) {
+  return createTextElement(
+    'span',
+    'supplement-refine-label badge-exchange',
+    `${formatNumber(price)}ギル、または`
+  );
+}
+
 function appendSupplementName(target, entry, className) {
   if (entry.refinable) target.appendChild(createRefinableSupplementLabel());
   target.appendChild(createTextElement('span', className, entry.name));
@@ -4375,6 +4563,8 @@ function materialRowsFromRequirements(result) {
     const row = { type: 'item', name: state.name, qty: state.needed };
     if (state.isExchange) {
       row.supplements = createExchangeSupplementEntries(state.recipe, state.craftTimes);
+      const shopPrice = Number(itemMaster[state.name]?.shopInfo?.price);
+      if (hasShopInfo(state.name) && Number.isFinite(shopPrice)) row.shopPrice = shopPrice;
     }
     rows.push(row);
   });
@@ -4783,6 +4973,9 @@ function renderMaterialsList() {
 
           const entryRow = document.createElement('div');
           entryRow.className = 'material-supplement-row';
+          if (index === 0 && Number.isFinite(row.shopPrice)) {
+            entryRow.appendChild(createShopAlternativeSupplementLabel(row.shopPrice));
+          }
           if (entry.isTextOnly) {
             appendSupplementName(entryRow, entry, 'material-supplement-name');
           } else {
@@ -5814,24 +6007,24 @@ function methodBadgeClass(method) {
 }
 
 function compactRecipeSelections(list) {
-  const reachableItemIds = new Set(
+  const reachableItemNames = new Set(
     reachableMultiRecipeNames(
       normalizeItemIds(list?.itemIds).map(itemNameForId).filter(Boolean),
       list?.recipeSelections || {}
-    ).map(name => String(itemIdForName(name)))
+    )
   );
   return Object.entries(normalizeRecipeSelections(list?.recipeSelections))
-    .filter(([itemId]) => reachableItemIds.has(itemId))
-    .map(([itemId, recipeId]) => {
-      const name = itemNameForId(itemId);
+    .filter(([itemName]) => reachableItemNames.has(itemName))
+    .map(([itemName, recipeId]) => {
+      const name = itemNameForId(itemName);
       const variant = (recipeVariants[name] || []).find(candidate => candidate.recipeId === recipeId);
       const craftType = Number(variant?.craftType);
       return Number.isInteger(craftType) && craftType >= 0 && craftType <= 7
-        ? { itemId: Number(itemId), craftType }
+        ? { itemName: name, craftType }
         : null;
     })
     .filter(Boolean)
-    .sort((a, b) => a.itemId - b.itemId);
+    .sort((a, b) => a.itemName.localeCompare(b.itemName, 'ja'));
 }
 
 // Settings and favorite sharing
@@ -5939,11 +6132,11 @@ function updateFontSizePreview() {
   const level = fontSizeSettings.normalizeLevel(elements.fontSizeLevelInput.value);
   pendingFontSizeLevel = level;
   const percent = Math.round(fontSizeSettings.scaleForLevel(level) * 100);
-  const output = `${level}（${percent}%）`;
+  const output = `${percent}%`;
   elements.fontSizeLevelOutput.value = output;
   elements.fontSizeLevelOutput.textContent = output;
   elements.fontSizePreview.setAttribute('data-font-size-level', String(level));
-  elements.fontSizeLevelInput.setAttribute('aria-valuetext', `Level ${output}`);
+  elements.fontSizeLevelInput.setAttribute('aria-valuetext', `表示サイズ ${output}`);
   elements.fontSizeApplyBtn.disabled = !hasPendingFontSizeChange();
   elements.fontSizePendingBadge.hidden = !hasPendingFontSizeChange();
 }
@@ -6114,15 +6307,41 @@ function openContactLink() {
   window.open(CONTACT_URL, '_blank', 'noopener,noreferrer');
 }
 
-function copyExportCode() {
+function copyTextWithSelection(text) {
+  const input = document.createElement('textarea');
+  input.value = text;
+  input.setAttribute('readonly', '');
+  input.style.cssText = 'position:fixed;inset:0 auto auto 0;width:1px;height:1px;opacity:0;pointer-events:none';
+  document.body.appendChild(input);
+  input.focus();
+  input.select();
+  input.setSelectionRange(0, input.value.length);
+  let copied = false;
+  try {
+    copied = document.execCommand('copy');
+  } catch {}
+  input.remove();
+  return copied;
+}
+
+async function writeClipboardText(text) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {}
+  return copyTextWithSelection(text);
+}
+
+async function copyExportCode() {
   const code = elements.exportCode.value;
   if (!code) return;
-  navigator.clipboard.writeText(code).then(() => {
-    elements.copyExportBtn.textContent = 'コピー済み';
-    setTimeout(() => {
-      elements.copyExportBtn.textContent = 'コピー';
-    }, 1500);
-  });
+  const copied = await writeClipboardText(code);
+  elements.copyExportBtn.textContent = copied ? 'コピー済み' : 'コピー失敗';
+  setTimeout(() => {
+    elements.copyExportBtn.textContent = 'コピー';
+  }, 1500);
 }
 
 function closeExportListDropdown() {
@@ -6399,6 +6618,17 @@ function closeEquipmentSearchForExternalAction(event) {
   if (equipmentSearchOpen && !isEquipmentSearchUiTarget(event.target)) setEquipmentSearchOpen(false);
 }
 
+function isFavoriteListsUiTarget(target) {
+  return (
+    target === elements.favBtn ||
+    elements.favoriteLists.contains(target) ||
+    elements.checkedFavoriteMaterialsActions.contains(target) ||
+    elements.licenseOverlay.contains(target) ||
+    elements.textInputOverlay.contains(target) ||
+    elements.confirmOverlay.contains(target)
+  );
+}
+
 function handleDocumentPointerDown(event) {
   closeEquipmentSearchForExternalAction(event);
   if (!event.target.closest?.('.custom-select')) closeAllCustomSelects();
@@ -6410,14 +6640,7 @@ function handleDocumentPointerDown(event) {
   ) {
     closeSearchHistory();
   }
-  if (
-    event.target !== elements.favBtn &&
-    !elements.favoriteLists.contains(event.target) &&
-    !elements.checkedFavoriteMaterialsActions.contains(event.target) &&
-    !elements.licenseOverlay.contains(event.target)
-  ) {
-    closeFavoriteLists();
-  }
+  if (!isFavoriteListsUiTarget(event.target)) closeFavoriteLists();
   if (event.target !== elements.exportListToggle && !elements.exportListChoices.contains(event.target)) {
     closeExportListDropdown();
   }
@@ -6618,11 +6841,8 @@ function bindEvents() {
     updateSettingsDialogHeight();
   });
   elements.usesBtn.addEventListener('click', () => showUsesPanel(selectedRecipe));
-  elements.updateReloadBtn.addEventListener('click', () => {
-    clearViewState();
-    markSkipRestoreOnce();
-    location.reload();
-  });
+  elements.releaseNoticeOkBtn.addEventListener('click', closeReleaseNotice);
+  document.addEventListener('keydown', handleReleaseNoticeKeydown, true);
   elements.confirmYes.addEventListener('click', confirmPendingAction);
   elements.confirmNo.addEventListener('click', closeConfirm);
   bindOverlayDismissal(elements.settingsOverlay, requestCloseSettings, elements.settingsCloseBtn);
@@ -6673,30 +6893,27 @@ function bindEvents() {
   window.addEventListener('resize', handleResize);
 }
 
-function registerServiceWorker() {
-  if (!('serviceWorker' in navigator)) return;
-  const hadController = !!navigator.serviceWorker.controller;
-  navigator.serviceWorker
-    .register('./sw.js')
-    .then(reg => {
-      reg.addEventListener('updatefound', () => {
-        const newWorker = reg.installing;
-        newWorker.addEventListener('statechange', () => {
-          if (newWorker.state === 'activated' && hadController) {
-            elements.updateNotice.classList.add('open');
-          }
-        });
-      });
-    })
-    .catch(err => console.warn('[SW] 登録失敗:', err));
-}
-
-function startApp() {
+async function startApp() {
   bindEvents();
   if (isMobile()) showMobilePanel('left');
-  loadAppVersion();
-  init();
-  registerServiceWorker();
+  const updateResult = await updateBeforeUse({
+    serviceWorkerContainer: 'serviceWorker' in navigator ? navigator.serviceWorker : null,
+    onStatus: status => {
+      elements.loadingTitle.textContent = status;
+    }
+  });
+  hadServiceWorkerControllerAtBoot = updateResult.hadController;
+  if (updateResult.updateApplied) {
+    clearViewState();
+    markSkipRestoreOnce();
+    sessionStorage.setItem(UPDATE_RELOAD_PENDING_KEY, '1');
+    location.reload();
+    return;
+  }
+
+  elements.loadingTitle.textContent = 'データ読み込み中...';
+  await loadAppVersion();
+  await init();
 }
 
 startApp();

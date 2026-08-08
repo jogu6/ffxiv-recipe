@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 const definition = {
   schemaVersion: 1,
   application: {
-    title: "FF14レシピ素材ツリー アイテム情報作成",
+    title: "FinalFantasy XIV® Crafting Assistant XIVca(シヴカ) アイテム情報作成",
     idleStatus: "待機中",
   },
   sections: [
@@ -31,6 +31,56 @@ const definition = {
     },
   ],
   actions: [
+    {
+      id: "lodestone-snapshot",
+      section: "data",
+      command: "lodestone-snapshot",
+      buttonId: "lodestoneSnapshotBtn",
+      order: "1",
+      label: "Lodestone全一覧取得",
+      description: "Versionと件数を確認し、必要な場合だけアイテム並び順を全ページから更新します。製作手帳一覧も逐次取得します。",
+      behavior: "command",
+      confirm: "Lodestoneを100ms以上の設定間隔で逐次取得します。並列通信は行いません。実行しますか？",
+      args: [{ flag: "--delay", inputId: "lodestoneDelayInput" }],
+    },
+    {
+      id: "build-lodestone-candidate",
+      section: "data",
+      command: "build-lodestone-candidate",
+      buttonId: "buildLodestoneCandidateBtn",
+      order: "2",
+      label: "名前キー候補生成",
+      description: "Lodestoneレシピと手動データから、アプリが参照する情報だけのItem.json候補と旧ID互換JSONを作ります。",
+      behavior: "command",
+      args: [],
+    },
+    {
+      id: "lodestone-candidate-icons",
+      section: "data",
+      command: "lodestone-candidate-icons",
+      buttonId: "lodestoneCandidateIconsBtn",
+      order: "3",
+      label: "画像整備・生成",
+      description: "全画像をアイテム名・画像内容ハッシュ形式へ整備し、不足画像だけを逐次取得します。手動画像は再生成入力として保護します。",
+      behavior: "command",
+      args: [
+        { flag: "--delay", inputId: "lodestoneDelayInput" },
+        { flag: "--quality", inputId: "qualityInput" },
+        { flag: "--size", inputId: "iconSizeInput" },
+      ],
+    },
+    {
+      id: "publish-lodestone-candidate",
+      section: "data",
+      command: "publish-lodestone-candidate",
+      buttonId: "publishLodestoneCandidateBtn",
+      order: "4",
+      label: "名前キー公開反映",
+      description: "構造と全画像を検証した候補だけをItem.jsonと旧ID互換JSONへ反映し、参照されない旧画像を整理します。",
+      behavior: "command",
+      confirm: "検証済み候補を公開用データへ反映します。実行しますか？",
+      args: [],
+    },
     {
       id: "oxidizer-environment",
       section: "data",
@@ -213,10 +263,10 @@ const definition = {
       order: "一括",
       label: "公開工程を続行",
       description:
-        "現在のローカルCSVから公開までを進めます。CSV取得・再生成は行わず、完了済み工程は省略します。",
+        "Lodestone一覧取得から名前キーの公開反映までを順番に進めます。完了済み工程のキャッシュは再利用します。",
       behavior: "sequence",
       confirm:
-        "現在のローカルCSVで未完了の公開工程だけを実行します。最後に公開反映まで進みます。実行しますか？",
+        "Lodestoneを逐次取得し、名前キーの候補生成・不足画像生成・公開反映まで進みます。実行しますか？",
     },
     {
       id: "icons",
@@ -275,11 +325,10 @@ const definition = {
     },
   ],
   recommendedSequence: [
-    "validate-csv",
-    "build",
-    "publish-lodestone-info",
-    "icons",
-    "publish",
+    "lodestone-snapshot",
+    "build-lodestone-candidate",
+    "lodestone-candidate-icons",
+    "publish-lodestone-candidate",
   ],
   equipmentRoleLabels: {
     tank: "タンク",
@@ -399,6 +448,15 @@ export function validatePipelineUiDefinition(value) {
 
 export function getPipelineUiDefinition() {
   const copy = JSON.parse(JSON.stringify(definition));
+  const activeActionIds = new Set([
+    "lodestone-snapshot",
+    "build-lodestone-candidate",
+    "lodestone-candidate-icons",
+    "publish-lodestone-candidate",
+    "run-all",
+  ]);
+  copy.actions = copy.actions.filter((action) => activeActionIds.has(action.id));
+  copy.sections = copy.sections.filter((section) => section.id === "data");
   const errors = validatePipelineUiDefinition(copy);
   if (errors.length)
     throw new Error(

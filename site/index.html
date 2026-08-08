@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#252525">
-<title>FF14 レシピ素材ツリー</title>
+<title>FinalFantasy XIV® Crafting Assistant XIVca(シヴカ)</title>
 <link rel="icon" href="./assets/app-icons/favicon.png" type="image/png">
 <link rel="apple-touch-icon" href="./assets/app-icons/favicon.png">
 <link rel="manifest" href="./manifest.webmanifest">
@@ -74,11 +74,11 @@
 </head>
 <body>
 
-<header>
+<header data-app-content inert>
   <div class="header-primary-row">
-    <div class="app-title" id="appTitle" role="button" tabindex="0" title="初期画面に戻る">
+    <div class="app-title" id="appTitle" role="button" tabindex="0" title="XIVcaの初期画面に戻る" aria-label="FinalFantasy XIV® Crafting Assistant XIVca(シヴカ)の初期画面に戻る">
       <img class="app-title-icon" src="./assets/app-icons/favicon.png" alt="">
-      <h1>FF14 レシピ素材ツリー</h1>
+      <h1><img class="app-name-logo" src="./assets/branding/xivca-logo.webp" alt="FinalFantasy XIV® Crafting Assistant XIVca(シヴカ)"></h1>
     </div>
     <span id="loadStatus">データ読み込み中...</span>
   </div>
@@ -87,7 +87,7 @@
   <button id="settingsBtn" type="button" title="共有・データ管理などを開く" aria-label="共有・データ管理などを開く">⚙</button>
 </header>
 
-<div class="main">
+<div class="main" data-app-content inert>
   <div class="panel-left" id="panelLeft">
     <div class="panel-left-header">
       <div class="search-row">
@@ -183,16 +183,19 @@
     </div>
   </div>
 </div>
-<div class="footer">© SQUARE ENIX / Data: XIVAPI / X: <a href="https://x.com/ff14_recipe" target="_blank" rel="noopener">@ff14_recipe</a></div>
+<div class="footer" data-app-content inert>© SQUARE ENIX / X: <a href="https://x.com/ff14_recipe" target="_blank" rel="noopener">@ff14_recipe</a></div>
 <div id="loadingOverlay" class="open" role="status" aria-live="polite">
   <div class="loading-card">
-    <div class="loading-title">データ読み込み中...</div>
+    <div class="loading-title" id="loadingTitle">更新を確認しています...</div>
     <div id="loadingErrorDetail" class="loading-error-detail" hidden></div>
   </div>
 </div>
-<div id="updateNotice" role="status">
-  <span>アプリが更新されました</span>
-  <button id="updateReloadBtn" type="button">再読み込み</button>
+<div id="releaseNoticeOverlay">
+  <div id="releaseNoticeDialog" role="dialog" aria-modal="true" aria-labelledby="releaseNoticeTitle" aria-describedby="releaseNoticeContent">
+    <h2 id="releaseNoticeTitle">アプリを更新しました</h2>
+    <div id="releaseNoticeContent" class="markdown-content"></div>
+    <button id="releaseNoticeOkBtn" class="confirm-btn yes" type="button">OK</button>
+  </div>
 </div>
 
 <div id="confirmOverlay">
@@ -283,10 +286,10 @@
           </div>
         </div>
         <div class="font-size-level-row">
-          <label for="fontSizeLevelInput">Level <output id="fontSizeLevelOutput" for="fontSizeLevelInput">3（100%）</output></label>
+          <label for="fontSizeLevelInput"><output id="fontSizeLevelOutput" for="fontSizeLevelInput">100%</output></label>
         </div>
-        <input id="fontSizeLevelInput" class="font-size-level-input" type="range" min="1" max="10" step="1" value="3" aria-label="フォントサイズLevel">
-        <div class="font-size-level-marks" aria-hidden="true"><span>1</span><span>10</span></div>
+        <input id="fontSizeLevelInput" class="font-size-level-input" type="range" min="1" max="10" step="1" value="3" aria-label="表示サイズ">
+        <div class="font-size-level-marks" aria-hidden="true"><span>小</span><span>大</span></div>
         <div id="fontSizeApplyNote" class="settings-note" role="note">反映すると、表示中の検索・レシピ画面を終了して初期画面に戻ります。保存済みのお気に入りは保持されます。</div>
         <button class="confirm-btn yes font-size-apply-btn" id="fontSizeApplyBtn" type="button" disabled>反映</button>
       </div>
@@ -406,6 +409,7 @@
 <script src="./recipe-selection-model.js"></script>
 <script src="./vendor/marked.umd.js"></script>
 <script src="./vendor/purify.min.js"></script>
+<script src="./pwa-update.js"></script>
 <script src="./ui-change-policy.js"></script>
 <script src="./view-state.js"></script>
 <script src="./app.js"></script>

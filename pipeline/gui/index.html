@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>FF14レシピ素材ツリー アイテム情報作成</title>
+  <title>FinalFantasy XIV® Crafting Assistant XIVca(シヴカ) アイテム情報作成</title>
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
@@ -23,8 +23,8 @@
           <span id="csvToggleLabel"></span>
         </button>
         <div id="csvBody" class="collapsible-body">
-        <h3 class="workflow-heading">CSV準備（必要なときだけ）</h3>
-        <div class="source-settings">
+        <h3 class="workflow-heading" hidden>旧CSV準備</h3>
+        <div class="source-settings" hidden>
           <label class="field">
             <span>OxidizerまたはCSVフォルダー</span>
             <span class="path-field">
@@ -44,71 +44,92 @@
             <input id="oxidizerForceInput" type="checkbox">
           </label>
         </div>
-        <div class="action-item" data-step="oxidizer-environment">
+        <div class="action-item" data-step="oxidizer-environment" hidden>
           <span class="order-label"></span>
           <button id="oxidizerEnvironmentBtn" type="button"></button>
           <p></p>
           <span class="action-status">○ 未実行</span>
         </div>
-        <div class="action-item" data-step="oxidizer-check">
+        <div class="action-item" data-step="oxidizer-check" hidden>
           <span class="order-label"></span>
           <button id="oxidizerCheckBtn" type="button"></button>
           <p></p>
           <span class="action-status">○ 未実行</span>
         </div>
-        <div class="action-item" data-step="oxidizer-refresh">
+        <div class="action-item" data-step="oxidizer-refresh" hidden>
           <span class="order-label"></span>
           <button id="oxidizerRefreshBtn" type="button"></button>
           <p></p>
           <span class="action-status">○ 未実行</span>
         </div>
-        <div class="action-item" data-step="oxidizer-import-preview">
+        <div class="action-item" data-step="oxidizer-import-preview" hidden>
           <span class="order-label"></span>
           <button id="oxidizerImportPreviewBtn" type="button"></button>
           <p></p>
           <span class="action-status">○ 未実行</span>
         </div>
-        <div class="action-item" data-step="oxidizer-import">
+        <div class="action-item" data-step="oxidizer-import" hidden>
           <span class="order-label"></span>
           <button id="oxidizerImportBtn" type="button"></button>
           <p></p>
           <span class="action-status">○ 未実行</span>
         </div>
-        <div class="action-item" data-step="check-updates">
+        <div class="action-item" data-step="check-updates" hidden>
           <span class="order-label"></span>
           <button id="checkUpdatesBtn" type="button"></button>
           <p></p>
           <span class="action-status">○ 未実行</span>
         </div>
-        <dl class="meta-list">
+        <dl class="meta-list" hidden>
           <div><dt>前回チェック</dt><dd id="lastChecked">-</dd></div>
         </dl>
-        <div class="action-item" data-step="download-csv">
+        <div class="action-item" data-step="download-csv" hidden>
           <span class="order-label"></span>
           <button id="downloadCsvBtn" type="button"></button>
           <p></p>
           <span class="action-status">○ 未実行</span>
         </div>
         <h3 class="workflow-heading">公開処理</h3>
+        <div class="action-item" data-step="lodestone-snapshot">
+          <span class="order-label"></span>
+          <button id="lodestoneSnapshotBtn" type="button"></button>
+          <label class="field quality-field">
+            <span>アクセス間隔(ms)</span>
+            <input id="lodestoneDelayInput" type="number" min="0" max="60000" step="100" value="100">
+          </label>
+          <p></p><span class="action-status">○ 未実行</span>
+        </div>
+        <div class="action-item" data-step="build-lodestone-candidate">
+          <span class="order-label"></span><button id="buildLodestoneCandidateBtn" type="button"></button>
+          <p></p><span class="action-status">○ 未実行</span>
+        </div>
+        <div class="action-item" data-step="lodestone-candidate-icons">
+          <span class="order-label"></span><button id="lodestoneCandidateIconsBtn" type="button"></button>
+          <p></p><span class="action-status">○ 未実行</span>
+        </div>
+        <div class="action-item" data-step="publish-lodestone-candidate">
+          <span class="order-label"></span><button id="publishLodestoneCandidateBtn" type="button"></button>
+          <p></p><span class="action-status">○ 未実行</span>
+        </div>
         <div id="workflowGuide" class="workflow-guide">工程状態を確認中...</div>
-        <div class="action-item" data-step="validate-csv">
+        <div class="action-item" data-step="validate-csv" hidden>
           <span class="order-label"></span>
           <button id="validateCsvBtn" type="button"></button>
           <p></p>
           <span class="action-status">○ 未実行</span>
         </div>
-        <div class="action-item" data-step="build">
+        <div class="action-item" data-step="build" hidden>
           <span class="order-label"></span>
           <button id="buildBtn" type="button"></button>
           <p></p>
           <span class="action-status">○ 未実行</span>
         </div>
-        <div class="action-item" data-step="publish-lodestone-info">
+        <div class="action-item" data-step="publish-lodestone-info" hidden>
           <span class="order-label"></span>
           <button id="lodestoneInfoBtn" type="button"></button>
           <label class="field quality-field">
             <span>アクセス間隔(ms)</span>
-            <input id="lodestoneDelayInput" type="number" min="0" max="60000" step="100" value="100">
+            <input type="number" value="100">
           </label>
           <label class="field quality-field">
             <span>強制再取得</span>
@@ -117,20 +138,20 @@
           <p></p>
           <span class="action-status">○ 未実行</span>
         </div>
-        <div class="action-item" data-step="equipment-role-groups">
+        <div class="action-item" data-step="equipment-role-groups" hidden>
           <span class="order-label"></span>
           <button id="equipmentRoleBtn" type="button"></button>
           <p></p>
           <span class="action-status">○ 未実行</span>
           <span id="equipmentRoleCount" class="equipment-role-count">指定状況を読み込み中...</span>
         </div>
-        <div class="action-item" data-step="publication-review">
+        <div class="action-item" data-step="publication-review" hidden>
           <span class="order-label"></span>
           <button id="publicationReviewBtn" type="button"></button>
           <p></p>
           <span class="action-status">○ 未実行</span>
         </div>
-        <div class="action-item" data-step="publish">
+        <div class="action-item" data-step="publish" hidden>
           <span class="order-label"></span>
           <button id="publishBtn" type="button"></button>
           <p></p>
@@ -144,7 +165,7 @@
         </div>
       </section>
 
-      <section class="panel-section collapsible-section">
+      <section class="panel-section collapsible-section" hidden>
         <button id="buildToggle" class="section-toggle" type="button" aria-expanded="false">
           <span class="section-toggle-mark" aria-hidden="true">▶</span>
           <span id="buildToggleLabel"></span>
@@ -177,7 +198,7 @@
         </div>
       </section>
 
-      <section class="panel-section collapsible-section">
+      <section class="panel-section collapsible-section" hidden>
         <button id="iconQualityToggle" class="section-toggle" type="button" aria-expanded="false">
           <span class="section-toggle-mark" aria-hidden="true">▶</span>
           <span id="iconQualityToggleLabel"></span>

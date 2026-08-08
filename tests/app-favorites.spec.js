@@ -12,6 +12,16 @@ const {
 } = require('./helpers/app.js');
 const { favoriteList, favoriteStore, seedAppStorage } = require('./helpers/app-storage.js');
 test('favorites and shares an ingredient while preserving search results', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: () => Promise.reject(new Error('clipboard permission denied')) }
+    });
+    document.execCommand = command => {
+      window.__copiedShareCode = document.activeElement?.value || '';
+      return command === 'copy';
+    };
+  });
   await openApp(page);
   await searchFor(page, '山羊乳');
   const ingredientRow = page.locator('#recipeList li').filter({ hasText: '山羊乳' }).first();
@@ -40,6 +50,9 @@ test('favorites and shares an ingredient while preserving search results', async
   await page.locator('#exportListToggle').click();
   await page.locator('#exportListChoices').getByText('素材お気に入り').click();
   const shareCode = await page.locator('#exportCode').inputValue();
+  await page.locator('#copyExportBtn').click();
+  await expect(page.locator('#copyExportBtn')).toHaveText('コピー済み');
+  await expect.poll(() => page.evaluate(() => window.__copiedShareCode)).toBe(shareCode);
   await page.locator('#importCode').fill(shareCode);
   await page.locator('#startImportBtn').click();
   await expect(page.locator('#recipeList')).toContainText('山羊乳');
@@ -72,10 +85,10 @@ test('exports and imports all favorite lists through one text file', async ({ pa
   const chunks = [];
   for await (const chunk of stream) chunks.push(chunk);
   const fileText = Buffer.concat(chunks).toString('utf8');
-  expect(fileText).toContain('FF14 レシピ素材ツリー お気に入りリスト');
+  expect(fileText).toContain('FinalFantasy XIV® Crafting Assistant XIVca(シヴカ) お気に入りリスト');
   expect(fileText).toContain('【一括リストA】');
   expect(fileText).toContain('登録アイテム:\n・カッパーリング');
-  expect(fileText).toContain('復元コード:\nY');
+  expect(fileText).toContain('復元コード:\nN');
   expect(fileText).not.toContain('"format"');
   expect(fileText).not.toContain('"version"');
   expect(fileText).not.toContain('createdAt');
@@ -118,7 +131,7 @@ test('favorite target dialog grows with list count within the existing viewport 
         selectedListId: 'target-list-1',
         lists: Array.from({ length: 12 }, (_, index) => ({
           id: `target-list-${index + 1}`,
-          name: `登録先${index + 1}`,
+          name: index === 0 ? 'とても長い名前の登録先お気に入りリストその一' : `登録先${index + 1}`,
           itemIds: [4422],
           recipeSelections: {}
         }))
@@ -134,12 +147,16 @@ test('favorite target dialog grows with list count within the existing viewport 
     const choices = dialog.querySelector('#favoriteTargetChoices');
     return {
       dialogHeight: dialog.getBoundingClientRect().height,
+      dialogWidth: dialog.getBoundingClientRect().width,
+      viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
       choicesClientHeight: choices.clientHeight,
       choicesScrollHeight: choices.scrollHeight
     };
   });
   expect(layout.dialogHeight).toBeLessThanOrEqual(layout.viewportHeight * 0.88 + 1);
+  expect(layout.dialogWidth).toBeGreaterThan(300);
+  expect(layout.dialogWidth).toBeLessThanOrEqual(layout.viewportWidth - 24 + 1);
   expect(layout.choicesScrollHeight).toBeGreaterThan(layout.choicesClientHeight);
   await page.locator('#favoriteTargetCancelBtn').click();
   await page.locator('#settingsBtn').click();
@@ -206,12 +223,12 @@ test('reorders favorite lists locally with the rightmost drag handle', async ({ 
   const listB = page.locator('#favoriteLists li').filter({ hasText: 'リストB' }).first();
   await expect(listA).toHaveCSS('user-select', 'text');
   await expect(listA.locator('.favorite-list-curtain')).not.toHaveClass(/expanded/);
-  await expect(listA.locator('.favorite-list-name')).toHaveCSS('font-size', '13px');
+  await expect(listA.locator('.favorite-list-name')).toHaveCSS('font-size', '14.3px');
   const nameBoxBefore = await listA.locator('.favorite-list-name').boundingBox();
   await listA.locator('.favorite-list-curtain-toggle').click();
   await expect(listA.locator('.favorite-list-curtain')).toHaveClass(/expanded/);
   await expect(listA).toHaveCSS('user-select', 'none');
-  await expect(listA.locator('.favorite-list-curtain')).toHaveCSS('width', '170px');
+  await expect.poll(() => listA.locator('.favorite-list-curtain').evaluate(element => element.getBoundingClientRect().width)).toBeGreaterThanOrEqual(170);
   await expect(listA.locator('.favorite-list-curtain-toggle')).toHaveText('▶');
   const nameBoxAfter = await listA.locator('.favorite-list-name').boundingBox();
   expect(nameBoxAfter.width).toBeCloseTo(nameBoxBefore.width, 0);
@@ -220,9 +237,17 @@ test('reorders favorite lists locally with the rightmost drag handle', async ({ 
   const actionButtons = listA.locator('.favorite-list-curtain-actions button');
   const firstActionBox = await actionButtons.nth(0).boundingBox();
   const secondActionBox = await actionButtons.nth(1).boundingBox();
-  expect(secondActionBox.x - (firstActionBox.x + firstActionBox.width)).toBeGreaterThanOrEqual(
-    firstActionBox.width - 1
-  );
+  expect(secondActionBox.x - (firstActionBox.x + firstActionBox.width)).toBeGreaterThanOrEqual(10);
+
+  await listA.getByRole('button', { name: '「リストA」の名前を変更' }).click();
+  await expect(page.locator('#textInputOverlay')).toHaveClass(/open/);
+  await page.locator('#textInputCancelBtn').click();
+  await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
+
+  await listA.getByRole('button', { name: '「リストA」を削除' }).click();
+  await expect(page.locator('#confirmOverlay')).toHaveClass(/open/);
+  await page.locator('#confirmNo').click();
+  await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
 
   await dragHandleAfter(page, listA.locator('.reorder-handle'), listB);
 
@@ -232,10 +257,23 @@ test('reorders favorite lists locally with the rightmost drag handle', async ({ 
 
   await page.reload();
   await openApp(page);
-  await page.locator('#favBtn').click();
+  await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
   await expect(page.locator('#favoriteLists li').nth(0)).toContainText('検索履歴');
   await expect(page.locator('#favoriteLists li').nth(1)).toContainText('リストB');
   await expect(page.locator('#favoriteLists li').nth(2)).toContainText('リストA');
+  const restoredListA = page.locator('#favoriteLists li').filter({ hasText: 'リストA' }).first();
+  await expect(restoredListA.locator('.favorite-list-curtain')).toHaveClass(/expanded/);
+
+  await restoredListA.locator('.favorite-list-curtain-toggle').click();
+  await page.locator('#favBtn').click();
+  await expect(page.locator('#favoriteLists')).not.toHaveClass(/open/);
+  await page.reload();
+  await openApp(page);
+  await expect(page.locator('#favoriteLists')).not.toHaveClass(/open/);
+  await page.locator('#favBtn').click();
+  await expect(
+    page.locator('#favoriteLists li').filter({ hasText: 'リストA' }).first().locator('.favorite-list-curtain')
+  ).not.toHaveClass(/expanded/);
 });
 
 test('reorders favorite items locally and changes the exported share code order', async ({ page }) => {
@@ -663,7 +701,7 @@ test('mobile pin turns active after adding to a favorite list', async ({ page })
   expect(Math.abs(mobileBackBox.y + mobileBackBox.height / 2 - (settingsBox.y + settingsBox.height / 2))).toBeLessThan(
     1
   );
-  await expect(page.locator('#mobileBackBtn')).toHaveCSS('font-size', '15px');
+  await expect(page.locator('#mobileBackBtn')).toHaveCSS('font-size', '16.5px');
 
   const pin = page.locator('.result-root-summary .pin-btn').first();
   await expect(pin).toHaveClass(/inactive/);

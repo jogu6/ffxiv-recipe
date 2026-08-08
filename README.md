@@ -1,4 +1,4 @@
-# FF14レシピ素材ツリー
+# FinalFantasy XIV® Crafting Assistant XIVca(シヴカ)
 
 FF14のレシピ、必要素材、中間素材、装備、採集・店情報を確認するための静的Webアプリです。
 
@@ -118,17 +118,17 @@ SQUARE ENIX から修正、削除、公開停止、提供停止などの指示�
 
 詳細は [NOTICE.md](NOTICE.md) および [site/docs/license-notice.md](site/docs/license-notice.md) を参照してください。
 
-## XIVAPI更新監視
+## Lodestone更新監視
 
-XIVAPI由来のCSVを毎日確認し、変更時だけDiscordへ通知できます。
+Lodestoneのアイテム一覧と製作手帳一覧を毎日確認し、変更時だけDiscordへ通知できます。
 
-詳細なセットアップ、タスク設定、ログ、テスト通知については [XIVAPI update monitor](docs/xivapi-update-monitor.md) を参照してください。
+詳細なセットアップ、タスク設定、ログ、テスト通知については [Lodestone update monitor](docs/lodestone-update-monitor.md) を参照してください。
 
-1. `pipeline/config/xivapi-monitor.example.json` を `pipeline/config/xivapi-monitor.local.json` としてコピーします。
+1. `pipeline/config/lodestone-monitor.example.json` を `pipeline/config/lodestone-monitor.local.json` としてコピーします。
 2. `discordWebhookUrl` に通知先のDiscord Webhook URLを設定します。ローカル設定はGitの追跡対象外です。
 3. Gitの追跡対象外であるローカルのタスク定義をタスクスケジューラへインポートし、実行ユーザーのパスワードを設定します。
 4. タスクを一度手動実行して基準状態を保存します。初回実行では通知しません。
 
-Webhookへのテスト通知は `node pipeline/tool/xivapi-update-monitor.mjs --test-notification` で送信できます。この操作では監視の基準状態を変更しません。
+Webhookへのテスト通知は `node pipeline/tool/lodestone-update-monitor.mjs --test-notification` で送信できます。この操作では監視の基準状態を変更しません。
 
 タスクは `wscript.exe` の非表示実行からNode.jsを起動するため、ターミナルウィンドウを表示しません。状態、取得キャッシュ、ログはそれぞれ `pipeline/state/`、`pipeline/cache/`、`pipeline/logs/` に保存され、いずれもGitの追跡対象外です。

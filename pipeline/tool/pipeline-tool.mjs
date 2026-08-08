@@ -8,6 +8,21 @@ import zlib from 'node:zlib';
 import { spawnSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import sharp from 'sharp';
+import {
+  LODESTONE_BASE_URL,
+  LODESTONE_ITEM_LIST_URL,
+  LODESTONE_RECIPE_LIST_URL,
+  applyDescendingSortOrder,
+  crawlLodestoneList,
+  createSequentialRequestQueue,
+  exactXivapiItemIcon,
+  extractLodestoneItemList,
+  extractLodestoneListMeta,
+  extractLodestoneRecipeList,
+  lodestoneOrderSignature,
+  xivapiExactItemSearchUrl,
+  xivapiPngAssetUrl
+} from './lodestone-source.mjs';
 
 sharp.cache(false);
 
@@ -24,6 +39,7 @@ export const pngIconCacheRoot = path.join(cacheRoot, 'item-icons-png');
 export const lodestonePngIconCacheRoot = path.join(cacheRoot, 'lodestone-icons-png');
 export const lodestoneShopCacheRoot = path.join(cacheRoot, 'lodestone-shops');
 export const lodestoneShopCacheDatabasePath = path.join(cacheRoot, 'lodestone-shops.sqlite');
+export const manualItemIconsRoot = path.join(inputRoot, 'manual-item-icons');
 export const siteRoot = path.join(repositoryRoot, 'site');
 export const itemIconsRoot = path.join(siteRoot, 'assets', 'item-icons');
 
@@ -53,6 +69,7 @@ const equipmentRoleOverridesPath = path.join(inputRoot, 'equipment-role-override
 const publicationDecisionsPath = path.join(inputRoot, 'publication-decisions.json');
 const craftJobsPath = path.join(inputRoot, 'web-app', 'craft-jobs.json');
 const lodestoneItemUrlsPath = path.join(stateRoot, 'lodestone-item-urls.json');
+const lodestoneSourceSnapshotPath = path.join(stateRoot, 'lodestone-source-snapshot.json');
 const defaultIconQuality = 80;
 const defaultIconDelayMs = 500;
 const defaultLodestoneInfoDelayMs = 100;
@@ -158,6 +175,8 @@ const buildOutputs = {
   publicItems: path.join(intermediateRoot, '06-public-items.json')
 };
 const publicCandidatePath = buildOutputs.publicItems;
+const legacyItemIdCandidatePath = path.join(intermediateRoot, 'legacy-item-ids.json');
+const manualUnmatchedReportPath = path.join(reportsRoot, 'lodestone-manual-unmatched.json');
 const serviceWorkerPath = path.join(siteRoot, 'sw.js');
 const appScriptPath = path.join(siteRoot, 'app.js');
 
@@ -534,11 +553,13 @@ function formatPatchForCache(value) {
 }
 
 function makeDataCacheVersion(itemJsonPath = publicItemJsonPath, salt = '') {
-  const items = readJson(itemJsonPath, []);
+  const source = readJson(itemJsonPath, []);
+  const items = Array.isArray(source) ? source : source.Items || [];
   const maxPatch = items.reduce((max, item) => Math.max(max, Number(item?.Recipe?.PatchNumber) || 0), 0);
+  const version = String(Array.isArray(source) ? formatPatchForCache(maxPatch) : source.Version || '0');
   const hash = crypto.createHash('sha256').update(fs.readFileSync(itemJsonPath));
   if (salt) hash.update(String(salt));
-  return `ff14recipe-data-${formatPatchForCache(maxPatch)}-${hash.digest('hex').slice(0, 8)}`;
+  return `ff14recipe-data-${version}-${hash.digest('hex').slice(0, 8)}`;
 }
 
 function updateServiceWorkerDataCacheVersion(version) {
@@ -1363,15 +1384,37 @@ export async function downloadCsv({ force = false } = {}) {
   }
 }
 
-function iconPaths(iconFile) {
+export function itemIconNameHash(itemName) {
+  const name = String(itemName || '');
+  if (!name) throw new Error('アイテム画像の命名にはアイテム名が必要です');
+  return crypto.createHash('sha256').update(name, 'utf8').digest('hex').slice(0, 20);
+}
+
+export function itemIconFileName(itemName, webpBytes) {
+  const bytes = Buffer.isBuffer(webpBytes) ? webpBytes : Buffer.from(webpBytes || []);
+  if (bytes.length === 0) throw new Error(`アイテム画像が空です: ${itemName}`);
+  const contentHash = crypto.createHash('sha256').update(bytes).digest('hex').slice(0, 12);
+  return `${itemIconNameHash(itemName)}-${contentHash}.webp`;
+}
+
+export function validateItemIconFileName(itemName, iconFile, webpBytes) {
+  if (!/^[0-9a-f]{20}-[0-9a-f]{12}\.webp$/.test(String(iconFile || ''))) return false;
+  return itemIconFileName(itemName, webpBytes) === iconFile;
+}
+
+function manualItemIconPath(itemName, root = manualItemIconsRoot) {
+  return path.join(root, `${itemIconNameHash(itemName)}.webp`);
+}
+
+function iconPaths(iconFile, root = itemIconsRoot) {
   const webpName = iconFile.replace(/\.[^.]+$/, '.webp');
   const pngName = iconFile.replace(/\.[^.]+$/, '.png');
   const folder = webpName.slice(0, 3);
   return {
     webpName,
     pngName,
-    webpPath: path.join(itemIconsRoot, folder, webpName),
-    pngPath: path.join(itemIconsRoot, folder, pngName)
+    webpPath: path.join(root, folder, webpName),
+    pngPath: path.join(root, folder, pngName)
   };
 }
 
@@ -2116,6 +2159,74 @@ export function extractLodestoneRecipePaths(detailHtml) {
     .filter((value, index, values) => values.indexOf(value) === index);
 }
 
+export async function refreshLodestoneSourceSnapshot({
+  delayMs = defaultLodestoneInfoDelayMs,
+  target = lodestoneSourceSnapshotPath
+} = {}) {
+  const delay = Math.max(0, Number(delayMs) || 0);
+  const requestSequentially = createSequentialRequestQueue({
+    delayMs: delay,
+    request: ({ url, fresh = false }) => fresh ? fetchLodestoneText(url, 0) : fetchCachedLodestoneText(url, 0)
+  });
+  const fetchSequentially = url => requestSequentially({ url });
+  const previous = readJson(target, null);
+  log(`Lodestone全一覧の逐次取得を開始します: 間隔 ${delay}ms`);
+  const firstItemHtml = await requestSequentially({ url: LODESTONE_ITEM_LIST_URL, fresh: true });
+  const itemMeta = extractLodestoneListMeta(firstItemHtml);
+  const canReuseItemOrder = previous?.Version === itemMeta.version
+    && previous?.ItemCount === itemMeta.total
+    && Array.isArray(previous?.Items)
+    && previous.Items.length === itemMeta.total
+    && typeof previous?.ItemOrderSignature === 'string'
+    && previous.ItemOrderSignature.length === 64;
+  const items = canReuseItemOrder
+    ? { ...itemMeta, entries: previous.Items }
+    : await crawlLodestoneList({
+        baseUrl: LODESTONE_ITEM_LIST_URL,
+        extractEntries: extractLodestoneItemList,
+        fetchText: fetchSequentially,
+        firstHtml: firstItemHtml,
+        onPage: ({ page, pages }) => {
+          if (page === 1 || page === pages || page % 25 === 0) log(`アイテム一覧 ${page}/${pages}`);
+        }
+      });
+  if (canReuseItemOrder) log(`アイテム並び順キャッシュを再利用します: Version=${itemMeta.version} item=${itemMeta.total}`);
+  else log('Versionまたは総アイテム数が変化したため、アイテム並び順を全ページから更新しました');
+  const firstRecipeHtml = await requestSequentially({ url: LODESTONE_RECIPE_LIST_URL, fresh: true });
+  const recipes = await crawlLodestoneList({
+    baseUrl: LODESTONE_RECIPE_LIST_URL,
+    extractEntries: extractLodestoneRecipeList,
+    fetchText: fetchSequentially,
+    firstHtml: firstRecipeHtml,
+    onPage: ({ page, pages }) => {
+      if (page === 1 || page === pages || page % 25 === 0) log(`製作手帳一覧 ${page}/${pages}`);
+    }
+  });
+  if (items.version !== recipes.version) {
+    throw new Error(`LodestoneのVersionが一覧間で一致しません: item=${items.version} recipe=${recipes.version}`);
+  }
+  const orderedItems = canReuseItemOrder ? items.entries : applyDescendingSortOrder(items.entries, items.total);
+  const duplicateNames = [...orderedItems.reduce((counts, item) => counts.set(item.Name, (counts.get(item.Name) || 0) + 1), new Map())]
+    .filter(([, count]) => count > 1)
+    .map(([name, count]) => ({ name, count }));
+  if (duplicateNames.length > 0) {
+    throw new Error(`Lodestoneアイテム名が一意ではありません: ${duplicateNames.slice(0, 10).map(row => `${row.name}(${row.count})`).join('、')}`);
+  }
+  const snapshot = {
+    SchemaVersion: 1,
+    CheckedAt: nowIso(),
+    Version: items.version,
+    ItemCount: items.total,
+    RecipeCount: recipes.total,
+    ItemOrderSignature: canReuseItemOrder ? previous.ItemOrderSignature : lodestoneOrderSignature(orderedItems),
+    Items: orderedItems,
+    Recipes: recipes.entries
+  };
+  writeJsonAtomic(target, snapshot);
+  log(`Lodestone全一覧を保存しました: item=${snapshot.ItemCount} recipe=${snapshot.RecipeCount} Version=${snapshot.Version}`);
+  return snapshot;
+}
+
 export function extractLodestoneCraftInfo(recipeHtml) {
   const text = normalizeHtmlText(recipeHtml);
   const jobMatch = text.match(/(木工師|鍛冶師|甲冑師|彫金師|革細工師|裁縫師|錬金術師|調理師)\s+Lv\s*([0-9]+)/);
@@ -2174,11 +2285,14 @@ export function extractLodestoneRecipeData(
       const itemId = itemIdByLodestoneKey.get(lodestoneKey);
       const name = normalizeLodestoneItemName(attributes['data-name']);
       const amount = Number(attributes['data-num']);
-      if (!itemId) throw new Error(`Lodestoneレシピ ${recipeId} の素材IDを解決できません: ${name || lodestoneKey}`);
       if (!name || !Number.isInteger(amount) || amount <= 0) {
         throw new Error(`Lodestoneレシピ ${recipeId} の素材情報が不正です: ${name || lodestoneKey}`);
       }
-      return { ItemID: String(itemId), Name: name, Amount: String(amount) };
+      return {
+        ...(itemId ? { ItemID: String(itemId) } : {}),
+        Name: name,
+        Amount: String(amount)
+      };
     });
   if (ingredients.length === 0) throw new Error(`Lodestoneレシピ ${recipeId} から直接素材を取得できません`);
 
@@ -2332,18 +2446,20 @@ async function getProductionIconPng(item, pngName, delayMs, alternatives = [], {
   }
 }
 
-async function writeWebpFromPng(pngPath, webpPath, quality, size = 80) {
-  ensureDir(path.dirname(webpPath));
-  const temp = path.join(path.dirname(webpPath), `.${path.basename(webpPath)}.${process.pid}.tmp`);
-  await sharp(pngPath)
+async function webpBytesFromPng(pngPath, quality, size = 80) {
+  return sharp(pngPath)
     .resize(size, size, {
       fit: 'contain',
       kernel: sharp.kernel.lanczos3,
       background: { r: 0, g: 0, b: 0, alpha: 0 }
     })
     .webp({ quality })
-    .toFile(temp);
-  fs.renameSync(temp, webpPath);
+    .toBuffer();
+}
+
+async function writeWebpFromPng(pngPath, webpPath, quality, size = 80) {
+  ensureDir(path.dirname(webpPath));
+  writeBytesAtomic(webpPath, await webpBytesFromPng(pngPath, quality, size));
 }
 
 async function getCachedPngBlob(pngFile, delayMs = defaultIconDelayMs) {
@@ -3870,51 +3986,370 @@ document.getElementById('theme').onclick = () => document.body.classList.toggle(
 `;
 }
 
+function levenshteinDistance(left, right) {
+  const a = [...String(left || '')];
+  const b = [...String(right || '')];
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let row = 1; row <= a.length; row += 1) {
+    const current = [row];
+    for (let column = 1; column <= b.length; column += 1) {
+      current[column] = Math.min(
+        current[column - 1] + 1,
+        previous[column] + 1,
+        previous[column - 1] + (a[row - 1] === b[column - 1] ? 0 : 1)
+      );
+    }
+    previous = current;
+  }
+  return previous[b.length];
+}
+
+function similarLodestoneNames(name, allNames, limit = 5) {
+  return allNames
+    .map(candidate => ({ name: candidate, distance: levenshteinDistance(name, candidate) }))
+    .sort((left, right) => left.distance - right.distance || left.name.localeCompare(right.name, 'ja'))
+    .slice(0, limit);
+}
+
+function runtimeFieldsFromExistingItem(item) {
+  const result = {};
+  for (const key of ['GatheringTimer', 'ShopInfo', 'EquipmentInfo', 'IsEx']) {
+    if (item?.[key] !== undefined) result[key] = cloneJson(item[key]);
+  }
+  return result;
+}
+
+function readCachedLodestoneRecipeHtml(recipePath) {
+  const url = `${LODESTONE_BASE_URL}${recipePath}`;
+  const key = crypto.createHash('sha256').update(url).digest('hex');
+  const html = readLodestoneShopCacheEntry(getLodestoneShopCacheStore(), key);
+  if (!html) throw new Error(`Lodestoneレシピキャッシュがありません: ${recipePath}`);
+  return html;
+}
+
+export function buildLodestoneCandidate({
+  snapshotPath = lodestoneSourceSnapshotPath,
+  target = publicCandidatePath,
+  legacyTarget = legacyItemIdCandidatePath
+} = {}) {
+  const snapshot = readJson(snapshotPath, null);
+  if (!snapshot || !Array.isArray(snapshot.Items) || !Array.isArray(snapshot.Recipes)) {
+    throw new Error('Lodestoneスナップショットがありません。先に lodestone-snapshot を実行してください');
+  }
+  const listedByName = new Map(snapshot.Items.map(item => [item.Name, item]));
+  const allNames = [...listedByName.keys()];
+  const existingDocument = readJson(publicItemJsonPath, []);
+  const existingItems = Array.isArray(existingDocument) ? existingDocument : existingDocument.Items || [];
+  const existingByName = new Map(existingItems.map(item => [item.Name, item]));
+  const previousItemUrls = readJson(lodestoneItemUrlsPath, {});
+  const existingByLodestoneKey = new Map();
+  for (const item of existingItems) {
+    const key = String(previousItemUrls[String(item.ID)] || '').match(/\/item\/([a-z0-9]+)\//)?.[1];
+    if (key) existingByLodestoneKey.set(key, item);
+  }
+  const tokenRows = readCsv(csvPath('token-items.csv'));
+  const unmatched = [];
+  for (const [index, row] of tokenRows.entries()) {
+    if (row.length !== 4 || !['8', '9'].includes(row[3])) throw new Error(`Invalid token-items.csv row ${index + 1}.`);
+    if (!listedByName.has(row[0])) {
+      const ordinalCorrection = row[0].replace(/([一二三四])時/g, '$1次');
+      if (ordinalCorrection !== row[0] && listedByName.has(ordinalCorrection)) {
+        log(`手動データ名を自動修正します: ${row[0]} → ${ordinalCorrection}`);
+        row[0] = ordinalCorrection;
+      }
+    }
+    if (!listedByName.has(row[0])) {
+      unmatched.push({ source: 'token-items.csv', row: index + 1, name: row[0], candidates: similarLodestoneNames(row[0], allNames) });
+    }
+  }
+  ensureDir(reportsRoot);
+  writeJsonAtomic(manualUnmatchedReportPath, { checkedAt: nowIso(), unmatched });
+  if (unmatched.length > 0) {
+    const batch = unmatched.slice(0, 10).map(entry =>
+      `${entry.name} (${entry.source}:${entry.row}) 候補: ${entry.candidates.map(row => row.name).join('、')}`
+    );
+    throw new Error(`手動データ名をLodestoneで確認できません（先頭${batch.length}/${unmatched.length}件）:\n${batch.join('\n')}`);
+  }
+
+  const craftTypeByJob = new Map(readJson(craftJobsPath, { jobs: [] }).jobs.map(job => [job.name, String(job.craftType)]));
+  const recipeVariants = new Map();
+  const usedNames = new Set();
+  log(`Lodestoneレシピキャッシュから候補を生成します: ${snapshot.Recipes.length}件`);
+  for (const [index, entry] of snapshot.Recipes.entries()) {
+    if (!listedByName.has(entry.Name)) throw new Error(`製作手帳の完成品がアイテム一覧にありません: ${entry.Name}`);
+    const parsed = extractLodestoneRecipeData(entry.DetailPath, readCachedLodestoneRecipeHtml(entry.DetailPath), { craftTypeByJob });
+    const recipe = {
+      RecipeKey: parsed.RecipeID,
+      CraftType: parsed.CraftType,
+      CraftInfo: parsed.CraftInfo,
+      AmountResult: parsed.AmountResult,
+      Ingredients: parsed.Ingredients.map(ingredient => ({ Name: ingredient.Name, Amount: ingredient.Amount }))
+    };
+    for (const ingredient of recipe.Ingredients) {
+      if (!listedByName.has(ingredient.Name)) throw new Error(`レシピ素材がLodestoneアイテム一覧にありません: ${entry.Name} -> ${ingredient.Name}`);
+      usedNames.add(ingredient.Name);
+    }
+    if (!recipeVariants.has(entry.Name)) recipeVariants.set(entry.Name, []);
+    recipeVariants.get(entry.Name).push(recipe);
+    if ((index + 1) % 1000 === 0 || index + 1 === snapshot.Recipes.length) log(`レシピ変換 ${index + 1}/${snapshot.Recipes.length}`);
+  }
+
+  for (const [index, [targetName, currencyName, amount, craftType]] of tokenRows.entries()) {
+    const variants = recipeVariants.get(targetName) || [];
+    const ingredient = { Name: currencyName, Amount: amount };
+    if (variants.length > 0) variants[0].Ingredients.push(ingredient);
+    else variants.push({ RecipeKey: `exchange-${index + 1}`, CraftType: craftType, AmountResult: '1', Ingredients: [ingredient] });
+    recipeVariants.set(targetName, variants);
+  }
+
+  const targetNames = new Set([...recipeVariants.keys(), ...usedNames]);
+  const items = snapshot.Items
+    .filter(item => targetNames.has(item.Name))
+    .map(source => {
+      const existing = existingByName.get(source.Name) || existingByLodestoneKey.get(source.LodestoneKey);
+      const variants = recipeVariants.get(source.Name) || [];
+      const item = {
+        Name: source.Name,
+        SortOrder: source.SortOrder,
+        ItemCategory: source.ItemCategory,
+        ...runtimeFieldsFromExistingItem(existing)
+      };
+      if (existing?.IconFile) item.IconFile = existing.IconFile;
+      if (variants.length > 0) {
+        item.Recipe = variants[0];
+        if (variants.length > 1) item.Recipes = variants;
+      }
+      return item;
+    });
+
+  const regularNames = new Set(items.map(item => item.Name));
+  for (const currencyName of new Set(tokenRows.map(row => row[1]))) {
+    if (regularNames.has(currencyName)) continue;
+    const existing = existingByName.get(currencyName);
+    if (existing?.IconFile) items.push({ Name: currencyName, IconFile: existing.IconFile });
+    else items.push({ Name: currencyName });
+  }
+  const currentNameByLodestoneKey = new Map(snapshot.Items.map(item => [item.LodestoneKey, item.Name]));
+  const publishedLegacy = readJson(path.join(siteRoot, 'data', 'legacy-item-ids.json'), { Items: {} });
+  const legacyIds = {
+    ...(publishedLegacy?.Items && typeof publishedLegacy.Items === 'object' ? publishedLegacy.Items : {}),
+    ...Object.fromEntries(existingItems
+    .filter(item => item.ID && item.Name)
+    .map(item => {
+      const key = String(previousItemUrls[String(item.ID)] || '').match(/\/item\/([a-z0-9]+)\//)?.[1];
+      return [String(item.ID), currentNameByLodestoneKey.get(key) || item.Name];
+    }))
+  };
+  writeJsonAtomic(target, { Version: snapshot.Version, Items: items });
+  writeJsonAtomic(legacyTarget, { SchemaVersion: 1, Items: legacyIds });
+  log(`Lodestone候補を保存しました: 通常 ${regularNames.size}件、補助 ${items.length - regularNames.size}件、旧ID ${Object.keys(legacyIds).length}件`);
+  return { version: snapshot.Version, items: items.length, regularItems: regularNames.size, legacyIds: Object.keys(legacyIds).length };
+}
+
+export async function ensureLodestoneCandidateIcons({
+  candidatePath = publicCandidatePath,
+  snapshotPath = lodestoneSourceSnapshotPath,
+  delayMs = defaultLodestoneInfoDelayMs,
+  quality = defaultIconQuality,
+  size = 80,
+  iconsRoot = itemIconsRoot,
+  manualIconsRoot = manualItemIconsRoot,
+  pngCacheRoot = lodestonePngIconCacheRoot,
+  existingItemJsonPath = publicItemJsonPath,
+  request = url => fetch(url, { headers: { 'user-agent': 'ffxiv-recipe-icon-pipeline/1.0' } })
+} = {}) {
+  const candidate = readJson(candidatePath, null);
+  const snapshot = readJson(snapshotPath, null);
+  if (!Array.isArray(candidate?.Items) || !Array.isArray(snapshot?.Items)) throw new Error('名前キー候補またはLodestoneスナップショットがありません');
+  const sourceByName = new Map(snapshot.Items.map(item => [item.Name, item]));
+  const existingDocument = readJson(existingItemJsonPath, []);
+  const existingItems = Array.isArray(existingDocument) ? existingDocument : existingDocument?.Items || [];
+  const existingByName = new Map(existingItems.map(item => [item.Name, item]));
+  const requestSequentially = createSequentialRequestQueue({
+    delayMs,
+    request
+  });
+  const nameHashOwners = new Map();
+  const iconFileOwners = new Map();
+  let generated = 0;
+  let reused = 0;
+  let downloaded = 0;
+  let manualProtected = 0;
+  let withoutImage = 0;
+  ensureDir(iconsRoot);
+  log(`Lodestone候補の画像を名前・内容ハッシュ形式へ整備します: ${candidate.Items.length}件 delay=${delayMs}ms`);
+  for (const [index, item] of candidate.Items.entries()) {
+    if (!item?.Name) throw new Error(`候補アイテム名がありません: ${index + 1}`);
+    const nameHash = itemIconNameHash(item.Name);
+    const hashOwner = nameHashOwners.get(nameHash);
+    if (hashOwner && hashOwner !== item.Name) throw new Error(`アイテム名ハッシュが衝突しました: ${hashOwner} / ${item.Name}`);
+    nameHashOwners.set(nameHash, item.Name);
+    const source = sourceByName.get(item.Name);
+    const existing = existingByName.get(item.Name);
+    const currentFiles = [...new Set([item.IconFile, existing?.IconFile].filter(Boolean))];
+    let webpBytes = null;
+    for (const iconFile of currentFiles) {
+      const currentPath = iconPaths(iconFile, iconsRoot).webpPath;
+      if (!fs.existsSync(currentPath)) continue;
+      webpBytes = fs.readFileSync(currentPath);
+      break;
+    }
+
+    let imageSource = webpBytes ? 'existing' : '';
+    if (!source) {
+      const manualPath = manualItemIconPath(item.Name, manualIconsRoot);
+      if (fs.existsSync(manualPath)) {
+        webpBytes = fs.readFileSync(manualPath);
+        imageSource = 'manual';
+      } else if (webpBytes) {
+        writeBytesAtomic(manualPath, webpBytes);
+        manualProtected += 1;
+        imageSource = 'manual-protected';
+      }
+    } else if (!webpBytes) {
+      let iconUrl = source.IconUrl || '';
+      imageSource = 'lodestone';
+      if (!iconUrl) {
+        const searchResponse = await requestSequentially(xivapiExactItemSearchUrl(item.Name));
+        if (!searchResponse.ok) throw new Error(`画像検索に失敗しました: ${item.Name} HTTP ${searchResponse.status}`);
+        const match = exactXivapiItemIcon(await searchResponse.json(), item.Name);
+        if (!match) {
+          log(`画像未解決: ${item.Name}（完全一致が0件または複数件）`);
+          delete item.IconFile;
+          withoutImage += 1;
+          continue;
+        }
+        iconUrl = xivapiPngAssetUrl(match.path);
+        imageSource = 'fallback';
+      }
+      const cachePath = path.join(pngCacheRoot, `${source.LodestoneKey}.png`);
+      if (!fs.existsSync(cachePath)) {
+        ensureDir(pngCacheRoot);
+        const imageResponse = await requestSequentially(iconUrl);
+        if (!imageResponse.ok) throw new Error(`${imageSource}画像取得に失敗しました: ${item.Name} HTTP ${imageResponse.status}`);
+        const contentType = imageResponse.headers.get('content-type') || '';
+        if (!contentType.includes('image/png')) throw new Error(`${imageSource}画像がPNGではありません: ${item.Name}`);
+        writeBytesAtomic(cachePath, Buffer.from(await imageResponse.arrayBuffer()));
+        downloaded += 1;
+      }
+      webpBytes = await webpBytesFromPng(cachePath, quality, size);
+    }
+
+    if (!webpBytes) {
+      delete item.IconFile;
+      withoutImage += 1;
+      continue;
+    }
+    const iconFile = itemIconFileName(item.Name, webpBytes);
+    const fileOwner = iconFileOwners.get(iconFile);
+    if (fileOwner && fileOwner !== item.Name) throw new Error(`アイテム画像ファイル名が衝突しました: ${fileOwner} / ${item.Name}`);
+    iconFileOwners.set(iconFile, item.Name);
+    const targetPath = iconPaths(iconFile, iconsRoot).webpPath;
+    if (fs.existsSync(targetPath)) {
+      if (!fs.readFileSync(targetPath).equals(webpBytes)) throw new Error(`画像内容ハッシュが衝突しました: ${iconFile}`);
+      reused += 1;
+    } else {
+      writeBytesAtomic(targetPath, webpBytes);
+      generated += 1;
+    }
+    item.IconFile = iconFile;
+    if ((index + 1) % 250 === 0 || index + 1 === candidate.Items.length) {
+      log(`候補画像 ${index + 1}/${candidate.Items.length}: ${item.Name} ${iconFile} source=${imageSource}`);
+    }
+  }
+  validateItemIconAssets(candidate.Items, { iconsRoot });
+  writeJsonAtomic(candidatePath, candidate);
+  log(`候補画像の整備が完了しました: 新規 ${generated}件、再利用 ${reused}件、取得 ${downloaded}件、手動保護 ${manualProtected}件、画像なし ${withoutImage}件`);
+  return { generated, reused, downloaded, manualProtected, withoutImage };
+}
+
+export function validateItemIconAssets(items, { iconsRoot = itemIconsRoot } = {}) {
+  if (!Array.isArray(items)) throw new TypeError('アイテム画像検証にはアイテム配列が必要です');
+  const names = new Set();
+  const nameHashOwners = new Map();
+  const iconFileOwners = new Map();
+  for (const item of items) {
+    if (!item?.Name || names.has(item.Name)) throw new Error(`アイテム名が空または重複しています: ${item?.Name || '(空)'}`);
+    names.add(item.Name);
+    const nameHash = itemIconNameHash(item.Name);
+    const hashOwner = nameHashOwners.get(nameHash);
+    if (hashOwner && hashOwner !== item.Name) throw new Error(`アイテム名ハッシュが衝突しました: ${hashOwner} / ${item.Name}`);
+    nameHashOwners.set(nameHash, item.Name);
+    if (!item.IconFile) continue;
+    const iconPath = iconPaths(item.IconFile, iconsRoot).webpPath;
+    if (!fs.existsSync(iconPath)) throw new Error(`アイテム画像がありません: ${item.Name} ${item.IconFile}`);
+    const bytes = fs.readFileSync(iconPath);
+    if (!validateItemIconFileName(item.Name, item.IconFile, bytes)) throw new Error(`アイテム画像ファイル名が命名規則と一致しません: ${item.Name} ${item.IconFile}`);
+    const owner = iconFileOwners.get(item.IconFile);
+    if (owner && owner !== item.Name) throw new Error(`アイテム画像ファイル名が重複しています: ${owner} / ${item.Name}`);
+    iconFileOwners.set(item.IconFile, item.Name);
+  }
+  return { items: items.length, icons: iconFileOwners.size };
+}
+
+export function cleanupItemIconAssets({ items, iconsRoot = itemIconsRoot, dryRun = false } = {}) {
+  const validation = validateItemIconAssets(items, { iconsRoot });
+  const referenced = new Set(items.map(item => item.IconFile).filter(Boolean));
+  const removed = [];
+  if (!fs.existsSync(iconsRoot)) return { ...validation, removed };
+  for (const directoryEntry of fs.readdirSync(iconsRoot, { recursive: true, withFileTypes: true })) {
+    if (!directoryEntry.isFile() || !directoryEntry.name.endsWith('.webp')) continue;
+    const parentPath = directoryEntry.parentPath || directoryEntry.path;
+    const filePath = path.join(parentPath, directoryEntry.name);
+    if (referenced.has(directoryEntry.name)) continue;
+    removed.push(path.relative(iconsRoot, filePath).replaceAll('\\', '/'));
+    if (!dryRun) fs.rmSync(filePath);
+  }
+  if (!dryRun) {
+    const directories = fs.readdirSync(iconsRoot, { recursive: true, withFileTypes: true })
+      .filter(entry => entry.isDirectory())
+      .map(entry => path.join(entry.parentPath || entry.path, entry.name))
+      .sort((left, right) => right.length - left.length);
+    for (const directory of directories) {
+      if (fs.readdirSync(directory).length === 0) fs.rmdirSync(directory);
+    }
+  }
+  return { ...validation, removed };
+}
+
+export function publishLodestoneCandidate({
+  candidatePath = publicCandidatePath,
+  legacyPath = legacyItemIdCandidatePath,
+  target = publicItemJsonPath,
+  legacyTarget = path.join(siteRoot, 'data', 'legacy-item-ids.json')
+} = {}) {
+  const candidate = readJson(candidatePath, null);
+  const legacy = readJson(legacyPath, null);
+  if (!Array.isArray(candidate?.Items) || !candidate.Version) throw new Error('検証済みの名前キー候補がありません');
+  if (!legacy?.Items || typeof legacy.Items !== 'object') throw new Error('旧ID互換候補がありません');
+  const names = new Set(candidate.Items.map(item => item.Name));
+  if (names.size !== candidate.Items.length) throw new Error('名前キー候補に重複名があります');
+  validateItemIconAssets(candidate.Items);
+  if (fs.existsSync(target)) protectItemJson({ source: target, target: expectedItemJsonPath });
+  writeTextAtomic(target, `${JSON.stringify(candidate)}\n`);
+  writeTextAtomic(legacyTarget, `${JSON.stringify(legacy)}\n`);
+  updateDataCacheVersion({
+    itemJsonPath: target,
+    salt: hashIconFiles(candidate.Items.map(item => item.IconFile).filter(Boolean)),
+    reason: 'lodestone-name-publish'
+  });
+  const cleanup = cleanupItemIconAssets({ items: candidate.Items });
+  log(`名前キー候補を公開データへ反映しました: ${candidate.Items.length}件、旧ID ${Object.keys(legacy.Items).length}件、旧画像整理 ${cleanup.removed.length}件`);
+  return { items: candidate.Items.length, legacyIds: Object.keys(legacy.Items).length, removedIcons: cleanup.removed.length };
+}
+
 function printHelp() {
   log(`使い方: node pipeline/tool/pipeline-tool.mjs <command>
 
 コマンド:
-  validate-csv              ローカルCSVを検証しヘッダー参照を出力
-  check-updates             公式CSVの更新有無と前回チェック日時を保存
-  download-csv [--force]    公式CSVを取得
-  oxidizer-environment [--source path] [--game-path path]
-                             Git、Cargo、FF14、既存Oxidizerを確認
-  oxidizer-check            Oxidizer上流の更新を確認
-  oxidizer-refresh --game-path path [--force]
-                             管理用クローンで全CSVを再生成
-  oxidizer-import-preview [--source path]
-                             Oxidizer CSVを一時複製して差分確認
-  oxidizer-lodestone-preview [--source path] [--delay 100]
-                             一時候補のLodestone情報とアイコンを事前確認
-  oxidizer-import [--source path]
-                             確認済みOxidizer CSVを入力へ反映
-  workflow-status            現在の入力と成果物から工程状態をJSON表示
-  publication-review        Lodestone未確認・保存済み判断対象をJSON表示
-  build                     中間JSONと公開候補を生成
-  publish [--accept-diff]   検証後 site/data/Item.json をatomicに置換
-  compact-public [--source path] [--target path]
-                             Item.jsonへ軽量スキーマと最小化を適用
-  publish-gathering         既存Item.jsonへ採集情報だけを反映
-  publish-lodestone-info [--name アイテム名] [--limit 件数] [--delay 100] [--target path] [--force]
-                             Lodestone由来の店/製作/装備情報を公開候補JSONへ反映
-  publish-lodestone-recipes [--target path]
-                             取得済みLodestoneキャッシュから全レシピを候補JSONへ反映
-  migrate-lodestone-cache [--dry-run] [--limit 件数] [--keep-html]
-                             旧Lodestone HTMLキャッシュを検証済みSQLiteへ逐次移行
-  equipment-role-groups [--item-json path]
-                            手動指定が必要な装備推奨ロール一覧をJSONで出力
-  equipment-role-summary [--item-json path]
-                            手動指定の指定済み・未指定件数をJSONで出力
-  icons [--quality 80] [--size 80] [--delay 500] [--item-json path]
-                            Lodestone NQ PNGキャッシュから指定Item.jsonのWebPアイコン生成
-  icon-preview [--size 80] アイコン画質比較プレビューを生成
-  tmp-quality-preview [--size 80]
-                            site/配下に一時PNG/WebP比較を生成
-  protect-item-json         現在のItem.jsonを比較元として保存
-  verify                    06-public-items.json と Item.json を比較
-  smoke-test                実データを変更しない簡易テスト
-  run [--skip-icons] [--skip-lodestone-info]
-                            CSV検証、データ生成、アイコン生成、Lodestone情報反映、公開反映`);
+  workflow-status           GUI互換用の工程状態をJSON表示
+  lodestone-snapshot [--delay 100]
+                             アイテム・製作手帳の全一覧を直列取得し、版・件数・順序署名を保存
+  build-lodestone-candidate  Lodestoneキャッシュと手動データから名前キーの公開候補を生成
+  lodestone-candidate-icons [--delay 100] [--quality 80] [--size 80]
+                             名前キー候補の不足画像をLodestone優先で逐次取得・生成
+  publish-lodestone-candidate
+                             検証済み名前キー候補と旧ID互換JSONを公開データへ反映`);
 }
 
 export async function main(argv = process.argv.slice(2)) {
@@ -3922,112 +4357,33 @@ export async function main(argv = process.argv.slice(2)) {
   const command = args._[0] || 'help';
   if (['help', '--help', '-h'].includes(command)) return printHelp();
   clearCancelRequest();
-  if (command === 'validate-csv') return validateCsvFiles();
-  if (command === 'check-updates') return checkUpdates();
-  if (command === 'download-csv') return downloadCsv({ force: Boolean(args.force) });
-  if (command === 'oxidizer-environment') return checkOxidizerEnvironment({
-    source: args.source ? String(args.source) : '',
-    gamePath: args['game-path'] ? String(args['game-path']) : ''
-  });
-  if (command === 'oxidizer-check') return checkOxidizerUpdates();
-  if (command === 'oxidizer-refresh') return refreshOxidizerData({
-    gamePath: args['game-path'] ? String(args['game-path']) : '',
-    force: Boolean(args.force)
-  });
-  if (command === 'oxidizer-import-preview') return previewOxidizerImport({
-    source: args.source ? String(args.source) : ''
-  });
-  if (command === 'oxidizer-lodestone-preview') return verifyOxidizerLodestonePreview({
-    source: args.source ? String(args.source) : '',
-    delayMs: Number(args.delay || defaultLodestoneInfoDelayMs)
-  });
-  if (command === 'oxidizer-import') return importOxidizerCsv({
-    source: args.source ? String(args.source) : ''
-  });
   if (command === 'workflow-status') {
     process.stdout.write(`${JSON.stringify(pipelineWorkflowStatus())}\n`);
     return;
   }
-  if (command === 'publication-review') return printPublicationReview();
-  if (command === 'build') {
-    validateCsvFiles();
-    return buildData();
-  }
-  if (command === 'icons') return ensureIconsForItemJson({
-    quality: Number(args.quality || defaultIconQuality),
-    delayMs: Number(args.delay || defaultIconDelayMs),
-    size: Number(args.size || 80),
-    itemJsonPath: args['item-json'] ? String(args['item-json']) : publicItemJsonPath
-  });
-  if (command === 'icon-preview') return iconPreview({ qualities: String(args.qualities || '50,60,70,80').split(',').map(Number).filter(Number.isFinite), sampleCount: Number(args['sample-count'] || 80), size: Number(args.size || 80) });
-  if (command === 'tmp-quality-preview') return tmpQualityPreview({ force: Boolean(args.force), size: Number(args.size || 80) });
-  if (command === 'protect-item-json') return protectItemJson();
-  if (command === 'publish') return publishItemJson({ acceptDiff: Boolean(args['accept-diff']) });
-  if (command === 'compact-public') return compactPublicItemJson({
-    source: args.source ? path.resolve(String(args.source)) : publicItemJsonPath,
-    target: args.target ? path.resolve(String(args.target)) : publicItemJsonPath
-  });
-  if (command === 'publish-gathering') return publishGatheringTimer();
-  if (command === 'publish-lodestone-info') return publishLodestoneInfo({
-    target: args.target ? path.resolve(String(args.target)) : publicCandidatePath,
-    delayMs: Number(args.delay || defaultLodestoneInfoDelayMs),
-    limit: args.limit ? Number(args.limit) : Number.POSITIVE_INFINITY,
-    name: args.name ? String(args.name) : '',
-    force: Boolean(args.force)
-  });
-  if (command === 'publish-lodestone-recipes') {
-    return publishLodestoneRecipesFromCache({
-      target: args.target ? path.resolve(String(args.target)) : publicCandidatePath
+  if (command === 'lodestone-snapshot') {
+    return refreshLodestoneSourceSnapshot({
+      delayMs: Number(args.delay || defaultLodestoneInfoDelayMs),
+      target: args.target ? path.resolve(String(args.target)) : lodestoneSourceSnapshotPath
     });
   }
-  if (command === 'migrate-lodestone-cache') {
-    cancellationEnabled = true;
-    try {
-      const result = migrateLodestoneShopCache({
-        dryRun: Boolean(args['dry-run']),
-        keepHtml: Boolean(args['keep-html']),
-        limit: args.limit ? Number(args.limit) : Number.POSITIVE_INFINITY
-      });
-      log(`Lodestoneキャッシュ移行: 対象 ${result.candidates}件、変換 ${result.converted}件、再利用 ${result.reused}件、削除 ${result.removed}件、失敗 ${result.failed}件、旧 ${formatBytes(result.legacyBytes)}、DB ${formatBytes(result.databaseBytes)}、DB行 ${result.databaseRows}${result.quickCheck ? `、quick_check ${result.quickCheck}` : ''}`);
-      for (const error of result.errors) log(`Lodestoneキャッシュ移行警告: ${error}`);
-      return result;
-    } finally {
-      cancellationEnabled = false;
-    }
-  }
-  if (command === 'equipment-role-groups') {
-    process.stdout.write(`${JSON.stringify(equipmentRoleGroupsForGui({
-      itemJsonPath: args['item-json'] ? path.resolve(String(args['item-json'])) : publicCandidatePath
-    }), null, 2)}\n`);
-    return;
-  }
-  if (command === 'equipment-role-summary') {
-    process.stdout.write(`${JSON.stringify(equipmentRoleSummary({
-      itemJsonPath: args['item-json'] ? path.resolve(String(args['item-json'])) : publicCandidatePath
-    }))}\n`);
-    return;
-  }
-  if (command === 'smoke-test') return smokeTest();
-  if (command === 'verify') return verifyOutput({
-    expected: args.expected ? path.resolve(String(args.expected)) : (fs.existsSync(expectedItemJsonPath) ? expectedItemJsonPath : publicItemJsonPath),
-    actual: args.actual ? path.resolve(String(args.actual)) : buildOutputs.publicItems
-  });
-  if (command === 'run') {
-    validateCsvFiles();
-    buildData();
-    if (!args['skip-lodestone-info']) await publishLodestoneInfo({
-      delayMs: Number(args['lodestone-delay'] || args.delay || defaultLodestoneInfoDelayMs),
-      force: Boolean(args.force)
+  if (command === 'build-lodestone-candidate') {
+    return buildLodestoneCandidate({
+      snapshotPath: args.snapshot ? path.resolve(String(args.snapshot)) : lodestoneSourceSnapshotPath,
+      target: args.target ? path.resolve(String(args.target)) : publicCandidatePath,
+      legacyTarget: args['legacy-target'] ? path.resolve(String(args['legacy-target'])) : legacyItemIdCandidatePath
     });
-    if (!args['skip-icons']) await ensureIconsForItemJson({
+  }
+  if (command === 'lodestone-candidate-icons') {
+    return ensureLodestoneCandidateIcons({
+      candidatePath: args.target ? path.resolve(String(args.target)) : publicCandidatePath,
+      snapshotPath: args.snapshot ? path.resolve(String(args.snapshot)) : lodestoneSourceSnapshotPath,
+      delayMs: Number(args.delay || defaultLodestoneInfoDelayMs),
       quality: Number(args.quality || defaultIconQuality),
-      delayMs: Number(args.delay || defaultIconDelayMs),
-      size: Number(args.size || 80),
-      itemJsonPath: publicCandidatePath
+      size: Number(args.size || 80)
     });
-    publishItemJson();
-    return;
   }
+  if (command === 'publish-lodestone-candidate') return publishLodestoneCandidate();
   throw new Error(`Unknown command: ${command}`);
 }
 

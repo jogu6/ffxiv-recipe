@@ -85,26 +85,54 @@
     recipeNameForLegacyId,
     recipeVariantsForName
   }) {
-    function encodeFavoriteList(list) {
+    function encodeNameFavoriteList(list) {
       if (!list) return '';
       const nameBytes = new TextEncoder().encode(normalizeName(list.name));
-      const itemIds = normalizeItemIds(list.itemIds);
+      const itemNames = normalizeItemIds(list.itemIds).map(itemNameForId).filter(Boolean);
       const selections = compactRecipeSelections(list);
+      const dictionary = [...new Set([...itemNames, ...selections.map(selection => selection.itemName)])].sort();
+      const dictionaryIndex = new Map(dictionary.map((name, index) => [name, index]));
       const payload = [
-        1,
+        2,
         ...encodeVarUint(nameBytes.length),
         ...nameBytes,
-        ...encodeVarUint(itemIds.length),
-        ...itemIds.flatMap(encodeVarUint),
-        ...encodeVarUint(selections.length)
+        ...encodeVarUint(dictionary.length)
       ];
-      let previousItemId = 0;
+      let previousBytes = new Uint8Array();
+      dictionary.forEach(name => {
+        const bytes = new TextEncoder().encode(name);
+        let prefixLength = 0;
+        while (prefixLength < previousBytes.length && prefixLength < bytes.length && previousBytes[prefixLength] === bytes[prefixLength]) prefixLength += 1;
+        while (prefixLength > 0 && (bytes[prefixLength] & 0xc0) === 0x80) prefixLength -= 1;
+        const suffix = bytes.subarray(prefixLength);
+        payload.push(...encodeVarUint(prefixLength), ...encodeVarUint(suffix.length), ...suffix);
+        previousBytes = bytes;
+      });
+      payload.push(...encodeVarUint(itemNames.length));
+      itemNames.forEach(name => payload.push(...encodeVarUint(dictionaryIndex.get(name))));
+      payload.push(...encodeVarUint(selections.length));
       selections.forEach(selection => {
-        payload.push(...encodeVarUint((selection.itemId - previousItemId) * 8 + selection.craftType));
-        previousItemId = selection.itemId;
+        payload.push(...encodeVarUint(dictionaryIndex.get(selection.itemName) * 8 + selection.craftType));
       });
       const checksum = crc16Ccitt(payload);
-      return `Y${bytesToBase64Url(Uint8Array.from([...payload, checksum >> 8, checksum & 0xff]))}`;
+      return `N${bytesToBase64Url(Uint8Array.from([...payload, checksum >> 8, checksum & 0xff]))}`;
+    }
+
+    function encodeJsonFavoriteList(list) {
+      const payload = {
+        n: normalizeName(list?.name),
+        i: normalizeItemIds(list?.itemIds).map(itemNameForId).filter(Boolean)
+      };
+      const bytes = new TextEncoder().encode(JSON.stringify(payload));
+      return `Z${bytes.length.toString(36).toUpperCase().padStart(4, '0')}${[...bytes].map(byte => byte.toString(36).toUpperCase().padStart(2, '0')).join('')}`;
+    }
+
+    function encodeFavoriteList(list) {
+      try {
+        return encodeNameFavoriteList(list);
+      } catch {
+        return encodeJsonFavoriteList(list);
+      }
     }
 
     function decodeOldFavorites(str) {
@@ -187,9 +215,72 @@
       }
     }
 
+    function decodeNameFavoriteList(str) {
+      if (!str.startsWith('N')) return null;
+      const bytes = base64UrlToBytes(str.slice(1));
+      if (!bytes || bytes.length < 5) return null;
+      const payload = bytes.subarray(0, -2);
+      const expectedChecksum = (bytes[bytes.length - 2] << 8) | bytes[bytes.length - 1];
+      if (crc16Ccitt(payload) !== expectedChecksum) return null;
+      try {
+        const state = { offset: 0 };
+        if (payload[state.offset++] !== 2) return null;
+        const nameLength = decodeVarUint(payload, state);
+        if (state.offset + nameLength > payload.length) return null;
+        const name = normalizeName(new TextDecoder().decode(payload.subarray(state.offset, state.offset + nameLength)));
+        state.offset += nameLength;
+        const dictionaryCount = decodeVarUint(payload, state);
+        if (dictionaryCount > 10000) return null;
+        const dictionary = [];
+        let previousBytes = new Uint8Array();
+        for (let index = 0; index < dictionaryCount; index += 1) {
+          const prefixLength = decodeVarUint(payload, state);
+          const suffixLength = decodeVarUint(payload, state);
+          if (prefixLength > previousBytes.length || state.offset + suffixLength > payload.length) return null;
+          const entryBytes = new Uint8Array(prefixLength + suffixLength);
+          entryBytes.set(previousBytes.subarray(0, prefixLength));
+          entryBytes.set(payload.subarray(state.offset, state.offset + suffixLength), prefixLength);
+          state.offset += suffixLength;
+          const entry = new TextDecoder('utf-8', { fatal: true }).decode(entryBytes);
+          if (!entry) return null;
+          dictionary.push(entry);
+          previousBytes = entryBytes;
+        }
+        const itemCount = decodeVarUint(payload, state);
+        if (itemCount > 10000) return null;
+        const itemIds = [];
+        for (let index = 0; index < itemCount; index += 1) {
+          const dictionaryId = decodeVarUint(payload, state);
+          if (!dictionary[dictionaryId]) return null;
+          itemIds.push(itemIdForName(dictionary[dictionaryId]));
+        }
+        const selectionCount = decodeVarUint(payload, state);
+        if (selectionCount > 10000) return null;
+        const recipeSelections = {};
+        for (let index = 0; index < selectionCount; index += 1) {
+          const packed = decodeVarUint(payload, state);
+          const craftType = packed % 8;
+          const itemName = dictionary[Math.floor(packed / 8)];
+          if (!itemName) return null;
+          const matches = recipeVariantsForName(itemName).filter(variant => Number(variant.craftType) === craftType);
+          if (matches.length === 1) recipeSelections[String(itemIdForName(itemName))] = matches[0].recipeId;
+        }
+        if (state.offset !== payload.length) return null;
+        return {
+          name,
+          itemIds: normalizeItemIds(itemIds).filter(id => itemNameForId(id)),
+          recipeSelections,
+          needsName: false
+        };
+      } catch {
+        return null;
+      }
+    }
+
     function decodeFavoriteShareCode(value) {
       const source = String(value || '').trim();
       if (!source) return null;
+      if (source.startsWith('N')) return decodeNameFavoriteList(source);
       if (source.startsWith('Y')) return decodeCompactFavoriteList(source);
       const legacy = source.toUpperCase();
       if (!/^[A-Z0-9]+$/.test(legacy)) return null;

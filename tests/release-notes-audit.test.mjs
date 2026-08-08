@@ -69,3 +69,28 @@ test('requires a concrete reason for an intentional omission', () => {
   assert.equal(errors.length, 1);
   assert.match(errors[0], /omission reason/);
 });
+
+test('accepts a release-owner omission only with a concrete reason', () => {
+  const review = {
+    test: 'release-owner omission',
+    disposition: 'omitted',
+    reason: 'The release owner explicitly decided to keep the canonical notes concise.'
+  };
+  assert.deepEqual(
+    auditReleaseNotes({
+      addedTitles: ['release-owner omission'],
+      reviews: [review],
+      releaseSection: '## v3.0 リリース'
+    }),
+    []
+  );
+  review.reason = '';
+  assert.match(
+    auditReleaseNotes({
+      addedTitles: ['release-owner omission'],
+      reviews: [review],
+      releaseSection: '## v3.0 リリース'
+    })[0],
+    /omission reason/
+  );
+});

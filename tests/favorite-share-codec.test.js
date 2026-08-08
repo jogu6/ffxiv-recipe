@@ -23,10 +23,10 @@ const codec = createCodec({
       .map(([itemId, recipeId]) => {
         const name = namesById.get(Number(itemId));
         const variant = (variants[name] || []).find(entry => entry.recipeId === recipeId);
-        return variant ? { itemId: Number(itemId), craftType: variant.craftType } : null;
+        return variant ? { itemName: name, craftType: variant.craftType } : null;
       })
       .filter(Boolean)
-      .sort((left, right) => left.itemId - right.itemId),
+      .sort((left, right) => left.itemName.localeCompare(right.itemName)),
   itemNameForId: id => namesById.get(Number(id)) || null,
   itemIdForName: name => idsByName.get(name) || null,
   recipeNameForLegacyId: id => namesById.get(Number(id)) || null,
@@ -49,7 +49,7 @@ test('compact favorite share codes round trip names, item ids, and recipe select
     itemIds: [10, 20, 10],
     recipeSelections: { 10: 'a-smith', 20: 'b-carpenter' }
   });
-  assert.match(code, /^Y[A-Za-z0-9_-]+$/);
+  assert.match(code, /^N[A-Za-z0-9_-]+$/);
   assert.deepEqual(codec.decodeFavoriteShareCode(code), {
     name: 'test',
     itemIds: [10, 20],

@@ -29,6 +29,57 @@
       const stats = master?.equipmentInfo?.stats || {};
       return statNames.some(name => toNumeric(stats[name]) > 0);
     };
+    const equipmentPrimaryStatForJob = job => {
+      if (roleJobs.healer?.has(job)) return 'MND';
+      if (roleJobs.caster?.has(job)) return 'INT';
+      if (roleJobs.scout_ranger?.has(job)) return 'DEX';
+      if (roleJobs.tank?.has(job) || roleJobs.striker_slayer?.has(job)) return 'STR';
+      return '';
+    };
+    const equipmentPrimaryStatScore = (master, job) => {
+      const primaryStat = equipmentPrimaryStatForJob(job);
+      return primaryStat ? toNumeric(master?.equipmentInfo?.stats?.[primaryStat]) : 0;
+    };
+    const broadBattleJobMatches = (master, job, jobs) => {
+      const broadGroupMatches =
+        jobs.includes('全クラス') ||
+        (jobs.includes('ファイター') && jobGroups.ファイター.has(job)) ||
+        (jobs.includes('ソーサラー') && jobGroups.ソーサラー.has(job));
+      if (!broadGroupMatches || equipmentPrimaryStatScore(master, job) <= 0) return false;
+
+      const recommendedRole = master?.equipmentInfo?.recommendedRole || '';
+      if (!recommendedRole || recommendedRole === 'fighter') return jobGroups.ファイター.has(job);
+      if (recommendedRole === 'sorcerer') {
+        const stats = master?.equipmentInfo?.stats || {};
+        const intValue = toNumeric(stats.INT);
+        const mindValue = toNumeric(stats.MND);
+        if (roleJobs.caster?.has(job)) return intValue >= mindValue;
+        if (roleJobs.healer?.has(job)) return mindValue >= intValue;
+        return false;
+      }
+      if (roleJobs[recommendedRole]?.has(job)) return true;
+
+      const crossesPhysicalRoles =
+        (recommendedRole === 'scout_ranger' && roleJobs.striker_slayer?.has(job)) ||
+        (recommendedRole === 'striker_slayer' && roleJobs.scout_ranger?.has(job));
+      if (!crossesPhysicalRoles) return false;
+      const stats = master?.equipmentInfo?.stats || {};
+      return toNumeric(stats.STR) > 0 && toNumeric(stats.STR) === toNumeric(stats.DEX);
+    };
+    const equipmentRoleMatchScore = (master, job) => {
+      if (!equipmentPrimaryStatForJob(job)) return 0;
+      const jobs = equipmentJobs(master);
+      if (jobs.includes(job)) return 4;
+      const recommendedRole = master?.equipmentInfo?.recommendedRole || '';
+      if (!recommendedRole) return 1;
+      if (recommendedRole === 'fighter' || recommendedRole === 'sorcerer') return 2;
+      if (roleJobs[recommendedRole]?.has(job)) return 3;
+      const crossesPhysicalRoles =
+        (recommendedRole === 'scout_ranger' && roleJobs.striker_slayer?.has(job)) ||
+        (recommendedRole === 'striker_slayer' && roleJobs.scout_ranger?.has(job));
+      if (crossesPhysicalRoles) return 2;
+      return 0;
+    };
     const equipmentMatchesJob = (master, job) => {
       const jobs = equipmentJobs(master);
       if (job === '巴術士' && jobs.includes(job)) {
@@ -43,20 +94,7 @@
         if (jobGroups.ギャザラー.has(job) && equipmentHasPositiveStat(master, gathererStats)) return true;
       }
       if (!jobs.some(group => ['全クラス', 'ファイター', 'ソーサラー'].includes(group))) return false;
-      const recommendedRole = master?.equipmentInfo?.recommendedRole || '';
-      if (!recommendedRole || !roleJobs[recommendedRole]?.has(job)) return false;
-      const broadJobMatches =
-        jobs.includes('全クラス') ||
-        (jobs.includes('ファイター') && jobGroups.ファイター.has(job)) ||
-        (jobs.includes('ソーサラー') && jobGroups.ソーサラー.has(job));
-      if (!broadJobMatches) return false;
-      if (recommendedRole !== 'sorcerer') return true;
-      const stats = master?.equipmentInfo?.stats || {};
-      const intValue = toNumeric(stats.INT);
-      const mindValue = toNumeric(stats.MND);
-      if (job === '巴術士' || roleJobs.caster.has(job)) return intValue >= mindValue;
-      if (roleJobs.healer.has(job)) return mindValue >= intValue;
-      return false;
+      return broadBattleJobMatches(master, job, jobs);
     };
     const sortEquipmentNames = names => [...names].sort((leftName, rightName) => {
       const key = name => {
@@ -109,10 +147,9 @@
       const slotIndex = index.get(job)?.levels.get(level)?.slots.get(slot);
       if (!slotIndex) return [];
       if (!itemLevel) return [...slotIndex.values()].flat();
-      const availableItemLevel = [...slotIndex.keys()]
-        .filter(candidate => candidate <= itemLevel)
-        .sort((left, right) => right - left)[0];
-      return availableItemLevel ? [...(slotIndex.get(availableItemLevel) || [])] : [];
+      return [...slotIndex.entries()]
+        .filter(([candidate]) => candidate <= itemLevel)
+        .flatMap(([, names]) => names);
     };
     const equipmentPerformanceScore = (master, slot) => {
       const performance = master?.equipmentInfo?.performance || {};
@@ -147,20 +184,30 @@
         for (let level = requestedLevel; level >= 1; level -= 1) {
           const matches = findEquipmentMatchesAtLevel(index, level, requestedItemLevel, job, slot);
           if (matches.length === 0) continue;
-          const maxItemLevel = Math.max(...matches.map(name => equipmentItemLevel(getItemMaster(name))));
-          const itemLevelMatches = matches.filter(name => equipmentItemLevel(getItemMaster(name)) === maxItemLevel);
+          const maxRoleMatch = Math.max(...matches.map(name => equipmentRoleMatchScore(getItemMaster(name), job)));
+          const roleMatches = matches.filter(
+            name => equipmentRoleMatchScore(getItemMaster(name), job) === maxRoleMatch
+          );
+          const maxItemLevel = Math.max(...roleMatches.map(name => equipmentItemLevel(getItemMaster(name))));
+          const itemLevelMatches = roleMatches.filter(name => equipmentItemLevel(getItemMaster(name)) === maxItemLevel);
           const maxPerformance = Math.max(
             ...itemLevelMatches.map(name => equipmentPerformanceScore(getItemMaster(name), slot))
           );
           const performanceMatches = itemLevelMatches.filter(
             name => equipmentPerformanceScore(getItemMaster(name), slot) === maxPerformance
           );
+          const maxPrimaryStat = Math.max(
+            ...performanceMatches.map(name => equipmentPrimaryStatScore(getItemMaster(name), job))
+          );
+          const primaryStatMatches = maxPrimaryStat > 0
+            ? performanceMatches.filter(name => equipmentPrimaryStatScore(getItemMaster(name), job) === maxPrimaryStat)
+            : performanceMatches;
           const maxSpecialty = Math.max(
-            ...performanceMatches.map(name => equipmentSpecialtyScore(getItemMaster(name)))
+            ...primaryStatMatches.map(name => equipmentSpecialtyScore(getItemMaster(name)))
           );
           const selected = maxSpecialty > 0
-            ? performanceMatches.filter(name => equipmentSpecialtyScore(getItemMaster(name)) === maxSpecialty)
-            : performanceMatches;
+            ? primaryStatMatches.filter(name => equipmentSpecialtyScore(getItemMaster(name)) === maxSpecialty)
+            : primaryStatMatches;
           results.push(...selected);
           if (slot === 'weapon') selectedWeapons = selected;
           if (selected.length > 1) selected.forEach(name => parameterDisplayNames.add(name));
@@ -172,7 +219,8 @@
 
     return Object.freeze({
       buildEquipmentSearchIndex, equipmentEquipLevel, equipmentItemLevel, equipmentJobs, equipmentLevelsForJob,
-      equipmentMatchesJob, equipmentParameterComparisonKey, equipmentSlotForItem,
+      equipmentMatchesJob, equipmentParameterComparisonKey, equipmentPrimaryStatForJob, equipmentRoleMatchScore,
+      equipmentSlotForItem,
       isEquipmentSearchTarget, selectEquipmentResults, sortEquipmentNames
     });
   }

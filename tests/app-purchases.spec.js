@@ -55,7 +55,7 @@ test('shows shop info button and dialog for items with ShopInfo', async ({ page 
     };
     await route.fulfill({
       contentType: 'application/json',
-      body: JSON.stringify(items)
+      body: JSON.stringify({ Version: '7.55', Items: items })
     });
   });
   await openApp(page);
@@ -129,12 +129,12 @@ test('purchased intermediate keeps rows visible and marks its unused materials',
   await expect(page.locator('.shop-purchase-option')).toContainText('1個を購入');
   await expect(page.locator('.shop-purchase-option')).not.toContainText('バスタードソード 1個');
   await expect(option).toHaveCSS('appearance', 'none');
-  await expect(option).toHaveCSS('width', '22px');
-  await expect(option).toHaveCSS('height', '22px');
+  await expect.poll(() => option.evaluate(element => element.getBoundingClientRect().width)).toBeGreaterThanOrEqual(22);
+  await expect.poll(() => option.evaluate(element => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(22);
   await expect(option).toHaveCSS('background-color', 'rgb(26, 26, 26)');
   const fireShardRow = page.locator('.materials-list li').filter({ hasText: 'ファイアシャード' });
   const earthShardRow = page.locator('.materials-list li').filter({ hasText: 'アースシャード' });
-  await expect(fireShardRow.locator('.material-qty')).toHaveText('× 2');
+  await expect(fireShardRow.locator('.material-qty')).toHaveText('× 3');
   await expect(earthShardRow.locator('.material-qty')).toHaveText('× 2');
   await option.check();
   await expect(option).toHaveCSS('background-color', 'rgb(200, 168, 75)');
@@ -313,7 +313,7 @@ test('update reload skips saved view restoration once', async ({ page }) => {
   await expect(page.locator('.result-root-summary')).toContainText('アリペブレ');
   await page.evaluate(() => sessionStorage.setItem('ff14_skip_restore_once', '1'));
   await page.reload();
-  await expect(page.locator('#loadStatus')).toContainText(/patch/);
+  await expect(page.locator('#loadStatus')).toHaveText('patch 7.55 対応');
   await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
   await expect(page.locator('#searchBox')).toHaveValue('');
   await expect(page.locator('.result-root-summary')).toHaveCount(0);

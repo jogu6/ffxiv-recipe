@@ -57,9 +57,10 @@ export function auditReleaseNotes({ addedTitles, reviews, releaseSection }) {
           errors.push(`Release note for "${title}" is missing evidence phrase: ${phrase}`);
         }
       }
-    } else if (review.disposition === 'internal') {
+    } else if (review.disposition === 'internal' || review.disposition === 'omitted') {
       if (typeof review.reason !== 'string' || !review.reason.trim()) {
-        errors.push(`Internal change has no omission reason: ${title}`);
+        const label = review.disposition === 'internal' ? 'Internal change' : 'Omitted change';
+        errors.push(`${label} has no omission reason: ${title}`);
       }
     } else {
       errors.push(`Unknown disposition for "${title}": ${review.disposition}`);
@@ -74,12 +75,16 @@ export function auditReleaseNotes({ addedTitles, reviews, releaseSection }) {
 
 export function runReleaseNotesAudit(root = repositoryRoot, configPath = defaultConfigPath) {
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-  const baselineTestFile = config.baselineTestFile || config.testFile;
+  const baselineTestFiles = config.baselineTestFiles || [config.baselineTestFile || config.testFile];
   const currentTestFiles = config.testFiles || [config.testFile];
-  const baselineSource = execFileSync('git', ['show', `${config.baseline}:${baselineTestFile}`], {
-    cwd: root,
-    encoding: 'utf8'
-  });
+  const baselineSource = baselineTestFiles
+    .map(testFile =>
+      execFileSync('git', ['show', `${config.baseline}:${testFile}`], {
+        cwd: root,
+        encoding: 'utf8'
+      })
+    )
+    .join('\n');
   const currentSource = currentTestFiles
     .map(testFile => fs.readFileSync(path.join(root, testFile), 'utf8'))
     .join('\n');

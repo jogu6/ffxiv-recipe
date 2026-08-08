@@ -7,16 +7,27 @@
 
   function normalizeItemIds(itemIds) {
     if (!Array.isArray(itemIds)) return [];
-    return [...new Set(itemIds.map(id => parseInt(id, 10)).filter(id => Number.isInteger(id) && id > 0))];
+    const normalized = itemIds.map(value => {
+      if (Number.isInteger(value) && value > 0) return value;
+      if (typeof value !== 'string') return null;
+      const trimmed = value.trim();
+      if (!trimmed || trimmed.length > 100) return null;
+      if (/^[+-]?\d+(?:\.\d+)?$/.test(trimmed)) {
+        const numeric = Number(trimmed);
+        return Number.isInteger(numeric) && numeric > 0 ? numeric : null;
+      }
+      return trimmed;
+    }).filter(value => value !== null);
+    return [...new Set(normalized)];
   }
 
   function normalizeStoredRecipeSelections(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
     const normalized = {};
     Object.entries(value).forEach(([itemId, recipeId]) => {
-      const numericId = parseInt(itemId, 10);
-      if (!Number.isInteger(numericId) || numericId <= 0 || typeof recipeId !== 'string' || !recipeId) return;
-      normalized[String(numericId)] = recipeId;
+      const key = normalizeItemIds([itemId])[0];
+      if (key === undefined || typeof recipeId !== 'string' || !recipeId) return;
+      normalized[String(key)] = recipeId;
     });
     return normalized;
   }

@@ -8,3 +8,7 @@ Service Worker cache maintenance
 - tips.md is fetched with no-store and is never cached by the Service Worker.
 - Changing APP_CACHE_VERSION installs a new app cache. Activation removes obsolete caches whose
   names begin with ff14recipe-.
+- Startup explicitly checks sw.js with updateViaCache set to none and keeps the application inert
+  until the check and any activation finish. An applied update reloads automatically.
+- After the reload, the current release section from tips.md blocks application use until the user
+  acknowledges it with OK. The acknowledged app version is stored locally.

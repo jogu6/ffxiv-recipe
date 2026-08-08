@@ -27,7 +27,14 @@ test('view state normalizes every persisted section with bounded enums', () => {
       dataVersion: 'current',
       input: { search: '検索', count: '4', active: 'countInput' },
       selected: { recipe: '完成品', recipeId: 'r1', favoriteListId: 'f1', usesItem: '素材' },
-      view: { listMode: 'fav', sourceMode: 'favorite-materials', resultMode: 'materials', mobilePanel: 'right' },
+      view: {
+        listMode: 'fav',
+        sourceMode: 'favorite-materials',
+        resultMode: 'materials',
+        mobilePanel: 'right',
+        favoriteListsOpen: false,
+        favoriteListActionsId: 'f1'
+      },
       favoriteMaterials: {
         listIds: ['f1', 2],
         ringCounts: { 指輪: 2, f1: { 指輪: 1, invalid: 3 } },
@@ -52,6 +59,8 @@ test('view state normalizes every persisted section with bounded enums', () => {
   assert.deepEqual(result.state.favoriteMaterials.listIds, ['f1']);
   assert.deepEqual(result.state.favoriteMaterials.ringCounts, { 指輪: 2, f1: { 指輪: 1 } });
   assert.deepEqual(result.state.favoriteMaterials.listProductionExpanded, { f1: true });
+  assert.equal(result.state.view.favoriteListsOpen, false);
+  assert.equal(result.state.view.favoriteListActionsId, 'f1');
   assert.deepEqual(result.state.materials.sections, { normal: false });
   assert.deepEqual(result.state.materials.purchasedNames, ['A']);
   assert.deepEqual(result.state.scroll, { recipeList: 12, usesList: 0, treeContainer: 0, panelRight: 5 });
@@ -68,7 +77,14 @@ test('view state supplies stable defaults for missing or invalid optional values
     'current'
   );
   assert.deepEqual(state.input, { search: '', count: '1', active: '' });
-  assert.deepEqual(state.view, { listMode: 'none', sourceMode: 'recipe', resultMode: 'tree', mobilePanel: '' });
+  assert.deepEqual(state.view, {
+    listMode: 'none',
+    sourceMode: 'recipe',
+    resultMode: 'tree',
+    mobilePanel: '',
+    favoriteListsOpen: false,
+    favoriteListActionsId: ''
+  });
   assert.deepEqual(Object.keys(state.scroll), [...SCROLL_KEYS]);
 });
 

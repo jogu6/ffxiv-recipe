@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import sharp from 'sharp';
 import {
   extractLodestoneCraftInfo,
   extractLodestoneEquipmentInfo,
@@ -17,6 +18,8 @@ import {
   equipmentRoleDecision,
   findUnresolvedEquipmentRoleGroups,
   hasExistingLodestoneInfo,
+  itemIconFileName,
+  itemIconNameHash,
   isConditionalLodestoneShop,
   mergeFriendlyTribeShopInfo,
   mergeHousingShopInfo,
@@ -30,8 +33,95 @@ import {
   readLodestoneShopCacheEntry,
   resolveLodestoneShopCondition,
   resolveLodestoneItemDetail,
+  ensureLodestoneCandidateIcons,
+  cleanupItemIconAssets,
+  validateItemIconAssets,
+  validateItemIconFileName,
   writeLodestoneShopCacheEntry
 } from '../pipeline/tool/pipeline-tool.mjs';
+
+test('item icon filenames combine stable item-name and WebP-content hashes', () => {
+  const bytes = Buffer.from('webp-content');
+  const iconFile = itemIconFileName('バスタードソード', bytes);
+
+  assert.match(iconFile, /^[0-9a-f]{20}-[0-9a-f]{12}\.webp$/);
+  assert.equal(iconFile.startsWith(itemIconNameHash('バスタードソード')), true);
+  assert.equal(validateItemIconFileName('バスタードソード', iconFile, bytes), true);
+  assert.equal(validateItemIconFileName('別名', iconFile, bytes), false);
+  assert.equal(validateItemIconFileName('バスタードソード', iconFile, Buffer.from('changed')), false);
+});
+
+test('candidate icon generation migrates existing files, protects manual input, and rebuilds missing output', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ffxiv-name-icons-'));
+  const candidatePath = path.join(root, 'candidate.json');
+  const snapshotPath = path.join(root, 'snapshot.json');
+  const existingPath = path.join(root, 'existing.json');
+  const iconsRoot = path.join(root, 'icons');
+  const manualIconsRoot = path.join(root, 'manual');
+  const pngCacheRoot = path.join(root, 'cache');
+  const manualBytes = await sharp({
+    create: { width: 2, height: 2, channels: 4, background: '#ffcc00' }
+  }).webp().toBuffer();
+  const networkPng = await sharp({
+    create: { width: 2, height: 2, channels: 4, background: '#335577' }
+  }).png().toBuffer();
+  fs.mkdirSync(path.join(iconsRoot, '065'), { recursive: true });
+  fs.writeFileSync(path.join(iconsRoot, '065', '065024.webp'), manualBytes);
+  fs.writeFileSync(candidatePath, JSON.stringify({
+    Version: 'test',
+    Items: [
+      { Name: '手動貨幣', IconFile: '065024.webp' },
+      { Name: '通常素材', SortOrder: 2 },
+      { Name: '画像なし' }
+    ]
+  }));
+  fs.writeFileSync(snapshotPath, JSON.stringify({
+    Items: [{ Name: '通常素材', LodestoneKey: 'network-key', IconUrl: 'https://example.test/icon.png' }],
+    Recipes: []
+  }));
+  fs.writeFileSync(existingPath, JSON.stringify({
+    Version: 'old',
+    Items: [{ Name: '手動貨幣', IconFile: '065024.webp' }]
+  }));
+  let requests = 0;
+
+  try {
+    const result = await ensureLodestoneCandidateIcons({
+      candidatePath,
+      snapshotPath,
+      existingItemJsonPath: existingPath,
+      iconsRoot,
+      manualIconsRoot,
+      pngCacheRoot,
+      delayMs: 0,
+      size: 8,
+      request: async () => {
+        requests += 1;
+        return new Response(networkPng, { headers: { 'content-type': 'image/png' } });
+      }
+    });
+    const items = JSON.parse(fs.readFileSync(candidatePath, 'utf8')).Items;
+
+    assert.equal(result.manualProtected, 1);
+    assert.equal(result.downloaded, 1);
+    assert.equal(result.withoutImage, 1);
+    assert.equal(requests, 1);
+    assert.match(items[0].IconFile, /^[0-9a-f]{20}-[0-9a-f]{12}\.webp$/);
+    assert.match(items[1].IconFile, /^[0-9a-f]{20}-[0-9a-f]{12}\.webp$/);
+    assert.equal(items[2].IconFile, undefined);
+    assert.equal(fs.existsSync(path.join(manualIconsRoot, `${itemIconNameHash('手動貨幣')}.webp`)), true);
+    assert.deepEqual(validateItemIconAssets(items, { iconsRoot }), { items: 3, icons: 2 });
+
+    const dryRun = cleanupItemIconAssets({ items, iconsRoot, dryRun: true });
+    assert.deepEqual(dryRun.removed, ['065/065024.webp']);
+    assert.equal(fs.existsSync(path.join(iconsRoot, '065', '065024.webp')), true);
+    const cleanup = cleanupItemIconAssets({ items, iconsRoot });
+    assert.deepEqual(cleanup.removed, ['065/065024.webp']);
+    assert.equal(fs.existsSync(path.join(iconsRoot, '065', '065024.webp')), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('publication policy preserves unconfirmed existing data and withholds unconfirmed new items', () => {
   const baseItems = [

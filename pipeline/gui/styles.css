@@ -614,3 +614,7 @@ button.primary:hover { background: #d5b95a; color: #1a1a1a; }
   .panel-section { margin-bottom: 0; }
   .work-panel { min-width: 0; min-height: 520px; }
 }
+/* HTMLのhidden属性をコンポーネント固有display指定より常に優先する。 */
+[hidden] {
+  display: none !important;
+}

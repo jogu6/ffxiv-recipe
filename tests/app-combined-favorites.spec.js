@@ -298,7 +298,7 @@ test('combined favorite materials supports ring count toggles and restores them'
 
   await page.reload();
   await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
-  await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
+  await expect(page.locator('#favoriteLists')).not.toHaveClass(/open/);
   await expect(
     page
       .locator('.favorite-ring-section .favorite-list-production-block')
@@ -410,7 +410,7 @@ test('checked favorite lists calculate any one list and restore production discl
 
   await page.reload();
   await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
-  await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
+  await expect(page.locator('#favoriteLists')).not.toHaveClass(/open/);
   await expect(page.locator('#checkedFavoriteAnyOneModeBtn')).toHaveClass(/active/);
   await expect(page.locator('#searchBox')).toBeDisabled();
   await expect(page.locator('#equipmentSearchToggle')).toBeDisabled();

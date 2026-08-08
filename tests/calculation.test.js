@@ -24,13 +24,12 @@ function requirements(recipes, roots) {
 
 function loadRealRecipeData() {
   const file = path.join(__dirname, '..', 'site', 'data', 'Item.json');
-  const items = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const items = JSON.parse(fs.readFileSync(file, 'utf8')).Items;
+  const legacy = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'site', 'data', 'legacy-item-ids.json'), 'utf8')).Items;
   const recipes = {};
   const itemNamesById = new Map();
 
-  items.forEach(item => {
-    itemNamesById.set(Number(item.ID), item.Name);
-  });
+  Object.entries(legacy).forEach(([id, name]) => itemNamesById.set(Number(id), name));
   items.forEach(item => {
     if (!item.Recipe || item.Recipe.CraftType === undefined) return;
     recipes[item.Name] = recipe(

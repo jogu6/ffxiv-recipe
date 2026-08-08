@@ -1,29 +1,84 @@
 {
-  "version": "v2.951",
-  "baseline": "74f2765d",
-  "baselineTestFile": "tests/app.spec.js",
-  "testFiles": [
+  "version": "v3.0",
+  "baseline": "a59ef852",
+  "baselineTestFiles": [
+    "tests/app-combined-favorites.spec.js",
     "tests/app-core.spec.js",
+    "tests/app-equipment.spec.js",
+    "tests/app-favorites.spec.js",
     "tests/app-materials.spec.js",
     "tests/app-persistence.spec.js",
     "tests/app-purchases.spec.js",
-    "tests/app-favorites.spec.js",
+    "tests/app-service-worker.spec.js",
+    "tests/app-ui.spec.js",
+    "tests/font-size-compat.spec.js",
+    "tests/pipeline-gui.spec.js"
+  ],
+  "testFiles": [
     "tests/app-combined-favorites.spec.js",
+    "tests/app-core.spec.js",
     "tests/app-equipment.spec.js",
-    "tests/app-ui.spec.js"
+    "tests/app-favorites.spec.js",
+    "tests/app-materials.spec.js",
+    "tests/app-persistence.spec.js",
+    "tests/app-purchases.spec.js",
+    "tests/app-service-worker.spec.js",
+    "tests/app-ui.spec.js",
+    "tests/font-size-compat.spec.js",
+    "tests/pipeline-gui.spec.js"
   ],
   "tipsFile": "site/data/tips.md",
-  "instructions": "Every E2E test added after the baseline must be documented in the current release section or explicitly classified as internal with a concrete reason.",
+  "instructions": "Every E2E test added after the baseline must be documented in the current release section, classified as internal with a concrete reason, or explicitly omitted by the release owner with a concrete reason.",
   "reviews": [
     {
-      "test": "exports and imports all favorite lists through one text file",
+      "test": "equipment search applies primary stats and shared low-level physical gear to monk",
       "disposition": "documented",
-      "evidence": ["全お気に入りリストを1つのテキストファイルへ書き出し", "まとめて読み込める"]
+      "evidence": ["装備の主能力値と推奨ロールを考慮"]
     },
     {
-      "test": "favorite target dialog grows with list count within the existing viewport limit",
+      "test": "exchange materials sold by shops show gil as the first alternative",
       "disposition": "documented",
-      "evidence": ["登録先ウィンドウを、リスト数と画面の高さに応じて伸縮"]
+      "evidence": ["ギル価格を最初の選択肢として表示"]
+    },
+    {
+      "test": "removes legacy favorites excluded from Lodestone and reports their names",
+      "disposition": "omitted",
+      "reason": "The release owner explicitly designated the current tips.md as canonical without this migration detail."
+    },
+    {
+      "test": "current display keeps level 3 while using the enlarged baseline",
+      "disposition": "omitted",
+      "reason": "The release owner explicitly designated the current tips.md as canonical without a separate baseline-size note."
+    },
+    {
+      "test": "tips groups releases before v3.0 in a collapsed accordion",
+      "disposition": "omitted",
+      "reason": "The release owner explicitly designated the current tips.md as canonical without documenting release-note presentation."
+    },
+    {
+      "test": "updated app blocks use until the current release notice is accepted",
+      "disposition": "documented",
+      "evidence": ["「OK」を押してからアプリを利用"]
+    },
+    {
+      "test": "settings button and gathering time labels fit every display size",
+      "disposition": "documented",
+      "evidence": ["設定ボタン、採集時刻、数値入力、ダイアログ"]
+    },
+    {
+      "test": "scaled compact controls remain contained at every display size",
+      "disposition": "documented",
+      "evidence": ["表示サイズを大きくした際"]
+    },
+    {
+      "test": "pipeline GUI keeps obsolete CSV and Oxidizer operations unavailable",
+      "disposition": "internal",
+      "reason": "This is a development-only pipeline GUI safeguard and is not part of the public web app."
+    },
+    {
+      "test": "pipeline GUI exposes a configurable 100ms sequential access interval",
+      "disposition": "internal",
+      "reason": "This is a development-only pipeline acquisition control and is not part of the public web app."
     }
   ]
 }

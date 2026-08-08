@@ -1,9 +1,11 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 
 const repositoryRoot = path.resolve(import.meta.dirname, '..');
 const siteRoot = path.join(repositoryRoot, 'site');
+const applicationName = 'FinalFantasy XIV® Crafting Assistant XIVca(シヴカ)';
 
 function requireFile(relativePath) {
   const absolutePath = path.join(siteRoot, relativePath);
@@ -14,15 +16,19 @@ function requireFile(relativePath) {
 for (const relativePath of [
   'index.html',
   'calculation.js',
+  'pwa-update.js',
   'app.js',
   'styles.css',
   'sw.js',
   'manifest.webmanifest',
   'data/Item.json',
+  'data/legacy-item-ids.json',
   'data/tips.md',
   'assets/app-icons/favicon.png',
   'assets/app-icons/icon-192.png',
   'assets/app-icons/icon-512.png',
+  'assets/branding/xivca-logo.webp',
+  'assets/check_onoff.png',
   'assets/job-icons/alchemist.webp',
   'assets/job-icons/armorer.webp',
   'assets/job-icons/blacksmith.webp',
@@ -38,12 +44,26 @@ for (const relativePath of [
   requireFile(relativePath);
 }
 
-const items = JSON.parse(fs.readFileSync(requireFile('data/Item.json'), 'utf8'));
-const itemIds = new Set(items.map(item => String(item.ID)));
+const itemData = JSON.parse(fs.readFileSync(requireFile('data/Item.json'), 'utf8'));
+if (!itemData || typeof itemData.Version !== 'string' || !Array.isArray(itemData.Items)) {
+  throw new Error('Item.json must contain Version and Items.');
+}
+const items = itemData.Items;
+const itemNames = new Set(items.map(item => item.Name));
+const legacyItemIds = JSON.parse(fs.readFileSync(requireFile('data/legacy-item-ids.json'), 'utf8'));
+if (!legacyItemIds?.Items || typeof legacyItemIds.Items !== 'object') throw new Error('Invalid legacy-item-ids.json.');
 fs.readFileSync(requireFile('data/tips.md'), 'utf8');
-JSON.parse(fs.readFileSync(requireFile('manifest.webmanifest'), 'utf8'));
+const indexHtml = fs.readFileSync(requireFile('index.html'), 'utf8');
+const manifest = JSON.parse(fs.readFileSync(requireFile('manifest.webmanifest'), 'utf8'));
+if (!indexHtml.includes(`<title>${applicationName}</title>`) || !indexHtml.includes(`alt="${applicationName}"`)) {
+  throw new Error('Application name or XIVca logo accessibility text is missing from index.html.');
+}
+if (manifest.name !== applicationName || manifest.short_name !== 'XIVca') {
+  throw new Error('Application name is not synchronized with manifest.webmanifest.');
+}
 
 const missingIcons = [];
+const invalidIconFiles = [];
 const invalidEquipmentPerformance = [];
 const invalidPublicItems = [];
 const pipelineOnlyItemKeys = [
@@ -67,15 +87,16 @@ for (const item of items) {
     || Object.hasOwn(item.EquipmentInfo || {}, 'statsVersion')
     || Object.values(item.EquipmentInfo?.stats || {}).includes(0)
     || Object.values(item.EquipmentInfo?.performance || {}).includes(0)
+    || Object.hasOwn(item, 'ID')
   ) {
     invalidPublicItems.push(item.Name || item.ID);
   }
   for (const recipe of [...(item.Recipe ? [item.Recipe] : []), ...(item.Recipes || [])]) {
     for (const ingredient of recipe.Ingredients || []) {
-      const isPublishedItem = itemIds.has(String(ingredient.ItemID));
-      if ((isPublishedItem && Object.hasOwn(ingredient, 'Name')) || (!isPublishedItem && !ingredient.Name)) {
+      if (!ingredient.Name || !itemNames.has(ingredient.Name) || Object.hasOwn(ingredient, 'ItemID')) {
         invalidPublicItems.push(item.Name || item.ID);
       }
+      if (Object.hasOwn(recipe, 'PatchNumber') || Object.hasOwn(recipe, 'RecipeID')) invalidPublicItems.push(item.Name);
     }
   }
   if (item.EquipmentInfo) {
@@ -94,7 +115,15 @@ for (const item of items) {
   }
   if (!item.IconFile) continue;
   const relativePath = path.join('assets', 'item-icons', item.IconFile.slice(0, 3), item.IconFile);
-  if (!fs.existsSync(path.join(siteRoot, relativePath))) missingIcons.push(relativePath);
+  const absolutePath = path.join(siteRoot, relativePath);
+  if (!fs.existsSync(absolutePath)) {
+    missingIcons.push(relativePath);
+    continue;
+  }
+  const bytes = fs.readFileSync(absolutePath);
+  const nameHash = crypto.createHash('sha256').update(String(item.Name), 'utf8').digest('hex').slice(0, 20);
+  const contentHash = crypto.createHash('sha256').update(bytes).digest('hex').slice(0, 12);
+  if (item.IconFile !== `${nameHash}-${contentHash}.webp`) invalidIconFiles.push(`${item.Name}: ${item.IconFile}`);
 }
 
 if (invalidPublicItems.length > 0) {
@@ -108,9 +137,11 @@ if (invalidEquipmentPerformance.length > 0) {
 }
 
 if (missingIcons.length > 0) {
-  console.warn(
-    `Warning: ${missingIcons.length} item icon files are missing. First: ${missingIcons[0]}`
-  );
+  throw new Error(`Missing item icon files: ${missingIcons.slice(0, 10).join(', ')}`);
+}
+
+if (invalidIconFiles.length > 0) {
+  throw new Error(`Invalid item icon filenames: ${invalidIconFiles.slice(0, 10).join(', ')}`);
 }
 
 const powershellFiles = [];
@@ -132,6 +163,6 @@ if (invalidBomFiles.length > 0) {
 }
 
 console.log(
-  `Validated ${items.length} items and ${powershellFiles.length} PowerShell files. ` +
-  `${missingIcons.length} missing item icons are allowed.`
+  `Validated ${items.length} name-key items (Lodestone ${itemData.Version}) and ${powershellFiles.length} PowerShell files. ` +
+  `${items.filter(item => item.IconFile).length} item icon filenames and contents are valid.`
 );

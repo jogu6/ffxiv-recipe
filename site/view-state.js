@@ -81,7 +81,12 @@
         listMode: enumValue(view.listMode, ['none', 'search', 'fav', 'equipment'], 'none'),
         sourceMode: enumValue(view.sourceMode, ['recipe', 'favorite-materials'], 'recipe'),
         resultMode: enumValue(view.resultMode, ['tree', 'materials'], 'tree'),
-        mobilePanel: enumValue(view.mobilePanel, ['', 'left', 'middle', 'right'], '')
+        mobilePanel: enumValue(view.mobilePanel, ['', 'left', 'middle', 'right'], ''),
+        favoriteListsOpen:
+          view.favoriteListsOpen === undefined
+            ? view.sourceMode === 'favorite-materials'
+            : view.favoriteListsOpen === true,
+        favoriteListActionsId: stringValue(view.favoriteListActionsId)
       },
       favoriteMaterials: {
         listIds: stringArray(favoriteMaterials.listIds),
