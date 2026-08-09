@@ -33,12 +33,65 @@ import {
   readLodestoneShopCacheEntry,
   resolveLodestoneShopCondition,
   resolveLodestoneItemDetail,
+  enrichNewLodestoneCandidateItem,
   ensureLodestoneCandidateIcons,
   cleanupItemIconAssets,
+  cacheLodestoneRecipeDetails,
   validateItemIconAssets,
   validateItemIconFileName,
   writeLodestoneShopCacheEntry
 } from '../pipeline/tool/pipeline-tool.mjs';
+
+test('new candidate items receive required Lodestone detail data without another source', async () => {
+  const calls = [];
+  const item = { Name: '新素材', SortOrder: 1 };
+  const result = await enrichNewLodestoneCandidateItem(item, { DetailPath: '/lodestone/playguide/db/item/newitem/' }, {
+    delayMs: 125,
+    fetchText: async (url, delayMs) => {
+      calls.push({ url, delayMs });
+      return `
+        <meta property="og:title" content="新素材 | FINAL FANTASY XIV, The Lodestone">
+        <div class="db-view__item__header clearfix"><h2>新素材</h2></div>
+      `;
+    }
+  });
+  assert.equal(result, item);
+  assert.equal(item.IsEx, false);
+  assert.deepEqual(calls, [{
+    url: 'https://jp.finalfantasyxiv.com/lodestone/playguide/db/item/newitem/',
+    delayMs: 125
+  }]);
+});
+
+test('Lodestone recipe details are fetched sequentially for autonomous candidate generation', async () => {
+  const calls = [];
+  let active = 0;
+  let maxActive = 0;
+  const progress = [];
+  const result = await cacheLodestoneRecipeDetails([
+    { DetailPath: '/lodestone/playguide/db/recipe/aaa/' },
+    { DetailPath: '/lodestone/playguide/db/recipe/bbb/' }
+  ], {
+    delayMs: 250,
+    fetchText: async (url, delayMs) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      calls.push({ url, delayMs });
+      await Promise.resolve();
+      active -= 1;
+      return '<html></html>';
+    },
+    onProgress: value => progress.push([value.completed, value.total])
+  });
+  assert.equal(maxActive, 1);
+  assert.deepEqual(calls.map(call => call.delayMs), [250, 250]);
+  assert.deepEqual(calls.map(call => call.url), [
+    'https://jp.finalfantasyxiv.com/lodestone/playguide/db/recipe/aaa/',
+    'https://jp.finalfantasyxiv.com/lodestone/playguide/db/recipe/bbb/'
+  ]);
+  assert.deepEqual(progress, [[1, 2], [2, 2]]);
+  assert.deepEqual(result, { total: 2 });
+});
 
 test('item icon filenames combine stable item-name and WebP-content hashes', () => {
   const bytes = Buffer.from('webp-content');

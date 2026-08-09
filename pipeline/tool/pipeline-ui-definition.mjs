@@ -2,445 +2,243 @@
 import { pathToFileURL } from "node:url";
 
 const definition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   application: {
     title: "FinalFantasy XIV® Crafting Assistant XIVca(シヴカ) アイテム情報作成",
     idleStatus: "待機中",
   },
-  sections: [
+  modules: [
     {
-      id: "data",
-      toggleId: "csvToggle",
-      bodyId: "csvBody",
-      label: "データ更新",
-      expanded: true,
-    },
-    {
-      id: "icons",
-      toggleId: "buildToggle",
-      bodyId: "buildBody",
-      label: "アイコン生成",
-      expanded: false,
-    },
-    {
-      id: "preview",
-      toggleId: "iconQualityToggle",
-      bodyId: "iconQualityBody",
-      label: "プレビュー",
-      expanded: false,
-    },
-  ],
-  actions: [
-    {
-      id: "lodestone-snapshot",
-      section: "data",
-      command: "lodestone-snapshot",
-      buttonId: "lodestoneSnapshotBtn",
-      order: "1",
-      label: "Lodestone全一覧取得",
-      description: "Versionと件数を確認し、必要な場合だけアイテム並び順を全ページから更新します。製作手帳一覧も逐次取得します。",
-      behavior: "command",
-      confirm: "Lodestoneを100ms以上の設定間隔で逐次取得します。並列通信は行いません。実行しますか？",
-      args: [{ flag: "--delay", inputId: "lodestoneDelayInput" }],
-    },
-    {
-      id: "build-lodestone-candidate",
-      section: "data",
-      command: "build-lodestone-candidate",
-      buttonId: "buildLodestoneCandidateBtn",
-      order: "2",
-      label: "名前キー候補生成",
-      description: "Lodestoneレシピと手動データから、アプリが参照する情報だけのItem.json候補と旧ID互換JSONを作ります。",
-      behavior: "command",
-      args: [],
-    },
-    {
-      id: "lodestone-candidate-icons",
-      section: "data",
-      command: "lodestone-candidate-icons",
-      buttonId: "lodestoneCandidateIconsBtn",
-      order: "3",
-      label: "画像整備・生成",
-      description: "全画像をアイテム名・画像内容ハッシュ形式へ整備し、不足画像だけを逐次取得します。手動画像は再生成入力として保護します。",
-      behavior: "command",
-      args: [
-        { flag: "--delay", inputId: "lodestoneDelayInput" },
-        { flag: "--quality", inputId: "qualityInput" },
-        { flag: "--size", inputId: "iconSizeInput" },
-      ],
-    },
-    {
-      id: "publish-lodestone-candidate",
-      section: "data",
-      command: "publish-lodestone-candidate",
-      buttonId: "publishLodestoneCandidateBtn",
-      order: "4",
-      label: "名前キー公開反映",
-      description: "構造と全画像を検証した候補だけをItem.jsonと旧ID互換JSONへ反映し、参照されない旧画像を整理します。",
-      behavior: "command",
-      confirm: "検証済み候補を公開用データへ反映します。実行しますか？",
-      args: [],
-    },
-    {
-      id: "oxidizer-environment",
-      section: "data",
-      command: "oxidizer-environment",
-      buttonId: "oxidizerEnvironmentBtn",
-      order: "任意",
-      label: "Oxidizer環境確認",
-      description:
-        "Git、Cargo、FF14インストール先、既存Oxidizerを確認します。",
-      behavior: "command",
-      args: [
-        { flag: "--source", inputId: "oxidizerSourceInput", omitEmpty: true },
-        { flag: "--game-path", inputId: "ffxivGamePathInput", omitEmpty: true },
-      ],
-    },
-    {
-      id: "oxidizer-check",
-      section: "data",
-      command: "oxidizer-check",
-      buttonId: "oxidizerCheckBtn",
-      order: "任意",
-      label: "Oxidizer更新確認",
-      description: "上流リポジトリの最新コミットを読み取り専用で確認します。",
-      behavior: "command",
-      args: [],
-    },
-    {
-      id: "oxidizer-refresh",
-      section: "data",
-      command: "oxidizer-refresh",
-      buttonId: "oxidizerRefreshBtn",
-      order: "任意",
-      label: "全CSV再生成",
-      description:
-        "管理用の新規クローンでOxidizerを実行し、全CSVを再生成します。",
-      behavior: "command",
-      confirm:
-        "GitHubからOxidizerとサブモジュールを取得し、Cargoビルドと全CSV生成を実行します。通信と長時間処理が発生します。実行しますか？",
-      args: [
-        { flag: "--game-path", inputId: "ffxivGamePathInput" },
-        { flag: "--force", inputId: "oxidizerForceInput", type: "checkbox" },
-      ],
-    },
-    {
-      id: "oxidizer-import-preview",
-      section: "data",
-      command: "oxidizer-import-preview",
-      buttonId: "oxidizerImportPreviewBtn",
-      order: "任意",
-      label: "CSV取り込み確認",
-      description:
-        "一時候補の差分を表示し、反映前にLodestone情報とアイコンを確認します。",
-      behavior: "oxidizer-import-preview",
-      args: [
-        { flag: "--source", inputId: "oxidizerSourceInput", omitEmpty: true },
-      ],
-    },
-    {
-      id: "oxidizer-import",
-      section: "data",
-      command: "oxidizer-import",
-      buttonId: "oxidizerImportBtn",
-      order: "任意",
-      label: "検証済みCSVを反映",
-      description:
-        "差分とLodestoneを事前確認した同一CSVだけをローカル入力へ反映し、旧CSVを保護します。",
-      behavior: "command",
-      confirm:
-        "確認済みの4つのCSVをpipeline入力へ反映します。既存CSVはローカルバックアップへ保護されます。実行しますか？",
-      args: [
-        { flag: "--source", inputId: "oxidizerSourceInput", omitEmpty: true },
-      ],
-    },
-    {
-      id: "check-updates",
-      section: "data",
-      command: "check-updates",
-      buttonId: "checkUpdatesBtn",
-      order: "任意",
-      label: "更新チェック",
-      description:
-        "公式 CSV の更新有無を確認し、前回チェック日時を保存します。",
-      behavior: "command",
-      args: [],
-    },
-    {
-      id: "download-csv",
-      section: "data",
-      command: "download-csv",
-      buttonId: "downloadCsvBtn",
-      order: "任意",
-      label: "CSV取得",
-      description: "更新または不足している公式 CSV を取得します。",
-      behavior: "command",
-      confirm: "CSVをダウンロードします。通信が発生します。実行しますか？",
-      args: [],
-    },
-    {
-      id: "validate-csv",
-      section: "data",
-      command: "validate-csv",
-      buttonId: "validateCsvBtn",
-      order: "1",
-      label: "CSV検証",
-      description: "必須ヘッダーと token-items.csv の形式を確認します。",
-      behavior: "command",
-      args: [],
-    },
-    {
-      id: "build",
-      section: "data",
-      command: "build",
-      buttonId: "buildBtn",
-      order: "2",
-      label: "データ生成",
-      description:
-        "CSV から公開候補 JSON を作ります。まだ公開データは置き換えません。",
-      behavior: "command",
-      confirm: "データ生成には時間がかかる場合があります。実行しますか？",
-      args: [],
-      refreshEquipmentRole: true,
-    },
-    {
-      id: "publish-lodestone-info",
-      section: "data",
-      command: "publish-lodestone-info",
-      buttonId: "lodestoneInfoBtn",
-      order: "3",
-      label: "Lodestone情報反映",
-      description:
-        "店、製作、装備情報をLodestoneから取得し、ハウジング・友好部族ショップ情報とともに公開候補JSONへ反映します。",
-      behavior: "command",
-      confirm:
-        "Lodestone情報とハウジング・友好部族ショップ情報を公開候補JSONに反映します。公開データはまだ置き換えません。時間がかかります。実行しますか？",
-      args: [
-        { flag: "--delay", inputId: "lodestoneDelayInput" },
-        { flag: "--force", inputId: "lodestoneForceInput", type: "checkbox" },
-      ],
-      refreshEquipmentRole: true,
-    },
-    {
-      id: "equipment-role-groups",
-      section: "data",
-      buttonId: "equipmentRoleBtn",
-      order: "確認",
-      label: "推奨ロール確認",
-      description:
-        "Lodestone情報反映後、判定不能な広域装備の推奨ロールを指定します。保存後、次回のLodestone情報反映で候補JSONへ反映されます。",
-      behavior: "equipment-role-dialog",
-    },
-    {
-      id: "publication-review",
-      section: "data",
-      command: "publication-review",
-      buttonId: "publicationReviewBtn",
-      order: "確認",
-      label: "公式公開判定",
-      description:
-        "Lodestone未確認の新規・変更項目を確認し、維持・除外・保留を保存します。",
-      behavior: "publication-review-dialog",
-    },
-    {
-      id: "publish",
-      section: "data",
-      command: "publish",
-      buttonId: "publishBtn",
-      order: "5",
-      label: "公開反映",
-      description:
-        "現在の Item.json を自動保護し、候補データを site/data/Item.json に統合します。",
-      behavior: "command",
-      confirm: "検証後に site/data/Item.json を置き換えます。実行しますか？",
-      args: [],
-      refreshEquipmentRole: true,
-    },
-    {
-      id: "run-all",
-      section: "data",
-      buttonId: "runBtn",
-      order: "一括",
-      label: "公開工程を続行",
-      description:
-        "Lodestone一覧取得から名前キーの公開反映までを順番に進めます。完了済み工程のキャッシュは再利用します。",
-      behavior: "sequence",
-      confirm:
-        "Lodestoneを逐次取得し、名前キーの候補生成・不足画像生成・公開反映まで進みます。実行しますか？",
-    },
-    {
-      id: "icons",
-      section: "icons",
-      command: "icons",
-      buttonId: "iconsBtn",
-      order: "4",
-      label: "アイコン生成",
-      description:
-        "Lodestone NQ 画像を優先し、指定サイズの WebP アイコンを生成します。元 PNG はキャッシュします。",
-      behavior: "command",
-      confirm:
-        "アイコン生成には時間がかかります。XIVAPIは既存公開項目または明示的な公開例外だけで使用します。実行しますか？",
-      args: [
-        { flag: "--quality", inputId: "qualityInput" },
-        { flag: "--size", inputId: "iconSizeInput" },
-        { flag: "--delay", inputId: "iconDelayInput" },
-      ],
-      sequenceArgs: [
-        { flag: "--quality", inputId: "qualityInput" },
-        { flag: "--size", inputId: "iconSizeInput" },
-        { flag: "--delay", inputId: "iconDelayInput" },
+      id: "lodestone-item-json",
+      schemaVersion: 1,
+      order: 1,
+      label: "Lodestone Item.json生成",
+      description: "Lodestoneの最新一覧とレシピを取得し、画像を整備して公開用Item.jsonへ反映します。",
+      settings: [
         {
-          flag: "--item-json",
-          value: "pipeline/intermediate/06-public-items.json",
+          id: "network",
+          type: "group",
+          label: "Lodestone取得",
+          accordion: true,
+          expanded: true,
+          children: [
+            {
+              id: "lodestone-delay",
+              type: "number",
+              label: "アクセス間隔",
+              description: "Lodestoneと画像取得の共通直列キューに使います。",
+              default: 100,
+              min: 100,
+              max: 60000,
+              step: 100,
+              unit: "ms",
+              persist: true,
+              required: true,
+            },
+          ],
+        },
+        {
+          id: "images",
+          type: "group",
+          label: "アイテム画像",
+          accordion: true,
+          expanded: true,
+          children: [
+            {
+              id: "webp-quality",
+              type: "number",
+              label: "WebPクオリティ",
+              default: 80,
+              min: 1,
+              max: 100,
+              step: 1,
+              persist: true,
+              required: true,
+            },
+            {
+              id: "icon-size",
+              type: "number",
+              label: "生成サイズ",
+              default: 80,
+              min: 1,
+              max: 512,
+              step: 1,
+              unit: "px",
+              persist: true,
+              required: true,
+            },
+          ],
+        },
+      ],
+      actionGroups: [
+        { id: "individual", label: "個別実行", order: 1 },
+        { id: "complete", label: "一括実行", order: 2 },
+      ],
+      actions: [
+        {
+          id: "lodestone-snapshot",
+          group: "individual",
+          order: 1,
+          command: "lodestone-snapshot",
+          label: "1. Lodestone全データ取得",
+          description: "アイテム一覧、製作手帳一覧、新規レシピ詳細を直列取得します。",
+          confirm: "Lodestoneを指定間隔で直列取得します。実行しますか？",
+          settingIds: ["lodestone-delay"],
+          args: [{ flag: "--delay", settingId: "lodestone-delay" }],
+          resume: "checkpoint",
+        },
+        {
+          id: "build-lodestone-candidate",
+          group: "individual",
+          order: 2,
+          command: "build-lodestone-candidate",
+          label: "2. Item.json候補生成",
+          description: "Lodestoneキャッシュと手動交換データから名前キー候補を生成します。",
+          settingIds: ["lodestone-delay"],
+          args: [{ flag: "--delay", settingId: "lodestone-delay" }],
+          resume: "restart",
+        },
+        {
+          id: "lodestone-candidate-icons",
+          group: "individual",
+          order: 3,
+          command: "lodestone-candidate-icons",
+          label: "3. 画像整備・生成",
+          description: "新規・不足画像を取得し、名前と内容ハッシュ形式のWebPへ整備します。",
+          settingIds: ["lodestone-delay", "webp-quality", "icon-size"],
+          args: [
+            { flag: "--delay", settingId: "lodestone-delay" },
+            { flag: "--quality", settingId: "webp-quality" },
+            { flag: "--size", settingId: "icon-size" },
+          ],
+          resume: "checkpoint",
+        },
+        {
+          id: "publish-lodestone-candidate",
+          group: "individual",
+          order: 4,
+          command: "publish-lodestone-candidate",
+          label: "4. Item.json公開反映",
+          description: "構造と全画像を検証した候補だけをsite/data/Item.jsonへアトミックに反映します。",
+          confirm: "検証済み候補を公開用Item.jsonへ反映します。実行しますか？",
+          settingIds: [],
+          args: [],
+          resume: "restart",
+        },
+        {
+          id: "item-icon-preview",
+          group: "individual",
+          order: 3.5,
+          command: "tmp-quality-preview",
+          label: "画像設定をプレビュー",
+          description: "現在のWebPクオリティと生成サイズを代表画像で比較表示します。公開データは変更しません。",
+          confirm: "代表画像の比較プレビューを生成します。未取得画像がある場合はLodestoneへの通信が発生します。実行しますか？",
+          settingIds: ["lodestone-delay", "webp-quality", "icon-size"],
+          args: [
+            { flag: "--delay", settingId: "lodestone-delay" },
+            { flag: "--quality", settingId: "webp-quality" },
+            { flag: "--size", settingId: "icon-size" },
+          ],
+          resultView: {
+            type: "quality-preview",
+            title: "アイテム画像プレビュー",
+            closeLabel: "閉じる",
+          },
+          resume: "restart",
+        },
+        {
+          id: "generate-item-json",
+          group: "complete",
+          order: 1,
+          label: "最新Item.jsonを一括生成",
+          description: "取得から検証済みItem.jsonの公開反映までを順番に実行します。完了済みキャッシュは再利用します。",
+          confirm: "Lodestoneの最新情報からItem.jsonを一括生成します。長時間処理と通信が発生します。実行しますか？",
+          settingIds: ["lodestone-delay", "webp-quality", "icon-size"],
+          sequence: [
+            "lodestone-snapshot",
+            "build-lodestone-candidate",
+            "lodestone-candidate-icons",
+            "publish-lodestone-candidate",
+          ],
+          resume: "checkpoint",
         },
       ],
     },
-    {
-      id: "verify",
-      section: "icons",
-      command: "verify",
-      buttonId: "verifyBtn",
-      order: "確認",
-      label: "Item.json比較",
-      description:
-        "確認のみ。比較して結果を出しますが、Item.json は変更しません。",
-      behavior: "command",
-      args: [],
-    },
-    {
-      id: "tmp-quality-preview",
-      section: "preview",
-      command: "tmp-quality-preview",
-      buttonId: "previewBtn",
-      order: "任意",
-      label: "比較ページ生成",
-      availableLabel: "比較ページ表示",
-      description:
-        "PNG と q50/q60/q70/q80 を並べた一時確認ページを作ります。生成サイズを反映します。",
-      behavior: "quality-preview",
-      confirm:
-        "比較ページ生成には時間がかかり、不足PNGを通信で取得する場合があります。実行しますか？",
-      availableConfirm: "作成済みの比較ページを表示します。実行しますか？",
-      args: [{ flag: "--size", inputId: "previewSizeInput" }],
-    },
   ],
-  recommendedSequence: [
-    "lodestone-snapshot",
-    "build-lodestone-candidate",
-    "lodestone-candidate-icons",
-    "publish-lodestone-candidate",
-  ],
-  equipmentRoleLabels: {
-    tank: "タンク",
-    healer: "ヒーラー",
-    striker_slayer: "ストライカー&スレイヤー",
-    scout_ranger: "スカウト&レンジャー",
-    caster: "キャスター",
-    fighter: "ファイター",
-    sorcerer: "ソーサラー",
-  },
   chrome: {
     progressTitle: "進捗",
     progressIdle: "未実行",
-    cancel: "中断",
-    resume: "再開",
+    cancel: "中止",
+    resume: "続きから再開",
     clearLog: "クリア",
+    resetSettings: "設定を初期値に戻す",
     confirmOk: "実行",
     confirmCancel: "キャンセル",
-    previewTitle: "アイコン画質比較",
-    previewClose: "閉じる",
-    equipmentRoleTitle: "推奨ロール確認",
-    equipmentRoleClose: "閉じる",
-    equipmentRoleSave: "保存",
-    resumeConfirm:
-      "再開は安全な推奨順を再実行します。元画像キャッシュは再利用されます。実行しますか？",
   },
 };
 
+const settingTypes = new Set(["checkbox", "number", "select", "text", "file", "directory", "range"]);
+
+function validateCondition(condition, settingIds, context, errors) {
+  if (!condition) return;
+  if (!settingIds.has(condition.settingId)) errors.push(`${context}: unknown condition setting ${condition.settingId || ""}`);
+  if (!["eq", "ne", "gt", "gte", "lt", "lte", "in"].includes(condition.operator)) {
+    errors.push(`${context}: invalid condition operator ${condition.operator || ""}`);
+  }
+}
+
 export function validatePipelineUiDefinition(value) {
   const errors = [];
-  if (!value || typeof value !== "object")
-    return ["UI definition must be an object."];
-  if (value.schemaVersion !== 1) errors.push("schemaVersion must be 1.");
-  if (!value.application?.title || !value.application?.idleStatus)
-    errors.push("application title and idleStatus are required.");
-  if (
-    !value.equipmentRoleLabels ||
-    Object.keys(value.equipmentRoleLabels).length === 0
-  ) {
-    errors.push("equipmentRoleLabels must be a non-empty object.");
-  }
-  if (!Array.isArray(value.sections) || value.sections.length === 0)
-    errors.push("sections must be a non-empty array.");
-  if (!Array.isArray(value.actions) || value.actions.length === 0)
-    errors.push("actions must be a non-empty array.");
-
-  const sectionIds = new Set();
-  for (const section of value.sections || []) {
-    if (!section?.id || sectionIds.has(section.id))
-      errors.push(`Invalid or duplicate section id: ${section?.id || ""}`);
-    sectionIds.add(section?.id);
-    if (!section.toggleId || !section.bodyId || !section.label)
-      errors.push(`Section ${section.id || ""} is incomplete.`);
-  }
-
-  const actionIds = new Set();
-  const commands = new Set();
-  const behaviors = new Set([
-    "command",
-    "equipment-role-dialog",
-    "oxidizer-import-preview",
-    "publication-review-dialog",
-    "quality-preview",
-    "sequence",
-  ]);
-  for (const action of value.actions || []) {
-    if (!action?.id || actionIds.has(action.id))
-      errors.push(`Invalid or duplicate action id: ${action?.id || ""}`);
-    actionIds.add(action?.id);
-    if (!sectionIds.has(action?.section))
-      errors.push(
-        `Unknown section for action ${action?.id || ""}: ${action?.section || ""}`,
-      );
-    if (
-      !action?.buttonId ||
-      !action?.label ||
-      !action?.description ||
-      !action?.order
-    ) {
-      errors.push(`Action ${action?.id || ""} is incomplete.`);
-    }
-    if (!behaviors.has(action?.behavior))
-      errors.push(
-        `Unknown behavior for action ${action?.id || ""}: ${action?.behavior || ""}`,
-      );
-    if (
-      action?.behavior === "command" ||
-      action?.behavior === "quality-preview"
-    ) {
-      if (!action.command || commands.has(action.command))
-        errors.push(`Invalid or duplicate command: ${action.command || ""}`);
-      commands.add(action.command);
-    }
-    for (const arg of [
-      ...(action?.args || []),
-      ...(action?.sequenceArgs || []),
-    ]) {
-      if (!arg?.flag || (!arg.inputId && typeof arg.value !== "string")) {
-        errors.push(`Invalid argument mapping for action ${action?.id || ""}.`);
+  if (!value || typeof value !== "object") return ["UI definition must be an object."];
+  if (value.schemaVersion !== 2) errors.push("schemaVersion must be 2.");
+  if (!value.application?.title || !value.application?.idleStatus) errors.push("application title and idleStatus are required.");
+  if (!Array.isArray(value.modules) || value.modules.length === 0) errors.push("modules must be a non-empty array.");
+  const moduleIds = new Set();
+  for (const module of value.modules || []) {
+    const context = `module ${module?.id || ""}`;
+    if (!module?.id || moduleIds.has(module.id)) errors.push(`Invalid or duplicate module id: ${module?.id || ""}`);
+    moduleIds.add(module?.id);
+    if (!Number.isInteger(module?.schemaVersion) || module.schemaVersion < 1 || !module?.label) errors.push(`${context} is incomplete.`);
+    const nodeIds = new Set();
+    const settingIds = new Set();
+    const visit = (node, parent = context) => {
+      if (!node?.id || nodeIds.has(node.id)) errors.push(`${parent}: invalid or duplicate node id ${node?.id || ""}`);
+      nodeIds.add(node?.id);
+      if (node?.type === "group") {
+        if (!node.label || !Array.isArray(node.children)) errors.push(`${parent}/${node?.id || ""}: group is incomplete.`);
+        for (const child of node.children || []) visit(child, `${parent}/${node.id}`);
+        return;
       }
+      if (!settingTypes.has(node?.type)) errors.push(`${parent}/${node?.id || ""}: invalid setting type ${node?.type || ""}`);
+      if (!node?.label) errors.push(`${parent}/${node?.id || ""}: label is required.`);
+      settingIds.add(node?.id);
+    };
+    for (const node of module?.settings || []) visit(node);
+    for (const setting of (() => {
+      const rows = [];
+      const collect = node => node.type === "group" ? (node.children || []).forEach(collect) : rows.push(node);
+      (module?.settings || []).forEach(collect);
+      return rows;
+    })()) {
+      validateCondition(setting.visibleWhen, settingIds, `${context}/${setting.id}`, errors);
+      validateCondition(setting.enabledWhen, settingIds, `${context}/${setting.id}`, errors);
     }
-  }
-
-  if (
-    !Array.isArray(value.recommendedSequence) ||
-    value.recommendedSequence.length === 0
-  ) {
-    errors.push("recommendedSequence must be a non-empty array.");
-  } else {
-    for (const command of value.recommendedSequence) {
-      if (!commands.has(command))
-        errors.push(`Unknown recommended command: ${command}`);
+    const groupIds = new Set((module?.actionGroups || []).map(group => group.id));
+    const actionIds = new Set();
+    for (const action of module?.actions || []) {
+      if (!action?.id || actionIds.has(action.id)) errors.push(`${context}: invalid or duplicate action id ${action?.id || ""}`);
+      actionIds.add(action?.id);
+      if (!action?.label || !action?.description || !groupIds.has(action?.group)) errors.push(`${context}/${action?.id || ""}: action is incomplete.`);
+      if (!action.command && !Array.isArray(action.sequence)) errors.push(`${context}/${action?.id || ""}: command or sequence is required.`);
+      for (const settingId of action?.settingIds || []) if (!settingIds.has(settingId)) errors.push(`${context}/${action.id}: unknown setting ${settingId}`);
+      for (const mapping of action?.args || []) {
+        if (!mapping?.flag || !settingIds.has(mapping?.settingId)) errors.push(`${context}/${action.id}: invalid argument mapping.`);
+      }
+      if (action?.resultView && action.resultView.type !== "quality-preview") errors.push(`${context}/${action.id}: invalid result view.`);
+      validateCondition(action?.enabledWhen, settingIds, `${context}/${action.id}`, errors);
+    }
+    for (const action of module?.actions || []) {
+      for (const childId of action?.sequence || []) if (!actionIds.has(childId)) errors.push(`${context}/${action.id}: unknown sequence action ${childId}`);
     }
   }
   return errors;
@@ -448,26 +246,11 @@ export function validatePipelineUiDefinition(value) {
 
 export function getPipelineUiDefinition() {
   const copy = JSON.parse(JSON.stringify(definition));
-  const activeActionIds = new Set([
-    "lodestone-snapshot",
-    "build-lodestone-candidate",
-    "lodestone-candidate-icons",
-    "publish-lodestone-candidate",
-    "run-all",
-  ]);
-  copy.actions = copy.actions.filter((action) => activeActionIds.has(action.id));
-  copy.sections = copy.sections.filter((section) => section.id === "data");
   const errors = validatePipelineUiDefinition(copy);
-  if (errors.length)
-    throw new Error(
-      `Invalid pipeline UI definition:\n- ${errors.join("\n- ")}`,
-    );
+  if (errors.length) throw new Error(`Invalid pipeline UI definition:\n- ${errors.join("\n- ")}`);
   return copy;
 }
 
-if (
-  process.argv[1] &&
-  pathToFileURL(process.argv[1]).href === import.meta.url
-) {
+if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
   process.stdout.write(`${JSON.stringify(getPipelineUiDefinition())}\n`);
 }

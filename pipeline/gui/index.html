@@ -16,206 +16,18 @@
   </header>
 
   <main>
-    <aside class="side-panel">
-      <section class="panel-section collapsible-section">
-        <button id="csvToggle" class="section-toggle" type="button" aria-expanded="true">
-          <span class="section-toggle-mark" aria-hidden="true">▼</span>
-          <span id="csvToggleLabel"></span>
-        </button>
-        <div id="csvBody" class="collapsible-body">
-        <h3 class="workflow-heading" hidden>旧CSV準備</h3>
-        <div class="source-settings" hidden>
-          <label class="field">
-            <span>OxidizerまたはCSVフォルダー</span>
-            <span class="path-field">
-              <input id="oxidizerSourceInput" type="text" value="" placeholder="C:\xiv-data-oxidizer">
-              <button id="selectOxidizerSourceBtn" type="button">参照</button>
-            </span>
-          </label>
-          <label class="field">
-            <span>FF14インストール先</span>
-            <span class="path-field">
-              <input id="ffxivGamePathInput" type="text" value="" placeholder="C:\Program Files (x86)\Square Enix\FINAL FANTASY XIV - A Realm Reborn">
-              <button id="selectFfxivGamePathBtn" type="button">参照</button>
-            </span>
-          </label>
-          <label class="field inline-field">
-            <span>更新なしでも再生成</span>
-            <input id="oxidizerForceInput" type="checkbox">
-          </label>
-        </div>
-        <div class="action-item" data-step="oxidizer-environment" hidden>
-          <span class="order-label"></span>
-          <button id="oxidizerEnvironmentBtn" type="button"></button>
-          <p></p>
-          <span class="action-status">○ 未実行</span>
-        </div>
-        <div class="action-item" data-step="oxidizer-check" hidden>
-          <span class="order-label"></span>
-          <button id="oxidizerCheckBtn" type="button"></button>
-          <p></p>
-          <span class="action-status">○ 未実行</span>
-        </div>
-        <div class="action-item" data-step="oxidizer-refresh" hidden>
-          <span class="order-label"></span>
-          <button id="oxidizerRefreshBtn" type="button"></button>
-          <p></p>
-          <span class="action-status">○ 未実行</span>
-        </div>
-        <div class="action-item" data-step="oxidizer-import-preview" hidden>
-          <span class="order-label"></span>
-          <button id="oxidizerImportPreviewBtn" type="button"></button>
-          <p></p>
-          <span class="action-status">○ 未実行</span>
-        </div>
-        <div class="action-item" data-step="oxidizer-import" hidden>
-          <span class="order-label"></span>
-          <button id="oxidizerImportBtn" type="button"></button>
-          <p></p>
-          <span class="action-status">○ 未実行</span>
-        </div>
-        <div class="action-item" data-step="check-updates" hidden>
-          <span class="order-label"></span>
-          <button id="checkUpdatesBtn" type="button"></button>
-          <p></p>
-          <span class="action-status">○ 未実行</span>
-        </div>
-        <dl class="meta-list" hidden>
-          <div><dt>前回チェック</dt><dd id="lastChecked">-</dd></div>
-        </dl>
-        <div class="action-item" data-step="download-csv" hidden>
-          <span class="order-label"></span>
-          <button id="downloadCsvBtn" type="button"></button>
-          <p></p>
-          <span class="action-status">○ 未実行</span>
-        </div>
-        <h3 class="workflow-heading">公開処理</h3>
-        <div class="action-item" data-step="lodestone-snapshot">
-          <span class="order-label"></span>
-          <button id="lodestoneSnapshotBtn" type="button"></button>
-          <label class="field quality-field">
-            <span>アクセス間隔(ms)</span>
-            <input id="lodestoneDelayInput" type="number" min="0" max="60000" step="100" value="100">
-          </label>
-          <p></p><span class="action-status">○ 未実行</span>
-        </div>
-        <div class="action-item" data-step="build-lodestone-candidate">
-          <span class="order-label"></span><button id="buildLodestoneCandidateBtn" type="button"></button>
-          <p></p><span class="action-status">○ 未実行</span>
-        </div>
-        <div class="action-item" data-step="lodestone-candidate-icons">
-          <span class="order-label"></span><button id="lodestoneCandidateIconsBtn" type="button"></button>
-          <p></p><span class="action-status">○ 未実行</span>
-        </div>
-        <div class="action-item" data-step="publish-lodestone-candidate">
-          <span class="order-label"></span><button id="publishLodestoneCandidateBtn" type="button"></button>
-          <p></p><span class="action-status">○ 未実行</span>
-        </div>
-        <div id="workflowGuide" class="workflow-guide">工程状態を確認中...</div>
-        <div class="action-item" data-step="validate-csv" hidden>
-          <span class="order-label"></span>
-          <button id="validateCsvBtn" type="button"></button>
-          <p></p>
-          <span class="action-status">○ 未実行</span>
-        </div>
-        <div class="action-item" data-step="build" hidden>
-          <span class="order-label"></span>
-          <button id="buildBtn" type="button"></button>
-          <p></p>
-          <span class="action-status">○ 未実行</span>
-        </div>
-        <div class="action-item" data-step="publish-lodestone-info" hidden>
-          <span class="order-label"></span>
-          <button id="lodestoneInfoBtn" type="button"></button>
-          <label class="field quality-field">
-            <span>アクセス間隔(ms)</span>
-            <input type="number" value="100">
-          </label>
-          <label class="field quality-field">
-            <span>強制再取得</span>
-            <input id="lodestoneForceInput" type="checkbox">
-          </label>
-          <p></p>
-          <span class="action-status">○ 未実行</span>
-        </div>
-        <div class="action-item" data-step="equipment-role-groups" hidden>
-          <span class="order-label"></span>
-          <button id="equipmentRoleBtn" type="button"></button>
-          <p></p>
-          <span class="action-status">○ 未実行</span>
-          <span id="equipmentRoleCount" class="equipment-role-count">指定状況を読み込み中...</span>
-        </div>
-        <div class="action-item" data-step="publication-review" hidden>
-          <span class="order-label"></span>
-          <button id="publicationReviewBtn" type="button"></button>
-          <p></p>
-          <span class="action-status">○ 未実行</span>
-        </div>
-        <div class="action-item" data-step="publish" hidden>
-          <span class="order-label"></span>
-          <button id="publishBtn" type="button"></button>
-          <p></p>
-          <span class="action-status">○ 未実行</span>
-        </div>
-        <div class="action-item" data-action-id="run-all">
-          <span class="order-label"></span>
-          <button id="runBtn" type="button"></button>
-          <p></p>
-        </div>
-        </div>
-      </section>
-
-      <section class="panel-section collapsible-section" hidden>
-        <button id="buildToggle" class="section-toggle" type="button" aria-expanded="false">
-          <span class="section-toggle-mark" aria-hidden="true">▶</span>
-          <span id="buildToggleLabel"></span>
-        </button>
-        <div id="buildBody" class="collapsible-body" hidden>
-        <div class="action-item" data-step="icons">
-          <span class="order-label"></span>
-          <button id="iconsBtn" type="button"></button>
-          <label class="field quality-field">
-            <span>Quality</span>
-            <input id="qualityInput" type="number" min="1" max="100" step="1" value="80">
-          </label>
-          <label class="field quality-field">
-            <span>生成サイズ(px)</span>
-            <input id="iconSizeInput" type="number" min="1" max="512" step="1" value="80">
-          </label>
-          <label class="field quality-field">
-            <span>アクセス間隔(ms)</span>
-            <input id="iconDelayInput" type="number" min="0" max="60000" step="100" value="500">
-          </label>
-          <p></p>
-          <span class="action-status">○ 未実行</span>
-        </div>
-        <div class="action-item" data-step="verify">
-          <span class="order-label"></span>
-          <button id="verifyBtn" type="button"></button>
-          <p></p>
-          <span class="action-status">○ 未実行</span>
-        </div>
-        </div>
-      </section>
-
-      <section class="panel-section collapsible-section" hidden>
-        <button id="iconQualityToggle" class="section-toggle" type="button" aria-expanded="false">
-          <span class="section-toggle-mark" aria-hidden="true">▶</span>
-          <span id="iconQualityToggleLabel"></span>
-        </button>
-        <div id="iconQualityBody" class="collapsible-body" hidden>
-        <div class="action-item" data-step="tmp-quality-preview">
-          <span class="order-label"></span>
-          <button id="previewBtn" type="button"></button>
-          <label class="field quality-field">
-            <span>プレビュー生成サイズ(px)</span>
-            <input id="previewSizeInput" type="number" min="1" max="512" step="1" value="80">
-          </label>
-          <p></p>
-          <span class="action-status">○ 未実行</span>
-        </div>
-        </div>
-      </section>
+    <aside id="configurationPanel" class="side-panel" aria-label="パイプライン設定">
+      <label id="moduleSelectorField" class="field module-selector" hidden>
+        <span>モジュール</span>
+        <select id="moduleSelector"></select>
+      </label>
+      <section id="moduleSummary" class="module-summary"></section>
+      <div id="settingsRoot" class="settings-root"></div>
+      <div class="settings-tools">
+        <button id="resetSettingsBtn" type="button"></button>
+      </div>
+      <div id="settingsErrors" class="settings-errors" role="alert" hidden></div>
+      <div id="actionsRoot" class="actions-root"></div>
     </aside>
 
     <section class="work-panel">
@@ -253,7 +65,7 @@
         <div class="preview-tools">
           <button id="previewScale2" type="button">2x</button>
           <button id="previewScale3" type="button">3x</button>
-          <button id="previewThemeBtn" type="button">light</button>
+          <button id="previewThemeBtn" type="button">背景切替</button>
           <button id="previewCloseBtn" type="button"></button>
         </div>
       </header>
@@ -268,70 +80,6 @@
       <div class="modal-actions">
         <button id="confirmOkBtn" class="primary" type="button"></button>
         <button id="confirmCancelBtn" type="button"></button>
-      </div>
-    </section>
-  </div>
-
-  <div id="equipmentRoleOverlay" class="modal-overlay equipment-role-overlay" aria-hidden="true">
-    <section class="modal equipment-role-modal" role="dialog" aria-modal="true" aria-labelledby="equipmentRoleTitle">
-      <header class="equipment-role-header">
-        <div>
-          <h2 id="equipmentRoleTitle"></h2>
-          <p id="equipmentRoleSummary">読み込み中...</p>
-        </div>
-        <button id="equipmentRoleCloseBtn" type="button"></button>
-      </header>
-      <div id="equipmentRoleList" class="equipment-role-list"></div>
-      <div class="modal-actions">
-        <button id="equipmentRoleSaveBtn" class="primary" type="button"></button>
-      </div>
-    </section>
-  </div>
-
-  <div id="publicationReviewOverlay" class="modal-overlay publication-review-overlay" aria-hidden="true">
-    <section class="modal publication-review-modal" role="dialog" aria-modal="true" aria-labelledby="publicationReviewTitle">
-      <header class="equipment-role-header">
-        <div>
-          <h2 id="publicationReviewTitle">公式公開判定</h2>
-          <p id="publicationReviewSummary">読み込み中...</p>
-        </div>
-        <button id="publicationReviewCloseBtn" type="button">閉じる</button>
-      </header>
-      <div id="publicationReviewList" class="publication-review-list"></div>
-      <div class="modal-actions">
-        <button id="publicationReviewSaveBtn" class="primary" type="button">保存</button>
-      </div>
-    </section>
-  </div>
-
-  <div id="oxidizerDiffOverlay" class="modal-overlay oxidizer-diff-overlay" aria-hidden="true">
-    <section class="modal oxidizer-diff-modal" role="dialog" aria-modal="true" aria-labelledby="oxidizerDiffTitle">
-      <header class="equipment-role-header">
-        <div>
-          <h2 id="oxidizerDiffTitle">Oxidizer CSV差分確認</h2>
-          <p id="oxidizerDiffSummary">読み込み中...</p>
-        </div>
-        <button id="oxidizerDiffCloseBtn" type="button">閉じる</button>
-      </header>
-      <div id="oxidizerDiffList" class="oxidizer-diff-list"></div>
-      <div class="modal-actions">
-        <button id="oxidizerDiffLodestoneBtn" type="button">Lodestone事前確認</button>
-        <button id="oxidizerDiffImportBtn" class="primary" type="button">CSVをローカル反映</button>
-      </div>
-    </section>
-  </div>
-
-  <div id="postImportOverlay" class="modal-overlay post-import-overlay" aria-hidden="true">
-    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="postImportTitle">
-      <h2 id="postImportTitle">CSVのローカル反映が完了しました</h2>
-      <p>
-        次は「公開工程を続行」で、CSV検証、公開候補生成、Lodestone情報反映、
-        公開可能なアイコン生成、公開反映を順番に実行します。
-        Lodestone未確認項目は公開されません。
-      </p>
-      <div class="modal-actions">
-        <button id="postImportRunAllBtn" class="primary" type="button">次へ：公開工程を続行</button>
-        <button id="postImportCloseBtn" type="button">あとで行う</button>
       </div>
     </section>
   </div>

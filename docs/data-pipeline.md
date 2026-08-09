@@ -27,16 +27,20 @@ The first item in the descending Lodestone item list receives the total item cou
 
 Recipe-list metadata is checked separately. Candidate generation uses the saved recipe list and verified Lodestone recipe-detail cache.
 
+The snapshot step caches every recipe-detail page. During candidate generation, an item that is not present in the current public document is recognized as new and its Lodestone item-detail page is read to populate EX, equipment, and unconditional shop data. No alternate data source is used.
+
 ## GUI and CLI workflow
 
-The GUI exposes these four actions and the same sequence as a single combined run:
+`pipeline/tool/pipeline-ui-definition.mjs` is the single source of truth for GUI modules, nested setting groups, accordions, and action groups. The renderer builds those controls dynamically while progress, cancellation, and logs remain fixed application-level functions. The GUI exposes these four actions and the same sequence as a single combined run:
 
 ```powershell
 node pipeline/tool/pipeline-tool.mjs lodestone-snapshot --delay 100
-node pipeline/tool/pipeline-tool.mjs build-lodestone-candidate
+node pipeline/tool/pipeline-tool.mjs build-lodestone-candidate --delay 100
 node pipeline/tool/pipeline-tool.mjs lodestone-candidate-icons --delay 100 --quality 80 --size 80
 node pipeline/tool/pipeline-tool.mjs publish-lodestone-candidate
 ```
+
+The image settings group also exposes an in-GUI comparison preview. It re-encodes deterministic representative Lodestone PNG samples at the selected size and quality without modifying public data. The GUI log keeps every received line, batches only high-frequency rendering, and follows new output only while the viewer is already at the bottom.
 
 Candidate files and downloaded source caches remain local. Hand-maintained exchange-currency images are protected under the local-only `pipeline/input/manual-item-icons/` directory. With that input present, the complete public icon directory can be regenerated from an empty output directory by the image step; listed items are read from the saved source cache or fetched sequentially when absent.
 

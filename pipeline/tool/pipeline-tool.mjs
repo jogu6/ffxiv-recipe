@@ -2146,6 +2146,21 @@ export function equipmentRoleSummary({
   return { total: groups.length, selected, unselected: groups.length - selected };
 }
 
+export async function cacheLodestoneRecipeDetails(recipes, {
+  fetchText = (url, delayMs) => fetchCachedLodestoneText(url, delayMs),
+  delayMs = defaultLodestoneInfoDelayMs,
+  onProgress = () => {}
+} = {}) {
+  if (!Array.isArray(recipes)) throw new TypeError('Lodestoneレシピ詳細取得にはレシピ配列が必要です');
+  for (const [index, recipe] of recipes.entries()) {
+    assertNotCancelled();
+    if (!recipe?.DetailPath) throw new Error(`Lodestoneレシピ詳細パスがありません: ${index + 1}`);
+    await fetchText(`${LODESTONE_BASE_URL}${recipe.DetailPath}`, delayMs);
+    onProgress({ completed: index + 1, total: recipes.length, recipe });
+  }
+  return { total: recipes.length };
+}
+
 export function extractLodestoneRecipePaths(detailHtml) {
   const source = String(detailHtml || '');
   const start = source.indexOf('このアイテムの製作手帳');
@@ -2163,6 +2178,9 @@ export async function refreshLodestoneSourceSnapshot({
   delayMs = defaultLodestoneInfoDelayMs,
   target = lodestoneSourceSnapshotPath
 } = {}) {
+  clearCancelRequest();
+  cancellationEnabled = true;
+  try {
   const delay = Math.max(0, Number(delayMs) || 0);
   const requestSequentially = createSequentialRequestQueue({
     delayMs: delay,
@@ -2202,6 +2220,13 @@ export async function refreshLodestoneSourceSnapshot({
       if (page === 1 || page === pages || page % 25 === 0) log(`製作手帳一覧 ${page}/${pages}`);
     }
   });
+  log(`Lodestoneレシピ詳細を確認します: ${recipes.entries.length}件`);
+  await cacheLodestoneRecipeDetails(recipes.entries, {
+    delayMs: delay,
+    onProgress: ({ completed, total }) => {
+      if (completed % 100 === 0 || completed === total) log(`レシピ詳細 ${completed}/${total}`);
+    }
+  });
   if (items.version !== recipes.version) {
     throw new Error(`LodestoneのVersionが一覧間で一致しません: item=${items.version} recipe=${recipes.version}`);
   }
@@ -2225,6 +2250,16 @@ export async function refreshLodestoneSourceSnapshot({
   writeJsonAtomic(target, snapshot);
   log(`Lodestone全一覧を保存しました: item=${snapshot.ItemCount} recipe=${snapshot.RecipeCount} Version=${snapshot.Version}`);
   return snapshot;
+  } finally {
+    cancellationEnabled = false;
+    if (lodestoneShopCacheStore) {
+      try {
+        lodestoneShopCacheStore.close();
+      } finally {
+        lodestoneShopCacheStore = null;
+      }
+    }
+  }
 }
 
 export function extractLodestoneCraftInfo(recipeHtml) {
@@ -3859,48 +3894,76 @@ async function getPreviewPngBlob(entry, iconGroups = iconGroupsByIconFile(readJs
   return fs.readFileSync(png.path);
 }
 
-export async function tmpQualityPreview({ sampleCount = defaultPreviewSampleCount, force = false, size = 80 } = {}) {
+export async function tmpQualityPreview({
+  sampleCount = defaultPreviewSampleCount,
+  force = false,
+  size = 80,
+  quality = defaultIconQuality,
+  delayMs = defaultLodestoneInfoDelayMs,
+  itemJsonPath = publicItemJsonPath,
+  snapshotPath = lodestoneSourceSnapshotPath,
+  previewRoot = tmpPreviewRoot,
+  request = url => fetch(url, { headers: { 'user-agent': 'ffxiv-recipe-icon-preview/1.0' } })
+} = {}) {
   const iconSize = Number.isFinite(size) && size > 0 ? Math.floor(size) : 80;
-  const iconGroups = iconGroupsByIconFile(readJson(publicItemJsonPath, []));
-  const qualities = [50, 60, 70, 80];
-  const previewRoot = tmpPreviewRoot;
+  const selectedQuality = Number.isFinite(quality) && quality >= 1 && quality <= 100 ? Math.floor(quality) : defaultIconQuality;
+  const qualities = [...new Set([50, 60, 70, 80, selectedQuality])].sort((left, right) => left - right);
   const sampleRoot = path.join(previewRoot, 'samples');
-  const manifest = { generator: 'lodestone-sharp-preview-v3', itemJsonSha256: sha256File(publicItemJsonPath), qualities, sampleCount, size: iconSize };
-  const previousManifest = readJson(tmpPreviewManifestPath, null);
+  const previewDataPath = path.join(previewRoot, 'preview-data.json');
+  const previewManifestPath = path.join(previewRoot, 'manifest.json');
+  const document = readJson(itemJsonPath, null);
+  const snapshot = readJson(snapshotPath, null);
+  if (!Array.isArray(document?.Items)) throw new Error('公開Item.jsonを読み込めません');
+  if (!Array.isArray(snapshot?.Items)) throw new Error('Lodestoneスナップショットがありません。先に全データ取得を実行してください');
+  const sourceByName = new Map(snapshot.Items.map(item => [item.Name, item]));
+  const eligible = document.Items.filter(item => item?.Name && item?.IconFile && sourceByName.get(item.Name)?.IconUrl);
+  if (!eligible.length) throw new Error('プレビュー可能なLodestone画像がありません');
+  const samples = deterministicShuffle(eligible).slice(0, Math.min(sampleCount, eligible.length));
+  const manifest = {
+    generator: 'lodestone-name-preview-v1',
+    itemJsonSha256: sha256File(itemJsonPath),
+    qualities,
+    selectedQuality,
+    sampleCount: samples.length,
+    size: iconSize
+  };
+  const previousManifest = readJson(previewManifestPath, null);
   const reusable = !force
     && previousManifest
     && fs.existsSync(path.join(previewRoot, 'index.html'))
-    && fs.existsSync(tmpPreviewDataPath)
+    && fs.existsSync(previewDataPath)
     && previousManifest.generator === manifest.generator
     && previousManifest.itemJsonSha256 === manifest.itemJsonSha256
     && previousManifest.sampleCount === manifest.sampleCount
     && previousManifest.size === manifest.size
+    && previousManifest.selectedQuality === manifest.selectedQuality
     && JSON.stringify(previousManifest.qualities) === JSON.stringify(manifest.qualities);
   if (reusable) {
     log(`比較 1/1 既存の比較ページを使用します`);
     log(`作成済み ${path.relative(repositoryRoot, path.join(previewRoot, 'index.html'))}`);
     return { reused: true };
   }
-  log(`比較 0/${sampleCount} サンプル選定中`);
+  log(`比較 0/${samples.length} Lodestone画像を準備中`);
   if (fs.existsSync(previewRoot)) fs.rmSync(previewRoot, { recursive: true, force: true });
   ensureDir(sampleRoot);
-
-  const samples = await selectPreviewSamples(sampleCount, iconGroups);
+  const requestSequentially = createSequentialRequestQueue({ delayMs, request });
   const rows = [];
   let lastProgressLog = 0;
 
   for (let i = 0; i < samples.length; i += 1) {
-    const sample = samples[i];
-    const pngFile = sample.file;
-    const iconName = path.basename(pngFile, '.png');
+    const item = samples[i];
+    const source = sourceByName.get(item.Name);
+    const iconName = itemIconNameHash(item.Name);
     const pngOut = path.join(sampleRoot, `${iconName}.png`);
-    let pngBytes;
-    try {
-      pngBytes = await getPreviewPngBlob(sample, iconGroups);
-    } catch (error) {
-      log(`比較 ${i + 1}/${samples.length} スキップ ${path.basename(pngFile)}: ${error.message}`);
-      continue;
+    const cachePath = path.join(lodestonePngIconCacheRoot, `${source.LodestoneKey}.png`);
+    if (!fs.existsSync(cachePath)) {
+      const response = await requestSequentially(source.IconUrl);
+      if (!response.ok) throw new Error(`Lodestone画像取得に失敗しました: ${item.Name} HTTP ${response.status}`);
+      if (!(response.headers.get('content-type') || '').includes('image/png')) throw new Error(`Lodestone画像がPNGではありません: ${item.Name}`);
+      ensureDir(lodestonePngIconCacheRoot);
+      writeBytesAtomic(cachePath, Buffer.from(await response.arrayBuffer()));
     }
+    const pngBytes = fs.readFileSync(cachePath);
     writeBytesAtomic(pngOut, pngBytes);
     const pngMeta = await sharp(pngOut).metadata();
     const pngSize = pngBytes.length;
@@ -3913,7 +3976,8 @@ export async function tmpQualityPreview({ sampleCount = defaultPreviewSampleCoun
       variants.push({
         quality,
         file: `samples/${iconName}-q${quality}.webp`,
-        size: fs.statSync(webpOut).size
+        size: fs.statSync(webpOut).size,
+        selected: quality === selectedQuality
       });
     }
     const now = Date.now();
@@ -3923,20 +3987,20 @@ export async function tmpQualityPreview({ sampleCount = defaultPreviewSampleCoun
     }
     rows.push({
       iconName,
+      itemName: item.Name,
       pngFile: `samples/${iconName}.png`,
       pngSize,
       pngWidth: pngMeta.width,
       pngHeight: pngMeta.height,
       variants,
-      category: sample.category,
-      background: sample.background,
-      ratio: sample.ratio
+      category: classifyItemCategory([item]),
+      background: await classifyIconBackground(pngBytes)
     });
   }
 
   writeTextAtomic(path.join(previewRoot, 'index.html'), renderTmpQualityPreviewHtml(rows));
-  writeJsonAtomic(tmpPreviewDataPath, rows);
-  writeJsonAtomic(tmpPreviewManifestPath, { ...manifest, generatedAt: nowIso() });
+  writeJsonAtomic(previewDataPath, rows);
+  writeJsonAtomic(previewManifestPath, { ...manifest, generatedAt: nowIso() });
   log(`作成しました ${path.relative(repositoryRoot, path.join(previewRoot, 'index.html'))}`);
   return { reused: false };
 }
@@ -3947,7 +4011,7 @@ function renderTmpQualityPreviewHtml(rows) {
       `<div class="cell"><div class="swatch"><img src="${escapeHtml(row.pngFile)}" alt=""></div><b>PNG</b><span>元画像 ${escapeHtml(formatImagePixels(row.pngWidth, row.pngHeight))}</span><span>${formatBytes(row.pngSize)}</span></div>`,
       ...row.variants.map(variant => `<div class="cell"><div class="swatch"><img src="${escapeHtml(variant.file)}" alt=""></div><b>q${variant.quality}</b><span>${formatBytes(variant.size)} / ${Math.round((variant.size / row.pngSize) * 100)}%</span></div>`)
     ].join('');
-    return `<section class="row"><h2>${escapeHtml(row.iconName)}</h2><div class="tags"><span>${escapeHtml(row.category)}</span><span>${escapeHtml(row.background)}</span></div><div class="grid">${cells}</div></section>`;
+    return `<section class="row"><h2>${escapeHtml(row.itemName || row.iconName)}</h2><div class="tags"><span>${escapeHtml(row.category)}</span><span>${escapeHtml(row.background)}</span></div><div class="grid">${cells}</div></section>`;
   }).join('\n');
   return `<!doctype html>
 <html lang="ja">
@@ -4027,11 +4091,38 @@ function readCachedLodestoneRecipeHtml(recipePath) {
   return html;
 }
 
-export function buildLodestoneCandidate({
+export async function enrichNewLodestoneCandidateItem(item, source, {
+  delayMs = defaultLodestoneInfoDelayMs,
+  fetchText = fetchCachedLodestoneText,
+  filterShops = filterUnconditionalShops
+} = {}) {
+  const detailHtml = decodeHtml(await fetchText(`${LODESTONE_BASE_URL}${source.DetailPath}`, delayMs));
+  const detailName = extractLodestoneDetailItemName(detailHtml);
+  if (normalizeLodestoneItemName(detailName) !== normalizeLodestoneItemName(item.Name)) {
+    throw new Error(`Lodestone詳細名が一致しません: ${item.Name} / ${detailName || '取得不可'}`);
+  }
+  const isEx = extractLodestoneIsEx(detailHtml);
+  if (isEx == null) throw new Error(`Lodestoneアイテム見出しからEX情報を取得できません: ${item.Name}`);
+  item.IsEx = isEx;
+  const equipmentInfo = extractLodestoneEquipmentInfo(detailHtml);
+  if (equipmentInfo) item.EquipmentInfo = equipmentInfo;
+  const shopInfo = extractLodestoneShopInfo(detailHtml);
+  if (shopInfo) {
+    const shops = await filterShops(shopInfo.shops, delayMs);
+    if (shops.length > 0) item.ShopInfo = { price: shopInfo.price, shops };
+  }
+  return item;
+}
+
+export async function buildLodestoneCandidate({
   snapshotPath = lodestoneSourceSnapshotPath,
   target = publicCandidatePath,
-  legacyTarget = legacyItemIdCandidatePath
+  legacyTarget = legacyItemIdCandidatePath,
+  delayMs = defaultLodestoneInfoDelayMs
 } = {}) {
+  clearCancelRequest();
+  cancellationEnabled = true;
+  try {
   const snapshot = readJson(snapshotPath, null);
   if (!snapshot || !Array.isArray(snapshot.Items) || !Array.isArray(snapshot.Recipes)) {
     throw new Error('Lodestoneスナップショットがありません。先に lodestone-snapshot を実行してください');
@@ -4076,6 +4167,7 @@ export function buildLodestoneCandidate({
   const usedNames = new Set();
   log(`Lodestoneレシピキャッシュから候補を生成します: ${snapshot.Recipes.length}件`);
   for (const [index, entry] of snapshot.Recipes.entries()) {
+    assertNotCancelled();
     if (!listedByName.has(entry.Name)) throw new Error(`製作手帳の完成品がアイテム一覧にありません: ${entry.Name}`);
     const parsed = extractLodestoneRecipeData(entry.DetailPath, readCachedLodestoneRecipeHtml(entry.DetailPath), { craftTypeByJob });
     const recipe = {
@@ -4123,6 +4215,16 @@ export function buildLodestoneCandidate({
     });
 
   const regularNames = new Set(items.map(item => item.Name));
+  const newItems = items.filter(item => !existingByName.has(item.Name) && listedByName.has(item.Name));
+  if (newItems.length > 0) log(`新規アイテムのLodestone詳細情報を取得します: ${newItems.length}件`);
+  for (const [index, item] of newItems.entries()) {
+    assertNotCancelled();
+    const source = listedByName.get(item.Name);
+    await enrichNewLodestoneCandidateItem(item, source, { delayMs });
+    if ((index + 1) % 25 === 0 || index + 1 === newItems.length) {
+      log(`新規アイテム詳細 ${index + 1}/${newItems.length}: ${item.Name}`);
+    }
+  }
   for (const currencyName of new Set(tokenRows.map(row => row[1]))) {
     if (regularNames.has(currencyName)) continue;
     const existing = existingByName.get(currencyName);
@@ -4144,6 +4246,16 @@ export function buildLodestoneCandidate({
   writeJsonAtomic(legacyTarget, { SchemaVersion: 1, Items: legacyIds });
   log(`Lodestone候補を保存しました: 通常 ${regularNames.size}件、補助 ${items.length - regularNames.size}件、旧ID ${Object.keys(legacyIds).length}件`);
   return { version: snapshot.Version, items: items.length, regularItems: regularNames.size, legacyIds: Object.keys(legacyIds).length };
+  } finally {
+    cancellationEnabled = false;
+    if (lodestoneShopCacheStore) {
+      try {
+        lodestoneShopCacheStore.close();
+      } finally {
+        lodestoneShopCacheStore = null;
+      }
+    }
+  }
 }
 
 export async function ensureLodestoneCandidateIcons({
@@ -4158,6 +4270,9 @@ export async function ensureLodestoneCandidateIcons({
   existingItemJsonPath = publicItemJsonPath,
   request = url => fetch(url, { headers: { 'user-agent': 'ffxiv-recipe-icon-pipeline/1.0' } })
 } = {}) {
+  clearCancelRequest();
+  cancellationEnabled = true;
+  try {
   const candidate = readJson(candidatePath, null);
   const snapshot = readJson(snapshotPath, null);
   if (!Array.isArray(candidate?.Items) || !Array.isArray(snapshot?.Items)) throw new Error('名前キー候補またはLodestoneスナップショットがありません');
@@ -4179,6 +4294,7 @@ export async function ensureLodestoneCandidateIcons({
   ensureDir(iconsRoot);
   log(`Lodestone候補の画像を名前・内容ハッシュ形式へ整備します: ${candidate.Items.length}件 delay=${delayMs}ms`);
   for (const [index, item] of candidate.Items.entries()) {
+    assertNotCancelled();
     if (!item?.Name) throw new Error(`候補アイテム名がありません: ${index + 1}`);
     const nameHash = itemIconNameHash(item.Name);
     const hashOwner = nameHashOwners.get(nameHash);
@@ -4210,17 +4326,10 @@ export async function ensureLodestoneCandidateIcons({
       let iconUrl = source.IconUrl || '';
       imageSource = 'lodestone';
       if (!iconUrl) {
-        const searchResponse = await requestSequentially(xivapiExactItemSearchUrl(item.Name));
-        if (!searchResponse.ok) throw new Error(`画像検索に失敗しました: ${item.Name} HTTP ${searchResponse.status}`);
-        const match = exactXivapiItemIcon(await searchResponse.json(), item.Name);
-        if (!match) {
-          log(`画像未解決: ${item.Name}（完全一致が0件または複数件）`);
-          delete item.IconFile;
-          withoutImage += 1;
-          continue;
-        }
-        iconUrl = xivapiPngAssetUrl(match.path);
-        imageSource = 'fallback';
+        log(`Lodestone画像未確認: ${item.Name}`);
+        delete item.IconFile;
+        withoutImage += 1;
+        continue;
       }
       const cachePath = path.join(pngCacheRoot, `${source.LodestoneKey}.png`);
       if (!fs.existsSync(cachePath)) {
@@ -4261,6 +4370,9 @@ export async function ensureLodestoneCandidateIcons({
   writeJsonAtomic(candidatePath, candidate);
   log(`候補画像の整備が完了しました: 新規 ${generated}件、再利用 ${reused}件、取得 ${downloaded}件、手動保護 ${manualProtected}件、画像なし ${withoutImage}件`);
   return { generated, reused, downloaded, manualProtected, withoutImage };
+  } finally {
+    cancellationEnabled = false;
+  }
 }
 
 export function validateItemIconAssets(items, { iconsRoot = itemIconsRoot } = {}) {
@@ -4348,6 +4460,8 @@ function printHelp() {
   build-lodestone-candidate  Lodestoneキャッシュと手動データから名前キーの公開候補を生成
   lodestone-candidate-icons [--delay 100] [--quality 80] [--size 80]
                              名前キー候補の不足画像をLodestone優先で逐次取得・生成
+  tmp-quality-preview [--delay 100] [--quality 80] [--size 80]
+                             指定した画像設定を含む比較プレビューを生成
   publish-lodestone-candidate
                              検証済み名前キー候補と旧ID互換JSONを公開データへ反映`);
 }
@@ -4371,13 +4485,21 @@ export async function main(argv = process.argv.slice(2)) {
     return buildLodestoneCandidate({
       snapshotPath: args.snapshot ? path.resolve(String(args.snapshot)) : lodestoneSourceSnapshotPath,
       target: args.target ? path.resolve(String(args.target)) : publicCandidatePath,
-      legacyTarget: args['legacy-target'] ? path.resolve(String(args['legacy-target'])) : legacyItemIdCandidatePath
+      legacyTarget: args['legacy-target'] ? path.resolve(String(args['legacy-target'])) : legacyItemIdCandidatePath,
+      delayMs: Number(args.delay || defaultLodestoneInfoDelayMs)
     });
   }
   if (command === 'lodestone-candidate-icons') {
     return ensureLodestoneCandidateIcons({
       candidatePath: args.target ? path.resolve(String(args.target)) : publicCandidatePath,
       snapshotPath: args.snapshot ? path.resolve(String(args.snapshot)) : lodestoneSourceSnapshotPath,
+      delayMs: Number(args.delay || defaultLodestoneInfoDelayMs),
+      quality: Number(args.quality || defaultIconQuality),
+      size: Number(args.size || 80)
+    });
+  }
+  if (command === 'tmp-quality-preview') {
+    return tmpQualityPreview({
       delayMs: Number(args.delay || defaultLodestoneInfoDelayMs),
       quality: Number(args.quality || defaultIconQuality),
       size: Number(args.size || 80)

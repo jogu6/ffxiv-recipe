@@ -1,4 +1,4 @@
-const DATA_CACHE_VERSION = 'ff14recipe-data-7.55-1cc35ab3';
+const DATA_CACHE_VERSION = 'ff14recipe-data-7.55-6e927534';
 const DATA_FILE = `./data/Item.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 const LEGACY_ITEM_IDS_FILE = `./data/legacy-item-ids.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 const TIPS_FILE = './data/tips.md';

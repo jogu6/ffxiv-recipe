@@ -33,6 +33,27 @@ fn unix_millis() -> u128 {
         .as_millis()
 }
 
+fn jst_timestamp() -> String {
+    let millis = unix_millis() as i64;
+    let seconds = millis.div_euclid(1000) + 9 * 60 * 60;
+    let days = seconds.div_euclid(86_400);
+    let day_seconds = seconds.rem_euclid(86_400);
+    let shifted = days + 719_468;
+    let era = shifted.div_euclid(146_097);
+    let day_of_era = shifted - era * 146_097;
+    let year_of_era = (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let mut year = year_of_era + era * 400;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_prime = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_prime + 2) / 5 + 1;
+    let month = month_prime + if month_prime < 10 { 3 } else { -9 };
+    year += if month <= 2 { 1 } else { 0 };
+    let hour = day_seconds / 3_600;
+    let minute = day_seconds % 3_600 / 60;
+    let second = day_seconds % 60;
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}+09:00")
+}
+
 fn create_run_logs(root: &std::path::Path, command: &str) -> Result<Arc<Mutex<RunLogs>>, String> {
     let logs_root = root.join("pipeline").join("logs");
     let runs_root = logs_root.join("runs");
@@ -59,7 +80,7 @@ fn append_run_log(logs: &Arc<Mutex<RunLogs>>, stream: &str, line: &str) {
     let Ok(mut files) = logs.lock() else {
         return;
     };
-    let entry = format!("[{}] [{}] {}\n", unix_millis(), stream, line);
+    let entry = format!("[{}] [{}] {}\n", jst_timestamp(), stream, line);
     let _ = files.run.write_all(entry.as_bytes());
     let _ = files.latest.write_all(entry.as_bytes());
     let _ = files.run.flush();
@@ -233,7 +254,8 @@ async fn run_pipeline_command(
 
 #[tauri::command]
 fn cancel_pipeline_command(process: tauri::State<PipelineProcess>) -> Result<(), String> {
-    stop_pipeline_process(&process)
+    let _ = process;
+    write_cancel_request()
 }
 
 #[tauri::command]
@@ -520,6 +542,36 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
 }
 
 #[tauri::command]
+fn select_file(initial_path: String) -> Result<String, String> {
+    if !cfg!(windows) {
+        return Err("ファイル選択は現在Windows版でのみ利用できます".to_string());
+    }
+    let script = r#"
+Add-Type -AssemblyName System.Windows.Forms
+$dialog = New-Object System.Windows.Forms.OpenFileDialog
+if ($args[0]) {
+  if (Test-Path -LiteralPath $args[0] -PathType Leaf) { $dialog.FileName = $args[0] }
+  elseif (Test-Path -LiteralPath $args[0] -PathType Container) { $dialog.InitialDirectory = $args[0] }
+}
+if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+  [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+  Write-Output $dialog.FileName
+}
+"#;
+    let mut command = Command::new("powershell.exe");
+    command
+        .args(["-NoProfile", "-STA", "-Command", script, initial_path.as_str()])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+    let output = command.output().map_err(|error| error.to_string())?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+#[tauri::command]
 fn open_external_url(url: String) -> Result<(), String> {
     if !url.starts_with("https://jp.finalfantasyxiv.com/lodestone/") {
         return Err("許可されていないURLです".to_string());
@@ -565,7 +617,7 @@ fn main() {
                 let _ = stop_pipeline_process(&process);
             }
         })
-        .invoke_handler(tauri::generate_handler![run_pipeline_command, cancel_pipeline_command, read_pipeline_ui_definition, read_pipeline_workflow_status, read_update_state, read_oxidizer_import_preview, read_quality_preview_state, read_quality_preview, read_equipment_role_groups, read_equipment_role_summary, save_equipment_role_overrides, read_publication_review, save_publication_decisions, open_log_directory, select_directory, open_external_url])
+        .invoke_handler(tauri::generate_handler![run_pipeline_command, cancel_pipeline_command, read_pipeline_ui_definition, read_pipeline_workflow_status, read_update_state, read_oxidizer_import_preview, read_quality_preview_state, read_quality_preview, read_equipment_role_groups, read_equipment_role_summary, save_equipment_role_overrides, save_publication_decisions, read_publication_review, open_log_directory, select_directory, select_file, open_external_url])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
