@@ -1,14 +1,17 @@
 const { expect, test } = require('@playwright/test');
 const { loverWeapons } = require('./fixtures/favorite-share-codes.js');
 const {
+  beginSwipe,
   chooseCustomOption,
   closeSharePlaza,
   dismissInfoDialog,
   dragHandleAfter,
+  endSwipe,
   importFavoriteFromPlaza,
   openApp,
   routeMirageRecipeVariants,
-  searchFor
+  searchFor,
+  swipe
 } = require('./helpers/app.js');
 
 test('current display keeps level 3 while using the enlarged baseline', async ({ page }) => {
@@ -246,6 +249,7 @@ test('all font levels preserve fixed spacing and mobile content width', async ({
     await page.locator('#recipeList .list-name').filter({ hasText: /^バスタードソード$/ }).click();
     const rootSummary = page.locator('#treeContainer .result-root-summary');
     await expect(rootSummary).toBeVisible();
+    if (width <= 600) await page.waitForFunction(() => !document.querySelector('.main')?.swiper?.animating);
 
     for (let level = 1; level <= 10; level += 1) {
       await page.evaluate(value => {
@@ -348,7 +352,7 @@ test('updated app blocks use until the current release notice is accepted', asyn
   const content = page.locator('#releaseNoticeContent');
   await expect(overlay).toHaveClass(/open/);
   await expect(content).toContainText('アイテム画像はクリック/タップで ✔ を On/Off');
-  await expect(content).toContainText('v3.0 リリース');
+  await expect(content).toContainText('v3.01');
   await expect(content).not.toContainText('v2.98 リリース');
   await expect(page.locator('.main')).toHaveJSProperty('inert', true);
   await expect(page.locator('#releaseNoticeOkBtn')).toBeFocused();
@@ -364,7 +368,29 @@ test('updated app blocks use until the current release notice is accepted', asyn
   await expect(page.locator('#searchBox')).toBeFocused();
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem('ff14_acknowledged_release_version')))
-    .toBe('v3.0');
+    .toBe('v3.01');
+});
+
+test('small popup reads the current release heading without a load error', async ({ page }) => {
+  await openApp(page);
+  await page.evaluate(() => {
+    localStorage.setItem('ff14_acknowledged_release_version', 'v3.0');
+    sessionStorage.setItem('ff14_update_reload_pending', '1');
+  });
+
+  const popupPromise = page.waitForEvent('popup');
+  await page.locator('#popupBtn').click();
+  const popup = await popupPromise;
+  await expect.poll(() => popup.evaluate(() => window.innerWidth)).toBe(601);
+  await expect(popup.locator('#releaseNoticeOverlay')).toHaveClass(/open/);
+  await expect(popup.locator('#releaseNoticeContent')).toContainText('v3.01');
+  await expect(popup.locator('#loadStatus')).toHaveText('patch 7.55 対応');
+  await expect(popup.locator('.error-msg')).toHaveCount(0);
+  await popup.locator('#releaseNoticeOkBtn').click();
+  await expect
+    .poll(() => popup.evaluate(() => localStorage.getItem('ff14_acknowledged_release_version')))
+    .toBe('v3.01');
+  await popup.close();
 });
 
 test('tips treats one newline as a line break and keeps indented text in its list item', async ({ page }) => {
@@ -408,7 +434,7 @@ test('hides the popup button when launched as a desktop PWA', async ({ page }) =
   await expect(page.locator('#popupBtn')).toBeHidden();
 });
 
-test('mobile header combines and hides left controls while preserving right-panel navigation', async ({ page }) => {
+test('mobile header keeps the left-panel layout and collapse behavior on every panel', async ({ page }) => {
   await openApp(page, 320, 700);
   await expect(page.locator('#settingsBtn')).toHaveText('⚙');
   await expect(page.locator('#settingsBtn')).toHaveAttribute('aria-label', '共有・データ管理などを開く');
@@ -422,6 +448,11 @@ test('mobile header combines and hides left controls while preserving right-pane
   });
   expect(leftHeaderLayout.sameRow).toBeLessThan(1);
   expect(leftHeaderLayout.overlap).toBeLessThanOrEqual(0);
+  await expect.poll(() => page.evaluate(() => {
+    const title = document.querySelector('.app-title').getBoundingClientRect();
+    const info = document.querySelector('#headerInfo').getBoundingClientRect();
+    return Math.abs(title.top + title.height / 2 - (info.top + info.height / 2));
+  })).toBeLessThan(1);
   await searchFor(page, 'ア');
   await page.evaluate(() => {
     window.__mobileHeaderClassMutations = 0;
@@ -474,18 +505,45 @@ test('mobile header combines and hides left controls while preserving right-pane
 
   await searchFor(page, 'バスタードソード');
   await page.getByText('バスタードソード', { exact: true }).first().click();
-  const navigationHeaderVerticalBudget = await page.evaluate(() => {
-    const header = document.querySelector('header');
-    const style = getComputedStyle(header);
-    return parseFloat(style.rowGap) + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
-  });
-  expect(navigationHeaderVerticalBudget).toBeCloseTo(22, 4);
+  for (let level = 1; level <= 10; level += 1) {
+    await page.locator('html').evaluate((element, selectedLevel) => {
+      element.dataset.fontSizeLevel = String(selectedLevel);
+    }, level);
+    await expect.poll(() => page.evaluate(() => {
+      const header = document.querySelector('header').getBoundingClientRect();
+      const title = document.querySelector('.app-title').getBoundingClientRect();
+      return title.top - header.top;
+    })).toBeGreaterThanOrEqual(4);
+    await expect.poll(() => page.evaluate(() => {
+      const title = document.querySelector('.app-title').getBoundingClientRect();
+      const info = document.querySelector('#headerInfo').getBoundingClientRect();
+      return Math.abs(title.top + title.height / 2 - (info.top + info.height / 2));
+    })).toBeLessThan(1);
+    await expect.poll(() => page.evaluate(() => {
+      const back = document.querySelector('#mobileBackBtn').getBoundingClientRect();
+      const title = document.querySelector('.app-title').getBoundingClientRect();
+      const settings = document.querySelector('#settingsBtn').getBoundingClientRect();
+      return Math.min(title.left - back.right, settings.left - title.right);
+    })).toBeGreaterThanOrEqual(7.5);
+  }
+  await page.locator('html').evaluate(element => { element.dataset.fontSizeLevel = '3'; });
+  await expect(page.locator('#mobileBackBtn')).toBeVisible();
   await expect.poll(() => page.evaluate(() => {
     const primary = document.querySelector('.header-primary-row').getBoundingClientRect();
-    const back = document.querySelector('#mobileBackBtn').getBoundingClientRect();
-    return back.top - primary.bottom;
-  })).toBeGreaterThanOrEqual(9.5);
+    const settings = document.querySelector('#settingsBtn').getBoundingClientRect();
+    return Math.abs(primary.top + primary.height / 2 - (settings.top + settings.height / 2));
+  })).toBeLessThan(1);
   await page.locator('#usesBtn').click();
+  await expect.poll(() => page.evaluate(() => {
+    const header = document.querySelector('header').getBoundingClientRect();
+    const title = document.querySelector('.app-title').getBoundingClientRect();
+    return title.top - header.top;
+  })).toBeGreaterThanOrEqual(4);
+  await expect.poll(() => page.evaluate(() => {
+    const title = document.querySelector('.app-title').getBoundingClientRect();
+    const info = document.querySelector('#headerInfo').getBoundingClientRect();
+    return Math.abs(title.top + title.height / 2 - (info.top + info.height / 2));
+  })).toBeLessThan(1);
   await page.locator('#usesList').evaluate(list => {
     const shortContent = document.createElement('li');
     shortContent.style.height = `${list.clientHeight + 20}px`;
@@ -506,30 +564,24 @@ test('mobile header combines and hides left controls while preserving right-pane
   });
   await expect(page.locator('header')).toHaveClass(/mobile-title-hidden/);
   await expect(page.locator('header')).toHaveCSS('row-gap', '0px');
-  await expect.poll(() => page.locator('header').evaluate(element => element.getBoundingClientRect().height)).toBeLessThanOrEqual(48);
-  await expect.poll(() => page.evaluate(() => {
-    const header = document.querySelector('header').getBoundingClientRect();
-    const back = document.querySelector('#mobileBackBtn').getBoundingClientRect();
-    return back.top - header.top;
-  })).toBeLessThanOrEqual(5);
+  await expect(page.locator('#mobileBackBtn')).toBeHidden();
+  await expect(page.locator('#settingsBtn')).toBeHidden();
+  await expect(page.locator('#settingsBtn')).toHaveJSProperty('inert', true);
+  await expect.poll(() => page.locator('header').evaluate(element => element.getBoundingClientRect().height)).toBeLessThanOrEqual(1);
 
-  await page.locator('#mobileBackBtn').click();
+  await page.evaluate(() => showMobilePanel('left', { animate: false }));
   await page.getByText('バスタードソード', { exact: true }).first().click();
   await page.locator('#panelRight').evaluate(panel => {
     panel.scrollTop = 40;
     panel.dispatchEvent(new Event('scroll'));
   });
   await expect(page.locator('header')).toHaveClass(/mobile-title-hidden/);
-  await expect(page.locator('#mobileBackBtn')).toBeVisible();
-  await expect(page.locator('#settingsBtn')).toBeVisible();
-  await expect(page.locator('header')).toHaveCSS('padding-top', '3px');
+  await expect(page.locator('#mobileBackBtn')).toBeHidden();
+  await expect(page.locator('#settingsBtn')).toBeHidden();
+  await expect(page.locator('#settingsBtn')).toHaveJSProperty('inert', true);
+  await expect(page.locator('header')).toHaveCSS('padding-top', '0px');
   await expect(page.locator('header')).toHaveCSS('row-gap', '0px');
-  await expect.poll(() => page.locator('header').evaluate(element => element.getBoundingClientRect().height)).toBeLessThanOrEqual(48);
-  await expect.poll(() => page.evaluate(() => {
-    const header = document.querySelector('header').getBoundingClientRect();
-    const back = document.querySelector('#mobileBackBtn').getBoundingClientRect();
-    return back.top - header.top;
-  })).toBeLessThanOrEqual(5);
+  await expect.poll(() => page.locator('header').evaluate(element => element.getBoundingClientRect().height)).toBeLessThanOrEqual(1);
 
   await page.locator('#panelRight').evaluate(panel => {
     panel.scrollTop = 0;
@@ -542,6 +594,159 @@ test('mobile header combines and hides left controls while preserving right-pane
     panel.dispatchEvent(new Event('scroll'));
   });
   await expect(page.locator('header')).not.toHaveClass(/mobile-title-hidden/);
+  await expect(page.locator('#mobileBackBtn')).toBeVisible();
+});
+
+test('only narrow PC layouts show the common-header back button at the left edge', async ({ page }) => {
+  await openApp(page, 423, 780);
+  await expect(page.locator('html')).toHaveAttribute('data-device-type', 'pc');
+  await expect(page.locator('#mobileBackBtn')).toBeHidden();
+  const initialHeader = await page.evaluate(() => {
+    const header = document.querySelector('header').getBoundingClientRect();
+    const button = document.querySelector('#mobileBackBtn').getBoundingClientRect();
+    const primary = document.querySelector('.header-primary-row').getBoundingClientRect();
+    const settings = document.querySelector('#settingsBtn').getBoundingClientRect();
+    return {
+      headerHeight: header.height,
+      buttonLeft: button.left,
+      buttonRight: button.right,
+      buttonTop: button.top,
+      primaryTop: primary.top,
+      primaryLeft: primary.left,
+      settingsTop: settings.top,
+      settingsRight: settings.right
+    };
+  });
+  await searchFor(page, '岩塩');
+  await page
+    .locator('#recipeList li')
+    .filter({ has: page.getByText('岩塩', { exact: true }) })
+    .first()
+    .locator('.uses-list-btn')
+    .click();
+  await expect(page.locator('#mobileBackBtn')).toBeVisible();
+  await expect(page.locator('#usesBackBtn')).toBeHidden();
+  await expect(page.locator('#backBtn')).toBeHidden();
+  const middleHeader = await page.evaluate(() => {
+    const header = document.querySelector('header').getBoundingClientRect();
+    const primary = document.querySelector('.header-primary-row').getBoundingClientRect();
+    const settings = document.querySelector('#settingsBtn').getBoundingClientRect();
+    const button = document.querySelector('#mobileBackBtn').getBoundingClientRect();
+    return {
+      headerHeight: header.height,
+      buttonOffset: button.left - header.left,
+      buttonRight: button.right,
+      buttonTop: button.top,
+      primaryTop: primary.top,
+      primaryLeft: primary.left,
+      settingsTop: settings.top,
+      settingsRight: settings.right
+    };
+  });
+  expect(middleHeader.buttonOffset).toBeCloseTo(12, 0);
+  expect(middleHeader.headerHeight).toBeCloseTo(initialHeader.headerHeight, 0);
+  expect(middleHeader.buttonRight).toBeCloseTo(initialHeader.buttonRight, 0);
+  expect(middleHeader.buttonTop).toBeCloseTo(initialHeader.buttonTop, 0);
+  expect(middleHeader.primaryTop).toBeCloseTo(initialHeader.primaryTop, 0);
+  expect(middleHeader.primaryLeft).toBeCloseTo(initialHeader.primaryLeft, 0);
+  expect(middleHeader.settingsTop).toBeCloseTo(initialHeader.settingsTop, 0);
+  expect(middleHeader.settingsRight).toBeCloseTo(initialHeader.settingsRight, 0);
+  expect(middleHeader.primaryLeft).toBeGreaterThanOrEqual(middleHeader.buttonRight + 7.5);
+
+  await page.locator('#mobileBackBtn').click();
+  await expect(page.locator('#panelLeft')).toHaveClass(/mobile-visible/);
+  await expect(page.locator('#mobileBackBtn')).toBeHidden();
+
+  await page
+    .locator('#recipeList li')
+    .filter({ has: page.getByText('岩塩', { exact: true }) })
+    .first()
+    .locator('.uses-list-btn')
+    .click();
+
+  await page.locator('#usesList li').first().click();
+  await expect(page.locator('#mobileBackBtn')).toBeVisible();
+  await page.locator('#mobileBackBtn').click();
+  await expect(page.locator('#panelMiddle')).toHaveClass(/mobile-visible/);
+
+  await page.setViewportSize({ width: 601, height: 780 });
+  await expect(page.locator('#mobileBackBtn')).toBeHidden();
+});
+
+test('narrow non-PC layouts keep the common-header back button hidden', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'userAgent', {
+      configurable: true,
+      get: () =>
+        'Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 Chrome/140.0.0.0 Mobile Safari/537.36'
+    });
+  });
+  await openApp(page, 423, 780);
+  await expect(page.locator('html')).toHaveAttribute('data-device-type', 'other');
+  await searchFor(page, '岩塩');
+  await page
+    .locator('#recipeList li')
+    .filter({ has: page.getByText('岩塩', { exact: true }) })
+    .first()
+    .locator('.uses-list-btn')
+    .click();
+  await expect(page.locator('#mobileBackBtn')).toBeHidden();
+  await expect(page.locator('#usesBackBtn')).toBeHidden();
+  await page.locator('#usesList li').first().click();
+  await expect(page.locator('#mobileBackBtn')).toBeHidden();
+  await expect(page.locator('#backBtn')).toBeHidden();
+});
+
+test('header information keeps patch status on row two and reveals only a fitting full name', async ({ page }) => {
+  const fullName = 'FinalFantasy XIV® Crafting Assistant XIVca(シヴカ)';
+  await openApp(page, 1440, 900);
+  await expect(page.locator('#headerAppFullName')).toHaveText(fullName);
+  await expect(page.locator('#headerAppFullName')).toBeVisible();
+  await expect(page.locator('#loadStatus')).toHaveText('patch 7.55 対応');
+
+  const assertHeaderInformationLayout = async () => {
+    const metrics = await page.evaluate(() => {
+      const info = document.querySelector('#headerInfo').getBoundingClientRect();
+      const name = document.querySelector('#headerAppFullName').getBoundingClientRect();
+      const patch = document.querySelector('#loadStatus').getBoundingClientRect();
+      const logo = document.querySelector('.app-name-logo').getBoundingClientRect();
+      const nameStyle = getComputedStyle(document.querySelector('#headerAppFullName'));
+      const patchStyle = getComputedStyle(document.querySelector('#loadStatus'));
+      return {
+        infoHeight: info.height,
+        logoHeight: logo.height,
+        nameTop: name.top,
+        patchTop: patch.top,
+        secondRowTop: info.top + info.height / 2,
+        nameFontSize: nameStyle.fontSize,
+        patchFontSize: patchStyle.fontSize,
+        patchClientWidth: document.querySelector('#loadStatus').clientWidth,
+        patchScrollWidth: document.querySelector('#loadStatus').scrollWidth
+      };
+    });
+    expect(metrics.infoHeight).toBeLessThanOrEqual(metrics.logoHeight + 0.5);
+    expect(metrics.patchTop).toBeGreaterThan(metrics.nameTop);
+    expect(metrics.patchTop).toBeGreaterThanOrEqual(metrics.secondRowTop);
+    expect(metrics.nameFontSize).toBe(metrics.patchFontSize);
+    expect(metrics.patchScrollWidth).toBeLessThanOrEqual(metrics.patchClientWidth + 0.5);
+  };
+
+  await assertHeaderInformationLayout();
+  await page.setViewportSize({ width: 423, height: 780 });
+  await expect(page.locator('#headerAppFullName')).toBeHidden();
+  await expect(page.locator('#loadStatus')).toBeVisible();
+  await assertHeaderInformationLayout();
+
+  for (let level = 1; level <= 10; level += 1) {
+    await page.locator('html').evaluate((element, selectedLevel) => {
+      element.dataset.fontSizeLevel = String(selectedLevel);
+    }, level);
+    await expect.poll(() => page.locator('#headerAppFullName').evaluate(element => {
+      const fits = element.scrollWidth <= element.clientWidth + 0.5;
+      return element.classList.contains('fits') === fits;
+    })).toBe(true);
+    await assertHeaderInformationLayout();
+  }
 });
 
 test('crossing the responsive breakpoint resets to startup view', async ({ page }) => {
@@ -577,4 +782,59 @@ test('crossing the responsive breakpoint resets to startup view', async ({ page 
   await expect(page.locator('#resultTitle')).toHaveText('');
   await expect(page.locator('#mobileTipsMsg')).toBeHidden();
   await expect(page.locator('#tipsMsg')).toBeVisible();
+});
+
+test('mobile panels move by swipe without navigation arrows or position dots', async ({ page }) => {
+  await openApp(page, 423, 780);
+  await searchFor(page, 'バスタードソード');
+  await expect(page.locator('#panelLeft')).toHaveClass(/mobile-visible/);
+  await expect(page.locator('.swiper-button-next, .swiper-button-prev, .swiper-pagination')).toHaveCount(0);
+
+  await beginSwipe(page, page.locator('#recipeList'), 0.65, 0.25);
+  const trackingLayout = await page.evaluate(() => {
+    const viewport = document.querySelector('.main').getBoundingClientRect();
+    const left = document.querySelector('#panelLeft').getBoundingClientRect();
+    const right = document.querySelector('#panelRight').getBoundingClientRect();
+    return {
+      leftOffset: left.left - viewport.left,
+      rightOffset: right.left - viewport.left,
+      width: viewport.width,
+      joinedGap: right.left - left.right
+    };
+  });
+  expect(trackingLayout.leftOffset).toBeLessThan(0);
+  expect(trackingLayout.leftOffset).toBeGreaterThan(-trackingLayout.width);
+  expect(trackingLayout.rightOffset).toBeGreaterThan(0);
+  expect(trackingLayout.rightOffset).toBeLessThan(trackingLayout.width);
+  expect(Math.abs(trackingLayout.joinedGap)).toBeLessThan(1);
+  await endSwipe(page);
+  await expect(page.locator('#panelRight')).toHaveClass(/mobile-visible/);
+  await expect(page.locator('#panelLeft')).not.toHaveClass(/mobile-visible/);
+  await swipe(page, page.locator('#panelRight'), 0.35, 0.75);
+  await expect(page.locator('#panelLeft')).toHaveClass(/mobile-visible/);
+
+  await searchFor(page, '岩塩');
+  await page.evaluate(() => {
+    window.__programmaticPanelSwipeSpeed = null;
+    document.querySelector('.main').swiper.on('beforeTransitionStart', (_swiper, speed) => {
+      window.__programmaticPanelSwipeSpeed = speed;
+    });
+  });
+  await page
+    .locator('#recipeList li')
+    .filter({ has: page.getByText('岩塩', { exact: true }) })
+    .first()
+    .locator('.uses-list-btn')
+    .click();
+  await expect.poll(() => page.evaluate(() => window.__programmaticPanelSwipeSpeed)).toBe(360);
+  await expect(page.locator('#panelMiddle')).toHaveClass(/mobile-visible/);
+  await swipe(page, page.locator('#usesList'), 0.65, 0.25);
+  await expect(page.locator('#panelRight')).toHaveClass(/mobile-visible/);
+  await swipe(page, page.locator('#panelRight'), 0.35, 0.75);
+  await expect(page.locator('#panelMiddle')).toHaveClass(/mobile-visible/);
+  await swipe(page, page.locator('#usesList'), 0.35, 0.75);
+  await expect(page.locator('#panelLeft')).toHaveClass(/mobile-visible/);
+  await swipe(page, page.locator('#recipeList'), 0.65, 0.25);
+  await expect(page.locator('#panelMiddle')).toHaveClass(/open/);
+  await expect(page.locator('#panelMiddle')).toHaveClass(/mobile-visible/);
 });

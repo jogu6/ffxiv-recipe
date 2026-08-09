@@ -1,11 +1,14 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import process from 'node:process';
 
 const repositoryRoot = path.resolve(import.meta.dirname, '..');
 const siteRoot = path.join(repositoryRoot, 'site');
 const applicationName = 'FinalFantasy XIV® Crafting Assistant XIVca(シヴカ)';
+const require = createRequire(import.meta.url);
+const { extractAppVersion, extractReleaseMarkdown } = require('../site/pwa-update.js');
 
 function requireFile(relativePath) {
   const absolutePath = path.join(siteRoot, relativePath);
@@ -52,7 +55,12 @@ const items = itemData.Items;
 const itemNames = new Set(items.map(item => item.Name));
 const legacyItemIds = JSON.parse(fs.readFileSync(requireFile('data/legacy-item-ids.json'), 'utf8'));
 if (!legacyItemIds?.Items || typeof legacyItemIds.Items !== 'object') throw new Error('Invalid legacy-item-ids.json.');
-fs.readFileSync(requireFile('data/tips.md'), 'utf8');
+const tipsMarkdown = fs.readFileSync(requireFile('data/tips.md'), 'utf8');
+const serviceWorkerSource = fs.readFileSync(requireFile('sw.js'), 'utf8');
+const currentAppVersion = extractAppVersion(serviceWorkerSource);
+if (!currentAppVersion || !extractReleaseMarkdown(tipsMarkdown, currentAppVersion)) {
+  throw new Error(`tips.md does not contain the current release section: ${currentAppVersion || 'unknown'}`);
+}
 const indexHtml = fs.readFileSync(requireFile('index.html'), 'utf8');
 const manifest = JSON.parse(fs.readFileSync(requireFile('manifest.webmanifest'), 'utf8'));
 if (!indexHtml.includes(`<title>${applicationName}</title>`) || !indexHtml.includes(`alt="${applicationName}"`)) {
@@ -60,6 +68,25 @@ if (!indexHtml.includes(`<title>${applicationName}</title>`) || !indexHtml.inclu
 }
 if (manifest.name !== applicationName || manifest.short_name !== 'XIVca') {
   throw new Error('Application name is not synchronized with manifest.webmanifest.');
+}
+
+const invalidStaticItemIconReferences = [];
+for (const match of indexHtml.matchAll(/(?:\.\/)?assets\/item-icons\/([^"'?#\s<>)]+)/g)) {
+  const referencedPath = match[1];
+  const parts = referencedPath.split('/');
+  const folder = parts.at(-2) || '';
+  const fileName = parts.at(-1) || '';
+  if (
+    parts.length !== 2
+    || !/^[0-9a-f]{20}-[0-9a-f]{12}\.webp$/.test(fileName)
+    || folder !== fileName.slice(0, 3)
+    || !fs.existsSync(path.join(siteRoot, 'assets', 'item-icons', referencedPath))
+  ) {
+    invalidStaticItemIconReferences.push(referencedPath);
+  }
+}
+if (invalidStaticItemIconReferences.length > 0) {
+  throw new Error(`Invalid static item icon references: ${invalidStaticItemIconReferences.join(', ')}`);
 }
 
 const missingIcons = [];

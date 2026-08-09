@@ -665,10 +665,11 @@ test('mobile favorite ring controls keep the count toggle on one right-aligned r
   await page.locator('#favoriteTargetCreate').getByText('新規作成').click();
   await page.locator('#textInputField').fill('指輪確認');
   await page.locator('#textInputOkBtn').click();
-  await page.locator('#mobileBackBtn').click();
+  await page.evaluate(() => showMobilePanel('left', { animate: false }));
   await page.locator('#favBtn').click();
   await page.locator('#favoriteLists').getByText('指輪確認').click();
   await page.locator('#recipeList').getByText('素材リストを表示').click();
+  await page.waitForFunction(() => !document.querySelector('.main')?.swiper?.animating);
 
   const rowBox = await page.locator('.favorite-ring-row').first().boundingBox();
   const nameBox = await page.locator('.favorite-ring-name').first().boundingBox();
@@ -689,19 +690,14 @@ test('mobile pin turns active after adding to a favorite list', async ({ page })
   await openApp(page, 600, 700);
   await searchFor(page, 'バスタードソード');
   await page.getByText('バスタードソード', { exact: true }).first().click();
-  await expect(page.locator('#mobileBackBtn')).toBeVisible();
+  await expect(page.locator('#mobileBackBtn')).toHaveCount(0);
   await expect(page.locator('#backBtn')).toBeHidden();
   const titleBox = await page.locator('#appTitle').boundingBox();
-  const mobileBackBox = await page.locator('#mobileBackBtn').boundingBox();
   const settingsBox = await page.locator('#settingsBtn').boundingBox();
   const primaryRowBox = await page.locator('.header-primary-row').boundingBox();
-  expect(titleBox.y).toBeLessThan(mobileBackBox.y);
-  expect(mobileBackBox.x).toBeLessThan(settingsBox.x);
-  expect(Math.abs(primaryRowBox.x + primaryRowBox.width / 2 - 300)).toBeLessThan(1);
-  expect(Math.abs(mobileBackBox.y + mobileBackBox.height / 2 - (settingsBox.y + settingsBox.height / 2))).toBeLessThan(
-    1
-  );
-  await expect(page.locator('#mobileBackBtn')).toHaveCSS('font-size', '16.5px');
+  expect(Math.abs(primaryRowBox.y + primaryRowBox.height / 2 - (settingsBox.y + settingsBox.height / 2))).toBeLessThan(1);
+  expect(titleBox.x).toBeGreaterThanOrEqual(primaryRowBox.x);
+  expect(primaryRowBox.x + primaryRowBox.width).toBeLessThanOrEqual(settingsBox.x + 1);
 
   const pin = page.locator('.result-root-summary .pin-btn').first();
   await expect(pin).toHaveClass(/inactive/);
@@ -730,7 +726,7 @@ test('mobile pin turns active after adding to a favorite list', async ({ page })
   await page.locator('#panelRight').evaluate(panel => {
     panel.scrollTop = 100;
   });
-  await page.locator('#mobileBackBtn').click();
+  await page.evaluate(() => showMobilePanel('left', { animate: false }));
   await page.locator('#favBtn').click();
   await page.locator('#favoriteLists').getByText('スマホ確認').click();
   await expect(page.locator('#recipeList')).toHaveCSS('overflow-y', 'auto');
@@ -739,10 +735,8 @@ test('mobile pin turns active after adding to a favorite list', async ({ page })
   await materialsButton.click();
   await expect(materialsButton).toHaveClass(/active/);
   await expect.poll(() => page.locator('#panelRight').evaluate(panel => panel.scrollTop)).toBe(0);
-  await page.locator('#mobileBackBtn').click();
-  await expect(page.locator('#recipeList .favorite-materials-row').getByText('素材リストを表示')).not.toHaveClass(
-    /active/
-  );
+  await page.evaluate(() => showMobilePanel('left', { animate: false }));
+  await expect(page.locator('#recipeList .favorite-materials-row').getByText('素材リストを表示')).toHaveClass(/active/);
 });
 
 test('mobile panels align list actions and scroll on the intended element', async ({ page }) => {
@@ -784,7 +778,7 @@ test('mobile panels align list actions and scroll on the intended element', asyn
   expect(middleMetrics.listOverflowY).toBe('auto');
   expect(middleMetrics.widthDiff).toBeLessThanOrEqual(1);
 
-  await page.locator('#mobileBackBtn').click();
+  await page.evaluate(() => showMobilePanel('left', { animate: false }));
   await page.setViewportSize({ width: 423, height: 520 });
   await searchFor(page, 'バスタードソード');
   await page.getByText('バスタードソード', { exact: true }).first().click();
@@ -800,7 +794,7 @@ test('mobile panels align list actions and scroll on the intended element', asyn
   expect(rightMetrics.overflowY).toBe('auto');
   expect(rightMetrics.scrollHeight).toBeGreaterThan(rightMetrics.clientHeight);
   expect(rightMetrics.scrollTop).toBeGreaterThan(0);
-  await page.locator('#mobileBackBtn').click();
+  await page.evaluate(() => showMobilePanel('left', { animate: false }));
   await searchFor(page, 'アリペブレ');
   await page.getByText('アリペブレ', { exact: true }).first().click();
   await expect.poll(() => page.locator('#panelRight').evaluate(panel => panel.scrollTop)).toBe(0);

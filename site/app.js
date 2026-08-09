@@ -14,6 +14,7 @@ const LS_FAV_LISTS_LEGACY = 'ff14_favorite_lists_v2';
 const LS_FAV_COUNTS = 'ff14_favorite_item_counts_v1';
 const LS_SEARCH_HISTORY = 'ff14_search_history';
 const LS_VIEW_STATE = 'ff14_view_state_v1';
+const LS_PANEL_LEFT_WIDTH = 'ff14_panel_left_width_v1';
 const SS_SKIP_RESTORE_ONCE = 'ff14_skip_restore_once';
 const fontSizeSettings = FontSizeSettings;
 fontSizeSettings.assertStorageAvailable();
@@ -27,6 +28,9 @@ const FAVORITE_LIST_FILE_SEPARATOR = '\n\n--------------------------------------
 const FAVORITE_LIST_FILE_MAX_BYTES = 1024 * 1024;
 const FAVORITE_LIST_FILE_MAX_LISTS = 1000;
 const MOBILE_BREAKPOINT = 600;
+const MIDDLE_PANEL_MINIMUM_WIDTH = 160;
+const MIDDLE_PANEL_BASE_WIDTH = 280;
+const BASE_FONT_SIZE_SCALE = 1.1;
 const LICENSE_NOTICE_FILE = './docs/license-notice.md';
 const PRIVACY_POLICY_FILE = './docs/privacy-policy.md';
 const CONTACT_URL = 'https://discord.gg/eZP5temK6e';
@@ -106,6 +110,8 @@ const {
 } = NavigationStateModel;
 const { UI_CHANGE, resolveUiChangePolicy } = UiChangePolicy;
 const { inspectViewState } = ViewStateModel;
+const { createMobilePanelSwipe } = MobilePanelSwipe;
+const { resolvePanelLayout } = PanelLayout;
 const {
   ACKNOWLEDGED_VERSION_KEY,
   UPDATE_RELOAD_PENDING_KEY,
@@ -139,13 +145,18 @@ const CRYSTAL_EXCLUDE = new Set(
 // Cached DOM references
 const elements = {
   appVersion: document.getElementById('appVersion'),
+  headerInfo: document.getElementById('headerInfo'),
+  headerAppFullName: document.getElementById('headerAppFullName'),
   loadStatus: document.getElementById('loadStatus'),
   loadingOverlay: document.getElementById('loadingOverlay'),
   loadingTitle: document.getElementById('loadingTitle'),
+  loadingErrorDetail: document.getElementById('loadingErrorDetail'),
   popupBtn: document.getElementById('popupBtn'),
   appTitle: document.getElementById('appTitle'),
   settingsBtn: document.getElementById('settingsBtn'),
+  main: document.querySelector('.main'),
   panelLeft: document.getElementById('panelLeft'),
+  panelLeftResizeHandle: document.getElementById('panelLeftResizeHandle'),
   panelMiddle: document.getElementById('panelMiddle'),
   panelRight: document.getElementById('panelRight'),
   resultHeader: document.querySelector('.result-header'),
@@ -154,6 +165,8 @@ const elements = {
   searchClearBtn: document.getElementById('searchClearBtn'),
   equipmentSearchToggle: document.getElementById('equipmentSearchToggle'),
   equipmentSearchPanel: document.getElementById('equipmentSearchPanel'),
+  equipmentSearchGrid: document.querySelector('.equipment-search-grid'),
+  equipmentLevelControl: document.querySelector('.equipment-level-control'),
   equipmentJobSelect: document.getElementById('equipmentJobSelect'),
   equipmentLevelInput: document.getElementById('equipmentLevelInput'),
   equipmentLevelDown5Btn: document.getElementById('equipmentLevelDown5Btn'),
@@ -212,6 +225,8 @@ const elements = {
   fontSizeLevelInput: document.getElementById('fontSizeLevelInput'),
   fontSizeLevelOutput: document.getElementById('fontSizeLevelOutput'),
   fontSizePreview: document.getElementById('fontSizePreview'),
+  fontSizePreviewJob: document.getElementById('fontSizePreviewJob'),
+  fontSizePreviewSupplement: document.getElementById('fontSizePreviewSupplement'),
   fontSizePreviewPin: document.getElementById('fontSizePreviewPin'),
   fontSizePreviewCheck: document.getElementById('fontSizePreviewCheck'),
   fontSizeApplyBtn: document.getElementById('fontSizeApplyBtn'),
@@ -370,6 +385,12 @@ let appliedFontSizeLevel = fontSizeSettings.normalizeLevel(
 );
 let pendingFontSizeLevel = appliedFontSizeLevel;
 let lastHapticFontSizeLevel = pendingFontSizeLevel;
+let preferredLeftPanelWidth = null;
+let panelLeftResizeState = null;
+let panelLayoutFrame = 0;
+let mobilePanelSwipeController = null;
+let mobilePanelName = 'left';
+let headerInfoResizeObserver = null;
 
 const treePinMap = new Map();
 const exchangeTreeState = new Map();
@@ -615,6 +636,186 @@ function isMobile() {
   return window.innerWidth <= MOBILE_BREAKPOINT;
 }
 
+function pixelValue(value) {
+  const number = Number.parseFloat(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function readPreferredLeftPanelWidth() {
+  const number = Number(localStorage.getItem(LS_PANEL_LEFT_WIDTH));
+  return Number.isFinite(number) && number > 0 && number <= 10000 ? number : null;
+}
+
+function savePreferredLeftPanelWidth() {
+  if (preferredLeftPanelWidth === null) return;
+  localStorage.setItem(LS_PANEL_LEFT_WIDTH, String(Math.round(preferredLeftPanelWidth)));
+}
+
+function removeCloneIds(element) {
+  element.removeAttribute('id');
+  element.querySelectorAll('[id]').forEach(child => child.removeAttribute('id'));
+}
+
+function measureMinimumWidth(element, { removeHidden = false } = {}) {
+  const clone = element.cloneNode(true);
+  removeCloneIds(clone);
+  if (removeHidden) clone.classList.remove('hidden');
+  clone.classList.add('panel-layout-measure');
+  document.body.appendChild(clone);
+  const width = clone.getBoundingClientRect().width;
+  clone.remove();
+  return width;
+}
+
+function measureEquipmentLevelMinimumWidth() {
+  const controlStyle = getComputedStyle(elements.equipmentLevelControl);
+  const controlFontSize = pixelValue(controlStyle.fontSize);
+  const gap = pixelValue(controlStyle.columnGap);
+  const buttonWidths = [...elements.equipmentLevelControl.querySelectorAll('button')].map(button => {
+    const range = document.createRange();
+    range.selectNodeContents(button);
+    const style = getComputedStyle(button);
+    const contentWidth = range.getBoundingClientRect().width;
+    return Math.max(
+      controlFontSize * 2.2,
+      contentWidth +
+        pixelValue(style.paddingLeft) +
+        pixelValue(style.paddingRight) +
+        pixelValue(style.borderLeftWidth) +
+        pixelValue(style.borderRightWidth)
+    );
+  });
+  return buttonWidths.reduce((sum, width) => sum + width, controlFontSize * 4 + gap * 4);
+}
+
+let panelLayoutMetricsKey = '';
+let panelLayoutMetrics = null;
+
+function measurePanelLayoutMetrics() {
+  const rootStyle = getComputedStyle(document.documentElement);
+  const fontScale = pixelValue(rootStyle.getPropertyValue('--font-size-scale')) || BASE_FONT_SIZE_SCALE;
+  const metricsKey = String(fontScale);
+  if (panelLayoutMetrics && panelLayoutMetricsKey === metricsKey) return panelLayoutMetrics;
+
+  const panelHeaderStyle = getComputedStyle(elements.panelLeft.querySelector('.panel-left-header'));
+  const equipmentPanelProbe = elements.equipmentSearchPanel.cloneNode(false);
+  removeCloneIds(equipmentPanelProbe);
+  equipmentPanelProbe.classList.add('open', 'panel-layout-measure');
+  document.body.appendChild(equipmentPanelProbe);
+  const equipmentPanelStyle = getComputedStyle(equipmentPanelProbe);
+  const equipmentGridStyle = getComputedStyle(elements.equipmentSearchGrid);
+  const horizontalPadding =
+    pixelValue(panelHeaderStyle.paddingLeft) +
+    pixelValue(panelHeaderStyle.paddingRight) +
+    pixelValue(equipmentPanelStyle.paddingLeft) +
+    pixelValue(equipmentPanelStyle.paddingRight);
+  equipmentPanelProbe.remove();
+
+  const equipmentControlWidth = measureEquipmentLevelMinimumWidth();
+  const equipmentColumnGap = pixelValue(equipmentGridStyle.columnGap);
+  const resultHeaderStyle = getComputedStyle(elements.resultHeader);
+  const resultHeaderPadding = pixelValue(resultHeaderStyle.paddingLeft) + pixelValue(resultHeaderStyle.paddingRight);
+  const countControlWidth = measureMinimumWidth(elements.resultHeader.querySelector('.count-control'));
+  const resultViewSwitchWidth = measureMinimumWidth(elements.resultViewSwitch, { removeHidden: true });
+
+  panelLayoutMetricsKey = metricsKey;
+  panelLayoutMetrics = Object.freeze({
+    sideBySideLeftMinimum: Math.ceil(horizontalPadding + equipmentControlWidth * 2 + equipmentColumnGap),
+    stackedLeftMinimum: Math.ceil(horizontalPadding + equipmentControlWidth),
+    middlePreferredWidth: Math.max(
+      MIDDLE_PANEL_MINIMUM_WIDTH,
+      Math.ceil((MIDDLE_PANEL_BASE_WIDTH * fontScale) / BASE_FONT_SIZE_SCALE)
+    ),
+    rightMinimumWidth: Math.max(
+      MIDDLE_PANEL_MINIMUM_WIDTH,
+      Math.ceil(Math.max(countControlWidth, resultViewSwitchWidth) + resultHeaderPadding)
+    )
+  });
+  return panelLayoutMetrics;
+}
+
+function updatePanelLayout() {
+  if (isMobile()) {
+    elements.panelLeft.classList.add('equipment-search-stacked');
+    return null;
+  }
+
+  const metrics = measurePanelLayoutMetrics();
+  const mainWidth = elements.main.clientWidth;
+  const layout = resolvePanelLayout({
+    viewportWidth: mainWidth,
+    handleWidth: elements.panelLeftResizeHandle.offsetWidth,
+    preferredLeftWidth: preferredLeftPanelWidth ?? metrics.sideBySideLeftMinimum,
+    sideBySideLeftMinimum: metrics.sideBySideLeftMinimum,
+    stackedLeftMinimum: metrics.stackedLeftMinimum,
+    middleOpen: elements.panelMiddle.classList.contains('open'),
+    middlePreferredWidth: metrics.middlePreferredWidth,
+    middleMinimumWidth: MIDDLE_PANEL_MINIMUM_WIDTH,
+    rightMinimumWidth: metrics.rightMinimumWidth
+  });
+
+  elements.panelLeft.style.setProperty('--panel-left-width', `${layout.leftWidth}px`);
+  elements.panelMiddle.style.setProperty('--panel-middle-width', `${layout.middleWidth || metrics.middlePreferredWidth}px`);
+  elements.panelLeft.classList.toggle('equipment-search-stacked', layout.equipmentStacked);
+  elements.panelLeftResizeHandle.dataset.minimumWidth = String(Math.round(layout.leftMinimumWidth));
+  elements.panelLeftResizeHandle.dataset.maximumWidth = String(Math.round(layout.leftMaximumWidth));
+  return layout;
+}
+
+function schedulePanelLayout() {
+  if (panelLayoutFrame) return;
+  panelLayoutFrame = requestAnimationFrame(() => {
+    panelLayoutFrame = 0;
+    updatePanelLayout();
+  });
+}
+
+function beginPanelLeftResize(event) {
+  if (isMobile() || event.button !== 0) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const layout = updatePanelLayout();
+  if (!layout) return;
+  panelLeftResizeState = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startWidth: layout.leftWidth,
+    originalPreferredWidth: preferredLeftPanelWidth
+  };
+  preferredLeftPanelWidth = layout.leftWidth;
+  elements.panelLeftResizeHandle.classList.add('resizing');
+  document.body.classList.add('panel-left-resizing');
+  elements.panelLeftResizeHandle.setPointerCapture?.(event.pointerId);
+}
+
+function movePanelLeftResize(event) {
+  if (!panelLeftResizeState || event.pointerId !== panelLeftResizeState.pointerId) return;
+  const minimum = Number(elements.panelLeftResizeHandle.dataset.minimumWidth);
+  const maximum = Number(elements.panelLeftResizeHandle.dataset.maximumWidth);
+  preferredLeftPanelWidth = Math.min(
+    maximum,
+    Math.max(minimum, panelLeftResizeState.startWidth + event.clientX - panelLeftResizeState.startX)
+  );
+  updatePanelLayout();
+}
+
+function endPanelLeftResize(event) {
+  if (!panelLeftResizeState || event.pointerId !== panelLeftResizeState.pointerId) return;
+  const cancelled = event.type === 'pointercancel';
+  if (cancelled) preferredLeftPanelWidth = panelLeftResizeState.originalPreferredWidth;
+  else savePreferredLeftPanelWidth();
+  panelLeftResizeState = null;
+  elements.panelLeftResizeHandle.classList.remove('resizing');
+  document.body.classList.remove('panel-left-resizing');
+  elements.panelLeftResizeHandle.releasePointerCapture?.(event.pointerId);
+  updatePanelLayout();
+}
+
+function initializePanelLayout() {
+  preferredLeftPanelWidth = readPreferredLeftPanelWidth();
+  updatePanelLayout();
+}
+
 function isPwaDisplayMode() {
   return (
     window.matchMedia('(display-mode: standalone)').matches ||
@@ -685,7 +886,7 @@ function markSkipRestoreOnce() {
 
 function currentMobilePanel() {
   if (!isMobile()) return '';
-  return elements.mobileBackBtn.dataset.panel || 'left';
+  return mobilePanelName;
 }
 
 function saveViewState() {
@@ -908,9 +1109,10 @@ function restoreViewState() {
 
     if (isMobile()) {
       const panel = state.view.mobilePanel;
-      if (panel === 'right' && (selectedRecipe || resultSourceMode === 'favorite-materials')) showMobilePanel('right');
-      else if (panel === 'middle' && selectedUsesItem) showMobilePanel('middle');
-      else showMobilePanel('left');
+      if (panel === 'right' && (selectedRecipe || resultSourceMode === 'favorite-materials')) {
+        showMobilePanel('right', { animate: false });
+      } else if (panel === 'middle' && selectedUsesItem) showMobilePanel('middle', { animate: false });
+      else showMobilePanel('left', { animate: false });
     } else {
       clearMobilePanels();
     }
@@ -1034,7 +1236,8 @@ function createRecentList(itemIds = []) {
     id: RECENT_LIST_ID,
     name: RECENT_LIST_NAME,
     itemIds: normalizedIds,
-    recipeSelections: {}
+    recipeSelections: {},
+    equipmentParameterNames: []
   };
 }
 
@@ -1172,7 +1375,12 @@ function itemNameForId(id) {
   return idToItemName[id] || idToItemName[parseInt(id, 10)] || legacyItemNamesById[String(id)] || null;
 }
 
-function createFavoriteList(name, itemIds = [], recipeSelections = {}, { captureSelections = false } = {}) {
+function createFavoriteList(
+  name,
+  itemIds = [],
+  recipeSelections = {},
+  { captureSelections = false, equipmentParameterNames = [] } = {}
+) {
   const normalizedItemIds = normalizeItemIds(itemIds);
   const capturedSelections = captureSelections
     ? collectActiveRecipeSelections(normalizedItemIds.map(itemNameForId).filter(Boolean))
@@ -1182,6 +1390,9 @@ function createFavoriteList(name, itemIds = [], recipeSelections = {}, { capture
     name: uniqueFavoriteListName(name),
     itemIds: normalizedItemIds,
     recipeSelections: normalizeRecipeSelections({ ...capturedSelections, ...recipeSelections }),
+    equipmentParameterNames: normalizeItemIds(equipmentParameterNames).filter(itemName =>
+      normalizedItemIds.includes(itemName)
+    ),
     materialSelected: false
   };
   favoriteStore.lists.push(list);
@@ -1237,11 +1448,12 @@ function migrateFavoriteItemKeys() {
   const removed = new Set();
   let changed = false;
   favoriteStore.lists.forEach(list => {
+    const reportRemoved = !isRecentList(list);
     const names = [];
     for (const key of normalizeItemIds(list.itemIds)) {
       const name = itemNameForId(key);
       if (!name || !recipes[name]) {
-        if (name) removed.add(name);
+        if (reportRemoved && name) removed.add(name);
         changed = true;
         continue;
       }
@@ -1258,6 +1470,9 @@ function migrateFavoriteItemKeys() {
       if (key !== name) changed = true;
     });
     list.recipeSelections = migratedSelections;
+    list.equipmentParameterNames = normalizeItemIds(list.equipmentParameterNames)
+      .map(itemNameForId)
+      .filter(name => name && list.itemIds.includes(name));
   });
   Object.values(favoriteItemCountStore?.lists || {}).forEach(state => {
     for (const field of ['counts', 'anyOneTargets']) {
@@ -1333,7 +1548,7 @@ function favoriteAnyOneMode() {
 function recordViewedItem(name) {
   const id = itemIdForName(name);
   const list = findFavoriteList(RECENT_LIST_ID);
-  if (!id || !list) return;
+  if (!id || !recipes[name] || !list) return;
 
   if (list.itemIds.includes(id)) return;
   list.itemIds.unshift(id);
@@ -1398,7 +1613,10 @@ function renderSearchHistory() {
   });
 
   elements.searchHistory.replaceChildren(frag);
-  elements.searchHistory.classList.toggle('open', entries.length > 0);
+  const open = entries.length > 0;
+  elements.searchHistory.classList.toggle('open', open);
+  if (open) positionSearchHistory();
+  else elements.searchHistory.style.maxHeight = '0px';
 }
 
 function openSearchHistory() {
@@ -1407,6 +1625,14 @@ function openSearchHistory() {
 
 function closeSearchHistory() {
   elements.searchHistory.classList.remove('open');
+  elements.searchHistory.style.maxHeight = '0px';
+}
+
+function positionSearchHistory() {
+  if (!elements.searchHistory.classList.contains('open')) return;
+  const rect = elements.searchBox.getBoundingClientRect();
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+  elements.searchHistory.style.maxHeight = `${Math.max(0, viewportHeight - rect.bottom - 11)}px`;
 }
 
 function sortEquipmentJobs(jobs) {
@@ -1431,19 +1657,32 @@ function closeAllCustomSelects(except = null) {
   });
 }
 
+function positionFloatingList(trigger, list, { minWidth = 0, maxHeight = 320, gap = 3 } = {}) {
+  if (!trigger || !list) return;
+  const rect = trigger.getBoundingClientRect();
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+  const margin = 8;
+  const width = Math.min(Math.max(rect.width, minWidth), Math.max(0, viewportWidth - margin * 2));
+  list.style.width = `${width}px`;
+  const below = Math.max(0, viewportHeight - rect.bottom - gap - margin);
+  const above = Math.max(0, rect.top - gap - margin);
+  const preferredHeight = Math.min(list.scrollHeight, maxHeight);
+  const placeBelow = below >= preferredHeight || below >= above;
+  const availableHeight = placeBelow ? below : above;
+  const resolvedMaxHeight = Math.min(maxHeight, availableHeight);
+  list.style.maxHeight = `${resolvedMaxHeight}px`;
+  const desiredHeight = Math.min(list.scrollHeight, resolvedMaxHeight);
+  const left = Math.max(margin, Math.min(rect.left, viewportWidth - width - margin));
+  const top = placeBelow ? rect.bottom + gap : rect.top - gap - desiredHeight;
+  list.style.left = `${left}px`;
+  list.style.top = `${Math.max(margin, top)}px`;
+}
+
 function positionCustomSelectOptions(select) {
   const options = select.querySelector('.custom-select-options');
   if (!options) return;
-  const rect = select.getBoundingClientRect();
-  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
-  const maxHeight = Math.min(320, Math.max(120, viewportHeight - 20));
-  options.style.width = `${Math.max(rect.width, 120)}px`;
-  options.style.maxHeight = `${maxHeight}px`;
-  const desiredHeight = Math.min(options.scrollHeight, maxHeight);
-  const below = viewportHeight - rect.bottom - 8;
-  const top = below >= desiredHeight || below >= rect.top ? rect.bottom + 3 : Math.max(8, rect.top - desiredHeight - 3);
-  options.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - Math.max(rect.width, 120) - 8))}px`;
-  options.style.top = `${top}px`;
+  positionFloatingList(select, options, { minWidth: 120, maxHeight: 320, gap: 3 });
 }
 
 function openCustomSelect(select) {
@@ -1451,7 +1690,7 @@ function openCustomSelect(select) {
   closeAllCustomSelects(select);
   select.classList.toggle('open', opening);
   select.querySelector('.custom-select-toggle')?.setAttribute('aria-expanded', String(opening));
-  if (opening) requestAnimationFrame(() => positionCustomSelectOptions(select));
+  if (opening) positionCustomSelectOptions(select);
 }
 
 function setCustomSelectValue(select, value, { notify = false } = {}) {
@@ -1715,7 +1954,10 @@ function saveEquipmentSearchAsFavorite() {
   }
   const itemIds = equipmentSearchResults.map(itemIdForName).filter(Boolean);
   showTextInput('お気に入りリスト名', defaultEquipmentFavoriteListName(), value => {
-    const list = createFavoriteList(value, itemIds, {}, { captureSelections: true });
+    const list = createFavoriteList(value, itemIds, {}, {
+      captureSelections: true,
+      equipmentParameterNames: [...equipmentParameterDisplayNames]
+    });
     setEquipmentSearchOpen(false);
     selectFavoriteList(list.id);
   });
@@ -1849,6 +2091,7 @@ function applyFavoriteChange(name, shouldAdd, listId = getDisplayedFavoriteList(
   }
   if (!shouldAdd) {
     list.itemIds = list.itemIds.filter(itemId => itemId !== id);
+    list.equipmentParameterNames = normalizeItemIds(list.equipmentParameterNames).filter(itemId => itemId !== id);
   }
   saveFavorites();
   refreshPins(name);
@@ -2016,6 +2259,7 @@ function scheduleSearchFromInput() {
       setListMode('none');
       renderUiChange(UI_CHANGE.SEARCH_CHANGED);
     }
+    renderSearchHistory();
     return;
   }
   searchInputTimerId = window.setTimeout(onSearch, 200);
@@ -2387,7 +2631,9 @@ function saveSelectedFavoriteListAs() {
   const source = getDisplayedFavoriteList();
   if (!source) return;
   showTextInput('新規リストとして保存', uniqueFavoriteCopyName(source.name), value => {
-    const list = createFavoriteList(uniqueFavoriteCopyName(value), source.itemIds, source.recipeSelections);
+    const list = createFavoriteList(uniqueFavoriteCopyName(value), source.itemIds, source.recipeSelections, {
+      equipmentParameterNames: source.equipmentParameterNames
+    });
     selectFavoriteList(list.id);
   });
 }
@@ -2721,11 +2967,16 @@ function createJobIcon(jobName) {
   return icon;
 }
 
-function createJobBadge(jobName, className, label) {
+function createJobBadgeLabel(className, label) {
   const badge = createTextElement('span', `${className} job-badge`, '');
+  badge.appendChild(createTextElement('span', 'job-badge-text', label));
+  return badge;
+}
+
+function createJobBadge(jobName, className, label) {
+  const badge = createJobBadgeLabel(className, label);
   const icon = createJobIcon(jobName);
-  if (icon) badge.appendChild(icon);
-  badge.append(label);
+  if (icon) badge.prepend(icon);
   return badge;
 }
 
@@ -2733,7 +2984,7 @@ function createCraftJobLabel(jobName, className, label) {
   const wrapper = createTextElement('span', 'craft-job-label', '');
   const icon = createJobIcon(jobName);
   if (icon) wrapper.appendChild(icon);
-  wrapper.appendChild(createTextElement('span', `${className} job-badge`, label));
+  wrapper.appendChild(createJobBadgeLabel(className, label));
   return wrapper;
 }
 
@@ -2766,7 +3017,7 @@ function createMasterbookLabel(commonName, craftInfo, className) {
   }
   wrapper.append(
     icons,
-    createTextElement('span', `${className} badge-masterbook job-badge`, commonName)
+    createJobBadgeLabel(`${className} badge-masterbook`, commonName)
   );
   wrapper.title = craftInfo.map(info => `${info.job}: ${info.masterbook}`).join('\n');
   return wrapper;
@@ -2914,7 +3165,7 @@ function createSearchEmptyListItem() {
     createTextElement(
       'div',
       'search-empty-scope',
-      '⚠️ このアプリには、製作レシピがあるアイテムと、製作に必要なアイテムのみ登録されています。'
+      '⚠️ このアプリには、Lodestone に掲載されている「製作レシピがあるアイテム」と、「製作に必要なアイテム」のみ登録されています。'
     )
   );
   return item;
@@ -2974,14 +3225,20 @@ function closeReleaseNotice() {
   if (!showPendingRemovedFavoritesNotice()) elements.searchBox.focus();
 }
 
+function showReleaseLoadError() {
+  elements.loadingTitle.textContent = '更新内容を読み込めませんでした';
+  if (elements.loadingErrorDetail) {
+    elements.loadingErrorDetail.textContent = '通信状態を確認してアプリを再起動してください。';
+    elements.loadingErrorDetail.hidden = false;
+  }
+  return true;
+}
+
 function showPendingReleaseNotice() {
   const updateReloadPending = sessionStorage.getItem(UPDATE_RELOAD_PENDING_KEY) === '1';
   const acknowledgedVersion = localStorage.getItem(ACKNOWLEDGED_VERSION_KEY) || '';
   if (updateReloadPending && !currentAppVersion) {
-    elements.loadingTitle.textContent = '更新内容を読み込めませんでした';
-    elements.loadingErrorDetail.textContent = '通信状態を確認してアプリを再起動してください。';
-    elements.loadingErrorDetail.hidden = false;
-    return true;
+    return showReleaseLoadError();
   }
   const shouldShow = shouldShowRelease({
     currentVersion: currentAppVersion,
@@ -3001,10 +3258,7 @@ function showPendingReleaseNotice() {
   const releaseMarkdown = extractReleaseMarkdown(tipsMarkdown, currentAppVersion);
   if (!releaseMarkdown) {
     console.warn(`[Release] ${currentAppVersion} のリリース内容を取得できませんでした`);
-    elements.loadingTitle.textContent = '更新内容を読み込めませんでした';
-    elements.loadingErrorDetail.textContent = '通信状態を確認してアプリを再起動してください。';
-    elements.loadingErrorDetail.hidden = false;
-    return true;
+    return showReleaseLoadError();
   }
   openReleaseNotice(releaseMarkdown);
   return true;
@@ -3043,17 +3297,9 @@ function updateListEquipmentParameterNames(names) {
   if (listMode === 'equipment') return;
   equipmentParameterDisplayNames.clear();
   if (listMode !== 'fav') return;
-  const byComparison = new Map();
-  names.forEach(name => {
-    const key = equipmentParameterComparisonKey(name);
-    if (!key) return;
-    if (!byComparison.has(key)) byComparison.set(key, []);
-    byComparison.get(key).push(name);
-  });
-  byComparison.forEach(comparisonNames => {
-    if (comparisonNames.length > 1) {
-      comparisonNames.forEach(name => equipmentParameterDisplayNames.add(name));
-    }
+  const displayedNames = new Set(names);
+  normalizeItemIds(getDisplayedFavoriteList()?.equipmentParameterNames).forEach(name => {
+    if (displayedNames.has(name)) equipmentParameterDisplayNames.add(name);
   });
 }
 
@@ -3305,8 +3551,10 @@ function createUsesListButton(name, row, rememberSearch) {
 function closeUsesPanel() {
   elements.panelMiddle.classList.remove('open');
   elements.panelMiddle.classList.remove('mobile-visible');
+  if (isMobile()) mobilePanelSwipeController?.sync({ middleOpen: false });
   elements.usesList.scrollTop = 0;
   selectedUsesItem = null;
+  updatePanelLayout();
   saveViewState();
 }
 
@@ -3361,6 +3609,7 @@ function showUsesPanel(ingredientName, options = {}) {
   elements.usesList.replaceChildren(frag);
   elements.usesList.scrollTop = 0;
   elements.panelMiddle.classList.add('open');
+  updatePanelLayout();
   if (isMobile()) showMobilePanel('middle');
   saveViewState();
 }
@@ -3563,6 +3812,30 @@ function updatePatchStatus(version) {
     : `${source.slice(0, -2)}.${source.slice(-2)}`.replace(/0$/, '');
   elements.loadStatus.textContent = source ? `patch ${patch} 対応` : '';
   elements.loadStatus.removeAttribute('title');
+  requestAnimationFrame(updateHeaderFullNameVisibility);
+}
+
+function updateHeaderFullNameVisibility() {
+  elements.headerInfo.style.removeProperty('--header-info-fitted-font-size');
+  const availableWidth = elements.headerInfo.clientWidth;
+  const patchWidth = elements.loadStatus.scrollWidth;
+  if (availableWidth > 0 && patchWidth > availableWidth + 0.5) {
+    const baseFontSize = parseFloat(getComputedStyle(elements.headerInfo).fontSize);
+    const fittedFontSize = Math.max(1, baseFontSize * (availableWidth / patchWidth) * 0.98);
+    elements.headerInfo.style.setProperty('--header-info-fitted-font-size', `${fittedFontSize}px`);
+  }
+  const fits = availableWidth > 0 && elements.headerAppFullName.scrollWidth <= availableWidth + 0.5;
+  elements.headerAppFullName.classList.toggle('fits', fits);
+  elements.headerAppFullName.setAttribute('aria-hidden', String(!fits));
+}
+
+function initializeHeaderFullNameVisibility() {
+  updateHeaderFullNameVisibility();
+  if ('ResizeObserver' in window) {
+    headerInfoResizeObserver = new ResizeObserver(updateHeaderFullNameVisibility);
+    headerInfoResizeObserver.observe(elements.headerInfo);
+  }
+  document.fonts?.ready.then(updateHeaderFullNameVisibility);
 }
 
 function showPendingRemovedFavoritesNotice() {
@@ -3626,7 +3899,7 @@ async function init() {
     if (consumeSkipRestoreOnce() || !restoreViewState()) {
       renderList();
       renderResultView();
-      if (isMobile()) showMobilePanel('left');
+      if (isMobile()) showMobilePanel('left', { animate: false });
       else clearMobilePanels();
       saveViewState();
     }
@@ -3641,14 +3914,22 @@ async function init() {
   }
 }
 
-function showMobilePanel(panelName) {
-  if (!isMobile()) return;
-  rememberVisibleScrollPositions();
+function applyMobilePanelState(panelName) {
+  mobilePanelName = panelName;
+  elements.mobileBackBtn.classList.toggle('visible', panelName !== 'left');
+  elements.mobileBackBtn.dataset.panel = panelName;
   elements.panelLeft.classList.toggle('mobile-visible', panelName === 'left');
   elements.panelMiddle.classList.toggle('mobile-visible', panelName === 'middle');
   elements.panelRight.classList.toggle('mobile-visible', panelName === 'right');
-  elements.mobileBackBtn.classList.toggle('visible', panelName !== 'left');
-  elements.mobileBackBtn.dataset.panel = panelName;
+  for (const [name, panel] of [
+    ['left', elements.panelLeft],
+    ['middle', elements.panelMiddle],
+    ['right', elements.panelRight]
+  ]) {
+    const active = name === panelName;
+    panel.setAttribute('aria-hidden', String(!active));
+    panel.inert = !active;
+  }
   const visibleScrollKeys =
     panelName === 'left'
       ? ['recipeList']
@@ -3662,8 +3943,38 @@ function showMobilePanel(panelName) {
   saveViewState();
 }
 
+function showMobilePanel(panelName, { animate = true } = {}) {
+  if (!isMobile()) return;
+  const middleOpen = elements.panelMiddle.classList.contains('open');
+  if (panelName === 'middle' && !middleOpen) panelName = 'left';
+  if (!mobilePanelSwipeController?.show(panelName, { animate, middleOpen })) {
+    rememberVisibleScrollPositions();
+    applyMobilePanelState(panelName);
+  }
+}
+
+function initializeMobilePanelSwipe() {
+  mobilePanelSwipeController?.destroy();
+  mobilePanelSwipeController = createMobilePanelSwipe({
+    element: elements.main,
+    panels: {
+      left: elements.panelLeft,
+      middle: elements.panelMiddle,
+      right: elements.panelRight
+    },
+    SwiperClass: globalThis.Swiper,
+    isEnabled: isMobile,
+    reduceMotion: () => window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    onInteractionStart: rememberVisibleScrollPositions,
+    onPanelChange: applyMobilePanelState
+  });
+  mobilePanelSwipeController.sync({ middleOpen: elements.panelMiddle.classList.contains('open') });
+  if (isMobile()) applyMobilePanelState('left');
+  else clearMobilePanels();
+}
+
 function activeMobileScrollContainer() {
-  switch (elements.mobileBackBtn.dataset.panel || 'left') {
+  switch (mobilePanelName) {
     case 'middle':
       return elements.usesList;
     case 'right':
@@ -3683,16 +3994,12 @@ function updateMobileHeaderVisibility() {
   const header = document.querySelector('header');
   const primaryRow = document.querySelector('.header-primary-row');
   if (!isMobile()) {
-    header?.classList.remove('mobile-title-hidden', 'mobile-left-panel');
+    header?.classList.remove('mobile-title-hidden');
     primaryRow?.removeAttribute('aria-hidden');
     if (primaryRow) primaryRow.inert = false;
     elements.settingsBtn.removeAttribute('aria-hidden');
     elements.settingsBtn.inert = false;
     return;
-  }
-  const leftPanel = currentMobilePanel() === 'left';
-  if (header && header.classList.contains('mobile-left-panel') !== leftPanel) {
-    header.classList.toggle('mobile-left-panel', leftPanel);
   }
   const scrollTop = activeMobileScrollTop();
   const titleHideThreshold = Math.max(32, Math.ceil(primaryRow?.scrollHeight || 0));
@@ -3712,18 +4019,22 @@ function updateMobileHeaderVisibility() {
   const resolvedTitleHidden = header?.classList.contains('mobile-title-hidden') || false;
   primaryRow?.setAttribute('aria-hidden', String(resolvedTitleHidden));
   if (primaryRow) primaryRow.inert = resolvedTitleHidden;
-  const settingsHidden = leftPanel && resolvedTitleHidden;
-  if (settingsHidden) elements.settingsBtn.setAttribute('aria-hidden', 'true');
+  if (resolvedTitleHidden) elements.settingsBtn.setAttribute('aria-hidden', 'true');
   else elements.settingsBtn.removeAttribute('aria-hidden');
-  elements.settingsBtn.inert = settingsHidden;
+  elements.settingsBtn.inert = resolvedTitleHidden;
 }
 
 function clearMobilePanels() {
+  mobilePanelSwipeController?.sync({ middleOpen: elements.panelMiddle.classList.contains('open') });
+  elements.mobileBackBtn.classList.remove('visible');
+  delete elements.mobileBackBtn.dataset.panel;
   elements.panelLeft.classList.remove('mobile-visible');
   elements.panelMiddle.classList.remove('mobile-visible');
   elements.panelRight.classList.remove('mobile-visible');
-  elements.mobileBackBtn.classList.remove('visible');
-  delete elements.mobileBackBtn.dataset.panel;
+  for (const panel of [elements.panelLeft, elements.panelMiddle, elements.panelRight]) {
+    panel.removeAttribute('aria-hidden');
+    panel.inert = false;
+  }
 }
 
 function resetRightPanelViewState() {
@@ -4028,12 +4339,15 @@ function resetToStartupView() {
   }
   suppressViewStateSave = false;
   clearViewState();
+  schedulePanelLayout();
 }
 
 function handleResize() {
+  updatePanelLayout();
   const mobile = isMobile();
   if (mobile === wasMobile) return;
   wasMobile = mobile;
+  mobilePanelSwipeController?.sync({ middleOpen: elements.panelMiddle.classList.contains('open') });
   resetToStartupView();
 }
 
@@ -4057,17 +4371,9 @@ function createExchangeSupplementEntries(recipe, craftTimes) {
   }));
 }
 
-function createCraftInfo(name, neededQty) {
-  const recipe = recipes[name];
-  if (!recipe) return null;
-  return calculateCraft(neededQty, recipe.yield);
-}
-
-function createCraftSupplementEntries(name, neededQty) {
-  const recipe = recipes[name];
+function createCraftSupplementEntriesForRecipe(recipe, neededQty) {
   if (!recipe) return [];
-  const info = createCraftInfo(name, neededQty);
-  if (!info) return [];
+  const info = calculateCraft(neededQty, recipe.yield);
   const entries = [];
   if (info.surplus > 0)
     entries.push({
@@ -4085,6 +4391,28 @@ function createCraftSupplementEntries(name, neededQty) {
     });
   }
   return entries;
+}
+
+function createCraftSupplementEntries(name, neededQty) {
+  return createCraftSupplementEntriesForRecipe(recipes[name], neededQty);
+}
+
+function createCraftSupplementRow(entry, { parenthesized = false } = {}) {
+  const row = document.createElement('span');
+  row.className = `craft-supplement-row craft-supplement-kind-${entry.kind || 'detail'}`;
+  const numberClasses = [
+    'craft-supplement-num',
+    entry.kind === 'surplus' ? 'craft-supplement-surplus' : '',
+    entry.kind === 'craft' ? 'craft-supplement-count' : ''
+  ]
+    .filter(Boolean)
+    .join(' ');
+  row.append(
+    createTextElement('span', 'craft-supplement-label', `${parenthesized ? '(' : ''}${entry.label}`),
+    createTextElement('span', numberClasses, formatNumber(entry.qty)),
+    createTextElement('span', 'craft-supplement-label', `${entry.suffix}${parenthesized ? ')' : ''}`)
+  );
+  return row;
 }
 
 function accumulateSupplementSummary(summary, entries = []) {
@@ -5053,18 +5381,7 @@ function renderMaterialsList() {
       const entryRow = document.createElement('div');
       entryRow.className = 'material-supplement-row';
       supplementEntries.forEach(entry => {
-        const subRow = document.createElement('span');
-        subRow.className = 'material-sub-row';
-        subRow.append(
-          createTextElement('span', 'material-sub-label', `${entry.label} `),
-          createTextElement(
-            'span',
-            `material-sub-num ${entry.kind === 'surplus' ? 'material-sub-surplus' : ''} ${entry.kind === 'craft' ? 'material-craft-count' : ''}`,
-            formatNumber(entry.qty)
-          ),
-          createTextElement('span', 'material-sub-label', ` ${entry.suffix}`)
-        );
-        entryRow.appendChild(subRow);
+        entryRow.appendChild(createCraftSupplementRow(entry));
       });
       supplement.appendChild(entryRow);
       const appendUsageDetail = (prefix, entry, all = false) => {
@@ -5385,7 +5702,7 @@ function createResultRootSummary(
   display.classList.add('root-item-display-label');
   title.append(display, createTextElement('span', 'node-qty', `× ${formatNumber(producedQty)}`));
   main.appendChild(title);
-  const subInfo = createTreeSubInfo(recipe, neededQty, producedQty, null, null);
+  const subInfo = createTreeSubInfo(recipe, neededQty, null, null);
   if (subInfo) main.appendChild(subInfo);
   if (selector) prependRecipeMethodControl(main, selector);
   row.appendChild(main);
@@ -5534,6 +5851,7 @@ function createShopInfoButton(
 function appendItemActionButtons(parent, ...buttons) {
   const visibleButtons = buttons.filter(Boolean);
   if (!visibleButtons.length) return null;
+  parent.classList.add('item-action-row');
   const actions = document.createElement('span');
   actions.className = 'item-action-buttons';
   actions.append(...visibleButtons);
@@ -5848,32 +6166,22 @@ function createTreeMain(name, producedQty, subInfo, badge) {
   return main;
 }
 
-function createTreeSubRow(prefix, number, suffix, className = '') {
-  const row = document.createElement('span');
-  row.className = 'node-sub-row';
-  row.append(
-    createTextElement('span', 'node-sub-label', prefix),
-    createTextElement('span', `node-sub-num ${className}`, number),
-    createTextElement('span', 'node-sub-label', suffix)
-  );
-  return row;
-}
-
-function createTreeSubInfo(recipe, neededQty, producedQty, unitCost, unitTimes) {
+function createTreeSubInfo(recipe, neededQty, unitCost, unitTimes) {
   const rows = [];
-  const surplus = producedQty - neededQty;
-  const isExchange = recipe && EXCHANGE_CRAFT_TYPES.has(recipe.craftType);
-  const craftTimes = recipe ? calculateCraft(neededQty, recipe.yield).craftTimes : 0;
 
   if (unitCost !== null && unitTimes !== null) {
-    rows.push(createTreeSubRow(`(@${formatNumber(unitCost)} × `, formatNumber(unitTimes), ')'));
+    rows.push(
+      createCraftSupplementRow(
+        { label: `@${formatNumber(unitCost)} ×`, qty: unitTimes, suffix: '', kind: 'cost' },
+        { parenthesized: true }
+      )
+    );
   }
-  if (surplus > 0) {
-    rows.push(createTreeSubRow('(↩', ` ${formatNumber(surplus)} `, '個余り)'));
-  }
-  if (!isExchange && craftTimes >= 1) {
-    rows.push(createTreeSubRow('(🔨', ` ${formatNumber(craftTimes)} `, '回製作)', 'node-craft-count'));
-  }
+  rows.push(
+    ...createCraftSupplementEntriesForRecipe(recipe, neededQty).map(entry =>
+      createCraftSupplementRow(entry, { parenthesized: true })
+    )
+  );
   if (rows.length === 0) return null;
 
   const subInfo = document.createElement('span');
@@ -5901,12 +6209,10 @@ function appendRecipeChildren(
     }
 
     const neededQty = ingredient.qty * craftTimes;
-    const producedIngredientQty = calcProduced(ingredient.name, neededQty);
     container.appendChild(
       buildNode(
         ingredient.name,
         neededQty,
-        producedIngredientQty,
         depth + 1,
         childTreePath(pathKey, ingredient.name, index),
         isExchange ? ingredient.qty : null,
@@ -5922,7 +6228,6 @@ function appendRecipeChildren(
 function buildNode(
   name,
   neededQty,
-  producedQty,
   depth,
   pathKey,
   unitCost = null,
@@ -5953,7 +6258,7 @@ function buildNode(
   const main = createTreeMain(
     name,
     neededQty,
-    createTreeSubInfo(recipe, neededQty, producedQty, unitCost, unitTimes),
+    createTreeSubInfo(recipe, neededQty, unitCost, unitTimes),
     selector ? null : createTreeBadge(master.method, hideCraftBadge)
   );
   if (selector) prependRecipeMethodControl(main, selector);
@@ -6128,6 +6433,18 @@ function resetFontSizePreviewControls() {
   elements.fontSizePreviewCheck.setAttribute('aria-pressed', 'true');
 }
 
+function initializeFontSizePreviewContent() {
+  elements.fontSizePreviewJob.replaceChildren(
+    createCraftJobLabel('錬金術師', 'badge badge-craft', '錬金秘伝書:第6巻')
+  );
+  elements.fontSizePreviewSupplement.replaceChildren(
+    createCraftSupplementRow(
+      { label: '🔨', qty: 2, suffix: '回製作', kind: 'craft' },
+      { parenthesized: true }
+    )
+  );
+}
+
 function updateFontSizePreview() {
   const level = fontSizeSettings.normalizeLevel(elements.fontSizeLevelInput.value);
   pendingFontSizeLevel = level;
@@ -6204,6 +6521,7 @@ function applyFontSizeChange() {
   appliedFontSizeLevel = level;
   closeSettingsImmediately();
   fontSizeSettings.applyLevel(level);
+  panelLayoutMetricsKey = '';
   resetToStartupView();
 }
 
@@ -6355,15 +6673,7 @@ function toggleExportListDropdown() {
   elements.exportListChoices.classList.toggle('open', open);
   elements.exportListToggle.setAttribute('aria-expanded', String(open));
   if (!open) return;
-  const rect = elements.exportListToggle.getBoundingClientRect();
-  const maxHeight = Math.min(370, Math.max(74, window.innerHeight - 16));
-  const below = window.innerHeight - rect.bottom - 8;
-  const desired = Math.min(elements.exportListChoices.scrollHeight, maxHeight);
-  const top = below >= desired || below >= rect.top ? rect.bottom + 4 : Math.max(8, rect.top - desired - 4);
-  elements.exportListChoices.style.left = `${rect.left}px`;
-  elements.exportListChoices.style.top = `${top}px`;
-  elements.exportListChoices.style.width = `${rect.width}px`;
-  elements.exportListChoices.style.maxHeight = `${maxHeight}px`;
+  positionFloatingList(elements.exportListToggle, elements.exportListChoices, { maxHeight: 370, gap: 4 });
   const rows = [...elements.exportListChoices.querySelectorAll('li[role="option"]')];
   (rows.find(row => row.classList.contains('active')) || rows[0])?.focus();
 }
@@ -6605,13 +6915,15 @@ function openPopup() {
 
 // Event wiring and application startup
 function isEquipmentSearchUiTarget(target) {
-  if (target === elements.equipmentSearchToggle || elements.equipmentSearchPanel?.contains(target)) return true;
+  if (
+    target === elements.equipmentSearchToggle ||
+    target === elements.panelLeftResizeHandle ||
+    elements.equipmentSearchPanel?.contains(target)
+  ) {
+    return true;
+  }
   if (listMode !== 'equipment') return false;
-  return (
-    elements.recipeList.contains(target) ||
-    elements.panelRight.contains(target) ||
-    target === elements.mobileBackBtn
-  );
+  return elements.recipeList.contains(target) || elements.panelRight.contains(target);
 }
 
 function closeEquipmentSearchForExternalAction(event) {
@@ -6640,7 +6952,7 @@ function handleDocumentPointerDown(event) {
   ) {
     closeSearchHistory();
   }
-  if (!isFavoriteListsUiTarget(event.target)) closeFavoriteLists();
+  if (!isFavoriteListsUiTarget(event.target) && !hasMaterialSelectedFavoriteLists()) closeFavoriteLists();
   if (event.target !== elements.exportListToggle && !elements.exportListChoices.contains(event.target)) {
     closeExportListDropdown();
   }
@@ -6673,6 +6985,10 @@ function bindEvents() {
   bindKeyboardActivation(elements.appTitle, resetToStartupView);
   elements.popupBtn.addEventListener('click', openPopup);
   elements.settingsBtn.addEventListener('click', openSettings);
+  elements.panelLeftResizeHandle.addEventListener('pointerdown', beginPanelLeftResize);
+  elements.panelLeftResizeHandle.addEventListener('pointermove', movePanelLeftResize);
+  elements.panelLeftResizeHandle.addEventListener('pointerup', endPanelLeftResize);
+  elements.panelLeftResizeHandle.addEventListener('pointercancel', endPanelLeftResize);
   elements.searchBox.addEventListener('input', scheduleSearchFromInput);
   elements.searchBox.addEventListener('compositionstart', () => {
     searchCompositionActive = true;
@@ -6835,11 +7151,22 @@ function bindEvents() {
     stopGatheringTimerUpdates();
   });
   window.addEventListener('resize', () => {
+    updateHeaderFullNameVisibility();
     if (elements.favoriteLists.classList.contains('open')) updateFavoriteListsMaxHeight();
     const shopEntries = elements.shopContent.querySelector('.shop-entry-list');
     if (floatingWindows.shop.isOpen() && shopEntries) layoutShopEntries(shopEntries);
     updateSettingsDialogHeight();
+    positionSearchHistory();
+    document.querySelectorAll('.custom-select.open').forEach(positionCustomSelectOptions);
+    if (elements.exportListChoices.classList.contains('open')) {
+      positionFloatingList(elements.exportListToggle, elements.exportListChoices, { maxHeight: 370, gap: 4 });
+    }
   });
+  elements.settingsSharePanel.addEventListener('scroll', () => {
+    if (elements.exportListChoices.classList.contains('open')) {
+      positionFloatingList(elements.exportListToggle, elements.exportListChoices, { maxHeight: 370, gap: 4 });
+    }
+  }, { passive: true });
   elements.usesBtn.addEventListener('click', () => showUsesPanel(selectedRecipe));
   elements.releaseNoticeOkBtn.addEventListener('click', closeReleaseNotice);
   document.addEventListener('keydown', handleReleaseNoticeKeydown, true);
@@ -6886,7 +7213,10 @@ function bindEvents() {
   bindOverlayDismissal(elements.favoriteTargetOverlay, closeFavoriteTarget, elements.favoriteTargetCancelBtn);
 
   ['pointerdown', 'input', 'wheel'].forEach(eventName => {
-    elements.panelLeft.addEventListener(eventName, closeUsesPanel);
+    elements.panelLeft.addEventListener(eventName, event => {
+      if (isMobile() && event.type === 'pointerdown') return;
+      closeUsesPanel();
+    });
   });
   document.addEventListener('click', closeEquipmentSearchForExternalAction, true);
   document.addEventListener('pointerdown', handleDocumentPointerDown);
@@ -6894,8 +7224,12 @@ function bindEvents() {
 }
 
 async function startApp() {
+  initializeFontSizePreviewContent();
+  initializeHeaderFullNameVisibility();
   bindEvents();
-  if (isMobile()) showMobilePanel('left');
+  initializeMobilePanelSwipe();
+  initializePanelLayout();
+  if (isMobile()) showMobilePanel('left', { animate: false });
   const updateResult = await updateBeforeUse({
     serviceWorkerContainer: 'serviceWorker' in navigator ? navigator.serviceWorker : null,
     onStatus: status => {

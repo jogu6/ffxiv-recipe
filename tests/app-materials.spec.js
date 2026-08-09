@@ -192,6 +192,18 @@ test('timed gathering dialog uses gatherer icons only for its gathering methods'
   const botanyBadge = page.locator('#gatheringContent .gathering-method').first();
   await expect(botanyBadge).toContainText('草刈');
   await expect(botanyBadge.locator('.job-icon')).toHaveAttribute('src', './assets/job-icons/botanist.webp');
+  const alignment = await botanyBadge.evaluate(badge => {
+    const icon = badge.querySelector('.job-icon').getBoundingClientRect();
+    const text = badge.querySelector('.job-badge-text').getBoundingClientRect();
+    const scale = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--font-size-scale'));
+    return {
+      centerDelta: Math.abs(icon.top + icon.height / 2 - (text.top + text.height / 2)),
+      expectedIconSize: 17.78 * scale,
+      iconWidth: icon.width
+    };
+  });
+  expect(alignment.centerDelta).toBeLessThan(0.51);
+  expect(alignment.iconWidth).toBeCloseTo(alignment.expectedIconSize, 1);
 });
 
 test('uses buttons share the accent style', async ({ page }) => {
@@ -327,8 +339,11 @@ test('materials list sorts normal items before crystals and shows supplement ico
   expect(summaryText).toContain('ギャザラースクリップ:橙貨');
   await expect(page.locator('.materials-summary-separator')).toHaveCount(0);
   await expect(page.locator('.material-supplement-icon').first()).toBeVisible();
-  await expect(page.locator('.material-sub-surplus').first()).toHaveCSS('color', 'rgb(106, 191, 105)');
-  await expect(page.locator('.material-sub-num:not(.material-sub-surplus)').first()).toHaveCSS(
+  await expect(page.locator('.craft-supplement-num.craft-supplement-surplus').first()).toHaveCSS(
+    'color',
+    'rgb(106, 191, 105)'
+  );
+  await expect(page.locator('.craft-supplement-count').first()).toHaveCSS(
     'color',
     'rgb(106, 191, 105)'
   );

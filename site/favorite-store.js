@@ -62,6 +62,7 @@
           name: normalizeFavoriteListName(list.name, { fallbackName, maxLength: maxNameLength }),
           itemIds: normalizeItemIds(list.itemIds),
           recipeSelections: isRecent(list) ? {} : normalizeStoredRecipeSelections(list.recipeSelections),
+          equipmentParameterNames: isRecent(list) ? [] : normalizeItemIds(list.equipmentParameterNames),
           materialSelected: Boolean(list.materialSelected) && !isRecent(list)
         }))
       : [];
@@ -82,7 +83,8 @@
       id: recentListId,
       name: recentListName,
       itemIds: normalizeItemIds(storedRecent?.itemIds).slice(0, recentListLimit),
-      recipeSelections: {}
+      recipeSelections: {},
+      equipmentParameterNames: []
     };
     const lists = [recentList, ...normalLists];
     return {

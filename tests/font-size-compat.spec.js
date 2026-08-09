@@ -1,5 +1,28 @@
 const { expect, test } = require('@playwright/test');
 
+async function dispatchSyntheticSwipe(page, fromRatio, toRatio) {
+  await page.waitForFunction(() => !document.querySelector('.main')?.swiper?.animating);
+  const rect = await page.locator('.main').boundingBox();
+  const y = rect.y + rect.height / 2;
+  await page.mouse.move(rect.x + rect.width * fromRatio, y);
+  await page.mouse.down();
+  await page.mouse.move(rect.x + rect.width * toRatio, y, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForFunction(() => !document.querySelector('.main')?.swiper?.animating);
+}
+
+test('mobile panel swipe works in every supported browser engine', async ({ page }) => {
+  await page.setViewportSize({ width: 423, height: 780 });
+  await page.goto('/');
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await expect(page.locator('#panelLeft')).toHaveClass(/mobile-visible/);
+
+  await dispatchSyntheticSwipe(page, 0.8, 0.2);
+  await expect(page.locator('#panelRight')).toHaveClass(/mobile-visible/);
+  await dispatchSyntheticSwipe(page, 0.2, 0.8);
+  await expect(page.locator('#panelLeft')).toHaveClass(/mobile-visible/);
+});
+
 test('saved level 10 fits the viewport and keeps live changes inside the preview', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('ff14_font_size_level_v2', '10'));
   await page.goto('/');
@@ -19,6 +42,7 @@ test('saved level 10 fits the viewport and keeps live changes inside the preview
   await expect(page.locator('#fontSizeLevelInput')).toHaveValue('10');
   await expect(page.locator('#fontSizeApplyBtn')).toBeDisabled();
   await expect(page.locator('#fontSizePreview .checkable-item-icon')).toHaveCSS('width', '68px');
+  await expect.poll(() => page.locator('#fontSizePreview .node-icon').evaluate(image => image.naturalWidth)).toBeGreaterThan(0);
 
   const expectedWidths = ['32px', '36px', '40px', '44px', '48px', '52px', '56px', '60px', '64px', '68px'];
   for (let level = 1; level <= 10; level += 1) {
@@ -105,17 +129,41 @@ test('settings button and gathering time labels fit every display size', async (
     }
   }
 
-  await expect(page.locator('#settingsBtn')).toHaveCSS('background-color', 'rgb(200, 168, 75)');
-  await expect(page.locator('#settingsBtn')).toHaveCSS('color', 'rgb(26, 26, 26)');
+  await expect(page.locator('#settingsBtn')).toHaveCSS('background-color', 'rgb(26, 26, 26)');
+  await expect(page.locator('#settingsBtn')).toHaveCSS('color', 'rgb(200, 168, 75)');
+
+  await page.locator('#gatheringCloseBtn').click();
+  await page.locator('#settingsBtn').click();
+  for (let level = 1; level <= 10; level += 1) {
+    await page.locator('html').evaluate((element, selectedLevel) => {
+      element.dataset.fontSizeLevel = String(selectedLevel);
+    }, level);
+    await page.locator('#exportListToggle').click();
+    const layout = await page.evaluate(() => {
+      const trigger = document.querySelector('#exportListToggle').getBoundingClientRect();
+      const list = document.querySelector('#exportListChoices').getBoundingClientRect();
+      return { trigger, list, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight };
+    });
+    expect(layout.list.left).toBeGreaterThanOrEqual(7.5);
+    expect(layout.list.right).toBeLessThanOrEqual(layout.viewportWidth - 7.5);
+    expect(layout.list.top).toBeGreaterThanOrEqual(7.5);
+    expect(layout.list.bottom).toBeLessThanOrEqual(layout.viewportHeight - 7.5);
+    expect(Math.abs(layout.list.width - layout.trigger.width)).toBeLessThan(1);
+    await page.locator('#exportListToggle').click();
+  }
 });
 
 test('scaled compact controls remain contained at every display size', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('ff14_search_history', JSON.stringify(Array.from({ length: 30 }, (_, index) => `履歴${index + 1}`)));
+  });
   await page.goto('/');
   await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
 
   const setLevel = level =>
     page.locator('html').evaluate((element, value) => {
       element.dataset.fontSizeLevel = String(value);
+      window.dispatchEvent(new Event('resize'));
     }, level);
   const audit = selectors =>
     page.evaluate(items => {
@@ -150,7 +198,31 @@ test('scaled compact controls remain contained at every display size', async ({ 
       return failures;
     }, selectors);
 
+  await page.locator('#searchBox').click();
+  for (let level = 1; level <= 10; level += 1) {
+    await setLevel(level);
+    const readHistoryLayout = () => page.evaluate(() => {
+      const trigger = document.querySelector('#searchBox').getBoundingClientRect();
+      const list = document.querySelector('#searchHistory').getBoundingClientRect();
+      const firstRow = document.querySelector('#searchHistory li').getBoundingClientRect();
+      return {
+        trigger,
+        list,
+        visibleRows: Math.floor(list.height / firstRow.height),
+        usesAvailableHeight: Math.abs(list.bottom - (window.innerHeight - 8)) < 1 || list.scrollHeight <= list.clientHeight
+      };
+    });
+    await expect.poll(async () => (await readHistoryLayout()).visibleRows).toBeGreaterThanOrEqual(10);
+    await expect.poll(async () => (await readHistoryLayout()).usesAvailableHeight).toBe(true);
+    const historyLayout = await readHistoryLayout();
+    expect(Math.abs(historyLayout.list.left - historyLayout.trigger.left), `history left Level ${level}`).toBeLessThan(1);
+    expect(Math.abs(historyLayout.list.right - historyLayout.trigger.right), `history right Level ${level}`).toBeLessThan(1);
+    expect(historyLayout.list.top - historyLayout.trigger.bottom, `history top Level ${level}`).toBeCloseTo(3, 1);
+    expect(historyLayout.visibleRows, `history rows Level ${level}`).toBeGreaterThanOrEqual(10);
+  }
+
   await page.locator('#searchBox').fill('金鉱');
+  await expect.poll(() => page.locator('#searchHistory').evaluate(list => list.getBoundingClientRect().height)).toBe(0);
   for (let level = 1; level <= 10; level += 1) {
     await setLevel(level);
     expect(await audit(['.search-row', '#searchClearBtn', '#equipmentSearchToggle']), `search Level ${level}`).toEqual(
@@ -171,6 +243,19 @@ test('scaled compact controls remain contained at every display size', async ({ 
       ]),
       `equipment Level ${level}`
     ).toEqual([]);
+    const toggle = page.locator('#equipmentJobSelect .custom-select-toggle');
+    await toggle.click();
+    const dropdownLayout = await page.evaluate(() => {
+      const trigger = document.querySelector('#equipmentJobSelect').getBoundingClientRect();
+      const list = document.querySelector('#equipmentJobSelect .custom-select-options').getBoundingClientRect();
+      return { trigger, list, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight };
+    });
+    expect(dropdownLayout.list.left, `dropdown left Level ${level}`).toBeGreaterThanOrEqual(7.5);
+    expect(dropdownLayout.list.right, `dropdown right Level ${level}`).toBeLessThanOrEqual(dropdownLayout.viewportWidth - 7.5);
+    expect(dropdownLayout.list.top, `dropdown top Level ${level}`).toBeGreaterThanOrEqual(7.5);
+    expect(dropdownLayout.list.bottom, `dropdown bottom Level ${level}`).toBeLessThanOrEqual(dropdownLayout.viewportHeight - 7.5);
+    expect(Math.abs(dropdownLayout.list.width - dropdownLayout.trigger.width), `dropdown width Level ${level}`).toBeLessThan(1);
+    await toggle.click();
   }
 
   await page.locator('#equipmentSearchToggle').click();

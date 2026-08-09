@@ -26,7 +26,7 @@
       if (!version) return "";
       const normalized = String(tipsMarkdown || "").replace(/\r\n?/g, "\n");
       const headingPattern = new RegExp(
-        `^##\\s+${escapeRegularExpression(version)}\\s+リリース\\s*$`,
+        `^##[ \\t]+${escapeRegularExpression(version)}[ \\t]*リリース[ \\t]*$`,
         "m",
       );
       const heading = headingPattern.exec(normalized);

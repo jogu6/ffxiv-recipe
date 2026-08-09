@@ -75,6 +75,8 @@ test('converts v2 favorite storage to v3 and removes v2 only after saving it', a
 
 test('removes legacy favorites excluded from Lodestone and reports their names', async ({ page }) => {
   await page.addInitScript(() => {
+    if (sessionStorage.getItem('legacy-excluded-seeded') === '1') return;
+    sessionStorage.setItem('legacy-excluded-seeded', '1');
     localStorage.setItem(
       'ff14_favorite_lists_v3',
       JSON.stringify({
@@ -103,6 +105,51 @@ test('removes legacy favorites excluded from Lodestone and reports their names',
   await page.locator('#confirmNo').click();
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('ff14_favorite_lists_v3')));
   expect(stored.lists.find(list => list.id === 'legacy-excluded').itemIds).toEqual(['バスタードソード']);
+
+  await page.reload();
+  await expect(page.locator('#loadStatus')).toHaveText('patch 7.55 対応');
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await expect(page.locator('#confirmOverlay')).not.toHaveClass(/info/);
+});
+
+test('silently removes non-recipe items from recent history and keeps them removed', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('recent-non-recipe-seeded') === '1') return;
+    sessionStorage.setItem('recent-non-recipe-seeded', '1');
+    localStorage.setItem(
+      'ff14_favorite_lists_v3',
+      JSON.stringify({
+        version: 3,
+        selectedListId: 'SYSTEM_RECENT_ITEMS',
+        lists: [
+          {
+            id: 'SYSTEM_RECENT_ITEMS',
+            name: '検索履歴',
+            itemIds: ['ティターニアの羽根'],
+            recipeSelections: {}
+          }
+        ]
+      })
+    );
+  });
+
+  await openApp(page);
+  await expect(page.locator('#confirmOverlay')).not.toHaveClass(/info/);
+  let recentItems = await page.evaluate(() => {
+    const stored = JSON.parse(localStorage.getItem('ff14_favorite_lists_v3'));
+    return stored.lists.find(list => list.id === 'SYSTEM_RECENT_ITEMS').itemIds;
+  });
+  expect(recentItems).toEqual([]);
+
+  await page.reload();
+  await expect(page.locator('#loadStatus')).toHaveText('patch 7.55 対応');
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await expect(page.locator('#confirmOverlay')).not.toHaveClass(/info/);
+  recentItems = await page.evaluate(() => {
+    const stored = JSON.parse(localStorage.getItem('ff14_favorite_lists_v3'));
+    return stored.lists.find(list => list.id === 'SYSTEM_RECENT_ITEMS').itemIds;
+  });
+  expect(recentItems).toEqual([]);
 });
 
 test('round-trips a selected recipe through the compact favorite share code', async ({ page }) => {
@@ -448,7 +495,7 @@ test('restores left and right scroll positions after reload', async ({ page }) =
 
   await page.reload();
   await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
-  await expect(page.locator('#mobileBackBtn')).toBeVisible();
+  await expect(page.locator('#mobileBackBtn')).toHaveCount(0);
   await expect.poll(() => page.locator('#panelRight').evaluate(panel => panel.scrollTop)).toBe(rightScroll);
   await page.evaluate(() => showMobilePanel('left'));
   await expect.poll(() => page.locator('#recipeList').evaluate(list => list.scrollTop)).toBe(leftScroll);

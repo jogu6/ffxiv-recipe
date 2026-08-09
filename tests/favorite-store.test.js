@@ -50,12 +50,19 @@ test('favorite store normalization restores one bounded recent list and valid se
     version: 3,
     selectedListId: 'chosen',
     lists: [
-      { id: 'recent', name: 'history', itemIds: [1, 2, 3], recipeSelections: {} },
+      {
+        id: 'recent',
+        name: 'history',
+        itemIds: [1, 2, 3],
+        recipeSelections: {},
+        equipmentParameterNames: []
+      },
       {
         id: 'chosen',
         name: 'chosen',
         itemIds: [7, 8],
         recipeSelections: { 7: 'recipe-7', bad: 'recipe-x' },
+        equipmentParameterNames: [],
         materialSelected: true
       }
     ]

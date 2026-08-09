@@ -123,10 +123,10 @@ test('shows one selectable search row per recipe variant and uses the selected i
   });
   expect(overflowingRows).toBe(0);
 
-  const searchIconRatio = await rows
+  const searchIconWidth = await rows
     .nth(0)
-    .locator('.craft-job-label')
-    .evaluate(label => label.querySelector('.job-icon').getBoundingClientRect().width / parseFloat(getComputedStyle(label).fontSize));
+    .locator('.craft-job-label > .job-icon')
+    .evaluate(icon => icon.getBoundingClientRect().width);
   await rows.nth(0).click();
   await expect(page.locator('#treeContainer')).toContainText('ウォルナット材');
   await expect(page.locator('#treeContainer')).not.toContainText('グロースフォーミュラ・ガンマ');
@@ -154,13 +154,49 @@ test('shows one selectable search row per recipe variant and uses the selected i
   expect(rootLayout.methodNameAlignment).toBeLessThan(1);
   expect(rootLayout.methodWidthShare).toBeLessThan(0.75);
   expect(rootLayout.methodInside).toBe(true);
-  const selectorIconRatio = await page
-    .locator('.result-root-summary .recipe-method-summary .craft-job-label')
-    .evaluate(label => label.querySelector('.job-icon').getBoundingClientRect().width / parseFloat(getComputedStyle(label).fontSize));
-  expect(Math.abs(searchIconRatio - selectorIconRatio)).toBeLessThan(0.01);
+  const selectorIconWidth = await page
+    .locator('.result-root-summary .recipe-method-summary .craft-job-label > .job-icon')
+    .evaluate(icon => icon.getBoundingClientRect().width);
+  expect(Math.abs(searchIconWidth - selectorIconWidth)).toBeLessThan(0.01);
   await page.locator('.result-root-summary .recipe-method-summary').click();
   await expect(page.locator('.result-root-summary .recipe-method-choice')).toHaveCount(7);
   await expect(page.locator('.result-root-summary .recipe-method-choice').first()).toBeVisible();
+  for (let level = 1; level <= 10; level += 1) {
+    await page.locator('html').evaluate((element, selectedLevel) => {
+      element.dataset.fontSizeLevel = String(selectedLevel);
+    }, level);
+    const dropdownLayout = await page.locator('.result-root-summary .recipe-method-selector').evaluate(selector => {
+      const trigger = selector.querySelector('.recipe-method-summary').getBoundingClientRect();
+      const list = selector.querySelector('.recipe-method-choices').getBoundingClientRect();
+      const summary = selector.querySelector('.recipe-method-summary');
+      const choice = selector.querySelector('.recipe-method-choice');
+      return {
+        trigger,
+        list,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        scale: Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--font-size-scale')),
+        summaryFont: Number.parseFloat(getComputedStyle(summary).fontSize),
+        choiceFont: Number.parseFloat(getComputedStyle(choice).fontSize),
+        summaryBadgeFont: Number.parseFloat(getComputedStyle(summary.querySelector('.badge')).fontSize),
+        choiceBadgeFont: Number.parseFloat(getComputedStyle(choice.querySelector('.badge')).fontSize),
+        summaryIconWidth: summary.querySelector('.job-icon').getBoundingClientRect().width,
+        checkFont: Number.parseFloat(getComputedStyle(choice.querySelector('.recipe-method-check')).fontSize)
+      };
+    });
+    expect(Math.abs(dropdownLayout.list.left - dropdownLayout.trigger.left), `method left Level ${level}`).toBeLessThan(1);
+    expect(Math.abs(dropdownLayout.list.width - dropdownLayout.trigger.width), `method width Level ${level}`).toBeLessThan(1);
+    expect(Math.abs(dropdownLayout.list.top - dropdownLayout.trigger.bottom), `method top Level ${level}`).toBeLessThan(1);
+    expect(dropdownLayout.list.right, `method right Level ${level}`).toBeLessThanOrEqual(dropdownLayout.viewportWidth);
+    expect(dropdownLayout.list.bottom, `method bottom Level ${level}`).toBeLessThanOrEqual(dropdownLayout.viewportHeight);
+    expect(dropdownLayout.summaryFont, `method summary font Level ${level}`).toBeCloseTo(13 * dropdownLayout.scale, 1);
+    expect(dropdownLayout.choiceFont, `method choice font Level ${level}`).toBeCloseTo(13 * dropdownLayout.scale, 1);
+    expect(dropdownLayout.summaryBadgeFont, `method summary badge Level ${level}`).toBeCloseTo(12 * dropdownLayout.scale, 1);
+    expect(dropdownLayout.choiceBadgeFont, `method choice badge Level ${level}`).toBeCloseTo(12 * dropdownLayout.scale, 1);
+    expect(dropdownLayout.summaryIconWidth, `method job icon Level ${level}`).toBeCloseTo(17.78 * dropdownLayout.scale, 1);
+    expect(dropdownLayout.checkFont, `method check Level ${level}`).toBeCloseTo(13 * dropdownLayout.scale, 1);
+  }
+  await page.locator('html').evaluate(element => { element.dataset.fontSizeLevel = '3'; });
   const clippedRecipeMethodLabels = await page
     .locator('.result-root-summary .recipe-method-choice')
     .evaluateAll(choices =>
@@ -176,7 +212,7 @@ test('shows one selectable search row per recipe variant and uses the selected i
     choices: control.querySelector('.recipe-method-choices').getBoundingClientRect().width
   }));
   expect(Math.abs(mobileSelectorWidths.control - mobileSelectorWidths.choices)).toBeLessThan(1);
-  await page.locator('#mobileBackBtn').click();
+  await page.evaluate(() => showMobilePanel('left', { animate: false }));
   await rows.nth(6).click();
   await expect(page.locator('#treeContainer')).toContainText('グロースフォーミュラ・ガンマ');
   await expect(page.locator('#treeContainer')).not.toContainText('ウォルナット材');
@@ -202,6 +238,164 @@ test('loads all recipe variants from the published item data', async ({ page }) 
     'src',
     './assets/job-icons/alchemist.webp'
   );
+});
+
+test('keeps recipe method text aligned with the left list and job icons aligned with the right panel', async ({
+  page
+}) => {
+  await routeMirageRecipeVariants(page);
+  await openApp(page, 900, 700);
+  await searchFor(page, 'ミラージュプリズム');
+  const row = page
+    .locator('#recipeList li')
+    .filter({ has: page.getByText('ミラージュプリズム', { exact: true }) })
+    .first();
+  await row.click();
+  const selector = page.locator('.result-root-summary .recipe-method-selector');
+  await selector.locator('.recipe-method-summary').click();
+
+  const sizes = await page.evaluate(() => {
+    const leftBadge = document.querySelector('#recipeList li .craft-job-label .badge');
+    const summary = document.querySelector('.result-root-summary .recipe-method-summary');
+    const choice = document.querySelector('.result-root-summary .recipe-method-choice');
+    const scale = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--font-size-scale'));
+    return {
+      scale,
+      leftBadgeFont: Number.parseFloat(getComputedStyle(leftBadge).fontSize),
+      leftBadgeColor: getComputedStyle(leftBadge).color,
+      leftBadgeBackground: getComputedStyle(leftBadge).backgroundColor,
+      leftIconWidth: leftBadge.closest('.craft-job-label').querySelector('.job-icon').getBoundingClientRect().width,
+      summaryBadgeFont: Number.parseFloat(getComputedStyle(summary.querySelector('.badge')).fontSize),
+      choiceBadgeFont: Number.parseFloat(getComputedStyle(choice.querySelector('.badge')).fontSize),
+      summaryIconWidth: summary.querySelector('.job-icon').getBoundingClientRect().width,
+      choiceIconWidth: choice.querySelector('.job-icon').getBoundingClientRect().width,
+      maxJobCenterDelta: Math.max(
+        ...[...document.querySelectorAll('.job-icon')]
+          .filter(icon => icon.getClientRects().length > 0)
+          .map(icon => {
+            const label = icon.closest('.craft-job-label, .job-badge');
+            const text = label?.querySelector('.job-badge-text');
+            if (!text) return 0;
+            const iconBox = icon.getBoundingClientRect();
+            const textBox = text.getBoundingClientRect();
+            return Math.abs(iconBox.top + iconBox.height / 2 - (textBox.top + textBox.height / 2));
+          })
+      ),
+      summaryPadding: getComputedStyle(summary).padding,
+      choicePadding: getComputedStyle(choice).padding
+    };
+  });
+  expect(sizes.summaryBadgeFont).toBeCloseTo(sizes.leftBadgeFont, 1);
+  expect(sizes.choiceBadgeFont).toBeCloseTo(sizes.leftBadgeFont, 1);
+  expect(sizes.summaryIconWidth).toBeCloseTo(sizes.leftIconWidth, 1);
+  expect(sizes.summaryIconWidth).toBeCloseTo(17.78 * sizes.scale, 1);
+  expect(sizes.choiceIconWidth).toBeCloseTo(sizes.summaryIconWidth, 1);
+  expect(sizes.maxJobCenterDelta).toBeLessThan(0.51);
+
+  await page.locator('#settingsBtn').click();
+  await page.locator('#settingsDisplayTab').click();
+  const previewSizes = await page.locator('#fontSizePreview .craft-job-label').evaluate(label => ({
+    badgeFont: Number.parseFloat(getComputedStyle(label.querySelector('.badge')).fontSize),
+    badgeColor: getComputedStyle(label.querySelector('.badge')).color,
+    badgeBackground: getComputedStyle(label.querySelector('.badge')).backgroundColor,
+    iconWidth: label.querySelector('.job-icon').getBoundingClientRect().width,
+    centerDelta: (() => {
+      const iconBox = label.querySelector('.job-icon').getBoundingClientRect();
+      const textBox = label.querySelector('.job-badge-text').getBoundingClientRect();
+      return Math.abs(iconBox.top + iconBox.height / 2 - (textBox.top + textBox.height / 2));
+    })()
+  }));
+  expect(previewSizes.badgeFont).toBeCloseTo(sizes.leftBadgeFont, 1);
+  expect(previewSizes.badgeColor).toBe(sizes.leftBadgeColor);
+  expect(previewSizes.badgeBackground).toBe(sizes.leftBadgeBackground);
+  expect(previewSizes.iconWidth).toBeCloseTo(sizes.summaryIconWidth, 1);
+  expect(previewSizes.centerDelta).toBeLessThan(0.51);
+  await expect(page.locator('#fontSizePreview .craft-supplement-count')).toHaveCount(1);
+  await page.locator('#settingsCloseBtn').click();
+
+  await page.setViewportSize({ width: 420, height: 700 });
+  await searchFor(page, 'ミラージュプリズム');
+  await page
+    .locator('#recipeList li')
+    .filter({ has: page.getByText('ミラージュプリズム', { exact: true }) })
+    .first()
+    .click();
+  await page.locator('.result-root-summary .recipe-method-summary').click();
+  const mobileSizes = await page.evaluate(() => {
+    const summary = document.querySelector('.result-root-summary .recipe-method-summary');
+    const choice = document.querySelector('.result-root-summary .recipe-method-choice');
+    return {
+      summaryBadgeFont: Number.parseFloat(getComputedStyle(summary.querySelector('.badge')).fontSize),
+      choiceBadgeFont: Number.parseFloat(getComputedStyle(choice.querySelector('.badge')).fontSize),
+      summaryIconWidth: summary.querySelector('.job-icon').getBoundingClientRect().width,
+      choiceIconWidth: choice.querySelector('.job-icon').getBoundingClientRect().width,
+      summaryPadding: getComputedStyle(summary).padding,
+      choicePadding: getComputedStyle(choice).padding
+    };
+  });
+  expect(mobileSizes).toEqual({
+    summaryBadgeFont: sizes.summaryBadgeFont,
+    choiceBadgeFont: sizes.choiceBadgeFont,
+    summaryIconWidth: sizes.summaryIconWidth,
+    choiceIconWidth: sizes.choiceIconWidth,
+    summaryPadding: sizes.summaryPadding,
+    choicePadding: sizes.choicePadding
+  });
+});
+
+test('uses the right-panel item name size across every panel and the display preview', async ({ page }) => {
+  await openApp(page, 900, 700);
+  await searchFor(page, 'バスタードソード');
+  await page.getByText('バスタードソード', { exact: true }).first().click();
+  await page.evaluate(() => showUsesPanel('ブロンズインゴット', { record: false }));
+
+  const assertCommonItemNameFonts = async selectors => {
+    for (let level = 1; level <= 10; level += 1) {
+      const result = await page.evaluate(({ selectedLevel, selectedSelectors }) => {
+        document.documentElement.dataset.fontSizeLevel = String(selectedLevel);
+        const scale = Number.parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue('--font-size-scale')
+        );
+        return {
+          expected: 14 * scale,
+          fonts: selectedSelectors.map(selector => {
+            const element = document.querySelector(selector);
+            return element ? Number.parseFloat(getComputedStyle(element).fontSize) : null;
+          })
+        };
+      }, { selectedLevel: level, selectedSelectors: selectors });
+      expect(result.fonts.every(font => font !== null), `item names exist at Level ${level}`).toBe(true);
+      result.fonts.forEach(font => expect(font, `item name Level ${level}`).toBeCloseTo(result.expected, 1));
+    }
+  };
+
+  await assertCommonItemNameFonts([
+    '#recipeList .list-name',
+    '#usesList .list-name',
+    '.result-root-summary .list-name',
+    '#treeContainer .node-name'
+  ]);
+  await page.locator('#materialsViewBtn').click();
+  await assertCommonItemNameFonts([
+    '#recipeList .list-name',
+    '#usesList .list-name',
+    '.result-root-summary .list-name',
+    '#treeContainer .material-name'
+  ]);
+
+  await page.locator('#settingsBtn').click();
+  await page.locator('#settingsDisplayTab').click();
+  for (let level = 1; level <= 10; level += 1) {
+    const previewFont = await page.locator('#fontSizePreview').evaluate((preview, selectedLevel) => {
+      preview.dataset.fontSizeLevel = String(selectedLevel);
+      const scale = Number.parseFloat(getComputedStyle(preview).getPropertyValue('--font-size-scale'));
+      return {
+        expected: 14 * scale,
+        actual: Number.parseFloat(getComputedStyle(preview.querySelector('.list-name')).fontSize)
+      };
+    }, level);
+    expect(previewFont.actual, `preview item name Level ${level}`).toBeCloseTo(previewFont.expected, 1);
+  }
 });
 
 test('offers the same recipe selector for an intermediate item in the tree and materials list', async ({

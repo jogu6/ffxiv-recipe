@@ -191,42 +191,97 @@ test('equipment search applies primary stats and shared low-level physical gear 
   }
 });
 
-test('desktop left panel keeps the confirmed minimum width and widens on large layouts', async ({ page }) => {
-  await openApp(page, 1024, 800);
-  await expect(page.locator('#panelLeft')).toHaveCSS('width', '336px');
+test('desktop left panel resizes, persists, and stacks equipment fields only when required', async ({ page }) => {
+  await openApp(page, 1200, 800);
   const setupDuration = await page.evaluate(() => performance.getEntriesByName('application-data-setup')[0]?.duration);
   expect(setupDuration).toBeLessThan(2500);
-  await page.setViewportSize({ width: 800, height: 800 });
-  await expect(page.locator('#panelLeft')).toHaveCSS('width', '328px');
   await page.locator('#equipmentSearchToggle').click();
-  const equipmentLayout = await page.locator('#equipmentSearchPanel').evaluate(panel => {
-    const fields = [...panel.querySelector('.equipment-search-grid').children].map(element =>
-      element.getBoundingClientRect()
-    );
-    const actions = [...panel.querySelector('.equipment-search-actions').children].map(element =>
-      element.getBoundingClientRect()
-    );
-    const verticalCenterDelta = id => {
-      const select = panel.querySelector(id).getBoundingClientRect();
-      const value = panel.querySelector(`${id} .custom-select-value`).getBoundingClientRect();
-      return value.top + value.height / 2 - (select.top + select.height / 2);
-    };
-    return {
-      jobSearchWidthDelta: fields[0].width - actions[0].width,
-      itemSearchWidthDelta: fields[2].width - actions[0].width,
-      equipmentResetWidthDelta: fields[1].width - actions[1].width,
-      slotResetWidthDelta: fields[3].width - actions[1].width,
-      jobVerticalCenter: verticalCenterDelta('#equipmentJobSelect'),
-      itemVerticalCenter: verticalCenterDelta('#equipmentItemLevelSelect'),
-      slotVerticalCenter: verticalCenterDelta('#equipmentSlotSelect')
-    };
+  await expect(page.locator('#panelLeft')).not.toHaveClass(/equipment-search-stacked/);
+  const sameRow = await page.locator('#equipmentSearchPanel').evaluate(panel => {
+    const job = panel.querySelector('.equipment-search-grid > label').getBoundingClientRect();
+    const level = panel.querySelector('.equipment-search-field').getBoundingClientRect();
+    return Math.abs(job.top - level.top);
   });
-  for (const key of ['jobVerticalCenter', 'itemVerticalCenter', 'slotVerticalCenter']) {
-    expect(Math.abs(equipmentLayout[key])).toBeLessThan(2);
-  }
-  for (const key of ['jobSearchWidthDelta', 'itemSearchWidthDelta', 'equipmentResetWidthDelta', 'slotResetWidthDelta']) {
-    expect(Number.isFinite(equipmentLayout[key])).toBe(true);
-  }
+  expect(sameRow).toBeLessThan(1);
+
+  const initialWidth = await page.locator('#panelLeft').evaluate(panel => panel.getBoundingClientRect().width);
+  const handle = page.locator('#panelLeftResizeHandle');
+  const initialMinimumWidth = Number(await handle.getAttribute('data-minimum-width'));
+  expect(Math.abs(initialWidth - initialMinimumWidth)).toBeLessThanOrEqual(1);
+  const handleBox = await handle.boundingBox();
+  expect(handleBox).toBeTruthy();
+  await page.mouse.move(handleBox.x + 0.5, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handleBox.x + 80, handleBox.y + handleBox.height / 2, { steps: 5 });
+  await page.mouse.up();
+  const resizedWidth = await page.locator('#panelLeft').evaluate(panel => panel.getBoundingClientRect().width);
+  expect(resizedWidth).toBeGreaterThan(initialWidth + 70);
+  await expect.poll(async () =>
+    Math.abs((await page.evaluate(() => Number(localStorage.getItem('ff14_panel_left_width_v1')))) - resizedWidth)
+  ).toBeLessThanOrEqual(1);
+
+  await page.locator('#appTitle').click();
+  await expect.poll(async () =>
+    Math.abs((await page.locator('#panelLeft').evaluate(panel => panel.getBoundingClientRect().width)) - resizedWidth)
+  ).toBeLessThanOrEqual(1);
+  await page.reload();
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await expect.poll(async () =>
+    Math.abs((await page.locator('#panelLeft').evaluate(panel => panel.getBoundingClientRect().width)) - resizedWidth)
+  ).toBeLessThanOrEqual(1);
+
+  await page.locator('html').evaluate(element => {
+    element.dataset.fontSizeLevel = '10';
+  });
+  await page.setViewportSize({ width: 600, height: 800 });
+  await expect(handle).toBeHidden();
+  await page.setViewportSize({ width: 601, height: 800 });
+  await expect(handle).toBeVisible();
+  await expect(page.locator('#panelLeft')).toHaveClass(/equipment-search-stacked/);
+  await page.locator('#equipmentSearchToggle').click();
+  const stackedRows = await page.locator('#equipmentSearchPanel').evaluate(panel => {
+    const job = panel.querySelector('.equipment-search-grid > label').getBoundingClientRect();
+    const level = panel.querySelector('.equipment-search-field').getBoundingClientRect();
+    return level.top >= job.bottom;
+  });
+  expect(stackedRows).toBe(true);
+
+  await page.locator('html').evaluate(element => {
+    element.dataset.fontSizeLevel = '3';
+  });
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await expect(page.locator('#panelLeft')).not.toHaveClass(/equipment-search-stacked/);
+  await expect.poll(async () =>
+    Math.abs((await page.locator('#panelLeft').evaluate(panel => panel.getBoundingClientRect().width)) - resizedWidth)
+  ).toBeLessThanOrEqual(1);
+});
+
+test('middle panel uses temporary width and yields before the right panel', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('ff14_panel_left_width_v1', '700'));
+  await openApp(page, 1000, 800);
+  await expect.poll(() => page.locator('#panelLeft').evaluate(panel => panel.getBoundingClientRect().width)).toBeCloseTo(
+    700,
+    0
+  );
+
+  await searchFor(page, 'バスタードソード');
+  await page.getByText('バスタードソード', { exact: true }).first().click();
+  await page.locator('#usesBtn').click();
+  const openLayout = await page.evaluate(() => ({
+    left: document.querySelector('#panelLeft').getBoundingClientRect().width,
+    middle: document.querySelector('#panelMiddle').getBoundingClientRect().width,
+    right: document.querySelector('#panelRight').getBoundingClientRect().width
+  }));
+  expect(openLayout.left).toBeLessThan(700);
+  expect(openLayout.middle).toBeGreaterThanOrEqual(159.5);
+  expect(openLayout.right).toBeGreaterThanOrEqual(190);
+
+  await page.locator('#searchBox').click();
+  await expect(page.locator('#panelMiddle')).not.toHaveClass(/open/);
+  await expect.poll(() => page.locator('#panelLeft').evaluate(panel => panel.getBoundingClientRect().width)).toBeCloseTo(
+    700,
+    0
+  );
 });
 
 test('equipment custom dropdown stays inside a mobile viewport', async ({ page }) => {
@@ -251,7 +306,7 @@ test('short search runs on blur and clear button resets it', async ({ page }) =>
   await expect(page.locator('#searchBox')).toHaveValue('');
   await expect(page.locator('#recipeList .search-empty-message')).toHaveText('条件に一致するアイテムがありません');
   await expect(page.locator('#recipeList .search-empty-scope')).toHaveText(
-    '⚠️ このアプリには、製作レシピがあるアイテムと、製作に必要なアイテムのみ登録されています。'
+    '⚠️ このアプリには、Lodestone に掲載されている「製作レシピがあるアイテム」と、「製作に必要なアイテム」のみ登録されています。'
   );
   const [messageBox, scopeBox] = await Promise.all([
     page.locator('#recipeList .search-empty-message').boundingBox(),
@@ -591,6 +646,18 @@ test('equipment search prefers tenacity or piety and shows only differing tied p
   });
   await expect(page.locator('#recipeList .equipment-parameters')).toHaveCount(2);
   await expect(page.locator('#recipeList')).not.toContainText('STR +9');
+
+  await page.evaluate(() => {
+    const list = createFavoriteList('通常のお気に入り', ['試験用同値頭A', '試験用同値頭B']);
+    selectFavoriteList(list.id);
+  });
+  await expect(page.locator('#recipeList .equipment-parameters')).toHaveCount(0);
+
+  await page.evaluate(() => {
+    const list = favoriteStore.lists.find(candidate => candidate.name.includes('ナイト:装備Lv50'));
+    selectFavoriteList(list.id);
+  });
+  await expect(page.locator('#recipeList .equipment-parameters')).toHaveCount(2);
   await page.locator('#recipeList').getByText('素材リストを表示').click();
   await expect(page.locator('.production-content-section .equipment-parameters')).toHaveCount(0);
 });

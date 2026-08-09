@@ -118,14 +118,53 @@ async function dismissInfoDialog(page) {
   await expect(overlay).not.toBeVisible();
 }
 
+async function beginSwipe(page, locator, fromRatio, toRatio) {
+  await page.waitForFunction(() => !document.querySelector('.main')?.swiper?.animating);
+  const box = await locator.boundingBox();
+  if (!box) throw new Error('Cannot swipe an invisible element');
+  const client = page.__touchClient || await page.context().newCDPSession(page);
+  page.__touchClient = client;
+  const y = Math.max(box.y + 8, Math.min(box.y + box.height - 8, box.y + 120));
+  const point = ratio => ({ x: box.x + box.width * ratio, y });
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [point(fromRatio)]
+  });
+  for (let step = 1; step <= 8; step += 1) {
+    const ratio = fromRatio + ((toRatio - fromRatio) * step) / 8;
+    await client.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [point(ratio)]
+    });
+  }
+}
+
+async function endSwipe(page) {
+  const client = page.__touchClient;
+  if (!client) throw new Error('Cannot finish a swipe that has not started');
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchEnd',
+    touchPoints: []
+  });
+  await page.waitForFunction(() => !document.querySelector('.main')?.swiper?.animating);
+}
+
+async function swipe(page, locator, fromRatio, toRatio) {
+  await beginSwipe(page, locator, fromRatio, toRatio);
+  await endSwipe(page);
+}
+
 module.exports = {
+  beginSwipe,
   chooseCustomOption,
   closeSharePlaza,
   dismissInfoDialog,
   dragHandleAfter,
+  endSwipe,
   importFavoriteFromPlaza,
   loadPublishedItems,
   openApp,
   routeMirageRecipeVariants,
-  searchFor
+  searchFor,
+  swipe
 };

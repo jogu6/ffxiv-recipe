@@ -10,6 +10,12 @@
 <link rel="manifest" href="./manifest.webmanifest">
 <script>
   (() => {
+    const reportedMobile = navigator.userAgentData?.mobile === true;
+    const mobileUserAgent = /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(navigator.userAgent || '');
+    const ipadDesktopMode = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+    document.documentElement.dataset.deviceType =
+      !reportedMobile && !mobileUserAgent && !ipadDesktopMode ? 'pc' : 'other';
+
     let bootFailed = false;
     let bootErrorDetail = '';
 
@@ -80,7 +86,10 @@
       <img class="app-title-icon" src="./assets/app-icons/favicon.png" alt="">
       <h1><img class="app-name-logo" src="./assets/branding/xivca-logo.webp" alt="FinalFantasy XIV® Crafting Assistant XIVca(シヴカ)"></h1>
     </div>
-    <span id="loadStatus">データ読み込み中...</span>
+    <div class="header-info" id="headerInfo">
+      <span id="headerAppFullName" aria-hidden="true">FinalFantasy XIV® Crafting Assistant XIVca(シヴカ)</span>
+      <span id="loadStatus">データ読み込み中...</span>
+    </div>
   </div>
   <button id="popupBtn">⧉ 小窓で開く</button>
   <button id="mobileBackBtn" type="button">◀ 戻る</button>
@@ -88,12 +97,14 @@
 </header>
 
 <div class="main" data-app-content inert>
-  <div class="panel-left" id="panelLeft">
+  <div id="mobilePanelTrack" class="mobile-panel-track">
+  <div class="panel-left equipment-search-stacked" id="panelLeft" data-mobile-panel="left">
     <div class="panel-left-header">
       <div class="search-row">
         <div class="search-wrap">
           <input type="text" id="searchBox" placeholder="絞り込み...">
           <button id="searchClearBtn" type="button" title="検索をクリア" aria-label="検索をクリア">×</button>
+          <ul id="searchHistory"></ul>
         </div>
         <button id="equipmentSearchToggle" type="button" title="装備検索" aria-expanded="false">▼</button>
       </div>
@@ -128,7 +139,6 @@
         </div>
         <button id="saveEquipmentSearchBtn" type="button" disabled>検索結果をお気に入り登録</button>
       </div>
-      <ul id="searchHistory"></ul>
       <button id="favBtn" title="お気に入り">📌 お気に入り</button>
       <div id="checkedFavoriteMaterialsActions" class="checked-favorite-materials-actions">
         <div class="checked-favorite-materials-header">
@@ -149,14 +159,15 @@
     <ul id="recipeList"></ul>
     <div class="tips-msg mobile-tips-msg hidden" id="mobileTipsMsg"></div>
   </div>
-  <div class="panel-middle" id="panelMiddle">
+  <div id="panelLeftResizeHandle" class="panel-left-resize-handle" aria-hidden="true"></div>
+  <div class="panel-middle" id="panelMiddle" data-mobile-panel="middle">
     <div class="panel-middle-header">
       <button id="usesBackBtn">◀ 戻る</button>
       <span id="usesTitle"></span>
     </div>
     <ul id="usesList"></ul>
   </div>
-  <div class="panel-right" id="panelRight">
+  <div class="panel-right" id="panelRight" data-mobile-panel="right">
     <div class="result-header">
       <div class="result-main-row">
         <span id="resultTitle"></span>
@@ -181,6 +192,7 @@
     <div id="treeContainer">
       <div class="tips-msg" id="tipsMsg"></div>
     </div>
+  </div>
   </div>
 </div>
 <div class="footer" data-app-content inert>© SQUARE ENIX / X: <a href="https://x.com/ff14_recipe" target="_blank" rel="noopener">@ff14_recipe</a></div>
@@ -269,18 +281,18 @@
             <div class="node-row">
               <button id="fontSizePreviewPin" class="pin-btn" type="button" title="表示例のピン" aria-label="表示例のピン" aria-pressed="true">📌</button>
               <button id="fontSizePreviewCheck" class="checkable-item-icon checkable-node-icon checked" type="button" title="表示例の画像チェック" aria-label="表示例の画像チェック" aria-pressed="true">
-                <img class="node-icon" src="./assets/item-icons/025/025945.webp" alt="">
+                <img class="node-icon" src="./assets/item-icons/423/423c7e125ae726a82843-eca9967e954b.webp" alt="">
                 <span class="item-image-check" aria-hidden="true">✔︎</span>
               </button>
               <span class="node-main root-item-main">
                 <span class="node-title root-item-title">
                   <span class="item-list-label root-item-display-label">
-                    <span class="item-list-badges"><span class="craft-job-label"><img class="job-icon" src="./assets/job-icons/alchemist.webp" alt="" aria-hidden="true"><span class="badge badge-masterbook job-badge">錬金秘伝書:第6巻</span></span></span>
+                    <span id="fontSizePreviewJob" class="item-list-badges"></span>
                     <span class="list-name">オーケストリオン譜:最後の闘い（FINAL FANTASY IV）</span>
                   </span>
                   <span class="node-qty">× 3</span>
                 </span>
-                <span class="node-sub-info"><span class="node-sub-row"><span class="node-sub-label">(🔨</span><span class="node-sub-num node-craft-count"> 2 </span><span class="node-sub-label">回製作)</span></span></span>
+                <span id="fontSizePreviewSupplement" class="node-sub-info"></span>
               </span>
             </div>
           </div>
@@ -404,6 +416,8 @@
 <script src="./favorite-count-model.js"></script>
 <script src="./material-model.js"></script>
 <script src="./material-purchase-state.js"></script>
+<script src="./vendor/swiper-bundle.min.js"></script>
+<script src="./mobile-panel-swipe.js"></script>
 <script src="./navigation-state.js"></script>
 <script src="./recipe-data-model.js"></script>
 <script src="./recipe-selection-model.js"></script>
@@ -412,6 +426,7 @@
 <script src="./pwa-update.js"></script>
 <script src="./ui-change-policy.js"></script>
 <script src="./view-state.js"></script>
+<script src="./panel-layout.js"></script>
 <script src="./app.js"></script>
 <!-- Cloudflare Web Analytics -->
 <script>

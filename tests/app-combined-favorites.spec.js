@@ -103,6 +103,58 @@ test('combined favorite materials opens directly without confirmation dialog', a
     .toBeGreaterThan(4);
 });
 
+test('all production items inherit the common responsive action-button placement', async ({ page }) => {
+  await seedFavoriteLists(page, [
+    {
+      id: 'list-actions',
+      name: 'ボタン配置確認',
+      itemIds: [1602, 4422],
+      materialSelected: true
+    }
+  ]);
+
+  await openApp(page, 900, 700);
+  await page.locator('#checkedFavoriteMaterialsBtn').click();
+  await expect(page.locator('#confirmOverlay')).toHaveClass(/info/);
+  await page.locator('#confirmNo').click();
+  await page.locator('.production-content-section .production-content-toggle').click();
+
+  const productionRows = page.locator(
+    '.production-content-section .favorite-material-root-summary:not(.favorite-list-root-summary) > .node-row'
+  );
+  await expect(productionRows).toHaveCount(2);
+  await expect(productionRows).toHaveClass([/item-action-row/, /item-action-row/]);
+  await page.setViewportSize({ width: 601, height: 780 });
+  for (let level = 1; level <= 10; level += 1) {
+    await page.locator('html').evaluate((element, selectedLevel) => {
+      element.dataset.fontSizeLevel = String(selectedLevel);
+    }, level);
+    const desktopGaps = await productionRows.evaluateAll(rows =>
+      rows.map(row => {
+        const content = row.querySelector('.node-main').getBoundingClientRect();
+        const actions = row.querySelector('.item-action-buttons').getBoundingClientRect();
+        return actions.left - content.right;
+      })
+    );
+    expect(desktopGaps.every(gap => gap >= 0 && gap <= 10), `desktop Level ${level}`).toBe(true);
+  }
+
+  await page.setViewportSize({ width: 600, height: 780 });
+  for (let level = 1; level <= 10; level += 1) {
+    await page.locator('html').evaluate((element, selectedLevel) => {
+      element.dataset.fontSizeLevel = String(selectedLevel);
+    }, level);
+    const mobileTrailingGaps = await productionRows.evaluateAll(rows =>
+      rows.map(row => {
+        const rowBox = row.getBoundingClientRect();
+        const actions = row.querySelector('.item-action-buttons').getBoundingClientRect();
+        return rowBox.right - actions.right;
+      })
+    );
+    expect(mobileTrailingGaps.every(gap => gap >= 0 && gap <= 10), `mobile Level ${level}`).toBe(true);
+  }
+});
+
 test('checked favorite lists use a dedicated combined materials entry and reset on main navigation', async ({
   page
 }) => {
@@ -152,6 +204,20 @@ test('checked favorite lists use a dedicated combined materials entry and reset 
   await page.locator('#favBtn').click();
   await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
   await expect(page.locator('#favoriteLists')).not.toContainText('検索履歴');
+  await page.locator('#settingsBtn').click();
+  await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
+  await page.locator('#settingsCloseBtn').click();
+  await page.evaluate(() => showUsesPanel('岩塩'));
+  await page.locator('#usesTitle').click();
+  await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
+  await page.evaluate(() => showMobilePanel('right'));
+  await page.locator('#treeContainer').click({ position: { x: 4, y: 4 } });
+  await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
+  await page.evaluate(() => showMobilePanel('left'));
+  await page.locator('#favBtn').click();
+  await expect(page.locator('#favoriteLists')).not.toHaveClass(/open/);
+  await page.locator('#favBtn').click();
+  await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
   await page.locator('#checkedFavoriteMaterialsHelpBtn').click();
   await expect(page.locator('#licenseText')).toContainText('チェックした複数のお気に入りリスト');
   await expect(page.locator('#licenseText')).toContainText('どれか1リスト');
@@ -211,7 +277,7 @@ test('checked favorite lists use a dedicated combined materials entry and reset 
   await searchFor(page, 'バスタードソード');
   await page.getByText('バスタードソード', { exact: true }).first().click();
   await expect(page.locator('#checkedFavoriteMaterialsActions')).not.toHaveClass(/visible/);
-  await page.locator('#mobileBackBtn').click();
+  await page.evaluate(() => showMobilePanel('left', { animate: false }));
   await page.locator('#favBtn').click();
   await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
   await expect(page.locator('#favoriteLists .favorite-list-material-checkbox:checked')).toHaveCount(0);
@@ -423,7 +489,7 @@ test('checked favorite lists calculate any one list and restore production discl
   ).toHaveText('▶');
   await expect(page.locator('.materials-list')).toContainText(/銅鉱\s*×\s*6/);
 
-  await page.locator('#mobileBackBtn').click();
+  await page.evaluate(() => showMobilePanel('left', { animate: false }));
   await page.locator('#clearFavoriteMaterialChecksBtn').click();
   await expect(page.locator('#checkedFavoriteMaterialsActions')).not.toHaveClass(/visible/);
   await expect(page.locator('.materials-list')).toHaveCount(0);
