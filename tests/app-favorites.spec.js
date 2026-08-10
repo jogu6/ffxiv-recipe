@@ -799,3 +799,77 @@ test('mobile panels align list actions and scroll on the intended element', asyn
   await page.getByText('アリペブレ', { exact: true }).first().click();
   await expect.poll(() => page.locator('#panelRight').evaluate(panel => panel.scrollTop)).toBe(0);
 });
+
+test('mobile content changes reset only the destination panel scroll', async ({ page }) => {
+  await openApp(page, 423, 520);
+  await searchFor(page, 'アリペブレ');
+  await page.getByText('アリペブレ', { exact: true }).first().click();
+  await page.locator('#panelRight').evaluate(panel => {
+    panel.scrollTop = 100;
+    panel.dispatchEvent(new Event('scroll'));
+  });
+  await expect.poll(() => page.locator('#panelRight').evaluate(panel => panel.scrollTop)).toBeGreaterThan(0);
+
+  await page.evaluate(() => showMobilePanel('left', { animate: false }));
+  const leftScroll = await page.locator('#recipeList').evaluate(list => {
+    const spacer = document.createElement('li');
+    spacer.style.height = '1000px';
+    spacer.style.flexShrink = '0';
+    list.appendChild(spacer);
+    list.scrollTop = 80;
+    list.dispatchEvent(new Event('scroll'));
+    return list.scrollTop;
+  });
+  await page.getByText('アリペブレ', { exact: true }).first().evaluate(row => row.closest('li').click());
+  await expect.poll(() => page.locator('#panelRight').evaluate(panel => panel.scrollTop)).toBe(0);
+  await expect.poll(() => page.locator('#recipeList').evaluate(list => list.scrollTop)).toBe(leftScroll);
+
+  await page.evaluate(() => showMobilePanel('left', { animate: false }));
+  await searchFor(page, '岩塩');
+  const saltRow = page
+    .locator('#recipeList li')
+    .filter({ has: page.getByText('岩塩', { exact: true }) })
+    .first();
+  await saltRow.locator('.uses-list-btn').click();
+  await page.locator('#usesList').evaluate(list => {
+    const spacer = document.createElement('li');
+    spacer.style.height = '1000px';
+    spacer.style.flexShrink = '0';
+    list.appendChild(spacer);
+    list.scrollTop = 90;
+    list.dispatchEvent(new Event('scroll'));
+  });
+  await page.evaluate(() => showMobilePanel('left', { animate: false }));
+  const leftUsesScroll = await page.locator('#recipeList').evaluate(list => {
+    const spacer = document.createElement('li');
+    spacer.style.height = '1000px';
+    spacer.style.flexShrink = '0';
+    list.appendChild(spacer);
+    list.scrollTop = 70;
+    list.dispatchEvent(new Event('scroll'));
+    return list.scrollTop;
+  });
+  await saltRow.locator('.uses-list-btn').evaluate(button => button.click());
+  await expect.poll(() => page.locator('#usesList').evaluate(list => list.scrollTop)).toBe(0);
+  await expect.poll(() => page.locator('#recipeList').evaluate(list => list.scrollTop)).toBe(leftUsesScroll);
+
+  await page.evaluate(() => showMobilePanel('right', { animate: false }));
+  await page.locator('#panelRight').evaluate(panel => {
+    panel.scrollTop = 100;
+    panel.dispatchEvent(new Event('scroll'));
+  });
+  await expect.poll(() => page.locator('#panelRight').evaluate(panel => panel.scrollTop)).toBeGreaterThan(0);
+  await page.evaluate(() => showMobilePanel('middle', { animate: false }));
+  const middleScroll = await page.locator('#usesList').evaluate(list => {
+    const spacer = document.createElement('li');
+    spacer.style.height = '1000px';
+    spacer.style.flexShrink = '0';
+    list.appendChild(spacer);
+    list.scrollTop = 80;
+    list.dispatchEvent(new Event('scroll'));
+    return list.scrollTop;
+  });
+  await page.locator('#usesList li').first().evaluate(row => row.click());
+  await expect.poll(() => page.locator('#panelRight').evaluate(panel => panel.scrollTop)).toBe(0);
+  await expect.poll(() => page.locator('#usesList').evaluate(list => list.scrollTop)).toBe(middleScroll);
+});

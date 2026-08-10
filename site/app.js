@@ -958,6 +958,15 @@ function scrollPositionContainers() {
   };
 }
 
+function resetDestinationPanelScroll(panelName) {
+  const keys =
+    panelName === 'middle' ? ['usesList'] : panelName === 'right' ? ['treeContainer', 'panelRight'] : [];
+  keys.forEach(key => {
+    viewScrollPositions[key] = 0;
+    scrollPositionContainers()[key].scrollTop = 0;
+  });
+}
+
 function isScrollPositionActive(key) {
   if (!isMobile()) return true;
   const panel = currentMobilePanel();
@@ -3552,7 +3561,7 @@ function closeUsesPanel() {
   elements.panelMiddle.classList.remove('open');
   elements.panelMiddle.classList.remove('mobile-visible');
   if (isMobile()) mobilePanelSwipeController?.sync({ middleOpen: false });
-  elements.usesList.scrollTop = 0;
+  resetDestinationPanelScroll('middle');
   selectedUsesItem = null;
   updatePanelLayout();
   saveViewState();
@@ -3607,7 +3616,7 @@ function showUsesPanel(ingredientName, options = {}) {
   });
 
   elements.usesList.replaceChildren(frag);
-  elements.usesList.scrollTop = 0;
+  resetDestinationPanelScroll('middle');
   elements.panelMiddle.classList.add('open');
   updatePanelLayout();
   if (isMobile()) showMobilePanel('middle');
@@ -4038,8 +4047,7 @@ function clearMobilePanels() {
 }
 
 function resetRightPanelViewState() {
-  elements.treeContainer.scrollTop = 0;
-  elements.panelRight.scrollTop = 0;
+  resetDestinationPanelScroll('right');
   exchangeTreeState.clear();
   intermediateTreeState.clear();
   materialSectionState.clear();
@@ -4255,8 +4263,7 @@ function renderResultView({ preserveScroll = false } = {}) {
   const treeScrollTop = elements.treeContainer.scrollTop;
   const panelScrollTop = elements.panelRight.scrollTop;
   if (!preserveScroll) {
-    elements.treeContainer.scrollTop = 0;
-    elements.panelRight.scrollTop = 0;
+    resetDestinationPanelScroll('right');
   }
   prepareImageCheckRender();
   clearRenderedTree();
