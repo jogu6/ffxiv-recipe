@@ -3,8 +3,10 @@ const assert = require('node:assert/strict');
 const {
   normalizeFavoriteListName,
   normalizeFavoriteStore,
+  migrateFavoriteStoreItems,
   normalizeItemIds,
   normalizeStoredRecipeSelections,
+  resolveItemName,
   withDuplicateSuffix
 } = require('../site/favorite-store.js');
 
@@ -26,6 +28,59 @@ test('favorite primitives normalize external values without retaining invalid en
   });
   assert.equal(normalizeFavoriteListName('  long favorite  ', { fallbackName: 'fallback', maxLength: 10 }), 'long favor');
   assert.equal(withDuplicateSuffix('1234567890', 2, 10), '1234567（2）');
+});
+
+test('item aliases resolve old names to a current name and reject cycles or deleted targets', () => {
+  const current = new Set(['C']);
+  const options = {
+    aliases: { A: 'B', B: 'C', X: 'Y', Y: 'X', Gone: 'Missing' },
+    hasCurrentName: name => current.has(name)
+  };
+  assert.equal(resolveItemName('A', options), 'C');
+  assert.equal(resolveItemName('C', options), 'C');
+  assert.equal(resolveItemName('X', options), null);
+  assert.equal(resolveItemName('Gone', options), null);
+});
+
+test('favorite migration updates items, recipe selections, and equipment targets while reporting conflicts and deletions', () => {
+  const current = new Set(['Current', 'Other']);
+  const aliases = { Old: 'Current' };
+  const resolveName = value => resolveItemName(value, {
+    aliases,
+    hasCurrentName: name => current.has(name)
+  });
+  const store = {
+    lists: [
+      {
+        id: 'normal',
+        itemIds: ['Old', 'Current', 'Deleted'],
+        recipeSelections: { Old: 'old-method', Current: 'current-method' },
+        equipmentParameterNames: ['Old', 'Other']
+      },
+      { id: 'recent', itemIds: ['Deleted'], recipeSelections: {}, equipmentParameterNames: [] }
+    ]
+  };
+
+  const result = migrateFavoriteStoreItems(store, {
+    aliases,
+    hasRecipe: name => name === 'Current',
+    isRecent: list => list.id === 'recent',
+    resolveName
+  });
+
+  assert.deepEqual(store.lists[0], {
+    id: 'normal',
+    itemIds: ['Current'],
+    recipeSelections: { Current: 'current-method' },
+    equipmentParameterNames: ['Current']
+  });
+  assert.deepEqual(store.lists[1].itemIds, []);
+  assert.deepEqual(result, {
+    changed: true,
+    renamed: [{ previousName: 'Old', currentName: 'Current' }],
+    removed: ['Deleted'],
+    conflicts: ['Current']
+  });
 });
 
 test('favorite store normalization restores one bounded recent list and valid selection', () => {

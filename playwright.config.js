@@ -23,16 +23,22 @@ module.exports = defineConfig({
   projects: [
     {
       name: 'chromium',
+      testIgnore: ['**/app-share-pwa.spec.js', '**/app-share-responsive.spec.js'],
       use: { ...devices['Desktop Chrome'] },
     },
     {
+      name: 'pwa-chromium-share',
+      testMatch: '**/app-share-pwa.spec.js',
+      use: { ...devices['Desktop Chrome'], serviceWorkers: 'allow' },
+    },
+    {
       name: 'android-chromium-font-size',
-      testMatch: '**/font-size-compat.spec.js',
+      testMatch: ['**/font-size-compat.spec.js', '**/app-share-responsive.spec.js'],
       use: { ...devices['Pixel 5'] },
     },
     {
       name: 'iphone-webkit-font-size',
-      testMatch: '**/font-size-compat.spec.js',
+      testMatch: ['**/font-size-compat.spec.js', '**/app-share-responsive.spec.js'],
       use: { ...devices['iPhone 13'] },
     },
   ],

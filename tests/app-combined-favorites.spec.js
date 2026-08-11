@@ -211,7 +211,7 @@ test('checked favorite lists use a dedicated combined materials entry and reset 
   await page.locator('#usesTitle').click();
   await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
   await page.evaluate(() => showMobilePanel('right'));
-  await page.locator('#treeContainer').click({ position: { x: 4, y: 4 } });
+  await expect(page.locator('#panelLeft')).toHaveClass(/mobile-visible/);
   await expect(page.locator('#favoriteLists')).toHaveClass(/open/);
   await page.evaluate(() => showMobilePanel('left'));
   await page.locator('#favBtn').click();

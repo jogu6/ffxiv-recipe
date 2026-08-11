@@ -4,13 +4,13 @@ import { pathToFileURL } from "node:url";
 const definition = {
   schemaVersion: 2,
   application: {
-    title: "FinalFantasy XIV® Crafting Assistant XIVca(シヴカ) アイテム情報作成",
+    title: "XIVca | Item.json作成",
     idleStatus: "待機中",
   },
   modules: [
     {
       id: "lodestone-item-json",
-      schemaVersion: 1,
+      schemaVersion: 2,
       order: 1,
       label: "Lodestone Item.json生成",
       description: "Lodestoneの最新一覧とレシピを取得し、画像を整備して公開用Item.jsonへ反映します。",
@@ -76,13 +76,13 @@ const definition = {
       ],
       actions: [
         {
-          id: "lodestone-snapshot",
+          id: "lodestone-audit",
           group: "individual",
           order: 1,
-          command: "lodestone-snapshot",
-          label: "1. Lodestone全データ取得",
-          description: "アイテム一覧、製作手帳一覧、新規レシピ詳細を直列取得します。",
-          confirm: "Lodestoneを指定間隔で直列取得します。実行しますか？",
+          command: "lodestone-audit",
+          label: "1. Lodestone完全監査",
+          description: "全一覧と全レシピ詳細を監査ID単位で直列取得し、差分レポートを保存します。",
+          confirm: "Lodestone完全監査を指定間隔で直列取得します。実行しますか？",
           settingIds: ["lodestone-delay"],
           args: [{ flag: "--delay", settingId: "lodestone-delay" }],
           resume: "checkpoint",
@@ -151,11 +151,11 @@ const definition = {
           group: "complete",
           order: 1,
           label: "最新Item.jsonを一括生成",
-          description: "取得から検証済みItem.jsonの公開反映までを順番に実行します。完了済みキャッシュは再利用します。",
+          description: "完全監査から検証済みItem.jsonの公開反映までを順番に実行します。完了済み工程は再開時に省略します。",
           confirm: "Lodestoneの最新情報からItem.jsonを一括生成します。長時間処理と通信が発生します。実行しますか？",
           settingIds: ["lodestone-delay", "webp-quality", "icon-size"],
           sequence: [
-            "lodestone-snapshot",
+            "lodestone-audit",
             "build-lodestone-candidate",
             "lodestone-candidate-icons",
             "publish-lodestone-candidate",

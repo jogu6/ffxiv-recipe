@@ -43,6 +43,74 @@
     return `${baseName.slice(0, maxLength - suffix.length)}${suffix}`;
   }
 
+  function resolveItemName(value, { aliases = {}, hasCurrentName = () => false } = {}) {
+    let name = typeof value === 'string' ? value : '';
+    if (!name) return null;
+    const visited = new Set();
+    while (!hasCurrentName(name) && typeof aliases[name] === 'string' && aliases[name] && !visited.has(name)) {
+      visited.add(name);
+      name = aliases[name];
+    }
+    return hasCurrentName(name) ? name : null;
+  }
+
+  function migrateFavoriteStoreItems(
+    store,
+    { aliases = {}, hasRecipe = () => false, isRecent = () => false, resolveName = () => null } = {}
+  ) {
+    const removed = new Set();
+    const renamed = new Map();
+    const conflicts = new Set();
+    let changed = false;
+    for (const list of store?.lists || []) {
+      const reportRemoved = !isRecent(list);
+      const names = [];
+      for (const key of normalizeItemIds(list.itemIds)) {
+        const name = resolveName(key);
+        if (!name || !hasRecipe(name)) {
+          if (reportRemoved && (name || typeof key === 'string')) removed.add(name || key);
+          changed = true;
+          continue;
+        }
+        names.push(name);
+        if (key !== name) {
+          changed = true;
+          if (typeof key === 'string' && Object.hasOwn(aliases, key)) renamed.set(key, name);
+        }
+      }
+      const normalizedNames = [...new Set(names)];
+      if (JSON.stringify(normalizedNames) !== JSON.stringify(list.itemIds)) changed = true;
+      list.itemIds = normalizedNames;
+
+      const migratedSelections = {};
+      const exactSelections = new Set();
+      Object.entries(list.recipeSelections || {}).forEach(([key, recipeId]) => {
+        const name = resolveName(key);
+        if (name) {
+          if (migratedSelections[name] && migratedSelections[name] !== recipeId) conflicts.add(name);
+          if (!migratedSelections[name] || key === name || !exactSelections.has(name)) migratedSelections[name] = recipeId;
+          if (key === name) exactSelections.add(name);
+        }
+        if (key !== name) changed = true;
+      });
+      if (JSON.stringify(migratedSelections) !== JSON.stringify(list.recipeSelections || {})) changed = true;
+      list.recipeSelections = migratedSelections;
+
+      const equipmentNames = normalizeItemIds(list.equipmentParameterNames)
+        .map(resolveName)
+        .filter(name => name && list.itemIds.includes(name));
+      const normalizedEquipmentNames = [...new Set(equipmentNames)];
+      if (JSON.stringify(normalizedEquipmentNames) !== JSON.stringify(list.equipmentParameterNames || [])) changed = true;
+      list.equipmentParameterNames = normalizedEquipmentNames;
+    }
+    return {
+      changed,
+      renamed: [...renamed].map(([previousName, currentName]) => ({ previousName, currentName })),
+      removed: [...removed],
+      conflicts: [...conflicts]
+    };
+  }
+
   function normalizeFavoriteStore(
     stored,
     {
@@ -99,6 +167,8 @@
     normalizeFavoriteStore,
     normalizeItemIds,
     normalizeStoredRecipeSelections,
+    migrateFavoriteStoreItems,
+    resolveItemName,
     withDuplicateSuffix
   });
 });

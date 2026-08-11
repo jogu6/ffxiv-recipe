@@ -786,13 +786,25 @@ function handlePipelineOutput(line) {
   updateEtaFromProgress(progress.completed, progress.total);
 }
 
-async function runAction(action) {
+async function runAction(action, { resumeState = null } = {}) {
   const steps = action.sequence ? action.sequence.map(actionById) : [action];
   if (steps.some(step => !step?.command)) throw new Error('実行定義に未対応の処理があります。');
   cancellationRequested = false;
   lockInterface(true);
   const startedAt = performance.now();
-  activeRun = { action, steps, stepIndex: 0, stepStartedAt: startedAt, lastRenderAt: 0, lastBurstReset: startedAt, renderBurst: 0 };
+  const completedStepIds = new Set(
+    (resumeState?.completedStepIds || []).filter(id => steps.some(step => step.id === id))
+  );
+  activeRun = {
+    action,
+    steps,
+    stepIndex: 0,
+    stepStartedAt: startedAt,
+    completedStepIds,
+    lastRenderAt: 0,
+    lastBurstReset: startedAt,
+    renderBurst: 0
+  };
   elements.statusText.textContent = '実行中';
   elements.progressTitle.textContent = action.label;
   setProgress(0, '開始', { force: true });
@@ -803,7 +815,9 @@ async function runAction(action) {
     moduleSchemaVersion: activeModule.schemaVersion,
     actionId: action.id,
     settings: settingsSnapshot(),
-    startedAt: new Date().toISOString(),
+    startedAt: resumeState?.startedAt || new Date().toISOString(),
+    completedStepIds: [...completedStepIds],
+    currentStepId: null,
   });
   let outcome = 'completed';
   try {
@@ -811,16 +825,32 @@ async function runAction(action) {
     for (let index = 0; index < steps.length; index += 1) {
       const step = steps[index];
       activeRun.stepIndex = index;
+      if (completedStepIds.has(step.id)) {
+        markAction(step.id, 'done');
+        setProgress(((index + 1) / steps.length) * 100, `${step.label} 完了済み`, { force: true });
+        continue;
+      }
       activeRun.stepStartedAt = performance.now();
       activeRun.currentCompleted = 0;
       activeRun.currentTotal = 0;
       activeCommand = step.command;
       markAction(step.id, 'running');
       elements.progressDetail.textContent = step.label;
+      persistInterruptedRun({
+        ...interruptedRun,
+        completedStepIds: [...completedStepIds],
+        currentStepId: step.id,
+      });
       const output = await invoke('run_pipeline_command', { command: step.command, args: resolveArgs(step) });
       if (output?.trim()) appendLog(output.trim());
       const duration = (performance.now() - activeRun.stepStartedAt) / 1000;
       recordDuration(step.id, duration, 'completed');
+      completedStepIds.add(step.id);
+      persistInterruptedRun({
+        ...interruptedRun,
+        completedStepIds: [...completedStepIds],
+        currentStepId: null,
+      });
       markAction(step.id, 'done');
       setProgress(((index + 1) / steps.length) * 100, `${step.label} 完了`, { force: true });
       const remaining = initialEtaForSteps(steps.slice(index + 1));
@@ -886,7 +916,7 @@ async function resumeInterruptedRun() {
   }
   if (!(await showConfirm('中断時の設定を復元し、完了済みキャッシュを利用して続きから再開しますか？', { okLabel: '再開' }))) return;
   setSettingsSnapshot(interruptedRun.settings);
-  await runAction(action);
+  await runAction(action, { resumeState: interruptedRun });
 }
 
 function resetSettings() {

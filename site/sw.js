@@ -1,5 +1,5 @@
-const APP_CACHE_VERSION = 'ff14recipe-app-20260810-v3.02';
-const DATA_CACHE_VERSION = 'ff14recipe-data-7.55-6e927534';
+const APP_CACHE_VERSION = 'ff14recipe-app-20260811-share6-v3.1';
+const DATA_CACHE_VERSION = 'ff14recipe-data-7.55-d7f73028';
 const CACHE_PREFIX = 'ff14recipe-';
 
 const PRECACHE_FILES = [
@@ -14,6 +14,12 @@ const PRECACHE_FILES = [
   './favorite-share-codec.js',
   './favorite-list-file.js',
   './favorite-count-model.js',
+  './data-setup-progress.js',
+  './share-content-model.js',
+  './share-coordinator.js',
+  './share-png-store.js',
+  './vendor/html2canvas.min.js',
+  './share-image-renderer.js',
   './material-model.js',
   './material-purchase-state.js',
   './vendor/swiper-bundle.min.js',
@@ -31,6 +37,7 @@ const PRECACHE_FILES = [
   './docs/license-notice.md',
   './docs/privacy-policy.md',
   './assets/app-icons/favicon.png',
+  './assets/app-icons/share.webp',
   './assets/app-icons/icon-192.png',
   './assets/app-icons/icon-512.png',
   './assets/branding/xivca-logo.webp',

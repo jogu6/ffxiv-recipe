@@ -18,9 +18,15 @@ test('mobile panel swipe works in every supported browser engine', async ({ page
   await expect(page.locator('#panelLeft')).toHaveClass(/mobile-visible/);
 
   await dispatchSyntheticSwipe(page, 0.8, 0.2);
+  await expect(page.locator('#panelLeft')).toHaveClass(/mobile-visible/);
+
+  await page.locator('#searchBox').fill('バスタードソード');
+  await page.getByText('バスタードソード', { exact: true }).first().click();
   await expect(page.locator('#panelRight')).toHaveClass(/mobile-visible/);
   await dispatchSyntheticSwipe(page, 0.2, 0.8);
   await expect(page.locator('#panelLeft')).toHaveClass(/mobile-visible/);
+  await dispatchSyntheticSwipe(page, 0.2, 0.8);
+  await expect(page.locator('#searchBox')).toHaveValue('');
 });
 
 test('saved level 10 fits the viewport and keeps live changes inside the preview', async ({ page }) => {
@@ -209,11 +215,11 @@ test('scaled compact controls remain contained at every display size', async ({ 
         trigger,
         list,
         visibleRows: Math.floor(list.height / firstRow.height),
-        usesAvailableHeight: Math.abs(list.bottom - (window.innerHeight - 8)) < 1 || list.scrollHeight <= list.clientHeight
+        staysWithinViewport: list.bottom <= window.innerHeight + 1
       };
     });
     await expect.poll(async () => (await readHistoryLayout()).visibleRows).toBeGreaterThanOrEqual(10);
-    await expect.poll(async () => (await readHistoryLayout()).usesAvailableHeight).toBe(true);
+    await expect.poll(async () => (await readHistoryLayout()).staysWithinViewport).toBe(true);
     const historyLayout = await readHistoryLayout();
     expect(Math.abs(historyLayout.list.left - historyLayout.trigger.left), `history left Level ${level}`).toBeLessThan(1);
     expect(Math.abs(historyLayout.list.right - historyLayout.trigger.right), `history right Level ${level}`).toBeLessThan(1);

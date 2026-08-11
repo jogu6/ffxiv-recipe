@@ -7,6 +7,7 @@ import process from 'node:process';
 const repositoryRoot = path.resolve(import.meta.dirname, '..');
 const siteRoot = path.join(repositoryRoot, 'site');
 const applicationName = 'FinalFantasy XIV® Crafting Assistant XIVca(シヴカ)';
+const applicationWindowTitle = 'XIVca | FinalFantasy XIV® Crafting Assistant';
 const require = createRequire(import.meta.url);
 const { extractAppVersion, extractReleaseMarkdown } = require('../site/pwa-update.js');
 
@@ -20,6 +21,13 @@ for (const relativePath of [
   'index.html',
   'calculation.js',
   'pwa-update.js',
+  'data-setup-progress.js',
+  'share-content-model.js',
+  'share-coordinator.js',
+  'share-png-store.js',
+  'share-image-renderer.js',
+  'vendor/html2canvas.min.js',
+  'vendor/licenses/html2canvas-MIT-LICENSE.txt',
   'app.js',
   'styles.css',
   'sw.js',
@@ -28,6 +36,7 @@ for (const relativePath of [
   'data/legacy-item-ids.json',
   'data/tips.md',
   'assets/app-icons/favicon.png',
+  'assets/app-icons/share.webp',
   'assets/app-icons/icon-192.png',
   'assets/app-icons/icon-512.png',
   'assets/branding/xivca-logo.webp',
@@ -63,7 +72,7 @@ if (!currentAppVersion || !extractReleaseMarkdown(tipsMarkdown, currentAppVersio
 }
 const indexHtml = fs.readFileSync(requireFile('index.html'), 'utf8');
 const manifest = JSON.parse(fs.readFileSync(requireFile('manifest.webmanifest'), 'utf8'));
-if (!indexHtml.includes(`<title>${applicationName}</title>`) || !indexHtml.includes(`alt="${applicationName}"`)) {
+if (!indexHtml.includes(`<title>${applicationWindowTitle}</title>`) || !indexHtml.includes(`alt="${applicationName}"`)) {
   throw new Error('Application name or XIVca logo accessibility text is missing from index.html.');
 }
 if (manifest.name !== applicationName || manifest.short_name !== 'XIVca') {

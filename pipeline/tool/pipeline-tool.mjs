@@ -8,6 +8,9 @@ import zlib from 'node:zlib';
 import { spawnSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import sharp from 'sharp';
+import { readLodestoneAuditArtifact, runLodestoneFullAudit } from './lodestone-audit.mjs';
+import { getLodestoneAuditResource, getPromotedLodestoneAudit, openLodestoneAuditStore } from './lodestone-audit-store.mjs';
+import { compareInitialLodestoneAudit, mergeLodestoneNameAliases } from './lodestone-audit-compare.mjs';
 import {
   LODESTONE_BASE_URL,
   LODESTONE_ITEM_LIST_URL,
@@ -39,6 +42,12 @@ export const pngIconCacheRoot = path.join(cacheRoot, 'item-icons-png');
 export const lodestonePngIconCacheRoot = path.join(cacheRoot, 'lodestone-icons-png');
 export const lodestoneShopCacheRoot = path.join(cacheRoot, 'lodestone-shops');
 export const lodestoneShopCacheDatabasePath = path.join(cacheRoot, 'lodestone-shops.sqlite');
+export const lodestoneAuditDatabasePath = path.join(cacheRoot, 'lodestone-audits.sqlite');
+export const lodestoneAuditArtifactRoot = path.join(cacheRoot, 'lodestone-audits');
+export const lodestoneNameAliasesPath = path.join(stateRoot, 'lodestone-item-name-aliases.json');
+export const lodestoneInitialAuditBaselinePath = path.join(stateRoot, 'lodestone-initial-audit-baseline.json');
+export const lodestoneAuditComparisonReportPath = path.join(reportsRoot, 'lodestone-audit-comparison.json');
+export const lodestoneDeletionReportPath = path.join(reportsRoot, 'lodestone-deletions.json');
 export const manualItemIconsRoot = path.join(inputRoot, 'manual-item-icons');
 export const siteRoot = path.join(repositoryRoot, 'site');
 export const itemIconsRoot = path.join(siteRoot, 'assets', 'item-icons');
@@ -2262,6 +2271,105 @@ export async function refreshLodestoneSourceSnapshot({
   }
 }
 
+export async function refreshLodestoneAuditSnapshot({
+  delayMs = defaultLodestoneInfoDelayMs,
+  target = lodestoneSourceSnapshotPath,
+  databasePath = lodestoneAuditDatabasePath,
+  artifactRoot = lodestoneAuditArtifactRoot,
+  aliasesTarget = lodestoneNameAliasesPath,
+  initialBaselinePath = lodestoneInitialAuditBaselinePath,
+  comparisonTarget = lodestoneAuditComparisonReportPath,
+  deletionTarget = lodestoneDeletionReportPath,
+  request = url => fetchLodestoneText(url, 0)
+} = {}) {
+  clearCancelRequest();
+  cancellationEnabled = true;
+  const store = openLodestoneAuditStore(databasePath);
+  try {
+    let initialBaseline = null;
+    let initialPublishedDocument = null;
+    let initialManualExchangeRows = [];
+    if (!getPromotedLodestoneAudit(store)) {
+      initialBaseline = readJson(initialBaselinePath, null) || readJson(target, null);
+      if (initialBaseline?.SchemaVersion !== 1 || initialBaseline.AuditId ||
+          !Array.isArray(initialBaseline.Items) || !Array.isArray(initialBaseline.Recipes)) {
+        throw new Error('初回監査基準のSchemaVersion 1スナップショットがないため監査を開始できません');
+      }
+      if (!fs.existsSync(initialBaselinePath)) writeJsonAtomic(initialBaselinePath, initialBaseline);
+      initialPublishedDocument = readJson(publicItemJsonPath, null);
+      if (!initialPublishedDocument || Array.isArray(initialPublishedDocument) ||
+          initialPublishedDocument.Version !== initialBaseline.Version ||
+          !Array.isArray(initialPublishedDocument.Items)) {
+        throw new Error('初回監査基準と現在公開中のItem.jsonが不整合なため監査を開始できません');
+      }
+      initialManualExchangeRows = readCsv(csvPath('token-items.csv'));
+    }
+    log(`Lodestone完全監査を開始します: 間隔 ${Math.max(0, Number(delayMs) || 0)}ms`);
+    const result = await runLodestoneFullAudit({
+      store,
+      artifactRoot,
+      request,
+      delayMs,
+      onProgress: ({ stage, completed, total }) => {
+        const labels = {
+          'recipe-list-start': '製作手帳一覧（開始）',
+          'recipe-detail': 'レシピ詳細',
+          'item-list': 'アイテム一覧',
+          'recipe-list-end': '製作手帳一覧（終了確認）',
+          'recipe-detail-recheck': '変更レシピ再確認'
+        };
+        if (completed === 1 || completed === total || completed % (stage.includes('detail') ? 100 : 25) === 0) {
+          log(`${labels[stage] || stage} ${completed}/${total}`);
+        }
+      },
+      createInitialComparison: ({ currentSnapshot, currentResources, readCurrentArtifact }) =>
+        compareInitialLodestoneAudit({
+          baselineSnapshot: initialBaseline,
+          publishedDocument: initialPublishedDocument,
+          manualExchangeRows: initialManualExchangeRows,
+          currentSnapshot,
+          currentResources,
+          readCurrentArtifact
+        }),
+      beforePromote: ({ snapshot, comparison }) => {
+        const aliases = mergeLodestoneNameAliases(
+          readJson(aliasesTarget, {}),
+          comparison,
+          snapshot.Items.map(item => item.Name)
+        );
+        writeJsonAtomic(aliasesTarget, {
+          SchemaVersion: 1,
+          DataGeneration: snapshot.DataGeneration,
+          Aliases: aliases
+        });
+        writeJsonAtomic(comparisonTarget, comparison);
+        writeJsonAtomic(deletionTarget, {
+          SchemaVersion: 1,
+          PreviousAuditId: comparison.PreviousAuditId,
+          CurrentAuditId: comparison.CurrentAuditId,
+          Items: comparison.ItemChanges.Removed,
+          Recipes: comparison.RecipeChanges.Removed
+        });
+        writeJsonAtomic(target, snapshot);
+        log(
+          `Lodestone監査差分を保存しました: 名称変更 ${comparison.ItemChanges.Renamed.length}、` +
+          `レシピ内容変更 ${comparison.RecipeChanges.ContentChanged.length}、` +
+          `追加 item=${comparison.ItemChanges.Added.length} recipe=${comparison.RecipeChanges.Added.length}、` +
+          `削除 item=${comparison.ItemChanges.Removed.length} recipe=${comparison.RecipeChanges.Removed.length}`
+        );
+        log(`監査概要: audit=${snapshot.AuditId} generation=${snapshot.DataGeneration} version=${snapshot.Version}`);
+        log(`監査レポート: ${comparisonTarget}`);
+        log(`削除レポート: ${deletionTarget}`);
+      }
+    });
+    log(`Lodestone完全監査を昇格しました: audit=${result.auditId} item=${result.snapshot.ItemCount} recipe=${result.snapshot.RecipeCount}${result.resumed ? '（再開）' : ''}`);
+    return result;
+  } finally {
+    cancellationEnabled = false;
+    store.close();
+  }
+}
+
 export function extractLodestoneCraftInfo(recipeHtml) {
   const text = normalizeHtmlText(recipeHtml);
   const jobMatch = text.match(/(木工師|鍛冶師|甲冑師|彫金師|革細工師|裁縫師|錬金術師|調理師)\s+Lv\s*([0-9]+)/);
@@ -2517,10 +2625,10 @@ function iconFileToPngRepoPath(iconFile) {
   return `site/assets/item-icons/${pngName.slice(0, 3)}/${pngName}`;
 }
 
-function hashIconFiles(iconFiles) {
+function hashIconFiles(iconFiles, iconsRoot = itemIconsRoot) {
   const hash = crypto.createHash('sha256');
   for (const iconFile of [...new Set(iconFiles)].sort()) {
-    const { webpPath } = iconPaths(iconFile);
+    const { webpPath } = iconPaths(iconFile, iconsRoot);
     if (!fs.existsSync(webpPath)) continue;
     hash.update(iconFile);
     hash.update('\0');
@@ -2713,7 +2821,7 @@ export async function iconPreview({ qualities = [50, 60, 70, 80], sampleCount = 
 function renderIconPreviewHtml(rows) {
   return `<!doctype html>
 <html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Icon Quality Preview</title>
+<title>XIVca | アイテム画像プレビュー</title>
 <style>
 body{font-family:system-ui,sans-serif;margin:0;background:#f5f5f5;color:#1d1d1d}header{position:sticky;top:0;background:#fff;border-bottom:1px solid #ddd;padding:12px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}button{min-height:36px;padding:0 12px;border:1px solid #bbb;background:#fff;border-radius:6px}button.active{background:#222;color:#fff;border-color:#222}main{padding:12px;display:grid;gap:12px}.row{background:#fff;border:1px solid #ddd;border-radius:8px;padding:12px;display:grid;gap:10px}.icons{display:flex;gap:14px;flex-wrap:wrap}.cell{display:grid;gap:6px;justify-items:center;font-size:12px;min-width:72px}.swatch{width:56px;height:56px;display:grid;place-items:center;background:var(--bg,#fff);border:1px solid #ddd}.dark .swatch{--bg:#2a2a2a}img{width:40px;height:40px}.x2 img{width:80px;height:80px}.x3 img{width:120px;height:120px}.x2 .swatch{width:96px;height:96px}.x3 .swatch{width:136px;height:136px}@media(max-width:600px){main{padding:8px}.icons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.cell{min-width:0}.row{border-radius:0;margin:0 -8px;border-left:0;border-right:0}}
 </style></head><body><header><strong>Icon Quality Preview</strong><button id="scale1" class="active">40</button><button id="scale2">2x</button><button id="scale3">3x</button><button id="theme">dark</button></header><main id="app"></main>
@@ -4018,7 +4126,7 @@ function renderTmpQualityPreviewHtml(rows) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Item Icon Quality Preview</title>
+<title>XIVca | アイテム画像プレビュー</title>
 <style>
 body{font-family:system-ui,sans-serif;margin:0;color:#e0e0e0;background:#1a1a1a}
 header{position:sticky;top:0;background:#252525;border-bottom:1px solid #3a3a3a;padding:12px 16px;z-index:1;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
@@ -4118,18 +4226,30 @@ export async function buildLodestoneCandidate({
   snapshotPath = lodestoneSourceSnapshotPath,
   target = publicCandidatePath,
   legacyTarget = legacyItemIdCandidatePath,
-  delayMs = defaultLodestoneInfoDelayMs
+  delayMs = defaultLodestoneInfoDelayMs,
+  databasePath = lodestoneAuditDatabasePath,
+  artifactRoot = lodestoneAuditArtifactRoot,
+  existingItemJsonPath = publicItemJsonPath,
+  aliasesPath = lodestoneNameAliasesPath
 } = {}) {
   clearCancelRequest();
   cancellationEnabled = true;
+  let auditStore = null;
   try {
   const snapshot = readJson(snapshotPath, null);
   if (!snapshot || !Array.isArray(snapshot.Items) || !Array.isArray(snapshot.Recipes)) {
-    throw new Error('Lodestoneスナップショットがありません。先に lodestone-snapshot を実行してください');
+    throw new Error('Lodestoneスナップショットがありません。先に lodestone-audit を実行してください');
   }
+  auditStore = openLodestoneAuditStore(databasePath);
+  validatePromotedLodestoneAuditInput({ snapshot, store: auditStore });
+  const readSnapshotRecipeHtml = entry => {
+    const resource = getLodestoneAuditResource(auditStore, snapshot.AuditId, 'recipe-detail', entry.AuditResourceKey);
+    if (!resource?.completed) throw new Error(`昇格済み監査のレシピ成果物がありません: ${entry.AuditResourceKey}`);
+    return readLodestoneAuditArtifact(artifactRoot, resource);
+  };
   const listedByName = new Map(snapshot.Items.map(item => [item.Name, item]));
   const allNames = [...listedByName.keys()];
-  const existingDocument = readJson(publicItemJsonPath, []);
+  const existingDocument = readJson(existingItemJsonPath, []);
   const existingItems = Array.isArray(existingDocument) ? existingDocument : existingDocument.Items || [];
   const existingByName = new Map(existingItems.map(item => [item.Name, item]));
   const previousItemUrls = readJson(lodestoneItemUrlsPath, {});
@@ -4169,7 +4289,7 @@ export async function buildLodestoneCandidate({
   for (const [index, entry] of snapshot.Recipes.entries()) {
     assertNotCancelled();
     if (!listedByName.has(entry.Name)) throw new Error(`製作手帳の完成品がアイテム一覧にありません: ${entry.Name}`);
-    const parsed = extractLodestoneRecipeData(entry.DetailPath, readCachedLodestoneRecipeHtml(entry.DetailPath), { craftTypeByJob });
+    const parsed = extractLodestoneRecipeData(entry.DetailPath, readSnapshotRecipeHtml(entry), { craftTypeByJob });
     const recipe = {
       RecipeKey: parsed.RecipeID,
       CraftType: parsed.CraftType,
@@ -4242,8 +4362,24 @@ export async function buildLodestoneCandidate({
       return [String(item.ID), currentNameByLodestoneKey.get(key) || item.Name];
     }))
   };
-  writeJsonAtomic(target, { Version: snapshot.Version, Items: items });
-  writeJsonAtomic(legacyTarget, { SchemaVersion: 1, Items: legacyIds });
+  const storedAliases = readJson(aliasesPath, {});
+  const itemNameAliases = Object.fromEntries(
+    Object.entries(storedAliases?.Aliases || {}).filter(([, currentName]) => recipeVariants.has(currentName))
+  );
+  writeJsonAtomic(target, {
+    SchemaVersion: 3,
+    AuditId: snapshot.AuditId,
+    Version: snapshot.Version,
+    DataGeneration: snapshot.DataGeneration,
+    ...(Object.keys(itemNameAliases).length > 0 ? { ItemNameAliases: itemNameAliases } : {}),
+    Items: items
+  });
+  writeJsonAtomic(legacyTarget, {
+    SchemaVersion: 3,
+    AuditId: snapshot.AuditId,
+    DataGeneration: snapshot.DataGeneration,
+    Items: legacyIds
+  });
   log(`Lodestone候補を保存しました: 通常 ${regularNames.size}件、補助 ${items.length - regularNames.size}件、旧ID ${Object.keys(legacyIds).length}件`);
   return { version: snapshot.Version, items: items.length, regularItems: regularNames.size, legacyIds: Object.keys(legacyIds).length };
   } finally {
@@ -4255,7 +4391,40 @@ export async function buildLodestoneCandidate({
         lodestoneShopCacheStore = null;
       }
     }
+    if (auditStore) auditStore.close();
   }
+}
+
+export function validatePromotedLodestoneAuditInput({ snapshot, store }) {
+  if (snapshot?.SchemaVersion !== 3 || !snapshot.AuditId || !snapshot.DataGeneration ||
+      !Array.isArray(snapshot.Items) || !Array.isArray(snapshot.Recipes)) {
+    throw new Error('SchemaVersion 3の昇格済みLodestone監査スナップショットが必要です');
+  }
+  if (getPromotedLodestoneAudit(store)?.id !== snapshot.AuditId) {
+    throw new Error(`Lodestoneスナップショットが昇格済み監査と一致しません: ${snapshot.AuditId}`);
+  }
+  for (const recipe of snapshot.Recipes) {
+    if (!recipe?.RecipeKey || !recipe.AuditResourceKey) {
+      throw new Error(`Lodestone監査レシピのAuditResourceKeyがありません: ${recipe?.RecipeKey || '(キーなし)'}`);
+    }
+    const resource = getLodestoneAuditResource(store, snapshot.AuditId, 'recipe-detail', recipe.AuditResourceKey);
+    if (!resource?.completed) throw new Error(`昇格済み監査のレシピ成果物がありません: ${recipe.AuditResourceKey}`);
+  }
+  return snapshot;
+}
+
+export function validateLodestoneCandidateLineage({ candidate, snapshot, store }) {
+  validatePromotedLodestoneAuditInput({ snapshot, store });
+  if (candidate?.SchemaVersion !== 3 || !candidate.AuditId || !candidate.DataGeneration || !Array.isArray(candidate.Items)) {
+    throw new Error('SchemaVersion 3のLodestone候補が必要です');
+  }
+  if (candidate.AuditId !== snapshot.AuditId || candidate.DataGeneration !== snapshot.DataGeneration) {
+    throw new Error(
+      `Lodestone候補の監査IDまたはデータ世代が一致しません: ` +
+      `candidate=${candidate.AuditId}/${candidate.DataGeneration} snapshot=${snapshot.AuditId}/${snapshot.DataGeneration}`
+    );
+  }
+  return candidate;
 }
 
 export async function ensureLodestoneCandidateIcons({
@@ -4268,6 +4437,7 @@ export async function ensureLodestoneCandidateIcons({
   manualIconsRoot = manualItemIconsRoot,
   pngCacheRoot = lodestonePngIconCacheRoot,
   existingItemJsonPath = publicItemJsonPath,
+  databasePath = lodestoneAuditDatabasePath,
   request = url => fetch(url, { headers: { 'user-agent': 'ffxiv-recipe-icon-pipeline/1.0' } })
 } = {}) {
   clearCancelRequest();
@@ -4275,7 +4445,12 @@ export async function ensureLodestoneCandidateIcons({
   try {
   const candidate = readJson(candidatePath, null);
   const snapshot = readJson(snapshotPath, null);
-  if (!Array.isArray(candidate?.Items) || !Array.isArray(snapshot?.Items)) throw new Error('名前キー候補またはLodestoneスナップショットがありません');
+  const auditStore = openLodestoneAuditStore(databasePath);
+  try {
+    validateLodestoneCandidateLineage({ candidate, snapshot, store: auditStore });
+  } finally {
+    auditStore.close();
+  }
   const sourceByName = new Map(snapshot.Items.map(item => [item.Name, item]));
   const existingDocument = readJson(existingItemJsonPath, []);
   const existingItems = Array.isArray(existingDocument) ? existingDocument : existingDocument?.Items || [];
@@ -4427,25 +4602,45 @@ export function cleanupItemIconAssets({ items, iconsRoot = itemIconsRoot, dryRun
 export function publishLodestoneCandidate({
   candidatePath = publicCandidatePath,
   legacyPath = legacyItemIdCandidatePath,
+  snapshotPath = lodestoneSourceSnapshotPath,
+  databasePath = lodestoneAuditDatabasePath,
   target = publicItemJsonPath,
-  legacyTarget = path.join(siteRoot, 'data', 'legacy-item-ids.json')
+  legacyTarget = path.join(siteRoot, 'data', 'legacy-item-ids.json'),
+  iconsRoot = itemIconsRoot
 } = {}) {
   const candidate = readJson(candidatePath, null);
   const legacy = readJson(legacyPath, null);
-  if (!Array.isArray(candidate?.Items) || !candidate.Version) throw new Error('検証済みの名前キー候補がありません');
-  if (!legacy?.Items || typeof legacy.Items !== 'object') throw new Error('旧ID互換候補がありません');
+  const snapshot = readJson(snapshotPath, null);
+  const auditStore = openLodestoneAuditStore(databasePath);
+  try {
+    validateLodestoneCandidateLineage({ candidate, snapshot, store: auditStore });
+  } finally {
+    auditStore.close();
+  }
+  if (!candidate.Version) throw new Error('検証済みの名前キー候補がありません');
+  if (legacy?.SchemaVersion !== 3 || legacy.AuditId !== candidate.AuditId ||
+      legacy.DataGeneration !== candidate.DataGeneration || !legacy.Items || typeof legacy.Items !== 'object') {
+    throw new Error('旧ID互換候補の監査IDまたはデータ世代が一致しません');
+  }
   const names = new Set(candidate.Items.map(item => item.Name));
   if (names.size !== candidate.Items.length) throw new Error('名前キー候補に重複名があります');
-  validateItemIconAssets(candidate.Items);
+  validateItemIconAssets(candidate.Items, { iconsRoot });
+  const publicDocument = {
+    Version: candidate.Version,
+    DataGeneration: candidate.DataGeneration,
+    ...(candidate.ItemNameAliases ? { ItemNameAliases: candidate.ItemNameAliases } : {}),
+    Items: candidate.Items
+  };
+  const publicLegacy = { SchemaVersion: 1, Items: legacy.Items };
   if (fs.existsSync(target)) protectItemJson({ source: target, target: expectedItemJsonPath });
-  writeTextAtomic(target, `${JSON.stringify(candidate)}\n`);
-  writeTextAtomic(legacyTarget, `${JSON.stringify(legacy)}\n`);
+  writeTextAtomic(target, `${JSON.stringify(publicDocument)}\n`);
+  writeTextAtomic(legacyTarget, `${JSON.stringify(publicLegacy)}\n`);
   updateDataCacheVersion({
     itemJsonPath: target,
-    salt: hashIconFiles(candidate.Items.map(item => item.IconFile).filter(Boolean)),
+    salt: hashIconFiles(candidate.Items.map(item => item.IconFile).filter(Boolean), iconsRoot),
     reason: 'lodestone-name-publish'
   });
-  const cleanup = cleanupItemIconAssets({ items: candidate.Items });
+  const cleanup = cleanupItemIconAssets({ items: candidate.Items, iconsRoot });
   log(`名前キー候補を公開データへ反映しました: ${candidate.Items.length}件、旧ID ${Object.keys(legacy.Items).length}件、旧画像整理 ${cleanup.removed.length}件`);
   return { items: candidate.Items.length, legacyIds: Object.keys(legacy.Items).length, removedIcons: cleanup.removed.length };
 }
@@ -4457,6 +4652,8 @@ function printHelp() {
   workflow-status           GUI互換用の工程状態をJSON表示
   lodestone-snapshot [--delay 100]
                              アイテム・製作手帳の全一覧を直列取得し、版・件数・順序署名を保存
+  lodestone-audit [--delay 100]
+                             全一覧・全レシピ詳細をfresh取得し、再開可能な完全監査として昇格
   build-lodestone-candidate  Lodestoneキャッシュと手動データから名前キーの公開候補を生成
   lodestone-candidate-icons [--delay 100] [--quality 80] [--size 80]
                              名前キー候補の不足画像をLodestone優先で逐次取得・生成
@@ -4479,6 +4676,17 @@ export async function main(argv = process.argv.slice(2)) {
     return refreshLodestoneSourceSnapshot({
       delayMs: Number(args.delay || defaultLodestoneInfoDelayMs),
       target: args.target ? path.resolve(String(args.target)) : lodestoneSourceSnapshotPath
+    });
+  }
+  if (command === 'lodestone-audit') {
+    return refreshLodestoneAuditSnapshot({
+      delayMs: Number(args.delay || defaultLodestoneInfoDelayMs),
+      target: args.target ? path.resolve(String(args.target)) : lodestoneSourceSnapshotPath,
+      databasePath: args.database ? path.resolve(String(args.database)) : lodestoneAuditDatabasePath,
+      artifactRoot: args.artifacts ? path.resolve(String(args.artifacts)) : lodestoneAuditArtifactRoot,
+      aliasesTarget: args.aliases ? path.resolve(String(args.aliases)) : lodestoneNameAliasesPath,
+      comparisonTarget: args.comparison ? path.resolve(String(args.comparison)) : lodestoneAuditComparisonReportPath,
+      deletionTarget: args.deletions ? path.resolve(String(args.deletions)) : lodestoneDeletionReportPath
     });
   }
   if (command === 'build-lodestone-candidate') {

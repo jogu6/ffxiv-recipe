@@ -29,6 +29,10 @@ async function openPipelineGui(page, definition = uiDefinition) {
             pngWidth: 80, pngHeight: 80, category: '素材', background: 'dark',
             variants: [{ quality: 75, file: 'data:image/webp;base64,AA==', size: 50, selected: true }]
           }];
+          if (command === 'run_pipeline_command' && window.__pipelineGuiTest.failCommandOnce === payload.command) {
+            window.__pipelineGuiTest.failCommandOnce = '';
+            throw new Error(`${payload.command} failed once`);
+          }
           if (command === 'run_pipeline_command' && window.__pipelineGuiTest.holdCommand === payload.command) {
             return new Promise((resolve, reject) => {
               window.__pipelineGuiTest.finishHeld = value => value instanceof Error ? reject(value.message) : resolve(value || 'ok');
@@ -121,9 +125,9 @@ test('valid settings persist and invalid settings disable only dependent actions
   await openPipelineGui(page);
   const delay = page.locator('[data-setting-id="lodestone-delay"] input');
   await delay.fill('350');
-  await expect(page.getByRole('button', { name: '1. Lodestone全データ取得' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '1. Lodestone完全監査' })).toBeEnabled();
   await delay.fill('10');
-  await expect(page.getByRole('button', { name: '1. Lodestone全データ取得' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '1. Lodestone完全監査' })).toBeDisabled();
   await expect(page.getByRole('button', { name: '4. Item.json公開反映' })).toBeEnabled();
   await page.reload();
   await expect(delay).toHaveValue('350');
@@ -138,10 +142,33 @@ test('one click runs all four autonomous Item.json commands with declared values
   await expect(page.locator('#etaText')).toContainText('0:00');
   const calls = await invokes(page, 'run_pipeline_command');
   expect(calls.map(call => call.payload)).toEqual([
-    { command: 'lodestone-snapshot', args: ['--delay', '300'] },
+    { command: 'lodestone-audit', args: ['--delay', '300'] },
     { command: 'build-lodestone-candidate', args: ['--delay', '300'] },
     { command: 'lodestone-candidate-icons', args: ['--delay', '300', '--quality', '80', '--size', '80'] },
     { command: 'publish-lodestone-candidate', args: [] },
+  ]);
+});
+
+test('resume skips completed audit and continues from the failed downstream step', async ({ page }) => {
+  await openPipelineGui(page);
+  await page.evaluate(() => { window.__pipelineGuiTest.failCommandOnce = 'build-lodestone-candidate'; });
+  await page.getByRole('button', { name: '最新Item.jsonを一括生成' }).click();
+  await page.locator('#confirmOkBtn').click();
+  await expect(page.locator('#statusText')).toHaveText('失敗');
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('ffxiv-pipeline-interrupted-run-v2')));
+  expect(saved.completedStepIds).toEqual(['lodestone-audit']);
+  expect(saved.currentStepId).toBe('build-lodestone-candidate');
+
+  await page.locator('#resumeBtn').click();
+  await page.locator('#confirmOkBtn').click();
+  await expect(page.locator('#progressPercent')).toHaveText('100%');
+  const calls = await invokes(page, 'run_pipeline_command');
+  expect(calls.map(call => call.payload.command)).toEqual([
+    'lodestone-audit',
+    'build-lodestone-candidate',
+    'build-lodestone-candidate',
+    'lodestone-candidate-icons',
+    'publish-lodestone-candidate',
   ]);
 });
 
@@ -165,8 +192,8 @@ test('running locks settings and all actions while preserving common progress, c
 
 test('high-frequency progress is throttled but completion forces 100 percent', async ({ page }) => {
   await openPipelineGui(page);
-  await page.evaluate(() => { window.__pipelineGuiTest.holdCommand = 'lodestone-snapshot'; });
-  await page.getByRole('button', { name: '1. Lodestone全データ取得' }).click();
+  await page.evaluate(() => { window.__pipelineGuiTest.holdCommand = 'lodestone-audit'; });
+  await page.getByRole('button', { name: '1. Lodestone完全監査' }).click();
   await page.locator('#confirmOkBtn').click();
   await page.evaluate(() => {
     for (let index = 1; index <= 30; index += 1) {

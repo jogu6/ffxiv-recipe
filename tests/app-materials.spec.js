@@ -221,6 +221,16 @@ test('uses buttons share the accent style', async ({ page }) => {
   await expect(treeButton).toBeVisible();
   await expect(treeButton).toHaveCSS('background-color', 'rgb(200, 168, 75)');
   await expect(treeButton).toHaveCSS('color', 'rgb(26, 26, 26)');
+  const widths = await page.locator('.result-view-row').evaluate(row => ({
+    tree: row.querySelector('#treeViewBtn').getBoundingClientRect().width,
+    materials: row.querySelector('#materialsViewBtn').getBoundingClientRect().width,
+    uses: row.querySelector('#usesBtn').getBoundingClientRect().width,
+    groupRight: row.querySelector('#resultViewSwitch').getBoundingClientRect().right,
+    usesLeft: row.querySelector('#usesBtn').getBoundingClientRect().left
+  }));
+  expect(widths.tree).toBeCloseTo(widths.materials, 0);
+  expect(widths.tree).toBeCloseTo(widths.uses, 0);
+  expect(widths.usesLeft - widths.groupRight).toBeGreaterThanOrEqual(5);
 });
 
 test('selects ingredient-only search results when opening used-in recipes', async ({ page }) => {

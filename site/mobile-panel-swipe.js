@@ -9,8 +9,12 @@
   const WRAPPER_CLASS = 'mobile-panel-track';
   const SLIDE_CLASS = 'mobile-panel-slide';
 
-  function availablePanelNames(middleAvailable) {
-    return middleAvailable ? [...PANEL_ORDER] : ['left', 'right'];
+  function availablePanelNames(middleAvailable, rightAvailable = true) {
+    return PANEL_ORDER.filter(panelName =>
+      panelName === 'left' ||
+      (panelName === 'middle' && middleAvailable) ||
+      (panelName === 'right' && rightAvailable)
+    );
   }
 
   function createMobilePanelSwipe({
@@ -20,6 +24,7 @@
     isEnabled,
     reduceMotion = () => false,
     onInteractionStart = () => {},
+    onLeftBoundarySwipe = () => {},
     onPanelChange = () => {}
   }) {
     if (!element || !panels || typeof SwiperClass !== 'function') {
@@ -32,6 +37,8 @@
     let swiper = null;
     let currentPanel = 'left';
     let middleAvailable = false;
+    let rightAvailable = true;
+    let touchStartedOnLeft = false;
     let requestedSource = 'gesture';
     let suppressSlideChange = false;
 
@@ -39,7 +46,7 @@
 
     function setAvailableSlideClasses() {
       panels.left.classList.add(SLIDE_CLASS);
-      panels.right.classList.add(SLIDE_CLASS);
+      panels.right.classList.toggle(SLIDE_CLASS, rightAvailable);
       panels.middle.classList.toggle(SLIDE_CLASS, middleAvailable);
     }
 
@@ -91,11 +98,16 @@
         followFinger: true,
         resistanceRatio: 0.35,
         longSwipesRatio: 0.22,
-        initialSlide: Math.max(0, availablePanelNames(middleAvailable).indexOf(currentPanel)),
+        initialSlide: Math.max(0, availablePanelNames(middleAvailable, rightAvailable).indexOf(currentPanel)),
         on: {
-          touchStart() {
+          touchStart(instance) {
             requestedSource = 'gesture';
+            touchStartedOnLeft = currentPanel === 'left' && instance?.activeIndex === 0;
             onInteractionStart();
+          },
+          touchEnd(instance) {
+            if (touchStartedOnLeft && instance?.swipeDirection === 'prev') onLeftBoundarySwipe();
+            touchStartedOnLeft = false;
           },
           slideChange(instance) {
             commitPanel(instance);
@@ -111,10 +123,12 @@
       removeSlideClasses();
       requestedSource = 'gesture';
       suppressSlideChange = false;
+      touchStartedOnLeft = false;
     }
 
-    function sync({ middleOpen = middleAvailable } = {}) {
+    function sync({ middleOpen = middleAvailable, rightOpen = rightAvailable } = {}) {
       middleAvailable = Boolean(middleOpen);
+      rightAvailable = Boolean(rightOpen);
       if (!enabled()) {
         destroy();
         return;
@@ -123,9 +137,13 @@
       alignCurrentPanel();
     }
 
-    function show(panelName, { animate = true, middleOpen = middleAvailable } = {}) {
+    function show(
+      panelName,
+      { animate = true, middleOpen = middleAvailable, rightOpen = rightAvailable } = {}
+    ) {
       if (!PANEL_ORDER.includes(panelName)) return false;
       middleAvailable = Boolean(middleOpen);
+      rightAvailable = Boolean(rightOpen);
       if (!enabled()) return false;
       initialize();
       alignCurrentPanel();

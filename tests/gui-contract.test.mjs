@@ -34,7 +34,7 @@ test('GUI renders settings and actions from the validated mjs definition', () =>
 
 test('GUI exposes only autonomous Lodestone Item.json actions', () => {
   assert.deepEqual(moduleDefinition.actions.map(action => action.id), [
-    'lodestone-snapshot',
+    'lodestone-audit',
     'build-lodestone-candidate',
     'lodestone-candidate-icons',
     'publish-lodestone-candidate',

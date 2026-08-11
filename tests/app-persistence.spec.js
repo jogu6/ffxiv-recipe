@@ -100,7 +100,8 @@ test('removes legacy favorites excluded from Lodestone and reports their names',
   await expect(page.locator('#loadStatus')).not.toHaveAttribute('title');
   await expect(page.locator('#confirmOverlay')).toHaveClass(/info/);
   await expect(page.locator('#confirmMsg')).toHaveText(
-    'お気に入りから、現在の対象データに存在しない1件を除外しました。\n\n・ヘビーアタキサイト'
+    'お気に入りを現行データへ移行しました。\n\n' +
+      '現在の対象データに存在しない1件を除外しました。\n・ヘビーアタキサイト'
   );
   await page.locator('#confirmNo').click();
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('ff14_favorite_lists_v3')));
@@ -365,7 +366,7 @@ test('keeps different recipe selections when summing multiple favorite lists', a
   await expect(page.locator('.materials-list')).toContainText('グロースフォーミュラ・ガンマ');
 });
 
-test('keeps a protected recent-items list with recipes and reverse-looked-up materials', async ({ page }) => {
+test('keeps a protected recent-items list limited to recipes', async ({ page }) => {
   await openApp(page);
 
   await page.locator('#favBtn').click();
@@ -377,25 +378,18 @@ test('keeps a protected recent-items list with recipes and reverse-looked-up mat
   await searchFor(page, 'アリペブレ');
   await page.getByText('アリペブレ', { exact: true }).first().click();
   await searchFor(page, '山羊乳');
-  await page.getByText('山羊乳', { exact: true }).first().click();
+  await page.locator('#recipeList').getByText('山羊乳', { exact: true }).first().click();
 
   await page.locator('#favBtn').click();
   await page.locator('#favoriteLists').getByText('検索履歴', { exact: true }).click();
   const recentRows = page.locator('#recipeList li.fav-item-row');
-  await expect(recentRows).toHaveCount(2);
-  await expect(recentRows.nth(0)).toContainText('山羊乳');
-  await expect(recentRows.nth(1)).toContainText('アリペブレ');
+  await expect(recentRows).toHaveCount(1);
+  await expect(recentRows.nth(0)).toContainText('アリペブレ');
   await expect(page.locator('#recipeList').getByText('並び替え')).toHaveCount(0);
   await expect(page.locator('#recipeList').getByText('素材リストを表示')).toHaveCount(0);
 
   await recentRows.nth(0).click();
-  await expect(page.locator('#usesTitle')).toContainText('山羊乳');
-  await recentRows.nth(1).click();
   await expect(page.locator('.result-root-summary .pin-btn').first()).toHaveClass(/inactive/);
-
-  await recentRows.nth(0).locator('.pin-btn').click();
-  await page.locator('#confirmYes').click();
-  await expect(page.locator('#recipeList')).not.toContainText('山羊乳');
 });
 
 test('restores selected view state after reload without saving calculated material output', async ({ page }) => {
@@ -495,7 +489,6 @@ test('restores left and right scroll positions after reload', async ({ page }) =
 
   await page.reload();
   await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
-  await expect(page.locator('#mobileBackBtn')).toHaveCount(0);
   await expect.poll(() => page.locator('#panelRight').evaluate(panel => panel.scrollTop)).toBe(rightScroll);
   await page.evaluate(() => showMobilePanel('left'));
   await expect.poll(() => page.locator('#recipeList').evaluate(list => list.scrollTop)).toBe(leftScroll);

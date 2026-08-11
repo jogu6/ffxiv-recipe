@@ -85,6 +85,14 @@
     recipeNameForLegacyId,
     recipeVariantsForName
   }) {
+    function currentItemIds(values) {
+      return normalizeItemIds(values)
+        .map(itemNameForId)
+        .filter(Boolean)
+        .map(itemIdForName)
+        .filter(Boolean);
+    }
+
     function encodeNameFavoriteList(list) {
       if (!list) return '';
       const nameBytes = new TextEncoder().encode(normalizeName(list.name));
@@ -160,7 +168,7 @@
         const payload = JSON.parse(new TextDecoder().decode(bytes));
         return {
           name: normalizeName(payload.n),
-          itemIds: normalizeItemIds(payload.i).filter(id => itemNameForId(id)),
+          itemIds: currentItemIds(payload.i),
           recipeSelections: {},
           needsName: false
         };
@@ -201,12 +209,13 @@
           const matches = recipeVariantsForName(itemNameForId(itemId)).filter(
             variant => Number(variant.craftType) === craftType
           );
-          if (matches.length === 1) recipeSelections[String(itemId)] = matches[0].recipeId;
+          const currentItemId = itemIdForName(itemNameForId(itemId));
+          if (matches.length === 1 && currentItemId) recipeSelections[String(currentItemId)] = matches[0].recipeId;
         }
         if (state.offset !== payload.length) return null;
         return {
           name,
-          itemIds: normalizeItemIds(itemIds).filter(id => itemNameForId(id)),
+          itemIds: currentItemIds(itemIds),
           recipeSelections,
           needsName: false
         };

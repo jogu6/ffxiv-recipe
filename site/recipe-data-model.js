@@ -49,7 +49,7 @@
     );
   }
 
-  function buildRecipeData(
+  function* buildRecipeDataSteps(
     rawList,
     {
       craftTypeNames = {},
@@ -70,16 +70,24 @@
     const idToItem = {};
     let maxPatch = 0;
 
-    rawList.forEach(item => {
+    const phaseProgress = (phase, start, span, index, total) => ({
+      phase,
+      percent: start + (total > 0 ? ((index + 1) / total) * span : span)
+    });
+
+    for (let index = 0; index < rawList.length; index += 1) {
+      const item = rawList[index];
       idToItem[item.Name] = item;
       if (item.ID !== undefined) idToItem[item.ID] = item;
       const numericId = toNumeric(item.ID, NaN);
       if (!Number.isNaN(numericId)) idToItemName[numericId] = item.Name;
       idToItemName[item.Name] = item.Name;
-    });
+      yield phaseProgress('アイテム索引を作成しています', 0, 20, index, rawList.length);
+    }
     const itemNameForId = id => idToItemName[id] || idToItemName[parseInt(id, 10)] || null;
 
-    rawList.forEach(item => {
+    for (let index = 0; index < rawList.length; index += 1) {
+      const item = rawList[index];
       const legacyRecipe = item.Recipe;
       const name = item.Name;
       if (legacyRecipe?.PatchNumber) {
@@ -134,9 +142,11 @@
           craftType: ''
         };
       }
-    });
+      yield phaseProgress('レシピを関連付けています', 20, 45, index, rawList.length);
+    }
 
-    rawList.forEach(item => {
+    for (let index = 0; index < rawList.length; index += 1) {
+      const item = rawList[index];
       const sourceRecipes = Array.isArray(item.Recipes) && item.Recipes.length > 0 ? item.Recipes : [item.Recipe];
       sourceRecipes.flatMap(recipe => recipe?.Ingredients || []).forEach(ingredient => {
         const ingredientName = ingredient.Name || itemNameForId(ingredient.ItemID);
@@ -157,18 +167,22 @@
           isEx: source.IsEx === true
         };
       });
-    });
+      yield phaseProgress('素材情報を関連付けています', 65, 15, index, rawList.length);
+    }
 
     const recipeNames = sortRecipeNames(Object.keys(recipes));
     const usedInSets = {};
-    Object.entries(recipeVariants).forEach(([recipeName, variants]) => {
+    const recipeEntries = Object.entries(recipeVariants);
+    for (let index = 0; index < recipeEntries.length; index += 1) {
+      const [recipeName, variants] = recipeEntries[index];
       variants.forEach(recipe => {
         recipe.ingredients.forEach(ingredient => {
           if (!usedInSets[ingredient.name]) usedInSets[ingredient.name] = new Set();
           usedInSets[ingredient.name].add(recipeName);
         });
       });
-    });
+      yield phaseProgress('使用先索引を作成しています', 80, 20, index, recipeEntries.length);
+    }
     const usedIn = Object.fromEntries(
       Object.entries(usedInSets).map(([ingredientName, recipeSet]) => [ingredientName, [...recipeSet]])
     );
@@ -192,8 +206,41 @@
     };
   }
 
+  function buildRecipeData(rawList, options = {}) {
+    const steps = buildRecipeDataSteps(rawList, options);
+    let step = steps.next();
+    while (!step.done) step = steps.next();
+    return step.value;
+  }
+
+  async function buildRecipeDataAsync(
+    rawList,
+    options = {},
+    {
+      chunkSize = 250,
+      onProgress = () => {},
+      yieldControl = () => new Promise(resolve => setTimeout(resolve, 0))
+    } = {}
+  ) {
+    const steps = buildRecipeDataSteps(rawList, options);
+    let processedInChunk = 0;
+    let step = steps.next();
+    while (!step.done) {
+      onProgress(step.value);
+      processedInChunk += 1;
+      if (processedInChunk >= chunkSize) {
+        processedInChunk = 0;
+        await yieldControl();
+      }
+      step = steps.next();
+    }
+    onProgress({ phase: 'データ構築を完了しています', percent: 100 });
+    return step.value;
+  }
+
   return Object.freeze({
     buildRecipeData,
+    buildRecipeDataAsync,
     defaultRecipeVariant,
     normalizedRecipeVariant,
     recipeIngredientSignature

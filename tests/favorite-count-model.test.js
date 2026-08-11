@@ -7,6 +7,7 @@ const {
   ensureListState,
   itemCount,
   normalizeStore,
+  resetForDataGeneration,
   serializeStore,
   setAll,
   setAnyOneTarget,
@@ -69,4 +70,22 @@ test('bulk changes and disabling preserve saved values while clearing transient 
   assert.equal(state.enabled, false);
   assert.equal(countsChanged(state), false);
   assert.deepEqual(state.counts, { 1: 0, 2: 0 });
+});
+
+test('a new Item.json generation clears every list count and any-one target once', () => {
+  const store = normalizeStore({
+    dataGeneration: 'old',
+    lists: {
+      a: { counts: { A: 3 }, anyOneTargets: { A: false } },
+      b: { counts: { B: 0 }, anyOneTargets: { B: true } }
+    }
+  }, 999);
+
+  assert.equal(resetForDataGeneration(store, 'new'), true);
+  assert.equal(store.dataGeneration, 'new');
+  assert.deepEqual(store.lists.a, { enabled: false, counts: {}, anyOneTargets: {} });
+  assert.deepEqual(store.lists.b, { enabled: false, counts: {}, anyOneTargets: {} });
+  assert.equal(resetForDataGeneration(store, 'new'), false);
+  assert.equal(resetForDataGeneration(store, ''), false);
+  assert.equal(serializeStore(store).dataGeneration, 'new');
 });

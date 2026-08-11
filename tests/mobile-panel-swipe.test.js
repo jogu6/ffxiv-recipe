@@ -68,12 +68,38 @@ function fixture(overrides = {}) {
 test('中央パネルがない場合は左と右だけを連続配置する', () => {
   assert.deepEqual(availablePanelNames(false), ['left', 'right']);
   assert.deepEqual(availablePanelNames(true), ['left', 'middle', 'right']);
+  assert.deepEqual(availablePanelNames(false, false), ['left']);
 
   const { controller, element, panels } = fixture();
   controller.sync({ middleOpen: false });
   assert.deepEqual(element.swiper.slides, [panels.left, panels.right]);
   controller.sync({ middleOpen: true });
   assert.deepEqual(element.swiper.slides, [panels.left, panels.middle, panels.right]);
+});
+
+test('右パネルを無効化すると左だけを残し、再び有効化できる', () => {
+  const { controller, element, panels } = fixture();
+  controller.sync({ rightOpen: false });
+  assert.deepEqual(element.swiper.slides, [panels.left]);
+  assert.equal(controller.show('right', { rightOpen: false }), false);
+  controller.sync({ rightOpen: true });
+  assert.deepEqual(element.swiper.slides, [panels.left, panels.right]);
+});
+
+test('左端から外側へスワイプした時だけ境界操作を通知する', () => {
+  let boundarySwipes = 0;
+  const state = fixture({ onLeftBoundarySwipe: () => { boundarySwipes += 1; } });
+  state.controller.sync();
+  state.element.swiper.options.on.touchStart(state.element.swiper);
+  state.element.swiper.swipeDirection = 'prev';
+  state.element.swiper.options.on.touchEnd(state.element.swiper);
+  assert.equal(boundarySwipes, 1);
+
+  state.controller.show('right');
+  state.element.swiper.options.on.touchStart(state.element.swiper);
+  state.element.swiper.swipeDirection = 'prev';
+  state.element.swiper.options.on.touchEnd(state.element.swiper);
+  assert.equal(boundarySwipes, 1);
 });
 
 test('紹介サイトと同じ追従・スナップ設定を使用する', () => {
@@ -108,7 +134,7 @@ test('アプリ操作は360msで移動し、復元と低減モーションでは
 test('指操作によるスライド変更を現在パネルへ反映する', () => {
   const state = fixture();
   state.controller.sync();
-  state.element.swiper.options.on.touchStart();
+  state.element.swiper.options.on.touchStart(state.element.swiper);
   state.element.swiper.activeIndex = 1;
   state.element.swiper.options.on.slideChange(state.element.swiper);
   assert.equal(state.interactions(), 1);

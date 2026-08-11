@@ -1,4 +1,4 @@
-const DATA_CACHE_VERSION = 'ff14recipe-data-7.55-6e927534';
+const DATA_CACHE_VERSION = 'ff14recipe-data-7.55-d7f73028';
 const DATA_FILE = `./data/Item.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 const LEGACY_ITEM_IDS_FILE = `./data/legacy-item-ids.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 const TIPS_FILE = './data/tips.md';
@@ -48,8 +48,10 @@ const {
 const {
   normalizeFavoriteListName: normalizeFavoriteListNameValue,
   normalizeFavoriteStore,
+  migrateFavoriteStoreItems,
   normalizeItemIds: normalizeFavoriteItemIds,
   normalizeStoredRecipeSelections: normalizeFavoriteRecipeSelections,
+  resolveItemName: resolveFavoriteItemName,
   withDuplicateSuffix: appendDuplicateSuffix
 } = FavoriteStoreModel;
 const { createCodec: createFavoriteShareCodec } = FavoriteShareCodec;
@@ -62,6 +64,7 @@ const {
   ensureListState: ensureFavoriteCountListState,
   itemCount: favoriteCountItemValue,
   normalizeStore: normalizeFavoriteCountStore,
+  resetForDataGeneration: resetFavoriteCountsForDataGeneration,
   serializeStore: serializeFavoriteCountStore,
   setAll: setAllFavoriteCountValues,
   setAnyOneTarget: setFavoriteCountAnyOneTarget,
@@ -98,7 +101,17 @@ const {
   setPurchased: setMaterialPurchased,
   syncContext: syncMaterialPurchaseContext
 } = MaterialPurchaseState;
-const { buildRecipeData } = RecipeDataModel;
+const { buildRecipeData, buildRecipeDataAsync } = RecipeDataModel;
+const { createProgressController: createDataSetupProgressController } = DataSetupProgress;
+const {
+  createSnapshot: createShareSnapshot,
+  pngFileName: createSharePngFileName,
+  shareTitle: resolveShareTitle,
+  toText: shareSnapshotToText
+} = ShareContentModel;
+const { createCoordinator: createShareCoordinator } = ShareCoordinator;
+const { createStore: createSharePngStore } = SharePngStore;
+const { renderWithRetry: renderShareImageWithRetry } = ShareImageRenderer;
 const { createRecipeSelectionModel } = RecipeSelectionModel;
 const {
   listModeForSearch,
@@ -150,10 +163,24 @@ const elements = {
   loadStatus: document.getElementById('loadStatus'),
   loadingOverlay: document.getElementById('loadingOverlay'),
   loadingTitle: document.getElementById('loadingTitle'),
+  loadingDetail: document.getElementById('loadingDetail'),
+  loadingProgressRow: document.getElementById('loadingProgressRow'),
+  loadingProgress: document.getElementById('loadingProgress'),
+  loadingProgressPercent: document.getElementById('loadingProgressPercent'),
+  backgroundStatus: document.getElementById('backgroundStatus'),
   loadingErrorDetail: document.getElementById('loadingErrorDetail'),
   popupBtn: document.getElementById('popupBtn'),
   appTitle: document.getElementById('appTitle'),
+  shareBtn: document.getElementById('shareBtn'),
   settingsBtn: document.getElementById('settingsBtn'),
+  shareProgressPanel: document.getElementById('shareProgressPanel'),
+  shareProgressMessage: document.getElementById('shareProgressMessage'),
+  shareProgressRow: document.getElementById('shareProgressRow'),
+  shareProgress: document.getElementById('shareProgress'),
+  shareProgressPercent: document.getElementById('shareProgressPercent'),
+  shareReadyActions: document.getElementById('shareReadyActions'),
+  shareReadyBtn: document.getElementById('shareReadyBtn'),
+  shareDiscardBtn: document.getElementById('shareDiscardBtn'),
   main: document.querySelector('.main'),
   panelLeft: document.getElementById('panelLeft'),
   panelLeftResizeHandle: document.getElementById('panelLeftResizeHandle'),
@@ -247,6 +274,18 @@ const elements = {
   sharePlazaOpenBtn: document.getElementById('sharePlazaOpenBtn'),
   sharePlazaOverlay: document.getElementById('sharePlazaOverlay'),
   sharePlazaFrame: document.getElementById('sharePlazaFrame'),
+  contentShareOverlay: document.getElementById('contentShareOverlay'),
+  contentShareDialog: document.getElementById('contentShareDialog'),
+  contentShareTitle: document.getElementById('contentShareTitle'),
+  contentSharePanelChoices: document.getElementById('contentSharePanelChoices'),
+  contentShareDescription: document.getElementById('contentShareDescription'),
+  contentShareTextBtn: document.getElementById('contentShareTextBtn'),
+  contentShareImageBtn: document.getElementById('contentShareImageBtn'),
+  contentShareCloseBtn: document.getElementById('contentShareCloseBtn'),
+  shareTextFallbackOverlay: document.getElementById('shareTextFallbackOverlay'),
+  shareTextFallbackReason: document.getElementById('shareTextFallbackReason'),
+  shareTextFallbackContent: document.getElementById('shareTextFallbackContent'),
+  shareTextFallbackCloseBtn: document.getElementById('shareTextFallbackCloseBtn'),
   contactBtn: document.getElementById('contactBtn'),
   privacyBtn: document.getElementById('privacyBtn'),
   licenseBtn: document.getElementById('licenseBtn'),
@@ -324,6 +363,8 @@ let hadServiceWorkerControllerAtBoot = false;
 let idToRecipeName = {};
 let idToItemName = {};
 let legacyItemNamesById = {};
+let itemNameAliases = {};
+let applicationDataGeneration = '';
 let usedIn = {};
 let ingredientNames = [];
 let prevPanel = 'left';
@@ -342,7 +383,7 @@ let maxEquipmentLevel = 1;
 let favoriteMaterialsRingCounts = {};
 let favoriteItemCountStore = { version: 1, lists: {} };
 let pendingConfirmAction = null;
-let pendingRemovedFavoriteNames = [];
+let pendingFavoriteMigration = { renamed: [], removed: [], conflicts: [] };
 let pendingTextInputAction = null;
 let selectedExportListId = null;
 let wasMobile = isMobile();
@@ -390,7 +431,20 @@ let panelLeftResizeState = null;
 let panelLayoutFrame = 0;
 let mobilePanelSwipeController = null;
 let mobilePanelName = 'left';
+let resumeUpdatePromise = null;
 let headerInfoResizeObserver = null;
+let lastInteractedSharePanel = 'left';
+let selectedSharePanel = 'left';
+let shareCoordinator = null;
+let sharePngStore = null;
+let shareStorageReady = false;
+let shareStorageFullUntil = 0;
+let activeShareRecordId = '';
+let activeShareSnapshot = null;
+let shareExpiryTimer = 0;
+let shareCapacityTimer = 0;
+let shareGenerationId = 0;
+let activeShareRetryCount = 0;
 
 const treePinMap = new Map();
 const exchangeTreeState = new Map();
@@ -636,6 +690,10 @@ function isMobile() {
   return window.innerWidth <= MOBILE_BREAKPOINT;
 }
 
+function isConfirmedPc() {
+  return document.documentElement.dataset.deviceType === 'pc';
+}
+
 function pixelValue(value) {
   const number = Number.parseFloat(value);
   return Number.isFinite(number) ? number : 0;
@@ -825,6 +883,7 @@ function isPwaDisplayMode() {
 
 function updatePopupButtonVisibility() {
   elements.popupBtn.classList.toggle('hidden', isPwaDisplayMode());
+  requestAnimationFrame(updateHeaderFullNameVisibility);
 }
 
 function toNumeric(value, fallback = 0) {
@@ -1341,6 +1400,8 @@ function updateCheckedFavoriteMaterialsButton() {
   if (!elements.checkedFavoriteMaterialsActions) return;
   const active = hasMaterialSelectedFavoriteLists();
   if (active && equipmentSearchOpen) setEquipmentSearchOpen(false);
+  if (active) elements.checkedFavoriteMaterialsBtn.dataset.mobilePanelTarget = 'right';
+  else delete elements.checkedFavoriteMaterialsBtn.dataset.mobilePanelTarget;
   elements.checkedFavoriteMaterialsActions.classList.toggle('visible', active);
   elements.panelLeft
     .querySelector('.panel-left-header')
@@ -1351,6 +1412,7 @@ function updateCheckedFavoriteMaterialsButton() {
   elements.equipmentSearchToggle.disabled = active;
   elements.checkedFavoriteSumModeBtn?.classList.toggle('active', checkedFavoriteMaterialCalcMode === 'sum');
   elements.checkedFavoriteAnyOneModeBtn?.classList.toggle('active', checkedFavoriteMaterialCalcMode === 'any-one');
+  syncMobilePanelAvailability();
   if (elements.favoriteLists?.classList.contains('open')) updateFavoriteListsMaxHeight();
 }
 
@@ -1372,16 +1434,31 @@ function findFavoriteList(id) {
 }
 
 function itemIdForName(name) {
-  return itemMaster[name] ? name : null;
+  const currentName = resolveCurrentItemName(name);
+  return currentName && itemMaster[currentName] ? currentName : null;
 }
 
 function recipeNameForId(id) {
-  return idToRecipeName[id] || idToRecipeName[parseInt(id, 10)] || legacyItemNamesById[String(id)] || null;
+  return resolveCurrentItemName(
+    idToRecipeName[id] || idToRecipeName[parseInt(id, 10)] || legacyItemNamesById[String(id)] || id
+  );
+}
+
+function resolveCurrentItemName(value) {
+  return resolveFavoriteItemName(value, {
+    aliases: itemNameAliases,
+    hasCurrentName: name => Boolean(itemMaster[name])
+  });
 }
 
 function itemNameForId(id) {
-  if (typeof id === 'string' && itemMaster[id]) return id;
-  return idToItemName[id] || idToItemName[parseInt(id, 10)] || legacyItemNamesById[String(id)] || null;
+  return resolveCurrentItemName(
+    (typeof id === 'string' && itemMaster[id] ? id : null) ||
+      idToItemName[id] ||
+      idToItemName[parseInt(id, 10)] ||
+      legacyItemNamesById[String(id)] ||
+      id
+  );
 }
 
 function createFavoriteList(
@@ -1454,51 +1531,41 @@ function validateFavoriteRecipeSelections() {
 }
 
 function migrateFavoriteItemKeys() {
-  const removed = new Set();
-  let changed = false;
-  favoriteStore.lists.forEach(list => {
-    const reportRemoved = !isRecentList(list);
-    const names = [];
-    for (const key of normalizeItemIds(list.itemIds)) {
-      const name = itemNameForId(key);
-      if (!name || !recipes[name]) {
-        if (reportRemoved && name) removed.add(name);
-        changed = true;
-        continue;
+  const migration = migrateFavoriteStoreItems(favoriteStore, {
+    aliases: itemNameAliases,
+    hasRecipe: name => Boolean(recipes[name]),
+    isRecent: isRecentList,
+    resolveName: key => {
+      const sourceName =
+        (typeof key === 'string' && itemMaster[key] ? key : null) ||
+        idToItemName[key] ||
+        idToItemName[parseInt(key, 10)] ||
+        legacyItemNamesById[String(key)] ||
+        key;
+      return resolveCurrentItemName(sourceName) || (typeof sourceName === 'string' ? sourceName : null);
+    }
+  });
+  const generationChanged = resetFavoriteCountsForDataGeneration(favoriteItemCountStore, applicationDataGeneration);
+  let countsChanged = false;
+  if (!generationChanged) {
+    Object.values(favoriteItemCountStore?.lists || {}).forEach(state => {
+      for (const field of ['counts', 'anyOneTargets']) {
+        const migrated = {};
+        Object.entries(state[field] || {}).forEach(([key, value]) => {
+          const name = itemNameForId(key);
+          if (name && recipes[name]) migrated[name] = value;
+          if (key !== name) countsChanged = true;
+        });
+        if (JSON.stringify(migrated) !== JSON.stringify(state[field] || {})) countsChanged = true;
+        state[field] = migrated;
       }
-      names.push(name);
-      if (key !== name) changed = true;
-    }
-    const normalizedNames = [...new Set(names)];
-    if (JSON.stringify(normalizedNames) !== JSON.stringify(list.itemIds)) changed = true;
-    list.itemIds = normalizedNames;
-    const migratedSelections = {};
-    Object.entries(list.recipeSelections || {}).forEach(([key, recipeId]) => {
-      const name = itemNameForId(key);
-      if (name) migratedSelections[name] = recipeId;
-      if (key !== name) changed = true;
     });
-    list.recipeSelections = migratedSelections;
-    list.equipmentParameterNames = normalizeItemIds(list.equipmentParameterNames)
-      .map(itemNameForId)
-      .filter(name => name && list.itemIds.includes(name));
-  });
-  Object.values(favoriteItemCountStore?.lists || {}).forEach(state => {
-    for (const field of ['counts', 'anyOneTargets']) {
-      const migrated = {};
-      Object.entries(state[field] || {}).forEach(([key, value]) => {
-        const name = itemNameForId(key);
-        if (name && recipes[name]) migrated[name] = value;
-        if (key !== name) changed = true;
-      });
-      state[field] = migrated;
-    }
-  });
-  if (changed) {
+  }
+  if (migration.changed || generationChanged || countsChanged) {
     saveFavorites();
     saveFavoriteItemCountStore();
   }
-  return [...removed];
+  return migration;
 }
 
 function loadFavoriteItemCountStore() {
@@ -1639,9 +1706,9 @@ function closeSearchHistory() {
 
 function positionSearchHistory() {
   if (!elements.searchHistory.classList.contains('open')) return;
-  const rect = elements.searchBox.getBoundingClientRect();
+  const listTop = elements.searchHistory.getBoundingClientRect().top;
   const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
-  elements.searchHistory.style.maxHeight = `${Math.max(0, viewportHeight - rect.bottom - 11)}px`;
+  elements.searchHistory.style.maxHeight = `${Math.max(0, viewportHeight - listTop - 8)}px`;
 }
 
 function sortEquipmentJobs(jobs) {
@@ -1973,6 +2040,7 @@ function saveEquipmentSearchAsFavorite() {
 }
 
 function showConfirm(msg, onYes) {
+  elements.confirmOverlay.classList.remove('favorite-list-file-dialog');
   elements.confirmOverlay.classList.remove('recipe-resolution-info');
   elements.confirmMsg.classList.remove('markdown-content');
   elements.confirmMsg.textContent = msg;
@@ -1985,6 +2053,7 @@ function showConfirm(msg, onYes) {
 }
 
 function showConfirmContent(content, onYes) {
+  elements.confirmOverlay.classList.remove('favorite-list-file-dialog');
   elements.confirmOverlay.classList.remove('recipe-resolution-info');
   elements.confirmMsg.classList.remove('markdown-content');
   elements.confirmMsg.replaceChildren(content);
@@ -1997,6 +2066,7 @@ function showConfirmContent(content, onYes) {
 }
 
 function showInfo(msg, { markdown = false } = {}) {
+  elements.confirmOverlay.classList.remove('favorite-list-file-dialog');
   elements.confirmOverlay.classList.remove('recipe-resolution-info');
   elements.confirmMsg.classList.toggle('markdown-content', markdown);
   if (markdown) elements.confirmMsg.innerHTML = renderMarkdown(msg);
@@ -2009,6 +2079,7 @@ function showInfo(msg, { markdown = false } = {}) {
 }
 
 function showRecipeResolutionInfo(content) {
+  elements.confirmOverlay.classList.remove('favorite-list-file-dialog');
   elements.confirmMsg.classList.remove('markdown-content');
   elements.confirmMsg.replaceChildren(content);
   pendingConfirmAction = null;
@@ -2022,6 +2093,7 @@ function closeConfirm() {
   floatingWindows.confirm.close();
   elements.confirmOverlay.classList.remove('info');
   elements.confirmOverlay.classList.remove('recipe-resolution-info');
+  elements.confirmOverlay.classList.remove('favorite-list-file-dialog');
   elements.confirmMsg.textContent = '';
   elements.confirmMsg.classList.remove('markdown-content');
   elements.confirmYes.classList.remove('hidden');
@@ -2418,6 +2490,7 @@ function createFavoriteActionRow(text, onClick) {
 function createFavoriteSaveRow() {
   const li = document.createElement('li');
   li.className = 'favorite-save-row';
+  li.dataset.shareDetail = 'omit';
   const button = document.createElement('button');
   button.className = 'favorite-list-action';
   button.type = 'button';
@@ -2444,8 +2517,10 @@ function createFavoriteMaterialsRow() {
 
   const li = document.createElement('li');
   li.className = 'favorite-materials-row';
+  li.dataset.shareDetail = 'omit';
   const materialButton = document.createElement('button');
   materialButton.className = 'favorite-list-action favorite-list-action-compact';
+  materialButton.dataset.mobilePanelTarget = 'right';
   materialButton.classList.toggle('active', resultSourceMode === 'favorite-materials');
   materialButton.type = 'button';
   materialButton.textContent =
@@ -3063,6 +3138,60 @@ function recipeVariantMaster(name, variant = null) {
   };
 }
 
+function normalizedShareMasterbook(value) {
+  const text = String(value || '').trim();
+  const suffix = text.match(/秘伝書[:：]?(.+)$/u)?.[1]?.trim();
+  return suffix ? `秘伝書 ${suffix}` : text;
+}
+
+function shareCraftDescription(master) {
+  const entries = (master.craftInfo || []).length > 0
+    ? master.craftInfo
+    : CRAFT_JOBS_SET.has(master.method)
+      ? [{ job: master.method, level: master.craftLevel, masterbook: master.masterbook }]
+      : [];
+  return entries
+    .map(entry => {
+      const details = [entry.job];
+      if (entry.masterbook) details.push(normalizedShareMasterbook(entry.masterbook));
+      else if (toNumeric(entry.level, 0) > 0) details.push(`Lv${toNumeric(entry.level, 0)}`);
+      return details.filter(Boolean).join(' / ');
+    })
+    .filter(Boolean)
+    .filter((entry, index, all) => all.indexOf(entry) === index)
+    .join(' または ');
+}
+
+function shareItemTextBlock(name, master, { quantity = null, markers = '' } = {}) {
+  const title = `・${name}${quantity === null ? '' : ` ×${formatNumber(quantity)}`}`;
+  const lines = [title];
+  const craft = shareCraftDescription(master);
+  if (craft) lines.push(`  製作: ${craft}`);
+  if (isEquipmentSearchTarget(master)) {
+    const jobs = sortEquipmentJobs(
+      equipmentJobs(master).filter(job => !['全クラス', 'ファイター', 'ソーサラー', 'クラフター', 'ギャザラー'].includes(job))
+    );
+    const details = [];
+    if (jobs.length > 0) details.push(jobs.join('・'));
+    const equipLevel = equipmentEquipLevel(master);
+    const itemLevel = equipmentItemLevel(master);
+    if (equipLevel > 0) details.push(`Lv${equipLevel}`);
+    if (itemLevel > 0) details.push(`IL${itemLevel}`);
+    if (details.length > 0) lines.push(`  装備: ${details.join(' / ')}`);
+  }
+  if (markers) lines.push(`  入手: ${markers}`);
+  return lines.join('\n');
+}
+
+function shareItemMarkers(name, { purchased = false } = {}) {
+  return [
+    purchased && hasShopInfo(name) ? '店舗購入（購入済み）' : hasShopInfo(name) ? '店舗購入' : '',
+    hasGatheringTimer(name) ? '時間指定採集' : ''
+  ]
+    .filter(Boolean)
+    .join(' / ');
+}
+
 function createItemDisplayLabel(
   name,
   {
@@ -3142,6 +3271,7 @@ function createItemDisplayLabel(
       .join(' / ');
     if (parameters) wrapper.appendChild(createTextElement('span', 'equipment-parameters', parameters));
   }
+  wrapper.dataset.shareTextBlock = shareItemTextBlock(name, master);
   return wrapper;
 }
 
@@ -3152,14 +3282,17 @@ function createItemListRow(name, className = '', { recipeVariant = null, provisi
 
   const icon = createItemIcon(itemMaster[name]?.icon);
   if (icon) row.appendChild(icon);
-  row.appendChild(
-    createItemDisplayLabel(name, {
+  const label = createItemDisplayLabel(name, {
       favorite: className.split(/\s+/).includes('fav-item-row'),
       recipeVariant,
       provisional,
       showEquipmentDuplicateWarning: listMode === 'equipment'
-    })
-  );
+    });
+  row.appendChild(label);
+  const markers = shareItemMarkers(name);
+  const shareLines = label.dataset.shareTextBlock.split('\n');
+  if (markers) shareLines[0] += ` ${markers}`;
+  row.dataset.shareTextBlock = shareLines.join('\n');
   return row;
 }
 
@@ -3364,6 +3497,7 @@ function renderList({ preserveScroll = false } = {}) {
 
   elements.recipeList.replaceChildren(frag);
   elements.recipeList.scrollTop = preserveScroll ? scrollTop : 0;
+  syncMobilePanelAvailability();
   saveViewState();
 }
 
@@ -3496,12 +3630,14 @@ function makeFavLi(name, index) {
       showUsesPanel(name);
     }
   });
+  if (!countsEnabled) li.dataset.mobilePanelTarget = recipes[name] ? 'right' : 'middle';
   if (!countsEnabled) li.dataset.hapticAction = 'true';
   return li;
 }
 
 function makeRecipeLi(name, variant = activeRecipeVariant(name)) {
   const li = createItemListRow(name, 'recipe-variant-row', { recipeVariant: variant });
+  li.dataset.mobilePanelTarget = 'right';
   li.dataset.recipeId = variant?.recipeId || '';
   li.classList.toggle(
     'selected',
@@ -3520,6 +3656,7 @@ function makeRecipeLi(name, variant = activeRecipeVariant(name)) {
 
 function makeIngredientLi(name) {
   const li = createItemListRow(name, 'ingredient-row');
+  li.dataset.mobilePanelTarget = 'middle';
   appendItemActionButtons(
     li,
     createShopInfoButton(name),
@@ -3710,6 +3847,46 @@ async function loadAppVersion() {
   return currentAppVersion;
 }
 
+function reloadAfterServiceWorkerUpdate() {
+  clearViewState();
+  markSkipRestoreOnce();
+  sessionStorage.setItem(UPDATE_RELOAD_PENDING_KEY, '1');
+  location.reload();
+}
+
+function setBackgroundStatus(message = '') {
+  if (!elements.backgroundStatus) return;
+  elements.backgroundStatus.textContent = message;
+  elements.backgroundStatus.hidden = !message;
+}
+
+function checkForUpdateAfterResume() {
+  if (resumeUpdatePromise || !('serviceWorker' in navigator)) return resumeUpdatePromise;
+  let latestStatus = '更新を確認しています...';
+  let statusVisible = false;
+  const statusTimer = window.setTimeout(() => {
+    statusVisible = true;
+    setBackgroundStatus(latestStatus);
+  }, 500);
+  resumeUpdatePromise = updateBeforeUse({
+    serviceWorkerContainer: navigator.serviceWorker,
+    onStatus: status => {
+      latestStatus = status;
+      if (statusVisible) setBackgroundStatus(status);
+    }
+  })
+    .then(result => {
+      if (result.updateApplied) reloadAfterServiceWorkerUpdate();
+      return result;
+    })
+    .finally(() => {
+      window.clearTimeout(statusTimer);
+      setBackgroundStatus();
+      resumeUpdatePromise = null;
+    });
+  return resumeUpdatePromise;
+}
+
 // Data loading and index construction
 async function cacheFirstLoadResponse(path, response, cacheName) {
   if (!cacheName || !('caches' in globalThis) || navigator.serviceWorker?.controller) return;
@@ -3782,13 +3959,19 @@ function applyRecipeSelectionContext(recipeSelections = {}) {
   });
 }
 
-function buildApplicationData(rawList) {
-  const data = buildRecipeData(rawList, {
+async function buildApplicationData(rawList, onProgress = () => {}, { incremental = false } = {}) {
+  const buildOptions = {
     craftTypeNames: CRAFT_TYPE_NAME,
     crystalExclude: CRYSTAL_EXCLUDE,
     iconPath,
     sortRecipeNames
-  });
+  };
+  const data = incremental
+    ? await buildRecipeDataAsync(rawList, buildOptions, {
+        chunkSize: 2000,
+        onProgress: progress => onProgress(progress.phase, progress.percent * 0.82)
+      })
+    : buildRecipeData(rawList, buildOptions);
   ({
     activeRecipeIds,
     defaultRecipeIds,
@@ -3810,8 +3993,25 @@ function buildApplicationData(rawList) {
     itemIdForName,
     normalizeSelections: normalizeRecipeSelections
   });
+  onProgress('装備索引を作成しています', 86);
   buildEquipmentSearchIndexes();
+  onProgress('保存データを確認しています', 90);
   return data.version || data.maxPatch;
+}
+
+function createApplicationDataProgress(enabled) {
+  return createDataSetupProgressController({
+    enabled,
+    onChange: ({ detailVisible, progressVisible, percentVisible, phase, percent }) => {
+      elements.loadingTitle.textContent = detailVisible ? 'Item.json更新処理中...' : 'データ読み込み中...';
+      elements.loadingDetail.textContent = phase;
+      elements.loadingDetail.hidden = !detailVisible;
+      elements.loadingProgress.value = percent;
+      elements.loadingProgressRow.hidden = !progressVisible;
+      elements.loadingProgressPercent.textContent = `${percent}%`;
+      elements.loadingProgressPercent.hidden = !percentVisible;
+    }
+  });
 }
 
 function updatePatchStatus(version) {
@@ -3825,17 +4025,19 @@ function updatePatchStatus(version) {
 }
 
 function updateHeaderFullNameVisibility() {
-  elements.headerInfo.style.removeProperty('--header-info-fitted-font-size');
+  elements.headerInfo.style.removeProperty('--header-full-name-font-size');
+  elements.headerInfo.style.removeProperty('--header-patch-font-size');
   const availableWidth = elements.headerInfo.clientWidth;
-  const patchWidth = elements.loadStatus.scrollWidth;
-  if (availableWidth > 0 && patchWidth > availableWidth + 0.5) {
-    const baseFontSize = parseFloat(getComputedStyle(elements.headerInfo).fontSize);
-    const fittedFontSize = Math.max(1, baseFontSize * (availableWidth / patchWidth) * 0.98);
-    elements.headerInfo.style.setProperty('--header-info-fitted-font-size', `${fittedFontSize}px`);
-  }
-  const fits = availableWidth > 0 && elements.headerAppFullName.scrollWidth <= availableWidth + 0.5;
-  elements.headerAppFullName.classList.toggle('fits', fits);
-  elements.headerAppFullName.setAttribute('aria-hidden', String(!fits));
+  if (availableWidth <= 0) return;
+  const baseFontSize = parseFloat(getComputedStyle(elements.headerInfo).fontSize);
+  const fitLine = (element, propertyName) => {
+    const contentWidth = element.scrollWidth;
+    if (contentWidth <= availableWidth + 0.5) return;
+    const fittedFontSize = Math.max(1, baseFontSize * (availableWidth / contentWidth));
+    elements.headerInfo.style.setProperty(propertyName, `${fittedFontSize}px`);
+  };
+  fitLine(elements.headerAppFullName, '--header-full-name-font-size');
+  fitLine(elements.loadStatus, '--header-patch-font-size');
 }
 
 function initializeHeaderFullNameVisibility() {
@@ -3848,14 +4050,32 @@ function initializeHeaderFullNameVisibility() {
 }
 
 function showPendingRemovedFavoritesNotice() {
-  if (pendingRemovedFavoriteNames.length === 0) return false;
-  const names = pendingRemovedFavoriteNames;
-  pendingRemovedFavoriteNames = [];
-  showInfo(
-    `お気に入りから、現在の対象データに存在しない${names.length}件を除外しました。\n\n${names
-      .map(name => `・${name}`)
-      .join('\n')}`
-  );
+  const migration = pendingFavoriteMigration;
+  if (migration.renamed.length === 0 && migration.removed.length === 0 && migration.conflicts.length === 0) return false;
+  pendingFavoriteMigration = { renamed: [], removed: [], conflicts: [] };
+  const sections = [];
+  if (migration.renamed.length > 0) {
+    sections.push(
+      `名称変更を${migration.renamed.length}件反映しました。\n${migration.renamed
+        .map(entry => `・${entry.previousName} → ${entry.currentName}`)
+        .join('\n')}`
+    );
+  }
+  if (migration.conflicts.length > 0) {
+    sections.push(
+      `同じ現行項目へ統合した際、製作方法の指定が競合した${migration.conflicts.length}件を整理しました。\n${migration.conflicts
+        .map(name => `・${name}`)
+        .join('\n')}`
+    );
+  }
+  if (migration.removed.length > 0) {
+    sections.push(
+      `現在の対象データに存在しない${migration.removed.length}件を除外しました。\n${migration.removed
+        .map(name => `・${name}`)
+        .join('\n')}`
+    );
+  }
+  showInfo(`お気に入りを現行データへ移行しました。\n\n${sections.join('\n\n')}`);
   return true;
 }
 
@@ -3887,24 +4107,36 @@ async function init() {
   renderList();
   renderTips();
 
+  let dataProgress = null;
   try {
     const [rawList, legacyItemIds] = await Promise.all([
       fetchJson(DATA_FILE, status => `Item.json が見つかりません (${status})`, DATA_CACHE_VERSION),
       fetchJson(LEGACY_ITEM_IDS_FILE, status => `旧ID互換データが見つかりません (${status})`, DATA_CACHE_VERSION)
     ]);
     legacyItemNamesById = legacyItemIds?.Items || {};
+    itemNameAliases = rawList?.ItemNameAliases && typeof rawList.ItemNameAliases === 'object'
+      ? rawList.ItemNameAliases
+      : {};
+    const previousDataGeneration = favoriteItemCountStore.dataGeneration || '';
+    applicationDataGeneration = typeof rawList?.DataGeneration === 'string' ? rawList.DataGeneration : '';
+    const dataGenerationChanged = Boolean(
+      previousDataGeneration && applicationDataGeneration && previousDataGeneration !== applicationDataGeneration
+    );
     const applicationDataStartedAt = performance.now();
-    const dataVersion = buildApplicationData(rawList);
-    const removedFavorites = migrateFavoriteItemKeys();
-    pendingRemovedFavoriteNames = removedFavorites;
+    dataProgress = createApplicationDataProgress(dataGenerationChanged);
+    const dataVersion = await buildApplicationData(
+      rawList,
+      (phase, percent) => dataProgress.report(phase, percent),
+      { incremental: dataGenerationChanged }
+    );
+    dataProgress.report('お気に入りを現行データへ移行しています', 92);
+    pendingFavoriteMigration = migrateFavoriteItemKeys();
     updatePatchStatus(dataVersion);
+    dataProgress.report('画面を準備しています', 96);
     validateFavoriteRecipeSelections();
     setupEquipmentSearchControls();
-    performance.measure('application-data-setup', {
-      start: applicationDataStartedAt,
-      end: performance.now()
-    });
     canSaveViewState = true;
+    dataProgress.report('画面を復元しています', 98);
     if (consumeSkipRestoreOnce() || !restoreViewState()) {
       renderList();
       renderResultView();
@@ -3912,6 +4144,12 @@ async function init() {
       else clearMobilePanels();
       saveViewState();
     }
+    dataProgress.report('完了しています', 100);
+    await dataProgress.complete();
+    performance.measure('application-data-setup', {
+      start: applicationDataStartedAt,
+      end: performance.now()
+    });
     window.ff14RecipeBoot?.complete();
     if (!showPendingReleaseNotice()) {
       setReleaseNoticeBackgroundInert(false);
@@ -3919,6 +4157,7 @@ async function init() {
       window.setTimeout(showPendingRemovedFavoritesNotice, MIN_LOADING_OVERLAY_MS);
     }
   } catch (e) {
+    dataProgress?.cancel();
     showLoadError(e);
   }
 }
@@ -3954,12 +4193,32 @@ function applyMobilePanelState(panelName) {
 
 function showMobilePanel(panelName, { animate = true } = {}) {
   if (!isMobile()) return;
-  const middleOpen = elements.panelMiddle.classList.contains('open');
+  const { middleOpen, rightOpen } = currentMobilePanelAvailability();
   if (panelName === 'middle' && !middleOpen) panelName = 'left';
-  if (!mobilePanelSwipeController?.show(panelName, { animate, middleOpen })) {
+  if (panelName === 'right' && !rightOpen) panelName = 'left';
+  if (!mobilePanelSwipeController?.show(panelName, { animate, middleOpen, rightOpen })) {
     rememberVisibleScrollPositions();
     applyMobilePanelState(panelName);
   }
+}
+
+function hasLeftPanelDestination() {
+  return [...elements.panelLeft.querySelectorAll('[data-mobile-panel-target]')].some(element =>
+    !element.disabled && element.getClientRects().length > 0
+  );
+}
+
+function currentMobilePanelAvailability() {
+  const hasDestination = hasLeftPanelDestination();
+  return {
+    middleOpen: hasDestination && elements.panelMiddle.classList.contains('open'),
+    rightOpen: hasDestination && Boolean(selectedRecipe || resultSourceMode === 'favorite-materials')
+  };
+}
+
+function syncMobilePanelAvailability() {
+  if (!isMobile()) return;
+  mobilePanelSwipeController?.sync(currentMobilePanelAvailability());
 }
 
 function initializeMobilePanelSwipe() {
@@ -3975,9 +4234,10 @@ function initializeMobilePanelSwipe() {
     isEnabled: isMobile,
     reduceMotion: () => window.matchMedia('(prefers-reduced-motion: reduce)').matches,
     onInteractionStart: rememberVisibleScrollPositions,
+    onLeftBoundarySwipe: resetToStartupView,
     onPanelChange: applyMobilePanelState
   });
-  mobilePanelSwipeController.sync({ middleOpen: elements.panelMiddle.classList.contains('open') });
+  mobilePanelSwipeController.sync(currentMobilePanelAvailability());
   if (isMobile()) applyMobilePanelState('left');
   else clearMobilePanels();
 }
@@ -4034,7 +4294,7 @@ function updateMobileHeaderVisibility() {
 }
 
 function clearMobilePanels() {
-  mobilePanelSwipeController?.sync({ middleOpen: elements.panelMiddle.classList.contains('open') });
+  mobilePanelSwipeController?.sync(currentMobilePanelAvailability());
   elements.mobileBackBtn.classList.remove('visible');
   delete elements.mobileBackBtn.dataset.panel;
   elements.panelLeft.classList.remove('mobile-visible');
@@ -4217,6 +4477,7 @@ function updateResultHeader() {
     elements.countLabel.textContent = 'セット数:';
     elements.resultTitle.textContent = '';
     elements.usesBtn.classList.remove('visible');
+    elements.resultViewSwitch.parentElement.classList.remove('has-uses');
     elements.treeViewBtn.classList.add('hidden');
     elements.materialsViewBtn.classList.remove('hidden');
     elements.materialsViewBtn.classList.add('active');
@@ -4242,6 +4503,7 @@ function updateResultHeader() {
   const usesCount = selectedRecipe ? usedInRecipeVariants(selectedRecipe).length : 0;
   elements.usesBtn.textContent = `使用先 (${formatNumber(usesCount)})`;
   elements.usesBtn.classList.toggle('visible', usesCount > 0);
+  elements.resultViewSwitch.parentElement.classList.toggle('has-uses', usesCount > 0);
   elements.treeViewBtn.classList.remove('hidden');
   elements.materialsViewBtn.disabled = false;
   elements.resultViewSwitch.classList.remove('favorite-materials-only');
@@ -4354,7 +4616,7 @@ function handleResize() {
   const mobile = isMobile();
   if (mobile === wasMobile) return;
   wasMobile = mobile;
-  mobilePanelSwipeController?.sync({ middleOpen: elements.panelMiddle.classList.contains('open') });
+  mobilePanelSwipeController?.sync(currentMobilePanelAvailability());
   resetToStartupView();
 }
 
@@ -4564,6 +4826,7 @@ function createFavoriteRingSection(lists = []) {
 
   const section = document.createElement('section');
   section.className = 'favorite-ring-section';
+  section.dataset.shareDetail = 'omit';
   const header = document.createElement('div');
   header.className = 'production-content-toggle materials-section-header';
   header.appendChild(createTextElement('span', 'materials-section-title', '指輪'));
@@ -5258,6 +5521,7 @@ function renderMaterialsList() {
     const collapsedState = materialSectionState.has(stateKey) ? materialSectionState.get(stateKey) : initiallyCollapsed;
     const header = document.createElement('li');
     header.className = 'materials-section-header';
+    header.dataset.shareTextBlock = `【${title}】`;
     header.dataset.hapticAction = 'true';
     const toggle = createTextElement('span', 'materials-section-toggle', collapsedState ? '▶' : '▼');
     header.append(toggle, createTextElement('span', 'materials-section-title', title));
@@ -5331,8 +5595,15 @@ function renderMaterialsList() {
         createShopInfoButton(row.name, { materialPurchase: !noLongerNeeded }),
         createGatheringTimerButton(row.name)
       );
+      li.dataset.shareTextBlock = shareItemTextBlock(row.name, itemMaster[row.name] || {}, {
+        quantity: row.qty,
+        markers: shareItemMarkers(row.name, { purchased: materialPurchased })
+      });
     } else {
       li.appendChild(createMaterialChoiceContent(row));
+      li.dataset.shareTextBlock = row.options
+        .map(option => option.map(item => `・${item.name}${item.qty === null ? '' : ` ×${formatNumber(item.qty)}`}`).join(' / '))
+        .join('\n  または ');
     }
     return li;
   };
@@ -5450,6 +5721,26 @@ function renderMaterialsList() {
       treeButton
     );
     li.appendChild(rowElement);
+    const shareLines = [shareItemTextBlock(row.name, master, {
+      quantity: row.qty,
+      markers: shareItemMarkers(row.name, { purchased })
+    })];
+    supplementEntries.forEach(entry => {
+      if (entry.kind === 'surplus') shareLines.push(`  余り: ${formatNumber(entry.qty)}個`);
+      else if (entry.kind === 'craft') shareLines.push(`  製作回数: ${formatNumber(entry.qty)}回`);
+    });
+    if (usageAlternatives.length <= 1) {
+      const entries = usageAlternatives[0] || [];
+      entries.forEach(entry => {
+        const all = entries.length === 1 && row.surplus === 0 && entry.qty === row.produced;
+        shareLines.push(all ? `  用途: すべてを${entry.name}に使用` : `  用途: ${formatNumber(entry.qty)}個を${entry.name}に使用`);
+      });
+    } else {
+      usageAlternatives.forEach(entries => entries.forEach(entry => {
+        shareLines.push(`  使用先候補: ${entry.name}（${formatNumber(entry.qty)}個）`);
+      }));
+    }
+    li.dataset.shareTextBlock = shareLines.join('\n');
     return li;
   };
 
@@ -5563,6 +5854,7 @@ function renderMaterialsList() {
         );
         content.appendChild(primary);
         li.appendChild(content);
+        li.dataset.shareTextBlock = `・${entry.name} ×${formatNumber(entry.qty)}`;
         summaryRows.push(li);
       });
 
@@ -5611,6 +5903,9 @@ function renderMaterialsList() {
 
         content.appendChild(supplement);
         li.appendChild(content);
+        li.dataset.shareTextBlock = entries
+          .map((entry, index) => `${index === 0 ? '・' : '  または '}${entry.name} ×${formatNumber(entry.qty)}`)
+          .join('\n');
         summaryRows.push(li);
       });
 
@@ -5714,6 +6009,15 @@ function createResultRootSummary(
   if (selector) prependRecipeMethodControl(main, selector);
   row.appendChild(main);
   appendItemActionButtons(row, createShopInfoButton(name), createGatheringTimerButton(name));
+  const shareLines = [shareItemTextBlock(name, master, {
+    quantity: producedQty,
+    markers: shareItemMarkers(name)
+  })];
+  createCraftSupplementEntriesForRecipe(recipe, neededQty).forEach(entry => {
+    if (entry.kind === 'surplus') shareLines.push(`  余り: ${formatNumber(entry.qty)}個`);
+    else if (entry.kind === 'craft') shareLines.push(`  製作回数: ${formatNumber(entry.qty)}回`);
+  });
+  row.dataset.shareTextBlock = shareLines.join('\n');
   wrapper.appendChild(row);
   if (selector) {
     wrapper.classList.add('recipe-method-root');
@@ -6276,6 +6580,16 @@ function buildNode(
   }
   node.appendChild(row);
 
+  const shareLines = [shareItemTextBlock(name, master, {
+    quantity: neededQty,
+    markers: shareItemMarkers(name)
+  })];
+  createCraftSupplementEntriesForRecipe(recipe, neededQty).forEach(entry => {
+    if (entry.kind === 'surplus') shareLines.push(`  余り: ${formatNumber(entry.qty)}個`);
+    else if (entry.kind === 'craft') shareLines.push(`  製作回数: ${formatNumber(entry.qty)}回`);
+  });
+  row.dataset.shareTextBlock = shareLines.join('\n');
+
   if (!hasChildren) return node;
 
   const children = document.createElement('div');
@@ -6632,6 +6946,431 @@ function openContactLink() {
   window.open(CONTACT_URL, '_blank', 'noopener,noreferrer');
 }
 
+function sharePanelAvailability() {
+  return {
+    left: listMode !== 'none' && elements.recipeList.children.length > 0,
+    middle: elements.panelMiddle.classList.contains('open') && elements.usesList.children.length > 0,
+    right: Boolean(selectedRecipe || resultSourceMode === 'favorite-materials') && elements.treeContainer.children.length > 0
+  };
+}
+
+function preferredSharePanel() {
+  const available = sharePanelAvailability();
+  if (isMobile()) return available[mobilePanelName] ? mobilePanelName : '';
+  if (available[lastInteractedSharePanel]) return lastInteractedSharePanel;
+  return ['right', 'middle', 'left'].find(panel => available[panel]) || '';
+}
+
+function updateShareButtonState() {
+  const coordinatorBusy = shareCoordinator?.getState().phase !== 'idle';
+  elements.shareBtn.disabled = !shareStorageReady || coordinatorBusy || !preferredSharePanel();
+}
+
+function favoriteShareModeDescription() {
+  if (resultSourceMode !== 'favorite-materials') return '';
+  const lists = getActiveFavoriteMaterialLists();
+  if (lists.length > 1) return checkedFavoriteMaterialCalcMode === 'any-one' ? 'どれか1リスト' : '合算';
+  return favoriteAnyOneMode() ? 'どれか1アイテム' : '合算';
+}
+
+function sharePanelMetadata(panel) {
+  const favoriteList = getDisplayedFavoriteList();
+  const favoriteLists = resultSourceMode === 'favorite-materials' ? getActiveFavoriteMaterialLists() : [];
+  const multipleFavoriteLists = panel === 'right' && favoriteLists.length > 1;
+  const selectedItem = panel === 'middle'
+    ? (selectedUsesItem || elements.usesTitle.textContent.replace(/の作成先.*$/u, ''))
+    : panel === 'right' && resultSourceMode === 'favorite-materials'
+      ? (favoriteLists[0]?.name || favoriteList?.name || selectedRecipe)
+      : selectedRecipe;
+  const title = resolveShareTitle({
+    panel,
+    listMode,
+    favoriteListName: favoriteList?.name,
+    selectedItem,
+    resultViewMode,
+    multipleFavoriteLists
+  });
+  const descriptions = {
+    left: listMode === 'equipment'
+      ? '現在の検索条件と装備検索結果をすべて共有します。'
+      : listMode === 'fav'
+        ? 'お気に入りリスト名と登録アイテムをすべて共有します。'
+        : '画面外を含む検索結果をすべて共有します。',
+    middle: '現在表示している作成先をすべて共有します。',
+    right: `${resultViewMode === 'materials' ? '素材リスト' : 'レシピツリー'}の現在の内容を共有します。`
+  };
+  const details = [];
+  if (panel === 'right') {
+    details.push(`個数・セット数: ${elements.countInput.value || 1}`);
+    const mode = favoriteShareModeDescription();
+    if (mode) details.push(`計算方法: ${mode}`);
+  }
+  return {
+    title,
+    description: [descriptions[panel], ...details].filter(Boolean).join('\n'),
+    headingLines: multipleFavoriteLists ? favoriteLists.map(list => list.name) : []
+  };
+}
+
+function sharePanelSource(panel) {
+  const wrapper = document.createElement('div');
+  wrapper.className = `share-panel-source share-panel-source-${panel}`;
+  if (panel === 'left') {
+    if (listMode === 'equipment') wrapper.appendChild(elements.equipmentSearchPanel.cloneNode(true));
+    wrapper.appendChild(elements.recipeList.cloneNode(true));
+  } else if (panel === 'middle') {
+    wrapper.appendChild(elements.usesList.cloneNode(true));
+  } else {
+    wrapper.appendChild(elements.treeContainer.cloneNode(true));
+  }
+  return wrapper;
+}
+
+function captureSelectedShareSnapshot() {
+  const metadata = sharePanelMetadata(selectedSharePanel);
+  return createShareSnapshot({
+    panel: selectedSharePanel,
+    title: metadata.title,
+    sourceNode: sharePanelSource(selectedSharePanel),
+    headingLines: metadata.headingLines,
+    description: metadata.description
+  });
+}
+
+function highlightSharePanel(panel) {
+  const target = { left: elements.panelLeft, middle: elements.panelMiddle, right: elements.panelRight }[panel];
+  if (!target) return;
+  elements.contentShareOverlay.querySelector('.share-panel-highlight-overlay')?.remove();
+  const rect = target.getBoundingClientRect();
+  const highlight = document.createElement('div');
+  highlight.className = 'share-panel-highlight-overlay';
+  highlight.dataset.panel = panel;
+  Object.assign(highlight.style, {
+    left: `${rect.left}px`,
+    top: `${rect.top}px`,
+    width: `${rect.width}px`,
+    height: `${rect.height}px`
+  });
+  elements.contentShareOverlay.prepend(highlight);
+  requestAnimationFrame(() => highlight.classList.add('visible'));
+  setTimeout(() => highlight.remove(), 450);
+}
+
+function renderSharePanelChoices() {
+  const available = sharePanelAvailability();
+  const labels = ['left', 'middle', 'right'].map(panel => ({ panel, ...sharePanelMetadata(panel) }));
+  const showChoices = !isMobile() && Object.values(available).filter(Boolean).length > 1;
+  elements.contentSharePanelChoices.replaceChildren();
+  if (!showChoices) return;
+  labels.forEach(({ panel, title }) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = title;
+    button.disabled = !available[panel];
+    button.classList.toggle('active', panel === selectedSharePanel);
+    button.addEventListener('click', () => selectSharePanel(panel));
+    elements.contentSharePanelChoices.appendChild(button);
+  });
+}
+
+function remainingCapacityText() {
+  const remaining = Math.max(0, shareStorageFullUntil - Date.now());
+  const totalSeconds = Math.ceil(remaining / 1000);
+  return `画像共有は${Math.floor(totalSeconds / 60)}分${totalSeconds % 60}秒後に再利用できます`;
+}
+
+function refreshShareDialog() {
+  const metadata = sharePanelMetadata(selectedSharePanel);
+  elements.contentShareTitle.textContent = metadata.title;
+  elements.contentShareDescription.textContent = shareStorageFullUntil > Date.now()
+    ? remainingCapacityText()
+    : metadata.description;
+  elements.contentShareImageBtn.disabled = shareStorageFullUntil > Date.now();
+  renderSharePanelChoices();
+}
+
+function selectSharePanel(panel) {
+  if (!sharePanelAvailability()[panel]) return;
+  selectedSharePanel = panel;
+  lastInteractedSharePanel = panel;
+  refreshShareDialog();
+  highlightSharePanel(panel);
+}
+
+function openContentShare() {
+  const panel = preferredSharePanel();
+  if (!panel) return;
+  selectedSharePanel = panel;
+  refreshShareDialog();
+  elements.contentShareOverlay.classList.add('open');
+  elements.contentShareOverlay.setAttribute('aria-hidden', 'false');
+  highlightSharePanel(panel);
+}
+
+function closeContentShare() {
+  elements.contentShareOverlay.querySelector('.share-panel-highlight-overlay')?.remove();
+  elements.contentShareOverlay.classList.remove('open');
+  elements.contentShareOverlay.setAttribute('aria-hidden', 'true');
+}
+
+function showShareTextFallback(reason, text) {
+  elements.shareTextFallbackReason.textContent = reason;
+  elements.shareTextFallbackContent.value = text;
+  elements.shareTextFallbackOverlay.classList.add('open');
+  elements.shareTextFallbackOverlay.setAttribute('aria-hidden', 'false');
+  requestAnimationFrame(() => {
+    elements.shareTextFallbackContent.focus();
+    elements.shareTextFallbackContent.select();
+  });
+}
+
+function closeShareTextFallback() {
+  elements.shareTextFallbackOverlay.classList.remove('open');
+  elements.shareTextFallbackOverlay.setAttribute('aria-hidden', 'true');
+}
+
+async function shareSelectedText() {
+  const snapshot = captureSelectedShareSnapshot();
+  const text = shareSnapshotToText(snapshot);
+  closeContentShare();
+  elements.shareBtn.disabled = true;
+  try {
+    if (isConfirmedPc()) {
+      if (!(await writeClipboardText(text))) {
+        showShareTextFallback('クリップボードへコピーできませんでした。全文を選択してコピーしてください。', text);
+      }
+      return;
+    }
+    if (typeof navigator.share === 'function') {
+      try {
+        await navigator.share({ title: snapshot.title, text });
+        return;
+      } catch (error) {
+        if (error?.name === 'AbortError') return;
+      }
+    }
+    if (!(await writeClipboardText(text))) {
+      showShareTextFallback('共有とクリップボードへのコピーを利用できませんでした。全文を選択してコピーしてください。', text);
+    }
+  } finally {
+    updateShareButtonState();
+  }
+}
+
+function setShareProgress({ visible, phase = '', percent = 0, progressVisible = false, percentVisible = false }) {
+  elements.shareProgressPanel.hidden = !visible;
+  elements.shareProgressMessage.textContent = phase;
+  elements.shareProgressRow.hidden = !progressVisible;
+  elements.shareProgress.value = percent;
+  elements.shareProgressPercent.hidden = !percentVisible;
+  elements.shareProgressPercent.textContent = `${Math.round(percent)}%`;
+  elements.shareReadyActions.hidden = true;
+}
+
+function showReadyShareActions() {
+  elements.shareProgressPanel.hidden = false;
+  elements.shareProgressMessage.textContent = '';
+  elements.shareProgressRow.hidden = true;
+  elements.shareReadyActions.hidden = false;
+  if (isMobile()) {
+    activeMobileScrollContainer().scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  }
+  elements.shareReadyActions.classList.remove('flash');
+  requestAnimationFrame(() => elements.shareReadyActions.classList.add('flash'));
+}
+
+async function refreshShareCapacity() {
+  if (!sharePngStore) return;
+  const stats = await sharePngStore.stats();
+  shareStorageFullUntil = stats.full ? stats.nextAvailableAt : 0;
+  if (elements.contentShareOverlay.classList.contains('open')) refreshShareDialog();
+  clearTimeout(shareCapacityTimer);
+  if (shareStorageFullUntil > Date.now()) {
+    shareCapacityTimer = setTimeout(() => void refreshShareCapacity(), 1000);
+  }
+}
+
+async function discardActiveShare({ keepStored = false } = {}) {
+  clearTimeout(shareExpiryTimer);
+  const id = activeShareRecordId;
+  activeShareRecordId = '';
+  activeShareSnapshot = null;
+  activeShareRetryCount = 0;
+  elements.shareProgressPanel.hidden = true;
+  elements.shareReadyActions.hidden = true;
+  if (id && !keepStored) await sharePngStore?.remove(id);
+  shareCoordinator?.release();
+  await refreshShareCapacity();
+  updateShareButtonState();
+}
+
+function renderShareImageWithWatchdog(snapshot, onProgress, initialScaleFactor = 1) {
+  let timer = 0;
+  let settled = false;
+  return new Promise((resolve, reject) => {
+    const arm = phase => {
+      clearTimeout(timer);
+      const timeout = phase === 'PNGへ変換しています' ? 120_000 : 60_000;
+      timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(new Error('共有画像の処理がタイムアウトしました。'));
+      }, timeout);
+    };
+    arm('共有内容を配置しています');
+    renderShareImageWithRetry({
+      snapshot,
+      initialScaleFactor,
+      onProgress: (phase, percent) => {
+        arm(phase);
+        onProgress(phase, percent);
+      }
+    }).then(result => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    }, error => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    });
+  });
+}
+
+async function generateSelectedShareImage({
+  snapshot = captureSelectedShareSnapshot(),
+  retryCount = 0,
+  initialScaleFactor = 1
+} = {}) {
+  const generationId = ++shareGenerationId;
+  closeContentShare();
+  const result = await shareCoordinator.execute(async ({ ownerId }) => {
+    activeShareSnapshot = snapshot;
+    activeShareRetryCount = retryCount;
+    const progress = createDataSetupProgressController({
+      enabled: true,
+      onChange: state => setShareProgress({ visible: state.progressVisible, phase: state.phase, ...state })
+    });
+    try {
+      const rendered = await renderShareImageWithWatchdog(snapshot, progress.report, initialScaleFactor);
+      if (generationId !== shareGenerationId) throw new DOMException('画像生成を中止しました。', 'AbortError');
+      const id = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+      const record = await sharePngStore.save({
+        id,
+        blob: rendered.blob,
+        ownerId,
+        fileName: createSharePngFileName(snapshot.title),
+        title: snapshot.title
+      });
+      activeShareRecordId = record.id;
+      await progress.complete();
+      shareCoordinator.ready();
+      showReadyShareActions();
+      shareExpiryTimer = setTimeout(() => void discardActiveShare(), Math.max(0, record.expiresAt - Date.now()));
+      return record;
+    } catch (error) {
+      progress.cancel();
+      throw error;
+    }
+  });
+  if (!result.acquired) return;
+}
+
+async function startShareImageGeneration() {
+  elements.contentShareImageBtn.disabled = true;
+  try {
+    await generateSelectedShareImage();
+  } catch (error) {
+    await discardActiveShare();
+    if (error?.code === 'SHARE_STORAGE_FULL') {
+      shareStorageFullUntil = error.nextAvailableAt;
+      void refreshShareCapacity();
+      showInfo(remainingCapacityText());
+    } else if (error?.name !== 'AbortError') {
+      showInfo(`共有画像を生成できませんでした。\n${error?.message || '時間をおいて再度お試しください。'}`);
+    }
+  }
+}
+
+function downloadShareRecord(record) {
+  const url = URL.createObjectURL(record.blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = record.fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+async function transferReadyShareImage() {
+  const record = activeShareRecordId ? await sharePngStore?.get(activeShareRecordId) : null;
+  if (!record || record.blob.type !== 'image/png' || record.blob.size !== record.size || record.ownerId !== shareCoordinator.getOwnerId()) {
+    await discardActiveShare();
+    showInfo('画像データが失われたため共有できませんでした');
+    return;
+  }
+  shareCoordinator.sharing();
+  if (isConfirmedPc()) {
+    downloadShareRecord(record);
+    await discardActiveShare({ keepStored: true });
+    return;
+  }
+  const file = new File([record.blob], record.fileName, { type: 'image/png' });
+  if (typeof navigator.share === 'function' && navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ title: record.title, files: [file] });
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        await discardActiveShare();
+        return;
+      }
+      const snapshot = activeShareSnapshot;
+      const retryCount = activeShareRetryCount + 1;
+      await discardActiveShare();
+      if (snapshot && retryCount <= 3) {
+        await generateSelectedShareImage({ snapshot, retryCount, initialScaleFactor: 0.8 ** retryCount });
+        return;
+      }
+      showInfo(`画像を共有できませんでした。\n${error?.message || ''}`);
+      return;
+    }
+    await discardActiveShare();
+    return;
+  }
+  downloadShareRecord(record);
+  await discardActiveShare({ keepStored: true });
+}
+
+async function initializeShareFeature() {
+  setShareProgress({ visible: false });
+  shareCoordinator = createShareCoordinator({
+    onState: state => {
+      const remote = state.ownerId && state.ownerId !== shareCoordinator?.getOwnerId();
+      if (remote && state.phase !== 'idle') {
+        setShareProgress({
+          visible: true,
+          phase: state.phase === 'generating' ? '別の画面で画像を生成しています' : '別の画面で画像の共有を待っています'
+        });
+      } else if (remote || state.phase === 'idle') {
+        elements.shareProgressPanel.hidden = true;
+      }
+      updateShareButtonState();
+    }
+  });
+  const initializeStore = async () => {
+    sharePngStore = await createSharePngStore();
+    await sharePngStore.cleanup();
+    shareStorageReady = true;
+    await refreshShareCapacity();
+    updateShareButtonState();
+  };
+  if (navigator.locks?.request) await navigator.locks.request('xivca-share-storage-v1', initializeStore);
+  else await initializeStore();
+}
+
 function copyTextWithSelection(text) {
   const input = document.createElement('textarea');
   input.value = text;
@@ -6853,6 +7592,7 @@ function confirmFavoriteListFileImport(decodedLists) {
     const mode = choices.querySelector('input:checked')?.value === 'replace' ? 'replace' : 'add';
     applyFavoriteListFileImport(decodedLists, mode);
   });
+  elements.confirmOverlay.classList.add('favorite-list-file-dialog');
   elements.confirmYes.textContent = '読み込む';
 }
 
@@ -7139,7 +7879,13 @@ function bindEvents() {
   bindOverlayDismissal(elements.shopOverlay, closeShopDialog, elements.shopCloseBtn);
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) stopGatheringTimerUpdates();
-    else startGatheringTimerUpdates();
+    else {
+      startGatheringTimerUpdates();
+      void checkForUpdateAfterResume();
+    }
+  });
+  window.addEventListener('pageshow', event => {
+    if (event.persisted && !document.hidden) void checkForUpdateAfterResume();
   });
   Object.entries(scrollPositionContainers()).forEach(([key, container]) => {
     container.addEventListener(
@@ -7201,6 +7947,24 @@ function bindEvents() {
   elements.importAllFavoritesFile.addEventListener('change', importAllFavoriteLists);
   elements.sharePlazaOpenBtn.addEventListener('click', openSharePlaza);
   window.addEventListener('message', handleSharePlazaMessage);
+  elements.shareBtn.addEventListener('click', openContentShare);
+  elements.contentShareCloseBtn.addEventListener('click', closeContentShare);
+  elements.contentShareTextBtn.addEventListener('click', () => void shareSelectedText());
+  elements.contentShareImageBtn.addEventListener('click', () => void startShareImageGeneration());
+  elements.shareReadyBtn.addEventListener('click', () => void transferReadyShareImage());
+  elements.shareDiscardBtn.addEventListener('click', () => void discardActiveShare());
+  elements.shareTextFallbackCloseBtn.addEventListener('click', closeShareTextFallback);
+  elements.contentShareOverlay.addEventListener('pointerdown', event => {
+    if (event.target === elements.contentShareOverlay) closeContentShare();
+  });
+  elements.shareTextFallbackOverlay.addEventListener('pointerdown', event => {
+    if (event.target === elements.shareTextFallbackOverlay) closeShareTextFallback();
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return;
+    if (elements.shareTextFallbackOverlay.classList.contains('open')) closeShareTextFallback();
+    else if (elements.contentShareOverlay.classList.contains('open')) closeContentShare();
+  });
   elements.contactBtn.addEventListener('click', openContactLink);
   elements.privacyBtn.addEventListener('click', openPrivacyPolicy);
   elements.licenseBtn.addEventListener('click', openLicenseNotice);
@@ -7225,6 +7989,32 @@ function bindEvents() {
       closeUsesPanel();
     });
   });
+  for (const [panel, element] of [
+    ['left', elements.panelLeft],
+    ['middle', elements.panelMiddle],
+    ['right', elements.panelRight]
+  ]) {
+    ['click', 'input', 'scroll'].forEach(eventName => element.addEventListener(eventName, () => {
+      lastInteractedSharePanel = panel;
+      updateShareButtonState();
+    }, { passive: eventName === 'scroll' }));
+  }
+  const shareContentObserver = new MutationObserver(updateShareButtonState);
+  [elements.panelLeft, elements.panelMiddle, elements.panelRight].forEach(panel => {
+    shareContentObserver.observe(panel, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && sharePngStore) void refreshShareCapacity();
+  });
+  window.addEventListener('pageshow', () => {
+    if (sharePngStore) void refreshShareCapacity();
+  });
+  window.addEventListener('pagehide', () => {
+    shareGenerationId += 1;
+    if (activeShareRecordId) void discardActiveShare();
+    else shareCoordinator?.release();
+  });
+  window.addEventListener('beforeunload', () => shareCoordinator?.close());
   document.addEventListener('click', closeEquipmentSearchForExternalAction, true);
   document.addEventListener('pointerdown', handleDocumentPointerDown);
   window.addEventListener('resize', handleResize);
@@ -7234,6 +8024,11 @@ async function startApp() {
   initializeFontSizePreviewContent();
   initializeHeaderFullNameVisibility();
   bindEvents();
+  void initializeShareFeature().catch(error => {
+    shareStorageReady = false;
+    updateShareButtonState();
+    console.warn('共有機能を初期化できませんでした。', error);
+  });
   initializeMobilePanelSwipe();
   initializePanelLayout();
   if (isMobile()) showMobilePanel('left', { animate: false });
@@ -7245,10 +8040,7 @@ async function startApp() {
   });
   hadServiceWorkerControllerAtBoot = updateResult.hadController;
   if (updateResult.updateApplied) {
-    clearViewState();
-    markSkipRestoreOnce();
-    sessionStorage.setItem(UPDATE_RELOAD_PENDING_KEY, '1');
-    location.reload();
+    reloadAfterServiceWorkerUpdate();
     return;
   }
 

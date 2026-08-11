@@ -12,7 +12,7 @@ const {
 } = require('./helpers/app.js');
 test('loading overlay blocks interaction while it is displayed', async ({ page }) => {
   await openApp(page);
-  await expect(page).toHaveTitle('FinalFantasy XIV® Crafting Assistant XIVca(シヴカ)');
+  await expect(page).toHaveTitle('XIVca | FinalFantasy XIV® Crafting Assistant');
   await expect(page.locator('.app-name-logo')).toBeVisible();
   await expect(page.locator('.app-name-logo')).toHaveAttribute(
     'alt',
@@ -27,7 +27,7 @@ test('loading overlay blocks interaction while it is displayed', async ({ page }
   });
   expect(cachedItemRequests).toBe(1);
   await page.locator('#settingsBtn').click();
-  await expect(page.locator('#settingsDialog #appVersion')).toHaveText('v3.0');
+  await expect(page.locator('#settingsDialog #appVersion')).toHaveText('v3.1');
 });
 
 test('shows a startup error instead of leaving the loading message indefinitely', async ({ page }) => {
@@ -61,6 +61,11 @@ test('shows the transfer and listing restriction badge only for confirmed EX ite
   await searchFor(page, '改良用のアイアンネイル');
   const exRow = page.locator('#recipeList li').filter({ hasText: '改良用のアイアンネイル' }).first();
   await expect(exRow.locator('.badge-ex')).toHaveText('譲渡・出品✖');
+  const badgeFontSizes = await exRow.evaluate(row => ({
+    ex: getComputedStyle(row.querySelector('.badge-ex')).fontSize,
+    craft: getComputedStyle(row.querySelector('.job-badge')).fontSize
+  }));
+  expect(badgeFontSizes.ex).toBe(badgeFontSizes.craft);
   await exRow.click();
   await expect(page.locator('.result-root-summary .badge-ex')).toHaveText('譲渡・出品✖');
 

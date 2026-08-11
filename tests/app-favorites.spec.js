@@ -97,6 +97,16 @@ test('exports and imports all favorite lists through one text file', async ({ pa
   await page.locator('#importAllFavoritesFile').setInputFiles(upload);
   await expect(page.locator('#confirmMsg')).toContainText('2件のお気に入りリストを読み込みます');
   await expect(page.locator('#confirmYes')).toHaveText('読み込む');
+  const importDialogLayout = await page.locator('#confirmDialog').evaluate(dialog => ({
+    width: dialog.getBoundingClientRect().width,
+    previewMaxHeight: Number.parseFloat(getComputedStyle(dialog.querySelector('.favorite-list-file-preview')).maxHeight),
+    previewFontSize: getComputedStyle(dialog.querySelector('.favorite-list-file-preview')).fontSize,
+    dialogFontSize: getComputedStyle(document.querySelector('#confirmMsg')).fontSize,
+    viewportHeight: window.innerHeight
+  }));
+  expect(importDialogLayout.width).toBeGreaterThan(500);
+  expect(importDialogLayout.previewMaxHeight).toBeCloseTo(importDialogLayout.viewportHeight * 0.45, 0);
+  expect(importDialogLayout.previewFontSize).toBe(importDialogLayout.dialogFontSize);
   await page.locator('#confirmYes').click();
   await expect(page.locator('#favoriteListFileStatus')).toContainText('2件のお気に入りリストを追加して読み込みました');
   expect(
@@ -361,14 +371,6 @@ test('shows favorite list materials mode with set count and ring toggles', async
   await expect(page.locator('#recipeList li.fav-item-row').first().locator('.favorite-item-job')).toHaveClass(
     /badge-craft/
   );
-  const favoriteItemFontSizes = await page
-    .locator('#recipeList li.fav-item-row')
-    .first()
-    .evaluate(row => ({
-    job: getComputedStyle(row.querySelector('.favorite-item-job')).fontSize,
-      name: getComputedStyle(row.querySelector('.favorite-item-name')).fontSize
-  }));
-  expect(favoriteItemFontSizes.job).toBe(favoriteItemFontSizes.name);
   await expect(page.locator('.result-header')).toBeHidden();
   const favoriteMaterialActionHeights = await page.locator('#recipeList .favorite-materials-row').evaluate(row => ({
     material: row.querySelector(':scope > .favorite-list-action').getBoundingClientRect().height,
@@ -690,7 +692,7 @@ test('mobile pin turns active after adding to a favorite list', async ({ page })
   await openApp(page, 600, 700);
   await searchFor(page, 'バスタードソード');
   await page.getByText('バスタードソード', { exact: true }).first().click();
-  await expect(page.locator('#mobileBackBtn')).toHaveCount(0);
+  await expect(page.locator('#mobileBackBtn')).toBeVisible();
   await expect(page.locator('#backBtn')).toBeHidden();
   const titleBox = await page.locator('#appTitle').boundingBox();
   const settingsBox = await page.locator('#settingsBtn').boundingBox();

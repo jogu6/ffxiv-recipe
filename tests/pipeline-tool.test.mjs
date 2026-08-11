@@ -38,9 +38,35 @@ import {
   cleanupItemIconAssets,
   cacheLodestoneRecipeDetails,
   validateItemIconAssets,
+  validateLodestoneCandidateLineage,
+  validatePromotedLodestoneAuditInput,
   validateItemIconFileName,
   writeLodestoneShopCacheEntry
 } from '../pipeline/tool/pipeline-tool.mjs';
+import {
+  completeLodestoneAuditResource,
+  createLodestoneAudit,
+  openLodestoneAuditStore,
+  planLodestoneAuditResource,
+  promoteCompletedLodestoneAudit
+} from '../pipeline/tool/lodestone-audit-store.mjs';
+
+function createPromotedTestAudit(store, id) {
+  createLodestoneAudit(store, { id, catalogFingerprint: 'catalog', now: 100 });
+  planLodestoneAuditResource(store, id, {
+    kind: 'item-list-page',
+    key: 'page:1',
+    url: 'https://example.invalid/item/'
+  }, { now: 101 });
+  completeLodestoneAuditResource(store, id, {
+    kind: 'item-list-page',
+    key: 'page:1',
+    artifactKey: `${id}/item-list-page/page-1.json.gz`,
+    contentSha256: 'a'.repeat(64),
+    rawBytes: 1
+  }, { now: 102 });
+  promoteCompletedLodestoneAudit(store, id, { now: 110 });
+}
 
 test('new candidate items receive required Lodestone detail data without another source', async () => {
   const calls = [];
@@ -112,6 +138,10 @@ test('candidate icon generation migrates existing files, protects manual input, 
   const iconsRoot = path.join(root, 'icons');
   const manualIconsRoot = path.join(root, 'manual');
   const pngCacheRoot = path.join(root, 'cache');
+  const databasePath = path.join(root, 'audit.sqlite');
+  const auditStore = openLodestoneAuditStore(databasePath);
+  createPromotedTestAudit(auditStore, 'audit-icons');
+  auditStore.close();
   const manualBytes = await sharp({
     create: { width: 2, height: 2, channels: 4, background: '#ffcc00' }
   }).webp().toBuffer();
@@ -121,6 +151,9 @@ test('candidate icon generation migrates existing files, protects manual input, 
   fs.mkdirSync(path.join(iconsRoot, '065'), { recursive: true });
   fs.writeFileSync(path.join(iconsRoot, '065', '065024.webp'), manualBytes);
   fs.writeFileSync(candidatePath, JSON.stringify({
+    SchemaVersion: 3,
+    AuditId: 'audit-icons',
+    DataGeneration: 'generation-icons',
     Version: 'test',
     Items: [
       { Name: '手動貨幣', IconFile: '065024.webp' },
@@ -129,6 +162,9 @@ test('candidate icon generation migrates existing files, protects manual input, 
     ]
   }));
   fs.writeFileSync(snapshotPath, JSON.stringify({
+    SchemaVersion: 3,
+    AuditId: 'audit-icons',
+    DataGeneration: 'generation-icons',
     Items: [{ Name: '通常素材', LodestoneKey: 'network-key', IconUrl: 'https://example.test/icon.png' }],
     Recipes: []
   }));
@@ -146,6 +182,7 @@ test('candidate icon generation migrates existing files, protects manual input, 
       iconsRoot,
       manualIconsRoot,
       pngCacheRoot,
+      databasePath,
       delayMs: 0,
       size: 8,
       request: async () => {
@@ -172,6 +209,44 @@ test('candidate icon generation migrates existing files, protects manual input, 
     assert.deepEqual(cleanup.removed, ['065/065024.webp']);
     assert.equal(fs.existsSync(path.join(iconsRoot, '065', '065024.webp')), false);
   } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('candidate lineage rejects legacy snapshots and mismatched audit generations', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ffxiv-candidate-lineage-'));
+  const store = openLodestoneAuditStore(path.join(root, 'audit.sqlite'));
+  try {
+    createPromotedTestAudit(store, 'audit-current');
+    assert.throws(
+      () => validatePromotedLodestoneAuditInput({
+        snapshot: { SchemaVersion: 1, Items: [], Recipes: [] },
+        store
+      }),
+      /SchemaVersion 3/
+    );
+    const snapshot = {
+      SchemaVersion: 3,
+      AuditId: 'audit-current',
+      DataGeneration: 'generation-current',
+      Items: [],
+      Recipes: []
+    };
+    assert.throws(
+      () => validateLodestoneCandidateLineage({
+        snapshot,
+        candidate: {
+          SchemaVersion: 3,
+          AuditId: 'audit-current',
+          DataGeneration: 'generation-old',
+          Items: []
+        },
+        store
+      }),
+      /監査IDまたはデータ世代が一致しません/
+    );
+  } finally {
+    store.close();
     fs.rmSync(root, { recursive: true, force: true });
   }
 });

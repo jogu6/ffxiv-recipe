@@ -28,6 +28,32 @@ test('current display keeps level 3 while using the enlarged baseline', async ({
     .toBe('1.1');
 });
 
+test('loading percentage appears to the right after seven seconds and otherwise leaves the bar full width', async ({ page }) => {
+  await openApp(page);
+  const metrics = await page.evaluate(() => {
+    document.querySelector('#loadingOverlay').classList.add('open');
+    const row = document.querySelector('#loadingProgressRow');
+    const progress = document.querySelector('#loadingProgress');
+    const percent = document.querySelector('#loadingProgressPercent');
+    row.hidden = false;
+    percent.hidden = true;
+    const hiddenWidth = progress.getBoundingClientRect().width;
+    percent.textContent = '42%';
+    percent.hidden = false;
+    const progressRect = progress.getBoundingClientRect();
+    const percentRect = percent.getBoundingClientRect();
+    return {
+      hiddenWidth,
+      visibleWidth: progressRect.width,
+      sameRow: Math.abs(progressRect.top + progressRect.height / 2 - (percentRect.top + percentRect.height / 2)),
+      percentAfterBar: percentRect.left - progressRect.right
+    };
+  });
+  expect(metrics.hiddenWidth).toBeGreaterThan(metrics.visibleWidth);
+  expect(metrics.sameRow).toBeLessThan(1);
+  expect(metrics.percentAfterBar).toBeGreaterThanOrEqual(5.5);
+});
+
 test('font size settings preview changes only the isolated example', async ({ page }) => {
   await openApp(page);
   await searchFor(page, 'バスタードソード');
@@ -352,7 +378,7 @@ test('updated app blocks use until the current release notice is accepted', asyn
   const content = page.locator('#releaseNoticeContent');
   await expect(overlay).toHaveClass(/open/);
   await expect(content).toContainText('アイテム画像はクリック/タップで ✔ を On/Off');
-  await expect(content).toContainText('v3.01');
+  await expect(content).toContainText('v3.1');
   await expect(content).not.toContainText('v2.98 リリース');
   await expect(page.locator('.main')).toHaveJSProperty('inert', true);
   await expect(page.locator('#releaseNoticeOkBtn')).toBeFocused();
@@ -368,7 +394,7 @@ test('updated app blocks use until the current release notice is accepted', asyn
   await expect(page.locator('#searchBox')).toBeFocused();
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem('ff14_acknowledged_release_version')))
-    .toBe('v3.01');
+    .toBe('v3.1');
 });
 
 test('small popup reads the current release heading without a load error', async ({ page }) => {
@@ -383,13 +409,13 @@ test('small popup reads the current release heading without a load error', async
   const popup = await popupPromise;
   await expect.poll(() => popup.evaluate(() => window.innerWidth)).toBe(601);
   await expect(popup.locator('#releaseNoticeOverlay')).toHaveClass(/open/);
-  await expect(popup.locator('#releaseNoticeContent')).toContainText('v3.01');
+  await expect(popup.locator('#releaseNoticeContent')).toContainText('v3.1');
   await expect(popup.locator('#loadStatus')).toHaveText('patch 7.55 対応');
   await expect(popup.locator('.error-msg')).toHaveCount(0);
   await popup.locator('#releaseNoticeOkBtn').click();
   await expect
     .poll(() => popup.evaluate(() => localStorage.getItem('ff14_acknowledged_release_version')))
-    .toBe('v3.01');
+    .toBe('v3.1');
   await popup.close();
 });
 
@@ -430,8 +456,12 @@ test('hides the popup button when launched as a desktop PWA', async ({ page }) =
       return originalMatchMedia(query);
     };
   });
-  await openApp(page);
+  await openApp(page, 390, 780);
   await expect(page.locator('#popupBtn')).toBeHidden();
+  await expect(page.locator('#headerAppFullName')).toBeVisible();
+  await expect.poll(() => page.locator('#headerAppFullName').evaluate(element => (
+    element.scrollWidth <= element.clientWidth + 0.5
+  ))).toBe(true);
 });
 
 test('mobile header keeps the left-panel layout and collapse behavior on every panel', async ({ page }) => {
@@ -697,7 +727,7 @@ test('narrow non-PC layouts keep the common-header back button hidden', async ({
   await expect(page.locator('#backBtn')).toBeHidden();
 });
 
-test('header information keeps patch status on row two and reveals only a fitting full name', async ({ page }) => {
+test('header information keeps both full lines visible and shrinks each only as needed', async ({ page }) => {
   const fullName = 'FinalFantasy XIV® Crafting Assistant XIVca(シヴカ)';
   await openApp(page, 1440, 900);
   await expect(page.locator('#headerAppFullName')).toHaveText(fullName);
@@ -710,16 +740,14 @@ test('header information keeps patch status on row two and reveals only a fittin
       const name = document.querySelector('#headerAppFullName').getBoundingClientRect();
       const patch = document.querySelector('#loadStatus').getBoundingClientRect();
       const logo = document.querySelector('.app-name-logo').getBoundingClientRect();
-      const nameStyle = getComputedStyle(document.querySelector('#headerAppFullName'));
-      const patchStyle = getComputedStyle(document.querySelector('#loadStatus'));
       return {
         infoHeight: info.height,
         logoHeight: logo.height,
         nameTop: name.top,
         patchTop: patch.top,
         secondRowTop: info.top + info.height / 2,
-        nameFontSize: nameStyle.fontSize,
-        patchFontSize: patchStyle.fontSize,
+        nameClientWidth: document.querySelector('#headerAppFullName').clientWidth,
+        nameScrollWidth: document.querySelector('#headerAppFullName').scrollWidth,
         patchClientWidth: document.querySelector('#loadStatus').clientWidth,
         patchScrollWidth: document.querySelector('#loadStatus').scrollWidth
       };
@@ -727,24 +755,29 @@ test('header information keeps patch status on row two and reveals only a fittin
     expect(metrics.infoHeight).toBeLessThanOrEqual(metrics.logoHeight + 0.5);
     expect(metrics.patchTop).toBeGreaterThan(metrics.nameTop);
     expect(metrics.patchTop).toBeGreaterThanOrEqual(metrics.secondRowTop);
-    expect(metrics.nameFontSize).toBe(metrics.patchFontSize);
+    expect(metrics.nameScrollWidth).toBeLessThanOrEqual(metrics.nameClientWidth + 0.5);
     expect(metrics.patchScrollWidth).toBeLessThanOrEqual(metrics.patchClientWidth + 0.5);
   };
 
   await assertHeaderInformationLayout();
   await page.setViewportSize({ width: 423, height: 780 });
-  await expect(page.locator('#headerAppFullName')).toBeHidden();
+  await expect(page.locator('#headerAppFullName')).toBeVisible();
   await expect(page.locator('#loadStatus')).toBeVisible();
   await assertHeaderInformationLayout();
+  const narrowFontSizes = await page.evaluate(() => ({
+    name: parseFloat(getComputedStyle(document.querySelector('#headerAppFullName')).fontSize),
+    patch: parseFloat(getComputedStyle(document.querySelector('#loadStatus')).fontSize)
+  }));
+  expect(narrowFontSizes.name).toBeLessThan(narrowFontSizes.patch);
 
   for (let level = 1; level <= 10; level += 1) {
     await page.locator('html').evaluate((element, selectedLevel) => {
       element.dataset.fontSizeLevel = String(selectedLevel);
     }, level);
-    await expect.poll(() => page.locator('#headerAppFullName').evaluate(element => {
-      const fits = element.scrollWidth <= element.clientWidth + 0.5;
-      return element.classList.contains('fits') === fits;
-    })).toBe(true);
+    await expect(page.locator('#headerAppFullName')).toBeVisible();
+    await expect.poll(() => page.locator('#headerAppFullName').evaluate(element => (
+      element.scrollWidth <= element.clientWidth + 0.5
+    ))).toBe(true);
     await assertHeaderInformationLayout();
   }
 });
@@ -789,6 +822,15 @@ test('mobile panels move by swipe without navigation arrows or position dots', a
   await searchFor(page, 'バスタードソード');
   await expect(page.locator('#panelLeft')).toHaveClass(/mobile-visible/);
   await expect(page.locator('.swiper-button-next, .swiper-button-prev, .swiper-pagination')).toHaveCount(0);
+
+  await beginSwipe(page, page.locator('#recipeList'), 0.65, 0.25);
+  await endSwipe(page);
+  await expect(page.locator('#panelLeft')).toHaveClass(/mobile-visible/);
+
+  await page.getByText('バスタードソード', { exact: true }).first().click();
+  await expect(page.locator('#panelRight')).toHaveClass(/mobile-visible/);
+  await swipe(page, page.locator('#panelRight'), 0.35, 0.75);
+  await expect(page.locator('#panelLeft')).toHaveClass(/mobile-visible/);
 
   await beginSwipe(page, page.locator('#recipeList'), 0.65, 0.25);
   const trackingLayout = await page.evaluate(() => {
@@ -837,4 +879,25 @@ test('mobile panels move by swipe without navigation arrows or position dots', a
   await swipe(page, page.locator('#recipeList'), 0.65, 0.25);
   await expect(page.locator('#panelMiddle')).toHaveClass(/open/);
   await expect(page.locator('#panelMiddle')).toHaveClass(/mobile-visible/);
+});
+
+test('mobile swipe removes destination panels when the left panel has no navigation target', async ({ page }) => {
+  await openApp(page, 423, 780);
+  await searchFor(page, 'バスタードソード');
+  await page.getByText('バスタードソード', { exact: true }).first().click();
+  await expect(page.locator('#panelRight')).toHaveClass(/mobile-visible/);
+  await swipe(page, page.locator('#panelRight'), 0.35, 0.75);
+  await expect(page.locator('#panelLeft')).toHaveClass(/mobile-visible/);
+
+  await page.locator('#searchBox').fill('存在しない素材名');
+  await expect(page.locator('#recipeList .list-empty')).toBeVisible();
+  await expect(page.locator('#panelLeft [data-mobile-panel-target]')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => (
+    [...document.querySelector('.main').swiper.slides].map(slide => slide.dataset.mobilePanel)
+  ))).toEqual(['left']);
+
+  await swipe(page, page.locator('#recipeList'), 0.65, 0.25);
+  await expect(page.locator('#panelLeft')).toHaveClass(/mobile-visible/);
+  await expect(page.locator('#panelMiddle')).not.toHaveClass(/mobile-visible/);
+  await expect(page.locator('#panelRight')).not.toHaveClass(/mobile-visible/);
 });

@@ -21,7 +21,11 @@
       });
       lists[listId] = { enabled: false, counts, anyOneTargets };
     });
-    return { version: 1, lists };
+    return {
+      version: 1,
+      ...(typeof value?.dataGeneration === 'string' && value.dataGeneration ? { dataGeneration: value.dataGeneration } : {}),
+      lists
+    };
   }
 
   function serializeStore(store) {
@@ -34,7 +38,23 @@
         }
       ])
     );
-    return { version: 1, lists };
+    return {
+      version: 1,
+      ...(typeof store?.dataGeneration === 'string' && store.dataGeneration ? { dataGeneration: store.dataGeneration } : {}),
+      lists
+    };
+  }
+
+  function resetForDataGeneration(store, dataGeneration) {
+    const generation = typeof dataGeneration === 'string' ? dataGeneration.trim() : '';
+    if (!generation || store?.dataGeneration === generation) return false;
+    Object.values(store?.lists || {}).forEach(state => {
+      state.counts = {};
+      state.anyOneTargets = {};
+      state.enabled = false;
+    });
+    store.dataGeneration = generation;
+    return true;
   }
 
   function ensureListState(store, listId) {
@@ -88,6 +108,7 @@
     ensureListState,
     itemCount,
     normalizeStore,
+    resetForDataGeneration,
     serializeStore,
     setAll,
     setAnyOneTarget,

@@ -23,8 +23,10 @@ This site bundles the following open source JavaScript libraries:
 
 - **marked**: Markdown parsing, MIT License.
 - **DOMPurify**: HTML sanitizing, used under the Apache License 2.0 option of its dual license.
+- **html2canvas 1.4.1**: DOM-to-canvas rendering, MIT License.
 
 Bundled license texts are included in:
 
 - `site/vendor/licenses/marked-LICENSE.txt`
 - `site/vendor/licenses/dompurify-Apache-2.0-LICENSE.txt`
+- `site/vendor/licenses/html2canvas-MIT-LICENSE.txt`

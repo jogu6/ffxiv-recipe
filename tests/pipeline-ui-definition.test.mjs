@@ -27,7 +27,7 @@ test("complete Item.json action resolves to four declared commands and settings"
   const module = getPipelineUiDefinition().modules[0];
   const complete = module.actions.find(action => action.id === "generate-item-json");
   assert.deepEqual(complete.sequence, [
-    "lodestone-snapshot",
+    "lodestone-audit",
     "build-lodestone-candidate",
     "lodestone-candidate-icons",
     "publish-lodestone-candidate",

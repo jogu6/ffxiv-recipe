@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#252525">
-<title>FinalFantasy XIV® Crafting Assistant XIVca(シヴカ)</title>
+<title>XIVca | FinalFantasy XIV® Crafting Assistant</title>
 <link rel="icon" href="./assets/app-icons/favicon.png" type="image/png">
 <link rel="apple-touch-icon" href="./assets/app-icons/favicon.png">
 <link rel="manifest" href="./manifest.webmanifest">
@@ -87,14 +87,27 @@
       <h1><img class="app-name-logo" src="./assets/branding/xivca-logo.webp" alt="FinalFantasy XIV® Crafting Assistant XIVca(シヴカ)"></h1>
     </div>
     <div class="header-info" id="headerInfo">
-      <span id="headerAppFullName" aria-hidden="true">FinalFantasy XIV® Crafting Assistant XIVca(シヴカ)</span>
+      <span id="headerAppFullName">FinalFantasy XIV® Crafting Assistant XIVca(シヴカ)</span>
       <span id="loadStatus">データ読み込み中...</span>
     </div>
   </div>
   <button id="popupBtn">⧉ 小窓で開く</button>
   <button id="mobileBackBtn" type="button">◀ 戻る</button>
+  <button id="shareBtn" type="button" title="表示内容を共有" aria-label="表示内容を共有" disabled><img src="./assets/app-icons/share.webp" alt=""></button>
   <button id="settingsBtn" type="button" title="共有・データ管理などを開く" aria-label="共有・データ管理などを開く">⚙</button>
 </header>
+
+<div id="shareProgressPanel" class="share-progress-panel" role="status" aria-live="polite" hidden>
+  <div id="shareProgressMessage">共有画像を準備しています</div>
+  <div id="shareProgressRow" class="loading-progress-row" hidden>
+    <progress id="shareProgress" class="loading-progress" max="100" value="0"></progress>
+    <output id="shareProgressPercent" class="loading-progress-percent" hidden>0%</output>
+  </div>
+  <div id="shareReadyActions" class="share-ready-actions" hidden>
+    <button id="shareReadyBtn" type="button">画像の準備が出来ました</button>
+    <button id="shareDiscardBtn" type="button">破棄</button>
+  </div>
+</div>
 
 <div class="main" data-app-content inert>
   <div id="mobilePanelTrack" class="mobile-panel-track">
@@ -199,9 +212,15 @@
 <div id="loadingOverlay" class="open" role="status" aria-live="polite">
   <div class="loading-card">
     <div class="loading-title" id="loadingTitle">更新を確認しています...</div>
+    <div id="loadingDetail" class="loading-detail" hidden></div>
+    <div id="loadingProgressRow" class="loading-progress-row" hidden>
+      <progress id="loadingProgress" class="loading-progress" max="100" value="0"></progress>
+      <output id="loadingProgressPercent" class="loading-progress-percent" hidden>0%</output>
+    </div>
     <div id="loadingErrorDetail" class="loading-error-detail" hidden></div>
   </div>
 </div>
+<div id="backgroundStatus" class="background-status" role="status" aria-live="polite" hidden></div>
 <div id="releaseNoticeOverlay">
   <div id="releaseNoticeDialog" role="dialog" aria-modal="true" aria-labelledby="releaseNoticeTitle" aria-describedby="releaseNoticeContent">
     <h2 id="releaseNoticeTitle">アプリを更新しました</h2>
@@ -327,6 +346,30 @@
   <iframe id="sharePlazaFrame" title="シェアコード広場" allow="clipboard-write"></iframe>
 </div>
 
+<div id="contentShareOverlay" class="content-share-overlay" aria-hidden="true">
+  <div id="contentShareDialog" role="dialog" aria-modal="true" aria-labelledby="contentShareTitle">
+    <div class="content-share-header">
+      <h2 id="contentShareTitle">表示内容を共有</h2>
+      <button id="contentShareCloseBtn" type="button" aria-label="閉じる">×</button>
+    </div>
+    <div id="contentSharePanelChoices" class="content-share-panel-choices" role="group" aria-label="共有するパネル"></div>
+    <p id="contentShareDescription" class="content-share-description"></p>
+    <div class="content-share-actions">
+      <button id="contentShareTextBtn" type="button">テキストで共有</button>
+      <button id="contentShareImageBtn" type="button">画像で共有</button>
+    </div>
+  </div>
+</div>
+
+<div id="shareTextFallbackOverlay" class="content-share-overlay" aria-hidden="true">
+  <div id="shareTextFallbackDialog" role="dialog" aria-modal="true" aria-labelledby="shareTextFallbackTitle">
+    <h2 id="shareTextFallbackTitle">共有テキスト</h2>
+    <p id="shareTextFallbackReason"></p>
+    <textarea id="shareTextFallbackContent" readonly></textarea>
+    <button id="shareTextFallbackCloseBtn" type="button">閉じる</button>
+  </div>
+</div>
+
 <div id="licenseOverlay">
   <div id="licenseDialog">
     <h2 id="licenseTitle">LICENSE / NOTICE</h2>
@@ -414,6 +457,12 @@
 <script src="./favorite-share-codec.js"></script>
 <script src="./favorite-list-file.js"></script>
 <script src="./favorite-count-model.js"></script>
+<script src="./data-setup-progress.js"></script>
+<script src="./share-content-model.js"></script>
+<script src="./share-coordinator.js"></script>
+<script src="./share-png-store.js"></script>
+<script src="./vendor/html2canvas.min.js"></script>
+<script src="./share-image-renderer.js"></script>
 <script src="./material-model.js"></script>
 <script src="./material-purchase-state.js"></script>
 <script src="./vendor/swiper-bundle.min.js"></script>

@@ -68,3 +68,26 @@ test('share decoder rejects corrupted compact codes and supports legacy recipe i
     needsName: true
   });
 });
+
+test('JSON name share codes migrate an old item name through the codec item resolver', () => {
+  const aliasCodec = createCodec({
+    normalizeName: value => String(value || ''),
+    normalizeItemIds: value => Array.isArray(value) ? value : [],
+    compactRecipeSelections: () => [],
+    itemNameForId: id => ({ Old: 'Current', Current: 'Current' })[id] || null,
+    itemIdForName: name => name === 'Current' ? 'Current' : null,
+    recipeNameForLegacyId: () => null,
+    recipeVariantsForName: () => []
+  });
+  const bytes = new TextEncoder().encode(JSON.stringify({ n: 'list', i: ['Old'] }));
+  const code = `Z${bytes.length.toString(36).toUpperCase().padStart(4, '0')}${[...bytes]
+    .map(byte => byte.toString(36).toUpperCase().padStart(2, '0'))
+    .join('')}`;
+
+  assert.deepEqual(aliasCodec.decodeFavoriteShareCode(code), {
+    name: 'list',
+    itemIds: ['Current'],
+    recipeSelections: {},
+    needsName: false
+  });
+});

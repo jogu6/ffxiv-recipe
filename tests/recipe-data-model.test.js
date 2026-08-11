@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   buildRecipeData,
+  buildRecipeDataAsync,
   defaultRecipeVariant,
   normalizedRecipeVariant
 } = require('../site/recipe-data-model.js');
@@ -128,4 +129,30 @@ test('name-key Lodestone data uses names for identity and SortOrder only for sor
   assert.equal(result.itemMaster['素材'].uiCategoryName, '石材');
   assert.equal(result.recipes['完成品'].recipeId, 'abc');
   assert.deepEqual(result.recipes['完成品'].ingredients, [{ name: '素材', qty: 2, itemId: '素材' }]);
+});
+
+test('incremental build matches synchronous output and reports real work progress', async () => {
+  const raw = {
+    Version: '7.55',
+    Items: [
+      {
+        Name: '完成品',
+        Recipe: { RecipeKey: 'recipe', CraftType: '0', Ingredients: [{ Name: '素材', Amount: 2 }] },
+      },
+      { Name: '素材' },
+    ],
+  };
+  const options = { craftTypeNames: { 0: '木工師' }, sortRecipeNames: names => [...names].sort() };
+  const progress = [];
+  let yields = 0;
+  const incremental = await buildRecipeDataAsync(raw, options, {
+    chunkSize: 1,
+    onProgress: value => progress.push(value),
+    yieldControl: async () => { yields += 1; },
+  });
+
+  assert.deepEqual(incremental, buildRecipeData(raw, options));
+  assert.ok(progress.some(value => value.phase === 'レシピを関連付けています'));
+  assert.equal(progress.at(-1).percent, 100);
+  assert.ok(yields > 0);
 });
