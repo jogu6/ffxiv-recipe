@@ -32,6 +32,35 @@
       wrapper.append(...button.childNodes);
       button.replaceWith(wrapper);
     });
+    content.querySelectorAll('.item-image-check[aria-hidden="true"]').forEach(mark => mark.removeAttribute('aria-hidden'));
+  }
+
+  function preserveItemActionMarkers(content) {
+    content.querySelectorAll('button.gathering-timer-btn, button.shop-info-btn, button.intermediate-prepared-btn').forEach(button => {
+      const marker = document.createElement('span');
+      marker.className = button.className;
+      marker.textContent = button.textContent;
+      button.replaceWith(marker);
+    });
+  }
+
+  function preserveExclusionReasons(content) {
+    content.querySelectorAll('[data-share-exclusion-reason]').forEach(row => {
+      const reason = String(row.dataset.shareExclusionReason || '');
+      if (!reason) return;
+      const primary = row.querySelector('.material-primary');
+      if (!primary) return;
+      let status = primary.querySelector('.purchase-status');
+      if (!status) {
+        status = document.createElement('span');
+        status.className = 'purchase-status';
+        primary.appendChild(status);
+      }
+      status.textContent = reason;
+      status.hidden = false;
+      status.removeAttribute('aria-hidden');
+      status.dataset.shareExclusionStatus = 'true';
+    });
   }
 
   function preserveRecipeMethodSelections(content) {
@@ -68,6 +97,8 @@
     const content = snapshot.content.cloneNode(true);
     content.removeAttribute?.('id');
     preserveItemIcons(content);
+    preserveItemActionMarkers(content);
+    preserveExclusionReasons(content);
     preserveRecipeMethodSelections(content);
     content.querySelectorAll('img.job-icon[aria-hidden="true"]').forEach(image => image.removeAttribute('aria-hidden'));
     content.querySelectorAll(OMIT_SELECTOR).forEach(node => node.remove());

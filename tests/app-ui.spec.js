@@ -28,30 +28,38 @@ test('current display keeps level 3 while using the enlarged baseline', async ({
     .toBe('1.1');
 });
 
-test('loading percentage appears to the right after seven seconds and otherwise leaves the bar full width', async ({ page }) => {
+test('loading and image progress use the full width until their percentage appears', async ({ page }) => {
   await openApp(page);
   const metrics = await page.evaluate(() => {
     document.querySelector('#loadingOverlay').classList.add('open');
-    const row = document.querySelector('#loadingProgressRow');
-    const progress = document.querySelector('#loadingProgress');
-    const percent = document.querySelector('#loadingProgressPercent');
-    row.hidden = false;
-    percent.hidden = true;
-    const hiddenWidth = progress.getBoundingClientRect().width;
-    percent.textContent = '42%';
-    percent.hidden = false;
-    const progressRect = progress.getBoundingClientRect();
-    const percentRect = percent.getBoundingClientRect();
-    return {
-      hiddenWidth,
-      visibleWidth: progressRect.width,
-      sameRow: Math.abs(progressRect.top + progressRect.height / 2 - (percentRect.top + percentRect.height / 2)),
-      percentAfterBar: percentRect.left - progressRect.right
-    };
+    document.querySelector('#shareProgressPanel').hidden = false;
+    return [
+      ['loadingProgressRow', 'loadingProgress', 'loadingProgressPercent'],
+      ['shareProgressRow', 'shareProgress', 'shareProgressPercent']
+    ].map(([rowId, progressId, percentId]) => {
+      const row = document.getElementById(rowId);
+      const progress = document.getElementById(progressId);
+      const percent = document.getElementById(percentId);
+      row.hidden = false;
+      percent.hidden = true;
+      const hiddenWidth = progress.getBoundingClientRect().width;
+      percent.textContent = '42%';
+      percent.hidden = false;
+      const progressRect = progress.getBoundingClientRect();
+      const percentRect = percent.getBoundingClientRect();
+      return {
+        hiddenWidth,
+        visibleWidth: progressRect.width,
+        sameRow: Math.abs(progressRect.top + progressRect.height / 2 - (percentRect.top + percentRect.height / 2)),
+        percentAfterBar: percentRect.left - progressRect.right
+      };
+    });
   });
-  expect(metrics.hiddenWidth).toBeGreaterThan(metrics.visibleWidth);
-  expect(metrics.sameRow).toBeLessThan(1);
-  expect(metrics.percentAfterBar).toBeGreaterThanOrEqual(5.5);
+  for (const metric of metrics) {
+    expect(metric.hiddenWidth).toBeGreaterThan(metric.visibleWidth);
+    expect(metric.sameRow).toBeLessThan(1);
+    expect(metric.percentAfterBar).toBeGreaterThanOrEqual(5.5);
+  }
 });
 
 test('font size settings preview changes only the isolated example', async ({ page }) => {
@@ -378,7 +386,7 @@ test('updated app blocks use until the current release notice is accepted', asyn
   const content = page.locator('#releaseNoticeContent');
   await expect(overlay).toHaveClass(/open/);
   await expect(content).toContainText('アイテム画像はクリック/タップで ✔ を On/Off');
-  await expect(content).toContainText('v3.1');
+  await expect(content).toContainText('v3.2');
   await expect(content).not.toContainText('v2.98 リリース');
   await expect(page.locator('.main')).toHaveJSProperty('inert', true);
   await expect(page.locator('#releaseNoticeOkBtn')).toBeFocused();
@@ -394,7 +402,7 @@ test('updated app blocks use until the current release notice is accepted', asyn
   await expect(page.locator('#searchBox')).toBeFocused();
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem('ff14_acknowledged_release_version')))
-    .toBe('v3.1');
+    .toBe('v3.2');
 });
 
 test('small popup reads the current release heading without a load error', async ({ page }) => {
@@ -409,13 +417,13 @@ test('small popup reads the current release heading without a load error', async
   const popup = await popupPromise;
   await expect.poll(() => popup.evaluate(() => window.innerWidth)).toBe(601);
   await expect(popup.locator('#releaseNoticeOverlay')).toHaveClass(/open/);
-  await expect(popup.locator('#releaseNoticeContent')).toContainText('v3.1');
+  await expect(popup.locator('#releaseNoticeContent')).toContainText('v3.2');
   await expect(popup.locator('#loadStatus')).toHaveText('patch 7.55 対応');
   await expect(popup.locator('.error-msg')).toHaveCount(0);
   await popup.locator('#releaseNoticeOkBtn').click();
   await expect
     .poll(() => popup.evaluate(() => localStorage.getItem('ff14_acknowledged_release_version')))
-    .toBe('v3.1');
+    .toBe('v3.2');
   await popup.close();
 });
 

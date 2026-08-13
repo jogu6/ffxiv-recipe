@@ -58,3 +58,16 @@ test('memory fallback shares retained PNG capacity across open tabs', async () =
   await first.close();
   await second.close();
 });
+
+test('cold-start clear removes every retained PNG immediately', async () => {
+  const store = await createStore({ indexedDB: null, BroadcastChannelClass: null, now: () => 1000 });
+  await store.save({
+    id: 'old',
+    blob: new Blob(['x'], { type: 'image/png' }),
+    ownerId: 'closed-tab',
+    fileName: 'old.png',
+    title: 'old'
+  });
+  await store.clear();
+  assert.equal((await store.stats()).count, 0);
+});

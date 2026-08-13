@@ -23,7 +23,12 @@ class FakeClassList {
 }
 
 function panel(name) {
-  return { classList: new FakeClassList(), dataset: { mobilePanel: name } };
+  return {
+    classList: new FakeClassList(),
+    dataset: { mobilePanel: name },
+    setAttribute() {},
+    inert: false
+  };
 }
 
 class FakeSwiper {
@@ -51,6 +56,14 @@ class FakeSwiper {
 function fixture(overrides = {}) {
   const panels = { left: panel('left'), middle: panel('middle'), right: panel('right') };
   const element = { panels: [panels.left, panels.middle, panels.right] };
+  panels.left.before = candidate => {
+    const index = element.panels.indexOf(panels.left);
+    element.panels.splice(index, 0, candidate);
+    candidate.remove = () => {
+      const candidateIndex = element.panels.indexOf(candidate);
+      if (candidateIndex >= 0) element.panels.splice(candidateIndex, 1);
+    };
+  };
   const changes = [];
   let interactions = 0;
   const controller = createMobilePanelSwipe({
@@ -86,20 +99,12 @@ test('右パネルを無効化すると左だけを残し、再び有効化で�
   assert.deepEqual(element.swiper.slides, [panels.left, panels.right]);
 });
 
-test('左端から外側へスワイプした時だけ境界操作を通知する', () => {
-  let boundarySwipes = 0;
-  const state = fixture({ onLeftBoundarySwipe: () => { boundarySwipes += 1; } });
-  state.controller.sync();
-  state.element.swiper.options.on.touchStart(state.element.swiper);
-  state.element.swiper.swipeDirection = 'prev';
-  state.element.swiper.options.on.touchEnd(state.element.swiper);
-  assert.equal(boundarySwipes, 1);
-
-  state.controller.show('right');
-  state.element.swiper.options.on.touchStart(state.element.swiper);
-  state.element.swiper.swipeDirection = 'prev';
-  state.element.swiper.options.on.touchEnd(state.element.swiper);
-  assert.equal(boundarySwipes, 1);
+test('左パネルの外側に初期画面用スライドを作らない', () => {
+  const state = fixture();
+  state.controller.sync({ middleOpen: true, rightOpen: true });
+  assert.deepEqual(state.element.swiper.slides, [state.panels.left, state.panels.middle, state.panels.right]);
+  assert.equal(state.element.swiper.activeIndex, 0);
+  assert.equal(state.element.swiper.allowSlidePrev, false);
 });
 
 test('紹介サイトと同じ追従・スナップ設定を使用する', () => {

@@ -24,7 +24,6 @@
     isEnabled,
     reduceMotion = () => false,
     onInteractionStart = () => {},
-    onLeftBoundarySwipe = () => {},
     onPanelChange = () => {}
   }) {
     if (!element || !panels || typeof SwiperClass !== 'function') {
@@ -38,7 +37,6 @@
     let currentPanel = 'left';
     let middleAvailable = false;
     let rightAvailable = true;
-    let touchStartedOnLeft = false;
     let requestedSource = 'gesture';
     let suppressSlideChange = false;
 
@@ -71,14 +69,16 @@
       if (!swiper) return;
       const previousPanel = currentPanel;
       const currentElement = panels[currentPanel];
+      suppressSlideChange = true;
       setAvailableSlideClasses();
       swiper.update();
+      swiper.allowSlidePrev = currentPanel !== 'left';
+      swiper.allowSlideNext = rightAvailable || middleAvailable;
       let targetIndex = swiper.slides.indexOf(currentElement);
       if (targetIndex < 0) {
         currentPanel = 'left';
         targetIndex = swiper.slides.indexOf(panels.left);
       }
-      suppressSlideChange = true;
       swiper.slideTo(Math.max(0, targetIndex), 0, false);
       suppressSlideChange = false;
       if (currentPanel !== previousPanel) onPanelChange(currentPanel, { source: 'sync' });
@@ -100,14 +100,9 @@
         longSwipesRatio: 0.22,
         initialSlide: Math.max(0, availablePanelNames(middleAvailable, rightAvailable).indexOf(currentPanel)),
         on: {
-          touchStart(instance) {
+          touchStart(instance, event) {
             requestedSource = 'gesture';
-            touchStartedOnLeft = currentPanel === 'left' && instance?.activeIndex === 0;
             onInteractionStart();
-          },
-          touchEnd(instance) {
-            if (touchStartedOnLeft && instance?.swipeDirection === 'prev') onLeftBoundarySwipe();
-            touchStartedOnLeft = false;
           },
           slideChange(instance) {
             commitPanel(instance);
@@ -123,10 +118,12 @@
       removeSlideClasses();
       requestedSource = 'gesture';
       suppressSlideChange = false;
-      touchStartedOnLeft = false;
     }
 
-    function sync({ middleOpen = middleAvailable, rightOpen = rightAvailable } = {}) {
+    function sync({
+      middleOpen = middleAvailable,
+      rightOpen = rightAvailable
+    } = {}) {
       middleAvailable = Boolean(middleOpen);
       rightAvailable = Boolean(rightOpen);
       if (!enabled()) {
@@ -156,8 +153,16 @@
       onInteractionStart();
       requestedSource = 'programmatic';
       const duration = animate && !reduceMotion() ? 360 : 0;
+      swiper.setTransition?.(0);
+      swiper.animating = false;
+      swiper.allowSlidePrev = true;
+      swiper.allowSlideNext = true;
+      suppressSlideChange = true;
       swiper.slideTo(targetIndex, duration, true);
-      commitPanel(swiper);
+      suppressSlideChange = false;
+      currentPanel = panelName;
+      onPanelChange(panelName, { source: requestedSource });
+      requestedSource = 'gesture';
       return true;
     }
 

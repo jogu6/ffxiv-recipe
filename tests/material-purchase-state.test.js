@@ -11,6 +11,7 @@ const {
   retargetContext,
   serialize,
   setPurchased,
+  setPrepared,
   syncContext
 } = require('../site/material-purchase-state.js');
 
@@ -32,6 +33,7 @@ test('context changes clear intermediate and terminal purchases together', () =>
   const state = createState({
     intermediateContext: 'old',
     intermediateNames: ['中間材'],
+    preparedNames: ['準備材'],
     materialContext: 'old',
     materialNames: ['末端素材']
   });
@@ -40,6 +42,7 @@ test('context changes clear intermediate and terminal purchases together', () =>
   assert.deepEqual(serialize(state), {
     purchasedContext: 'new',
     purchasedNames: [],
+    preparedNames: [],
     purchasedMaterialContext: 'new',
     purchasedMaterialNames: []
   });
@@ -56,14 +59,21 @@ test('quantity changes can retarget purchases without discarding their selection
   assert.deepEqual([...state.materialNames], ['末端素材']);
 });
 
-test('intermediate and terminal purchase operations remain independent', () => {
+test('prepared and purchased intermediate states are exclusive while terminal purchases remain independent', () => {
   const state = createState();
   setPurchased(state, 'intermediate', '中間材A', true, 'recipe:a');
+  setPrepared(state, '中間材A', true, 'recipe:a');
+  assert.deepEqual([...state.intermediateNames], []);
+  assert.deepEqual([...state.preparedNames], ['中間材A']);
+  setPurchased(state, 'intermediate', '中間材A', true, 'recipe:a');
+  assert.deepEqual([...state.preparedNames], []);
+  setPrepared(state, '中間材B', true, 'recipe:a');
   setPurchased(state, 'material', '末端素材A', true, 'recipe:a');
-  addAll(state, 'intermediate', ['中間材B'], 'recipe:a');
+  addAll(state, 'intermediate', ['中間材B', '中間材C'], 'recipe:a');
   clear(state, 'material', 'recipe:a');
 
-  assert.deepEqual([...state.intermediateNames], ['中間材A', '中間材B']);
+  assert.deepEqual([...state.intermediateNames], ['中間材A', '中間材C']);
+  assert.deepEqual([...state.preparedNames], ['中間材B']);
   assert.deepEqual([...state.materialNames], []);
 });
 
@@ -76,6 +86,7 @@ test('pruning removes stale purchases and reset targets a new context', () => {
   assert.deepEqual(serialize(state), {
     purchasedContext: 'recipe:new',
     purchasedNames: [],
+    preparedNames: [],
     purchasedMaterialContext: 'recipe:new',
     purchasedMaterialNames: []
   });

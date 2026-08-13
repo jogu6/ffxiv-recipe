@@ -23,14 +23,17 @@ test("pipeline UI definition has unique recursive settings and executable action
   }
 });
 
-test("complete Item.json action resolves to four declared commands and settings", () => {
+test("complete Item.json action resolves to all required publication commands and settings", () => {
   const module = getPipelineUiDefinition().modules[0];
   const complete = module.actions.find(action => action.id === "generate-item-json");
   assert.deepEqual(complete.sequence, [
     "lodestone-audit",
     "build-lodestone-candidate",
+    "item-icon-cache",
     "lodestone-candidate-icons",
     "publish-lodestone-candidate",
+    "share-code-plaza-icons",
+    "item-icon-validate",
   ]);
   for (const id of complete.sequence) assert.ok(module.actions.find(action => action.id === id)?.command);
   assert.deepEqual(complete.settingIds, ["lodestone-delay", "webp-quality", "icon-size"]);

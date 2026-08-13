@@ -32,17 +32,45 @@ test('GUI renders settings and actions from the validated mjs definition', () =>
   assert.match(guiHtml, /id="actionsRoot"/);
 });
 
-test('GUI exposes only autonomous Lodestone Item.json actions', () => {
+test('GUI exposes autonomous Lodestone and image publication actions', () => {
   assert.deepEqual(moduleDefinition.actions.map(action => action.id), [
     'lodestone-audit',
     'build-lodestone-candidate',
+    'item-icon-cache',
     'lodestone-candidate-icons',
     'publish-lodestone-candidate',
     'item-icon-preview',
+    'item-icon-pack',
+    'share-code-plaza-icons',
+    'item-icon-validate',
+    'app-cache-version',
     'generate-item-json'
   ]);
   assert.equal(moduleDefinition.actions.some(action => action.id.includes('oxidizer')), false);
   assert.match(rustSource, /latest\.log/);
+});
+
+test('GUI one-click publication includes local cache, plaza sync, and final pack validation', () => {
+  const complete = moduleDefinition.actions.find(action => action.id === 'generate-item-json');
+  assert.deepEqual(complete.sequence, [
+    'lodestone-audit',
+    'build-lodestone-candidate',
+    'item-icon-cache',
+    'lodestone-candidate-icons',
+    'publish-lodestone-candidate',
+    'share-code-plaza-icons',
+    'item-icon-validate'
+  ]);
+});
+
+test('GUI publication refreshes the app cache version after final data files', () => {
+  const updateFunction = pipelineSource.match(/function updateDataCacheVersion[\s\S]*?\n}\n\nexport function buildPublicItemIconPack/)?.[0] || '';
+  const serviceWorkerUpdate = updateFunction.indexOf('updateServiceWorkerDataCacheVersion(version)');
+  const appDataUpdate = updateFunction.indexOf('updateAppDataCacheVersion(version)');
+  const appCacheUpdate = updateFunction.indexOf('updateAppCacheVersion({ siteRoot, serviceWorkerPath })');
+  assert.ok(serviceWorkerUpdate >= 0);
+  assert.ok(appDataUpdate > serviceWorkerUpdate);
+  assert.ok(appCacheUpdate > appDataUpdate);
 });
 
 test('progress, cancel, and log remain common fixed GUI chrome', () => {

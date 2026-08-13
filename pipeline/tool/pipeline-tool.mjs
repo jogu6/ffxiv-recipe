@@ -8,9 +8,16 @@ import zlib from 'node:zlib';
 import { spawnSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import sharp from 'sharp';
+import { updateAppCacheVersion } from '../../tools/app-cache-version.mjs';
 import { readLodestoneAuditArtifact, runLodestoneFullAudit } from './lodestone-audit.mjs';
 import { getLodestoneAuditResource, getPromotedLodestoneAudit, openLodestoneAuditStore } from './lodestone-audit-store.mjs';
 import { compareInitialLodestoneAudit, mergeLodestoneNameAliases } from './lodestone-audit-compare.mjs';
+import {
+  buildItemIconPack,
+  extractItemIconPack,
+  JOB_ICON_PACK_NAMES,
+  validateItemIconPack
+} from './item-icon-pack.mjs';
 import {
   LODESTONE_BASE_URL,
   LODESTONE_ITEM_LIST_URL,
@@ -50,7 +57,11 @@ export const lodestoneAuditComparisonReportPath = path.join(reportsRoot, 'lodest
 export const lodestoneDeletionReportPath = path.join(reportsRoot, 'lodestone-deletions.json');
 export const manualItemIconsRoot = path.join(inputRoot, 'manual-item-icons');
 export const siteRoot = path.join(repositoryRoot, 'site');
-export const itemIconsRoot = path.join(siteRoot, 'assets', 'item-icons');
+export const itemIconsRoot = path.join(cacheRoot, 'item-icons-webp');
+export const itemIconPackPath = path.join(siteRoot, 'data', 'item-icons.pack.gz');
+const itemIconPackScriptPath = path.join(siteRoot, 'item-icon-pack.js');
+const jobIconsRoot = path.join(siteRoot, 'assets', 'job-icons');
+const shareCodePlazaToolPath = path.resolve(repositoryRoot, '..', 'ff14-recipe-about', 'tools', 'share-code-plaza.mjs');
 
 const sourcesPath = path.join(pipelineRoot, 'sources.json');
 const updateStatePath = path.join(stateRoot, 'update-check.json');
@@ -591,11 +602,152 @@ function updateAppDataCacheVersion(version) {
   writeTextAtomic(appScriptPath, next);
 }
 
-function updateDataCacheVersion({ itemJsonPath = publicItemJsonPath, salt = '', reason = 'data' } = {}) {
+function updateDataCacheVersion({
+  itemJsonPath = publicItemJsonPath,
+  salt = '',
+  reason = 'data',
+  rebuildIconPack = true
+} = {}) {
+  if (rebuildIconPack && path.resolve(itemJsonPath) === path.resolve(publicItemJsonPath)) {
+    const pack = buildPublicItemIconPack();
+    log(`アイテム画像パックを更新しました ${pack.count}件 ${formatBytes(pack.bytes)} -> ${formatBytes(pack.compressedBytes)}`);
+  }
   const version = makeDataCacheVersion(itemJsonPath, salt);
   updateServiceWorkerDataCacheVersion(version);
   updateAppDataCacheVersion(version);
   log(`データキャッシュ版を更新しました ${version} (${reason})`);
+  const appCacheVersion = updateAppCacheVersion({ siteRoot, serviceWorkerPath });
+  log(`アプリキャッシュ版を更新しました ${appCacheVersion}`);
+  return version;
+}
+
+export function buildPublicItemIconPack({
+  itemJsonPath = publicItemJsonPath,
+  iconsRoot = itemIconsRoot,
+  outputPath = itemIconPackPath
+} = {}) {
+  if (path.resolve(iconsRoot) === path.resolve(itemIconsRoot)) {
+    prepareItemIconCache({ itemJsonPath, iconsRoot });
+  }
+  const pack = buildItemIconPack({
+    itemJsonPath,
+    iconsRoot,
+    outputPath,
+    additionalFiles: JOB_ICON_PACK_NAMES.map(file => ({ key: `job-icons/${file}`, source: path.join(jobIconsRoot, file) }))
+  });
+  if (path.resolve(outputPath) === path.resolve(itemIconPackPath)) {
+    const source = fs.readFileSync(itemIconPackScriptPath, 'utf8');
+    const next = source.replace(
+      /const\s+PACK_VERSION\s*=\s*['"][0-9a-f]+['"];/u,
+      `const PACK_VERSION = '${pack.bodyHash}';`
+    );
+    if (next === source && !source.includes(`const PACK_VERSION = '${pack.bodyHash}';`)) {
+      throw new Error('PACK_VERSION was not found in item-icon-pack.js');
+    }
+    writeTextAtomic(itemIconPackScriptPath, next);
+  }
+  return pack;
+}
+
+function itemDocumentItems(document) {
+  return Array.isArray(document) ? document : document?.Items || [];
+}
+
+function itemIconPackAdditionalKeys() {
+  return JOB_ICON_PACK_NAMES.map(file => `job-icons/${file}`);
+}
+
+export function validatePublicItemIconPack({
+  itemJsonPath = publicItemJsonPath,
+  packPath = itemIconPackPath
+} = {}) {
+  const document = readJson(itemJsonPath, null);
+  if (!document) throw new Error(`Item.jsonを読み込めません: ${itemJsonPath}`);
+  if (!fs.existsSync(packPath)) throw new Error(`アイテム画像パックがありません: ${packPath}`);
+  const bytes = zlib.gunzipSync(fs.readFileSync(packPath));
+  const validated = validateItemIconPack({
+    document,
+    bytes,
+    additionalKeys: itemIconPackAdditionalKeys()
+  });
+  return {
+    bodyHash: validated.bodyHash,
+    bytes: bytes.length,
+    files: validated.entries.size,
+    icons: validated.icons,
+    items: validated.items
+  };
+}
+
+export function prepareItemIconCache({
+  itemJsonPath = publicItemJsonPath,
+  packPath = itemIconPackPath,
+  iconsRoot = itemIconsRoot
+} = {}) {
+  const document = readJson(itemJsonPath, null);
+  if (!document) throw new Error(`Item.jsonを読み込めません: ${itemJsonPath}`);
+  const items = itemDocumentItems(document);
+  const missing = [...new Set(items.map(item => item?.IconFile).filter(Boolean))]
+    .filter(file => !fs.existsSync(iconPaths(file, iconsRoot).webpPath));
+  let validationError = null;
+  if (missing.length === 0) {
+    try {
+      const validation = validateItemIconAssets(items, { iconsRoot });
+      return { ...validation, restored: 0 };
+    } catch (error) {
+      validationError = error;
+    }
+  }
+  if (missing.length > 0 || validationError) {
+    if (!fs.existsSync(packPath)) {
+      const reason = missing.length > 0
+        ? `${missing.length}件不足しています`
+        : `破損しています (${validationError.message})`;
+      throw new Error(`個別画像キャッシュが${reason}が、復元用画像パックもありません: ${packPath}`);
+    }
+    const bytes = zlib.gunzipSync(fs.readFileSync(packPath));
+    const restored = extractItemIconPack({
+      document,
+      bytes,
+      iconsRoot,
+      additionalKeys: itemIconPackAdditionalKeys()
+    });
+    log(`個別画像キャッシュを画像パックから復元しました: 新規・更新 ${restored.written}件、再利用 ${restored.reused}件`);
+    const validation = validateItemIconAssets(items, { iconsRoot });
+    return { ...validation, restored: restored.written };
+  }
+  throw new Error('個別画像キャッシュを検証できませんでした');
+}
+
+export function syncShareCodePlazaIcons({
+  toolPath = shareCodePlazaToolPath,
+  iconsRoot = itemIconsRoot
+} = {}) {
+  prepareItemIconCache({ iconsRoot });
+  if (!fs.existsSync(toolPath)) throw new Error(`シェアコード広場の同期ツールがありません: ${toolPath}`);
+  const result = spawnSync(process.execPath, [
+    toolPath,
+    '--sync-icons-only',
+    '--no-publish',
+    '--no-replies',
+    '--icon-source',
+    iconsRoot
+  ], {
+    cwd: path.dirname(path.dirname(toolPath)),
+    encoding: 'utf8',
+    windowsHide: true
+  });
+  if (result.status !== 0) {
+    throw new Error(`シェアコード広場用画像を同期できませんでした: ${(result.stderr || result.stdout).trim()}`);
+  }
+  const output = result.stdout.trim();
+  if (output) log(output);
+  return output;
+}
+
+export function refreshAppCacheVersion() {
+  const version = updateAppCacheVersion({ siteRoot, serviceWorkerPath });
+  log(`アプリキャッシュ版を更新しました ${version}`);
   return version;
 }
 
@@ -2620,11 +2772,6 @@ async function getCachedPngBlob(pngFile, delayMs = defaultIconDelayMs) {
   }
 }
 
-function iconFileToPngRepoPath(iconFile) {
-  const pngName = iconFile.replace(/\.[^.]+$/, '.png');
-  return `site/assets/item-icons/${pngName.slice(0, 3)}/${pngName}`;
-}
-
 function hashIconFiles(iconFiles, iconsRoot = itemIconsRoot) {
   const hash = crypto.createHash('sha256');
   for (const iconFile of [...new Set(iconFiles)].sort()) {
@@ -2661,9 +2808,10 @@ export async function ensureIconsForItemJson({ quality = defaultIconQuality, del
   const isPublicItemJson = sourceItemJsonPath === publicItemJsonPath;
   ensureDir(logsRoot);
   log(`アイコン生成を開始しました source=Lodestone(NQ) fallback=XIVAPI size=${iconSize}x${iconSize} quality=${quality} delay=${delayMs}ms itemJson=${path.relative(repositoryRoot, sourceItemJsonPath)}`);
+  if (fs.existsSync(publicItemJsonPath)) prepareItemIconCache();
   ensureDir(itemIconsRoot);
   fs.writeFileSync(iconDownloadErrorLog, '', 'utf8');
-  const items = readJson(sourceItemJsonPath, []);
+  const items = itemDocumentItems(readJson(sourceItemJsonPath, []));
   const decisions = normalizePublicationDecisions();
   const currentPublicIds = new Set(readJson(publicItemJsonPath, []).map(item => String(item.ID)));
   const appliesPublicationGate = sourceItemJsonPath === publicCandidatePath;
@@ -2774,7 +2922,8 @@ export async function ensureIconsForItemJson({ quality = defaultIconQuality, del
 function sampleIconItems(count) {
   const seen = new Set();
   const samples = [];
-  for (const item of readJson(publicItemJsonPath, [])) {
+  prepareItemIconCache();
+  for (const item of itemDocumentItems(readJson(publicItemJsonPath, []))) {
     if (!item?.ID || !item?.Name || !item?.IconFile || seen.has(item.IconFile)) continue;
     seen.add(item.IconFile);
     samples.push({ item, ...iconPaths(item.IconFile) });
@@ -2789,7 +2938,7 @@ function fileSize(file) {
 
 export async function iconPreview({ qualities = [50, 60, 70, 80], sampleCount = 80, size = 80 } = {}) {
   const iconSize = Number.isFinite(size) && size > 0 ? Math.floor(size) : 80;
-  const iconGroups = iconGroupsByIconFile(readJson(publicItemJsonPath, []));
+  const iconGroups = iconGroupsByIconFile(itemDocumentItems(readJson(publicItemJsonPath, [])));
   const reportRoot = path.join(reportsRoot, 'icon-quality');
   const sampleRoot = path.join(reportRoot, 'samples');
   ensureDir(sampleRoot);
@@ -3625,7 +3774,7 @@ export function smokeTest({ root = fs.mkdtempSync(path.join(os.tmpdir(), 'ffxiv-
   const item = {
     ID: '1',
     Name: '銅鉱, 試験',
-    Icon: 'assets/item-icons/020/020001.webp',
+    IconFile: 'smoke-test.webp',
     Recipe: { AmountResult: '1', Ingredients: [{ ItemID: '2', Name: '素材', Amount: '3' }] }
   };
   writeJsonAtomic(expected, [item]);
@@ -3888,20 +4037,24 @@ function deterministicShuffle(items, seed = 8675309) {
   return copy;
 }
 
-async function selectPreviewSamples(sampleCount, iconGroups = iconGroupsByIconFile(readJson(publicItemJsonPath, []))) {
+async function selectPreviewSamples(
+  sampleCount,
+  iconGroups = iconGroupsByIconFile(itemDocumentItems(readJson(publicItemJsonPath, [])))
+) {
+  prepareItemIconCache();
   const representativeItems = new Map();
   const itemGroups = new Map();
-  for (const item of readJson(publicItemJsonPath, [])) {
+  for (const item of itemDocumentItems(readJson(publicItemJsonPath, []))) {
     if (!item.ID || !item.Name || !item.IconFile) continue;
     const pngName = item.IconFile.replace(/\.webp$/i, '.png');
-    const file = `site/assets/item-icons/${pngName.slice(0, 3)}/${pngName}`;
+    const file = item.IconFile;
     if (!representativeItems.has(file)) representativeItems.set(file, item);
     if (!itemGroups.has(file)) itemGroups.set(file, []);
     itemGroups.get(file).push(item);
   }
   const entries = [...representativeItems.entries()].map(([file, item]) => {
-    const webpPath = path.join(repositoryRoot, file.replace(/\.png$/i, '.webp'));
-    const pngName = path.basename(file);
+    const webpPath = iconPaths(file).webpPath;
+    const pngName = file.replace(/\.webp$/i, '.png');
     const lodestoneCachePath = path.join(lodestonePngIconCacheRoot, `${item.ID}.png`);
     const legacyCachePath = path.join(pngIconCacheRoot, pngName.slice(0, 3), pngName);
     const pngSize = fs.existsSync(lodestoneCachePath)
@@ -3995,7 +4148,10 @@ async function selectPreviewSamples(sampleCount, iconGroups = iconGroupsByIconFi
   return selected.filter(entry => entry.background !== 'bg-missing');
 }
 
-async function getPreviewPngBlob(entry, iconGroups = iconGroupsByIconFile(readJson(publicItemJsonPath, []))) {
+async function getPreviewPngBlob(
+  entry,
+  iconGroups = iconGroupsByIconFile(itemDocumentItems(readJson(publicItemJsonPath, [])))
+) {
   log(`比較 サンプル候補 ${entry.item.ID} ${entry.item.Name} ${entry.pngName}: PNG確認中`);
   const png = await getProductionIconPng(entry.item, entry.pngName, defaultIconDelayMs, sameIconAlternatives(entry.item, iconGroups));
   log(`比較 サンプル候補 ${entry.item.ID} ${entry.item.Name} ${entry.pngName}: PNG確認完了 source=${png.source}`);
@@ -4443,6 +4599,9 @@ export async function ensureLodestoneCandidateIcons({
   clearCancelRequest();
   cancellationEnabled = true;
   try {
+  if (path.resolve(iconsRoot) === path.resolve(itemIconsRoot) && fs.existsSync(existingItemJsonPath)) {
+    prepareItemIconCache({ itemJsonPath: existingItemJsonPath, iconsRoot });
+  }
   const candidate = readJson(candidatePath, null);
   const snapshot = readJson(snapshotPath, null);
   const auditStore = openLodestoneAuditStore(databasePath);
@@ -4608,6 +4767,9 @@ export function publishLodestoneCandidate({
   legacyTarget = path.join(siteRoot, 'data', 'legacy-item-ids.json'),
   iconsRoot = itemIconsRoot
 } = {}) {
+  if (path.resolve(iconsRoot) === path.resolve(itemIconsRoot) && fs.existsSync(publicItemJsonPath)) {
+    prepareItemIconCache({ itemJsonPath: publicItemJsonPath, iconsRoot });
+  }
   const candidate = readJson(candidatePath, null);
   const legacy = readJson(legacyPath, null);
   const snapshot = readJson(snapshotPath, null);
@@ -4660,7 +4822,12 @@ function printHelp() {
   tmp-quality-preview [--delay 100] [--quality 80] [--size 80]
                              指定した画像設定を含む比較プレビューを生成
   publish-lodestone-candidate
-                             検証済み名前キー候補と旧ID互換JSONを公開データへ反映`);
+                             検証済み名前キー候補と旧ID互換JSONを公開データへ反映
+  item-icon-cache            画像パックからローカル個別画像キャッシュを準備
+  item-icon-pack             現行Item.jsonに対応する全アイテム画像パックを生成
+  share-code-plaza-icons     掲載中のシェアコード広場用画像だけを案内サイトへ同期
+  item-icon-validate         公開画像パックの構造・内容・命名を検証
+  app-cache-version          公開アプリ資産の内容からアプリキャッシュ版を更新`);
 }
 
 export async function main(argv = process.argv.slice(2)) {
@@ -4714,6 +4881,15 @@ export async function main(argv = process.argv.slice(2)) {
     });
   }
   if (command === 'publish-lodestone-candidate') return publishLodestoneCandidate();
+  if (command === 'item-icon-cache') return prepareItemIconCache();
+  if (command === 'item-icon-pack') {
+    const pack = buildPublicItemIconPack();
+    updateDataCacheVersion({ salt: pack.sha256, reason: 'item-icon-pack', rebuildIconPack: false });
+    return pack;
+  }
+  if (command === 'share-code-plaza-icons') return syncShareCodePlazaIcons();
+  if (command === 'item-icon-validate') return validatePublicItemIconPack();
+  if (command === 'app-cache-version') return refreshAppCacheVersion();
   throw new Error(`Unknown command: ${command}`);
 }
 

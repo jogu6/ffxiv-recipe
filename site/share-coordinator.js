@@ -19,6 +19,8 @@
     let state = Object.freeze({ phase: 'idle', ownerId: '', updatedAt: now() });
     let closed = false;
     let resolveHeldLock = null;
+    let presenceReady = false;
+    const presenceWaiters = new Set();
 
     const publish = next => {
       state = Object.freeze({ ...state, ...next, updatedAt: now() });
@@ -30,6 +32,14 @@
     };
     if (channel) {
       channel.onmessage = event => {
+        if (event.data?.type === 'presence-query' && presenceReady) {
+          channel.postMessage({ type: 'presence-ready', ownerId });
+          return;
+        }
+        if (event.data?.type === 'presence-ready' && event.data.ownerId !== ownerId) {
+          presenceWaiters.forEach(resolve => resolve(true));
+          return;
+        }
         if (event.data?.type === 'query' && state.phase !== 'idle') {
           channel.postMessage({ type: 'state', state });
           return;
@@ -37,6 +47,23 @@
         if (event.data?.type === 'state' && event.data.state?.ownerId !== ownerId) publish(event.data.state);
       };
       channel.postMessage({ type: 'query', ownerId });
+    }
+
+    function hasReadyPeer(waitMs = 60) {
+      if (!channel) return Promise.resolve(false);
+      return new Promise(resolve => {
+        let settled = false;
+        const finish = value => {
+          if (settled) return;
+          settled = true;
+          presenceWaiters.delete(finish);
+          clearTimeout(timer);
+          resolve(value);
+        };
+        const timer = setTimeout(() => finish(false), waitMs);
+        presenceWaiters.add(finish);
+        channel.postMessage({ type: 'presence-query', ownerId });
+      });
     }
 
     async function execute(task) {
@@ -73,7 +100,17 @@
       channel?.close();
     }
 
-    return Object.freeze({ close, execute, getOwnerId: () => ownerId, getState: () => state, ready, release, sharing });
+    return Object.freeze({
+      close,
+      execute,
+      getOwnerId: () => ownerId,
+      getState: () => state,
+      hasReadyPeer,
+      markPresenceReady: () => { presenceReady = true; },
+      ready,
+      release,
+      sharing
+    });
   }
 
   return Object.freeze({ CHANNEL_NAME, LOCK_NAME, createCoordinator });

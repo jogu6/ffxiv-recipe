@@ -231,6 +231,7 @@ test('reorders favorite lists locally with the rightmost drag handle', async ({ 
   await page.locator('#favBtn').click();
   const listA = page.locator('#favoriteLists li').filter({ hasText: 'リストA' }).first();
   const listB = page.locator('#favoriteLists li').filter({ hasText: 'リストB' }).first();
+  await expect(listA.locator('.favorite-list-name')).toHaveJSProperty('tagName', 'SPAN');
   await expect(listA).toHaveCSS('user-select', 'text');
   await expect(listA.locator('.favorite-list-curtain')).not.toHaveClass(/expanded/);
   await expect(listA.locator('.favorite-list-name')).toHaveCSS('font-size', '14.3px');

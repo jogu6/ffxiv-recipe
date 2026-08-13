@@ -28,6 +28,7 @@
         const message = event.data;
         if (message?.type === 'put' && message.record) records.set(message.record.id, message.record);
         if (message?.type === 'delete') records.delete(message.id);
+        if (message?.type === 'clear') records.clear();
         if (message?.type === 'query') channel.postMessage({ type: 'snapshot', requestId: message.requestId, records: [...records.values()] });
         if (message?.type === 'snapshot' && message.requestId === requestId) {
           message.records.forEach(record => records.set(record.id, record));
@@ -40,6 +41,7 @@
       async all() { return [...records.values()]; },
       async put(record) { records.set(record.id, record); channel?.postMessage({ type: 'put', record }); },
       async delete(id) { records.delete(id); channel?.postMessage({ type: 'delete', id }); },
+      async clear() { records.clear(); channel?.postMessage({ type: 'clear' }); },
       async close() { channel?.close(); }
     };
   }
@@ -65,6 +67,7 @@
         });
         resolve({
           all: () => requestFor('readonly', store => store.getAll()),
+          clear: () => requestFor('readwrite', store => store.clear()),
           put: record => requestFor('readwrite', store => store.put(record)),
           delete: id => requestFor('readwrite', store => store.delete(id)),
           close: async () => db.close()
@@ -130,7 +133,7 @@
       return (await cleanup()).find(record => record.id === id) || null;
     }
 
-    return Object.freeze({ cleanup, close: () => backend.close(), get, getMode: () => mode, remove: id => backend.delete(id), save, stats });
+    return Object.freeze({ clear: () => backend.clear(), cleanup, close: () => backend.close(), get, getMode: () => mode, remove: id => backend.delete(id), save, stats });
   }
 
   return Object.freeze({ DB_NAME, HOLD_MS, MAX_BYTES, MAX_COUNT, STORE_NAME, createStore, validRecord });

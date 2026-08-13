@@ -10,6 +10,7 @@ const {
   routeMirageRecipeVariants,
   searchFor
 } = require('./helpers/app.js');
+const { favoriteList, favoriteStore, seedAppStorage } = require('./helpers/app-storage.js');
 test('loading overlay blocks interaction while it is displayed', async ({ page }) => {
   await openApp(page);
   await expect(page).toHaveTitle('XIVca | FinalFantasy XIV® Crafting Assistant');
@@ -27,7 +28,21 @@ test('loading overlay blocks interaction while it is displayed', async ({ page }
   });
   expect(cachedItemRequests).toBe(1);
   await page.locator('#settingsBtn').click();
-  await expect(page.locator('#settingsDialog #appVersion')).toHaveText('v3.1');
+  await expect(page.locator('#settingsDialog #appVersion')).toHaveText('v3.2');
+});
+
+test('paints startup progress before beginning the data-loading work', async ({ page }) => {
+  await page.route('**/data/tips.md*', async route => {
+    await new Promise(resolve => setTimeout(resolve, 3500));
+    await route.continue();
+  });
+  await page.goto('/');
+
+  await expect(page.locator('#loadingTitle')).toHaveText('データ読み込み中...');
+  await expect(page.locator('#loadingProgressRow')).toBeVisible();
+  await expect(page.locator('#loadingDetail')).toBeVisible();
+  await expect(page.locator('#loadingProgressPercent')).toBeHidden();
+  await expect(page.locator('#loadStatus')).toHaveText('patch 7.55 対応', { timeout: 10_000 });
 });
 
 test('shows a startup error instead of leaving the loading message indefinitely', async ({ page }) => {
@@ -42,6 +57,28 @@ test('shows a startup error instead of leaving the loading message indefinitely'
   );
   await expect(page.locator('#loadingErrorDetail')).toContainText('startup test');
   await expect(page.locator('#loadStatus')).toHaveText('読み込みエラー');
+});
+
+test('keeps search and favorites available when the item image pack cannot be prepared', async ({ page }) => {
+  await seedAppStorage(page, {
+    favoritesV3: favoriteStore({
+      selectedListId: 'pack-failure-list',
+      lists: [favoriteList({ id: 'pack-failure-list', name: '画像失敗確認', itemIds: [4422] })]
+    })
+  });
+  const individualImageRequests = [];
+  page.on('request', request => {
+    if (/\/assets\/item-icons\//u.test(new URL(request.url()).pathname)) individualImageRequests.push(request.url());
+  });
+  await page.route('**/data/item-icons.pack.gz', route => route.abort());
+
+  await openApp(page);
+  await searchFor(page, '岩塩');
+  await page.locator('#favBtn').click();
+  await page.locator('#favoriteLists').getByText('画像失敗確認', { exact: true }).click();
+
+  await expect(page.locator('#recipeList')).toContainText('カッパーリング');
+  expect(individualImageRequests).toEqual([]);
 });
 
 test('does not request Cloudflare analytics outside the public site', async ({ page }) => {
@@ -93,7 +130,7 @@ test('shows the confirmed masterbook on recipe item labels', async ({ page }) =>
   await expect(masterbookRow.locator('.badge-craft')).toHaveText('錬成秘伝書:第1巻');
   await expect(masterbookRow.locator('.craft-job-label > .job-icon')).toHaveAttribute(
     'src',
-    './assets/job-icons/alchemist.webp'
+    /^blob:/
   );
 
   await searchFor(page, 'バスタードソード');
@@ -113,10 +150,9 @@ test('shows one selectable search row per recipe variant and uses the selected i
     .filter({ has: page.getByText('ミラージュプリズム', { exact: true }) });
   await expect(rows).toHaveCount(7);
   await expect(rows.nth(0).locator('.badge-craft')).toHaveText('木工秘伝書:ミラージュプリズム');
-  await expect(rows.nth(0).locator('.craft-job-label > .job-icon')).toHaveAttribute(
-    'src',
-    './assets/job-icons/carpenter.webp'
-  );
+  const firstJobIcon = rows.nth(0).locator('.craft-job-label > .job-icon');
+  await expect(firstJobIcon).toHaveAttribute('data-item-icon-file', 'job-icons/carpenter.webp');
+  await expect.poll(() => firstJobIcon.evaluate(image => image.naturalWidth)).toBeGreaterThan(0);
   await expect(rows.nth(6).locator('.badge-craft')).toHaveText('錬成秘伝書:ミラージュプリズム');
 
   const overflowingRows = await rows.evaluateAll(elements => {
@@ -237,11 +273,11 @@ test('loads all recipe variants from the published item data', async ({ page }) 
   await expect(rows).toHaveCount(7);
   await expect(rows.nth(0).locator('.craft-job-label > .job-icon')).toHaveAttribute(
     'src',
-    './assets/job-icons/carpenter.webp'
+    /^blob:/
   );
   await expect(rows.nth(6).locator('.craft-job-label > .job-icon')).toHaveAttribute(
     'src',
-    './assets/job-icons/alchemist.webp'
+    /^blob:/
   );
 });
 

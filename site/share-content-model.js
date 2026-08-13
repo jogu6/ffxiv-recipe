@@ -38,12 +38,16 @@
   }
 
   function replaceControlWithMarker(control) {
+    if (control.dataset?.shareCheckMarker) {
+      control.replaceWith(control.dataset.shareCheckMarker);
+      return;
+    }
     if (control.matches?.('input[type="checkbox"]')) {
       control.replaceWith(control.checked ? '☑' : '☐');
       return;
     }
     const text = control.textContent || '';
-    const markers = ['💰🛒', '⏰', '🛒'].filter(marker => text.includes(marker));
+    const markers = ['📦', '💰🛒', '⏰', '🛒'].filter(marker => text.includes(marker));
     control.replaceWith(markers.join(''));
   }
 
@@ -84,6 +88,19 @@
   function textLines(snapshot) {
     const clone = snapshot.content.cloneNode(true);
     clone.querySelectorAll('[hidden], [aria-hidden="true"], .hidden').forEach(node => node.remove());
+    const showCheckStates = Boolean(clone.querySelector('.checkable-item-icon.checked'));
+    clone.querySelectorAll('.checkable-item-icon').forEach(control => {
+      if (!showCheckStates) return;
+      const marker = control.classList.contains('checked') ? '☑️' : '⬜';
+      const block = control.closest('[data-share-text-block]');
+      if (block) {
+        const lines = String(block.dataset.shareTextBlock || '').split(/\r?\n/u);
+        lines[0] = `${marker} ${lines[0] || ''}`;
+        block.dataset.shareTextBlock = lines.join('\n');
+      } else {
+        control.dataset.shareCheckMarker = marker;
+      }
+    });
     applyTreeTextBranches(clone);
     clone.querySelectorAll('[data-share-text-block]').forEach(node => {
       if (node.parentElement?.closest('[data-share-text-block]')) return;

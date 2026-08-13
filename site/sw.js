@@ -1,5 +1,5 @@
-const APP_CACHE_VERSION = 'ff14recipe-app-20260811-share6-v3.1';
-const DATA_CACHE_VERSION = 'ff14recipe-data-7.55-d7f73028';
+const APP_CACHE_VERSION = 'ff14recipe-app-v3.2-d04cbec05e0e';
+const DATA_CACHE_VERSION = 'ff14recipe-data-7.55-528bd67b';
 const CACHE_PREFIX = 'ff14recipe-';
 
 const PRECACHE_FILES = [
@@ -15,6 +15,7 @@ const PRECACHE_FILES = [
   './favorite-list-file.js',
   './favorite-count-model.js',
   './data-setup-progress.js',
+  './item-icon-pack.js',
   './share-content-model.js',
   './share-coordinator.js',
   './share-png-store.js',
@@ -28,6 +29,7 @@ const PRECACHE_FILES = [
   './panel-layout.js',
   './recipe-data-model.js',
   './recipe-selection-model.js',
+  './json-parse-worker.js',
   './pwa-update.js',
   './vendor/marked.umd.js',
   './vendor/purify.min.js',
@@ -42,24 +44,12 @@ const PRECACHE_FILES = [
   './assets/app-icons/icon-512.png',
   './assets/branding/xivca-logo.webp',
   './assets/check_onoff.png',
-  './assets/job-icons/alchemist.webp',
-  './assets/job-icons/armorer.webp',
-  './assets/job-icons/blacksmith.webp',
-  './assets/job-icons/botanist.webp',
-  './assets/job-icons/carpenter.webp',
-  './assets/job-icons/culinarian.webp',
-  './assets/job-icons/fisher.webp',
-  './assets/job-icons/goldsmith.webp',
-  './assets/job-icons/leatherworker.webp',
-  './assets/job-icons/miner.webp',
-  './assets/job-icons/weaver.webp',
   './manifest.webmanifest',
 ];
 
 const CACHE_FIRST_PATTERNS = [
   /\/data\/Item\.json$/,
   /\/data\/legacy-item-ids\.json$/,
-  /\/assets\/item-icons\//,
 ];
 
 self.addEventListener('install', event => {
@@ -95,6 +85,11 @@ self.addEventListener('fetch', event => {
 
   // 緊急メッセージを常に最新にするため、tips.mdは一切キャッシュしない
   if (/\/data\/tips\.md$/.test(url.pathname)) {
+    event.respondWith(fetch(request, { cache: 'no-store' }));
+    return;
+  }
+
+  if (/\/data\/item-icons\.pack\.gz$/.test(url.pathname)) {
     event.respondWith(fetch(request, { cache: 'no-store' }));
     return;
   }

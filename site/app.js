@@ -1,4 +1,4 @@
-const DATA_CACHE_VERSION = 'ff14recipe-data-7.55-d7f73028';
+const DATA_CACHE_VERSION = 'ff14recipe-data-7.55-528bd67b';
 const DATA_FILE = `./data/Item.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 const LEGACY_ITEM_IDS_FILE = `./data/legacy-item-ids.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 const TIPS_FILE = './data/tips.md';
@@ -36,6 +36,7 @@ const PRIVACY_POLICY_FILE = './docs/privacy-policy.md';
 const CONTACT_URL = 'https://discord.gg/eZP5temK6e';
 const REQUEST_COUNT_MAX = 999;
 const MIN_LOADING_OVERLAY_MS = 2000;
+const PACK_ICON_PREFIX = 'item-pack:';
 const loadingOverlayStartedAt = Date.now();
 const EORZEA_TIME_MULTIPLIER = 144 / 7;
 const {
@@ -99,6 +100,7 @@ const {
   retargetContext: retargetMaterialPurchases,
   serialize: serializeMaterialPurchaseState,
   setPurchased: setMaterialPurchased,
+  setPrepared: setMaterialPrepared,
   syncContext: syncMaterialPurchaseContext
 } = MaterialPurchaseState;
 const { buildRecipeData, buildRecipeDataAsync } = RecipeDataModel;
@@ -377,6 +379,7 @@ let equipmentSearchOpen = false;
 let equipmentSearchResults = [];
 let equipmentSearchIndex = new Map();
 let equipmentSearchResultSignature = '';
+let searchResultQuery = '';
 let equipmentParameterDisplayNames = new Set();
 let equipmentDuplicateSlots = new Set();
 let maxEquipmentLevel = 1;
@@ -407,6 +410,7 @@ let canSaveViewState = false;
 let suppressViewStateSave = false;
 const materialPurchaseState = createMaterialPurchaseState();
 const purchasedIntermediateNames = materialPurchaseState.intermediateNames;
+const preparedIntermediateNames = materialPurchaseState.preparedNames;
 const purchasedMaterialNames = materialPurchaseState.materialNames;
 let imageCheckContext = '';
 let checkedImageKeys = new Set();
@@ -438,6 +442,7 @@ let selectedSharePanel = 'left';
 let shareCoordinator = null;
 let sharePngStore = null;
 let shareStorageReady = false;
+let shareMaintenancePromise = null;
 let shareStorageFullUntil = 0;
 let activeShareRecordId = '';
 let activeShareSnapshot = null;
@@ -445,6 +450,8 @@ let shareExpiryTimer = 0;
 let shareCapacityTimer = 0;
 let shareGenerationId = 0;
 let activeShareRetryCount = 0;
+let itemIconPack = null;
+let itemIconPackStatus = 'pending';
 
 const treePinMap = new Map();
 const exchangeTreeState = new Map();
@@ -652,17 +659,17 @@ const CRAFT_JOB_ABBREVIATIONS = {
   調理師: '調理'
 };
 const JOB_ICON_PATHS = {
-  木工師: './assets/job-icons/carpenter.webp',
-  鍛冶師: './assets/job-icons/blacksmith.webp',
-  甲冑師: './assets/job-icons/armorer.webp',
-  彫金師: './assets/job-icons/goldsmith.webp',
-  革細工師: './assets/job-icons/leatherworker.webp',
-  裁縫師: './assets/job-icons/weaver.webp',
-  錬金術師: './assets/job-icons/alchemist.webp',
-  調理師: './assets/job-icons/culinarian.webp',
-  採掘師: './assets/job-icons/miner.webp',
-  園芸師: './assets/job-icons/botanist.webp',
-  漁師: './assets/job-icons/fisher.webp'
+  木工師: `${PACK_ICON_PREFIX}job-icons/carpenter.webp`,
+  鍛冶師: `${PACK_ICON_PREFIX}job-icons/blacksmith.webp`,
+  甲冑師: `${PACK_ICON_PREFIX}job-icons/armorer.webp`,
+  彫金師: `${PACK_ICON_PREFIX}job-icons/goldsmith.webp`,
+  革細工師: `${PACK_ICON_PREFIX}job-icons/leatherworker.webp`,
+  裁縫師: `${PACK_ICON_PREFIX}job-icons/weaver.webp`,
+  錬金術師: `${PACK_ICON_PREFIX}job-icons/alchemist.webp`,
+  調理師: `${PACK_ICON_PREFIX}job-icons/culinarian.webp`,
+  採掘師: `${PACK_ICON_PREFIX}job-icons/miner.webp`,
+  園芸師: `${PACK_ICON_PREFIX}job-icons/botanist.webp`,
+  漁師: `${PACK_ICON_PREFIX}job-icons/fisher.webp`
 };
 const GATHERING_METHOD_JOBS = {
   採掘: '採掘師',
@@ -1108,6 +1115,8 @@ function restoreViewState() {
         hasFavoriteList: Boolean(favoriteList)
       })
     );
+    searchResultQuery = listMode === 'search' ? search.trim() : '';
+    equipmentSearchResultSignature = listMode === 'equipment' ? equipmentSearchConditionSignature() : '';
 
     selectedRecipe = recipe || null;
     selectedRecipeId = recipe ? recipeId : '';
@@ -1154,6 +1163,10 @@ function restoreViewState() {
     materialPurchaseState.intermediateContext = state.materials.purchasedContext;
     purchasedIntermediateNames.clear();
     state.materials.purchasedNames.forEach(name => purchasedIntermediateNames.add(name));
+    preparedIntermediateNames.clear();
+    state.materials.preparedNames.forEach(name => {
+      if (!purchasedIntermediateNames.has(name)) preparedIntermediateNames.add(name);
+    });
     materialPurchaseState.materialContext = state.materials.purchasedMaterialContext;
     purchasedMaterialNames.clear();
     state.materials.purchasedMaterialNames.forEach(name => purchasedMaterialNames.add(name));
@@ -1751,8 +1764,12 @@ function positionFloatingList(trigger, list, { minWidth = 0, maxHeight = 320, ga
   const desiredHeight = Math.min(list.scrollHeight, resolvedMaxHeight);
   const left = Math.max(margin, Math.min(rect.left, viewportWidth - width - margin));
   const top = placeBelow ? rect.bottom + gap : rect.top - gap - desiredHeight;
-  list.style.left = `${left}px`;
-  list.style.top = `${Math.max(margin, top)}px`;
+  const containingBlock = list.offsetParent;
+  const containingRect = containingBlock && containingBlock !== document.body
+    ? containingBlock.getBoundingClientRect()
+    : { left: 0, top: 0 };
+  list.style.left = `${left - containingRect.left}px`;
+  list.style.top = `${Math.max(margin, top) - containingRect.top}px`;
 }
 
 function positionCustomSelectOptions(select) {
@@ -2314,6 +2331,7 @@ function onSearch() {
     searchInputTimerId = 0;
   }
   const q = elements.searchBox.value.trim();
+  searchResultQuery = q;
   equipmentSearchResults = [];
   resetFavoriteOperationModes();
   leaveFavoriteMaterialsMode();
@@ -2361,7 +2379,7 @@ function clearSearch() {
   closeSearchHistory();
   updateFavoriteButtonState();
   renderUiChange(UI_CHANGE.SEARCH_CHANGED);
-  elements.searchBox.focus();
+  elements.searchBox.blur();
 }
 
 function toggleFav() {
@@ -2984,9 +3002,19 @@ function createTextElement(tagName, className, text) {
 function createItemIcon(iconPath, className = 'list-icon') {
   if (!iconPath) return null;
   const image = document.createElement('img');
-  image.src = iconPath;
   image.className = className;
   image.alt = '';
+  if (iconPath.startsWith(PACK_ICON_PREFIX)) {
+    const iconFile = iconPath.slice(PACK_ICON_PREFIX.length);
+    image.dataset.itemIconFile = iconFile;
+    const localUrl = itemIconPack?.url(iconFile);
+    if (localUrl) image.src = localUrl;
+    else if (itemIconPackStatus === 'failed' && iconFile.startsWith('job-icons/')) {
+      image.src = `./assets/${iconFile}`;
+    }
+  } else {
+    image.src = iconPath;
+  }
   image.addEventListener('error', () => image.classList.add('hidden'));
   return image;
 }
@@ -3179,14 +3207,15 @@ function shareItemTextBlock(name, master, { quantity = null, markers = '' } = {}
     if (itemLevel > 0) details.push(`IL${itemLevel}`);
     if (details.length > 0) lines.push(`  装備: ${details.join(' / ')}`);
   }
-  if (markers) lines.push(`  入手: ${markers}`);
+  if (markers) lines.push(`  ${markers}`);
   return lines.join('\n');
 }
 
-function shareItemMarkers(name, { purchased = false } = {}) {
+function shareItemMarkers(name, { purchased = false, prepared = false } = {}) {
   return [
-    purchased && hasShopInfo(name) ? '店舗購入（購入済み）' : hasShopInfo(name) ? '店舗購入' : '',
-    hasGatheringTimer(name) ? '時間指定採集' : ''
+    prepared ? '📦' : '',
+    purchased && hasShopInfo(name) ? '💰🛒' : hasShopInfo(name) ? '🛒' : '',
+    hasGatheringTimer(name) ? '⏰' : ''
   ]
     .filter(Boolean)
     .join(' / ');
@@ -3834,10 +3863,31 @@ function selectRecipeByName(name, recipeId = '') {
 
 async function loadAppVersion() {
   try {
-    const source = await fetch('./sw.js', { cache: 'no-store' }).then(response => {
-      if (!response.ok) throw new Error(`sw.js (${response.status})`);
-      return response.text();
-    });
+    let response;
+    let cachedAppVersion = '';
+    try {
+      response = await fetch('./sw.js', { cache: 'no-store' });
+      if (!response.ok) response = null;
+    } catch {}
+    if (!response) {
+      const cacheNames = 'caches' in globalThis
+        ? (await caches.keys()).filter(name => name.startsWith('ff14recipe-app-'))
+        : [];
+      cachedAppVersion = cacheNames
+        .map(name => name.match(/v\d+(?:\.\d+)*/iu)?.[0] || '')
+        .find(Boolean) || '';
+      for (const cacheName of cacheNames.reverse()) {
+        response = await (await caches.open(cacheName)).match('./sw.js');
+        if (response) break;
+      }
+    }
+    if (!response?.ok && cachedAppVersion) {
+      currentAppVersion = cachedAppVersion;
+      elements.appVersion.textContent = currentAppVersion;
+      return currentAppVersion;
+    }
+    if (!response?.ok) throw new Error(`sw.js (${response?.status || 'offline'})`);
+    const source = await response.text();
     currentAppVersion = extractAppVersion(source);
     elements.appVersion.textContent = currentAppVersion;
   } catch {
@@ -3902,9 +3952,27 @@ async function fetchJson(path, errorMessage, cacheName = '') {
   const response = await fetch(path);
   if (!response.ok) throw new Error(errorMessage(response.status));
   const cacheWrite = cacheFirstLoadResponse(path, response.clone(), cacheName);
-  const data = await response.json();
+  const text = await response.text();
+  const data = await parseJsonOffMainThread(text);
   await cacheWrite;
   return data;
+}
+
+function parseJsonOffMainThread(text) {
+  if (typeof Worker !== 'function') return Promise.resolve(JSON.parse(text));
+  return new Promise((resolve, reject) => {
+    const worker = new Worker('./json-parse-worker.js');
+    const finish = callback => value => {
+      worker.terminate();
+      callback(value);
+    };
+    worker.addEventListener('message', finish(event => {
+      if (event.data?.error) reject(new Error(event.data.error));
+      else resolve(event.data?.value);
+    }), { once: true });
+    worker.addEventListener('error', finish(event => reject(event.error || new Error(event.message))), { once: true });
+    worker.postMessage(text);
+  });
 }
 
 async function loadTips() {
@@ -3927,8 +3995,7 @@ async function loadTips() {
 
 function iconPath(item) {
   if (!item?.IconFile) return '';
-  const folder = item.IconFile.slice(0, 3);
-  return `./assets/item-icons/${folder}/${item.IconFile}?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
+  return `${PACK_ICON_PREFIX}${item.IconFile}`;
 }
 
 function activateRecipeVariant(name, recipeId = '') {
@@ -3966,12 +4033,10 @@ async function buildApplicationData(rawList, onProgress = () => {}, { incrementa
     iconPath,
     sortRecipeNames
   };
-  const data = incremental
-    ? await buildRecipeDataAsync(rawList, buildOptions, {
-        chunkSize: 2000,
-        onProgress: progress => onProgress(progress.phase, progress.percent * 0.82)
-      })
-    : buildRecipeData(rawList, buildOptions);
+  const data = await buildRecipeDataAsync(rawList, buildOptions, {
+    chunkSize: incremental ? 250 : 4000,
+    onProgress: progress => onProgress(progress.phase, 80 + progress.percent * 0.12)
+  });
   ({
     activeRecipeIds,
     defaultRecipeIds,
@@ -3993,25 +4058,117 @@ async function buildApplicationData(rawList, onProgress = () => {}, { incrementa
     itemIdForName,
     normalizeSelections: normalizeRecipeSelections
   });
-  onProgress('装備索引を作成しています', 86);
+  onProgress('装備索引を作成しています', 94);
   buildEquipmentSearchIndexes();
-  onProgress('保存データを確認しています', 90);
+  onProgress('保存データを確認しています', 96);
   return data.version || data.maxPatch;
 }
 
 function createApplicationDataProgress(enabled) {
-  return createDataSetupProgressController({
+  const delayedReveal = (element, delay) => {
+    if (delay <= 0) {
+      element.hidden = false;
+      return null;
+    }
+    if (!enabled || typeof element.animate !== 'function') return null;
+    element.hidden = false;
+    return element.animate(
+      [{ visibility: 'hidden', opacity: 0 }, { visibility: 'visible', opacity: 1 }],
+      { duration: 1, delay, fill: 'both' }
+    );
+  };
+  const progressDelayMs = 0;
+  let detailReveal = delayedReveal(elements.loadingDetail, progressDelayMs);
+  let progressReveal = delayedReveal(elements.loadingProgressRow, progressDelayMs);
+  let percentReveal = null;
+  const finishReveal = name => {
+    const animation = { detail: detailReveal, progress: progressReveal, percent: percentReveal }[name];
+    animation?.cancel();
+    if (name === 'detail') detailReveal = null;
+    if (name === 'progress') progressReveal = null;
+    if (name === 'percent') percentReveal = null;
+  };
+  const render = ({ detailVisible, progressVisible, percentVisible, phase, percent }) => {
+    if (detailVisible) finishReveal('detail');
+    if (progressVisible) finishReveal('progress');
+    if (percentVisible) finishReveal('percent');
+    elements.loadingTitle.textContent = 'データ読み込み中...';
+    elements.loadingDetail.textContent = phase;
+    elements.loadingDetail.hidden = !detailVisible && !detailReveal;
+    elements.loadingProgress.value = percent;
+    elements.loadingProgressRow.hidden = !progressVisible && !progressReveal;
+    elements.loadingProgressPercent.textContent = `${percent}%`;
+    elements.loadingProgressPercent.hidden = !percentVisible;
+  };
+  const controller = createDataSetupProgressController({
     enabled,
-    onChange: ({ detailVisible, progressVisible, percentVisible, phase, percent }) => {
-      elements.loadingTitle.textContent = detailVisible ? 'Item.json更新処理中...' : 'データ読み込み中...';
-      elements.loadingDetail.textContent = phase;
-      elements.loadingDetail.hidden = !detailVisible;
-      elements.loadingProgress.value = percent;
-      elements.loadingProgressRow.hidden = !progressVisible;
-      elements.loadingProgressPercent.textContent = `${percent}%`;
-      elements.loadingProgressPercent.hidden = !percentVisible;
+    progressDelayMs,
+    onChange: render
+  });
+  const removeUnshownPendingState = () => {
+    if (!progressReveal) return;
+    finishReveal('detail');
+    finishReveal('progress');
+    finishReveal('percent');
+    elements.loadingDetail.hidden = true;
+    elements.loadingProgressRow.hidden = true;
+    elements.loadingProgressPercent.hidden = true;
+  };
+  return Object.freeze({
+    cancel() {
+      controller.cancel();
+      removeUnshownPendingState();
+    },
+    complete() {
+      const completion = controller.complete();
+      removeUnshownPendingState();
+      return completion;
+    },
+    report(phase, percent) {
+      if (enabled) {
+        if (phase) elements.loadingDetail.textContent = phase;
+        if (Number.isFinite(Number(percent))) {
+          elements.loadingProgress.value = percent;
+          elements.loadingProgressPercent.textContent = `${Math.round(percent)}%`;
+        }
+      }
+      controller.report(phase, percent);
     }
   });
+}
+
+async function prepareItemImages(rawList, onProgress) {
+  const hydrateIcons = () => {
+    document.querySelectorAll('img[data-item-icon-file]').forEach(image => {
+      const iconFile = image.dataset.itemIconFile;
+      if (itemIconPack?.has(iconFile)) image.src = itemIconPack.url(iconFile);
+      else if (itemIconPackStatus === 'failed' && iconFile.startsWith('job-icons/')) {
+        image.src = `./assets/${iconFile}`;
+      }
+    });
+  };
+  itemIconPackStatus = 'pending';
+  if (!rawList?.DataGeneration) {
+    itemIconPackStatus = 'failed';
+    hydrateIcons();
+    return;
+  }
+  itemIconPack?.close();
+  try {
+    itemIconPack = await ItemIconPack.prepare({
+      document: rawList,
+      dataVersion: DATA_CACHE_VERSION,
+      onProgress
+    });
+  } catch (error) {
+    itemIconPack = null;
+    itemIconPackStatus = 'failed';
+    hydrateIcons();
+    console.warn('[ItemIconPack] アイテム画像を準備できませんでした:', error);
+    return;
+  }
+  itemIconPackStatus = 'ready';
+  hydrateIcons();
 }
 
 function updatePatchStatus(version) {
@@ -4097,18 +4254,19 @@ function hideLoadingOverlay() {
   window.setTimeout(() => overlay.classList.remove('open'), remaining);
 }
 
-async function init() {
+async function init(dataProgress) {
   updatePopupButtonVisibility();
   loadFavorites();
   updateCheckedFavoriteMaterialsButton();
   loadSearchHistory();
+  dataProgress.report('お知らせを読み込んでいます', 0);
   await loadTips();
 
   renderList();
   renderTips();
 
-  let dataProgress = null;
   try {
+    dataProgress.report('アイテムデータを読み込んでいます', 0);
     const [rawList, legacyItemIds] = await Promise.all([
       fetchJson(DATA_FILE, status => `Item.json が見つかりません (${status})`, DATA_CACHE_VERSION),
       fetchJson(LEGACY_ITEM_IDS_FILE, status => `旧ID互換データが見つかりません (${status})`, DATA_CACHE_VERSION)
@@ -4123,20 +4281,20 @@ async function init() {
       previousDataGeneration && applicationDataGeneration && previousDataGeneration !== applicationDataGeneration
     );
     const applicationDataStartedAt = performance.now();
-    dataProgress = createApplicationDataProgress(dataGenerationChanged);
+    await prepareItemImages(rawList, (phase, percent) => dataProgress.report(phase, percent));
     const dataVersion = await buildApplicationData(
       rawList,
       (phase, percent) => dataProgress.report(phase, percent),
       { incremental: dataGenerationChanged }
     );
-    dataProgress.report('お気に入りを現行データへ移行しています', 92);
+    dataProgress.report('お気に入りを現行データへ移行しています', 97);
     pendingFavoriteMigration = migrateFavoriteItemKeys();
     updatePatchStatus(dataVersion);
-    dataProgress.report('画面を準備しています', 96);
+    dataProgress.report('画面を準備しています', 98);
     validateFavoriteRecipeSelections();
     setupEquipmentSearchControls();
     canSaveViewState = true;
-    dataProgress.report('画面を復元しています', 98);
+    dataProgress.report('画面を復元しています', 99);
     if (consumeSkipRestoreOnce() || !restoreViewState()) {
       renderList();
       renderResultView();
@@ -4218,7 +4376,8 @@ function currentMobilePanelAvailability() {
 
 function syncMobilePanelAvailability() {
   if (!isMobile()) return;
-  mobilePanelSwipeController?.sync(currentMobilePanelAvailability());
+  const availability = currentMobilePanelAvailability();
+  mobilePanelSwipeController?.sync(availability);
 }
 
 function initializeMobilePanelSwipe() {
@@ -4234,7 +4393,6 @@ function initializeMobilePanelSwipe() {
     isEnabled: isMobile,
     reduceMotion: () => window.matchMedia('(prefers-reduced-motion: reduce)').matches,
     onInteractionStart: rememberVisibleScrollPositions,
-    onLeftBoundarySwipe: resetToStartupView,
     onPanelChange: applyMobilePanelState
   });
   mobilePanelSwipeController.sync(currentMobilePanelAvailability());
@@ -5425,9 +5583,46 @@ function recipeDependsOn(name, target, visited = new Set()) {
 }
 
 function purchasedIntermediateBlockers(name) {
-  return [...purchasedIntermediateNames].filter(
-    purchasedName => purchasedName !== name && recipeDependsOn(purchasedName, name)
+  return [...new Set([...purchasedIntermediateNames, ...preparedIntermediateNames])].filter(
+    terminalName => terminalName !== name && recipeDependsOn(terminalName, name)
   );
+}
+
+function intermediateTerminalReason(name) {
+  const purchased = [...purchasedIntermediateNames].some(
+    terminalName => terminalName !== name && recipeDependsOn(terminalName, name)
+  );
+  const prepared = [...preparedIntermediateNames].some(
+    terminalName => terminalName !== name && recipeDependsOn(terminalName, name)
+  );
+  if (purchased && prepared) return '上位中間素材の指定により不要';
+  if (prepared) return '中間素材準備済📦の為不要';
+  return '中間素材購入💰の為不要';
+}
+
+function createIntermediatePreparedButton(name, { disabled = false } = {}) {
+  const prepared = preparedIntermediateNames.has(name);
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'intermediate-prepared-btn';
+  button.textContent = '📦';
+  button.title = prepared ? `${name}の準備済みを解除` : `${name}を準備済みにする`;
+  button.setAttribute('aria-label', button.title);
+  button.setAttribute('aria-pressed', String(prepared));
+  button.classList.toggle('active', prepared);
+  button.disabled = disabled && !prepared;
+  button.addEventListener('click', event => {
+    event.stopPropagation();
+    setMaterialPrepared(
+      materialPurchaseState,
+      name,
+      !prepared,
+      currentMaterialPurchaseContext()
+    );
+    saveViewState();
+    renderUiChange(UI_CHANGE.PURCHASE_STATUS_CHANGED);
+  });
+  return button;
 }
 
 function renderMaterialsList() {
@@ -5435,15 +5630,27 @@ function renderMaterialsList() {
   const requirements = getCurrentMaterialRequirements();
   const purchaseContext = currentMaterialPurchaseContext();
   syncMaterialPurchaseContext(materialPurchaseState, purchaseContext);
-  let requirementsAfterPurchases = purchasedIntermediateNames.size
-    ? getCurrentMaterialRequirements(purchasedIntermediateNames)
+  let terminalIntermediateNames = new Set([...purchasedIntermediateNames, ...preparedIntermediateNames]);
+  let requirementsAfterPurchases = terminalIntermediateNames.size
+    ? getCurrentMaterialRequirements(terminalIntermediateNames)
     : requirements;
-  const validPurchasedIntermediateNames = new Set(
-    [...purchasedIntermediateNames].filter(name => requirementsAfterPurchases.states.has(name))
+  const validTerminalIntermediateNames = new Set(
+    [...terminalIntermediateNames].filter(name => requirementsAfterPurchases.states.has(name))
   );
-  if (pruneMaterialPurchases(materialPurchaseState, 'intermediate', validPurchasedIntermediateNames)) {
-    requirementsAfterPurchases = purchasedIntermediateNames.size
-      ? getCurrentMaterialRequirements(purchasedIntermediateNames)
+  const prunedIntermediate = pruneMaterialPurchases(
+    materialPurchaseState,
+    'intermediate',
+    validTerminalIntermediateNames
+  );
+  const prunedPrepared = pruneMaterialPurchases(
+    materialPurchaseState,
+    'prepared',
+    validTerminalIntermediateNames
+  );
+  if (prunedIntermediate || prunedPrepared) {
+    terminalIntermediateNames = new Set([...purchasedIntermediateNames, ...preparedIntermediateNames]);
+    requirementsAfterPurchases = terminalIntermediateNames.size
+      ? getCurrentMaterialRequirements(terminalIntermediateNames)
       : requirements;
     saveViewState();
   }
@@ -5544,6 +5751,7 @@ function renderMaterialsList() {
     const li = document.createElement('li');
     if (row.type === 'item') {
       const noLongerNeeded = !requirementsAfterPurchases.states.has(row.name);
+      const exclusionReason = noLongerNeeded ? intermediateTerminalReason(row.name) : '';
       const materialPurchased = purchasedMaterialNames.has(row.name) && !noLongerNeeded;
       if (noLongerNeeded) li.classList.add('purchase-unneeded');
       if (materialPurchased) li.classList.add('purchase-selected');
@@ -5558,7 +5766,7 @@ function renderMaterialsList() {
         createTextElement('span', 'material-qty', `× ${formatNumber(row.qty)}`)
       );
       if (noLongerNeeded) {
-        primary.appendChild(createTextElement('span', 'purchase-status', '中間素材購入💰の為不要'));
+        primary.appendChild(createTextElement('span', 'purchase-status', exclusionReason));
       }
       content.appendChild(primary);
 
@@ -5595,10 +5803,11 @@ function renderMaterialsList() {
         createShopInfoButton(row.name, { materialPurchase: !noLongerNeeded }),
         createGatheringTimerButton(row.name)
       );
-      li.dataset.shareTextBlock = shareItemTextBlock(row.name, itemMaster[row.name] || {}, {
+      li.dataset.shareTextBlock = [shareItemTextBlock(row.name, itemMaster[row.name] || {}, {
         quantity: row.qty,
         markers: shareItemMarkers(row.name, { purchased: materialPurchased })
-      });
+      }), exclusionReason ? `  ${exclusionReason}` : ''].filter(Boolean).join('\n');
+      if (exclusionReason) li.dataset.shareExclusionReason = exclusionReason;
     } else {
       li.appendChild(createMaterialChoiceContent(row));
       li.dataset.shareTextBlock = row.options
@@ -5612,10 +5821,13 @@ function renderMaterialsList() {
     const li = document.createElement('li');
     li.className = 'intermediate-tree-node';
     const purchased = purchasedIntermediateNames.has(row.name);
-    const noLongerNeeded = !purchased && !requirementsAfterPurchases.states.has(row.name);
+    const prepared = preparedIntermediateNames.has(row.name);
+    const noLongerNeeded = !purchased && !prepared && !requirementsAfterPurchases.states.has(row.name);
+    const exclusionReason = noLongerNeeded ? intermediateTerminalReason(row.name) : '';
     const originalQty = originalIntermediateRowsByName.get(row.name)?.qty || row.qty;
     const reducedQty = Math.max(0, originalQty - (noLongerNeeded ? 0 : row.qty));
     if (purchased) li.classList.add('purchase-selected');
+    if (prepared) li.classList.add('prepared-selected');
     if (noLongerNeeded) li.classList.add('purchase-unneeded');
     const rowElement = document.createElement('div');
     rowElement.className = 'intermediate-tree-row';
@@ -5647,7 +5859,7 @@ function renderMaterialsList() {
     );
     primary.appendChild(nameAndQuantity);
     if (noLongerNeeded) {
-      primary.appendChild(createTextElement('span', 'purchase-status', '中間素材購入💰の為不要'));
+      primary.appendChild(createTextElement('span', 'purchase-status', exclusionReason));
     }
     content.appendChild(primary);
 
@@ -5709,6 +5921,7 @@ function renderMaterialsList() {
     rowElement.appendChild(content);
     appendItemActionButtons(
       rowElement,
+      createIntermediatePreparedButton(row.name, { disabled: noLongerNeeded }),
       createShopInfoButton(row.name, {
         intermediatePurchase: {
           disabled: noLongerNeeded,
@@ -5723,7 +5936,7 @@ function renderMaterialsList() {
     li.appendChild(rowElement);
     const shareLines = [shareItemTextBlock(row.name, master, {
       quantity: row.qty,
-      markers: shareItemMarkers(row.name, { purchased })
+      markers: shareItemMarkers(row.name, { purchased, prepared })
     })];
     supplementEntries.forEach(entry => {
       if (entry.kind === 'surplus') shareLines.push(`  余り: ${formatNumber(entry.qty)}個`);
@@ -5741,6 +5954,10 @@ function renderMaterialsList() {
       }));
     }
     li.dataset.shareTextBlock = shareLines.join('\n');
+    if (exclusionReason) {
+      li.dataset.shareTextBlock += `\n  ${exclusionReason}`;
+      li.dataset.shareExclusionReason = exclusionReason;
+    }
     return li;
   };
 
@@ -5760,6 +5977,7 @@ function renderMaterialsList() {
     purchaseAllButton.textContent = purchaseLabel;
     purchaseAllButton.disabled = purchasableIntermediateNames.every(
       name => purchasedIntermediateNames.has(name) || !requirementsAfterPurchases.states.has(name)
+        || preparedIntermediateNames.has(name)
     );
     purchaseAllButton.addEventListener('click', event => {
       event.stopPropagation();
@@ -6973,6 +7191,24 @@ function favoriteShareModeDescription() {
   return favoriteAnyOneMode() ? 'どれか1アイテム' : '合算';
 }
 
+function customSelectOptionLabel(select, value) {
+  return [...(select?.querySelectorAll('.custom-select-option') || [])]
+    .find(option => option.dataset.value === String(value || ''))
+    ?.textContent.trim() || String(value || '');
+}
+
+function leftPanelShareDescription() {
+  if (listMode === 'search') return searchResultQuery ? `検索語句: ${searchResultQuery}` : '';
+  if (listMode !== 'equipment' || !equipmentSearchResultSignature) return '';
+  const [job, equipLevel, itemLevel, slot] = equipmentSearchResultSignature.split('\u001f');
+  return [
+    `ジョブ: ${customSelectOptionLabel(elements.equipmentJobSelect, job)}`,
+    `装備レベル: ${equipLevel}`,
+    `アイテムレベル: ${customSelectOptionLabel(elements.equipmentItemLevelSelect, itemLevel)}`,
+    `部位: ${customSelectOptionLabel(elements.equipmentSlotSelect, slot)}`
+  ].join('\n');
+}
+
 function sharePanelMetadata(panel) {
   const favoriteList = getDisplayedFavoriteList();
   const favoriteLists = resultSourceMode === 'favorite-materials' ? getActiveFavoriteMaterialLists() : [];
@@ -6990,24 +7226,27 @@ function sharePanelMetadata(panel) {
     resultViewMode,
     multipleFavoriteLists
   });
-  const descriptions = {
-    left: listMode === 'equipment'
-      ? '現在の検索条件と装備検索結果をすべて共有します。'
-      : listMode === 'fav'
-        ? 'お気に入りリスト名と登録アイテムをすべて共有します。'
-        : '画面外を含む検索結果をすべて共有します。',
-    middle: '現在表示している作成先をすべて共有します。',
-    right: `${resultViewMode === 'materials' ? '素材リスト' : 'レシピツリー'}の現在の内容を共有します。`
-  };
   const details = [];
+  if (panel === 'left') {
+    const searchDescription = leftPanelShareDescription();
+    if (searchDescription) details.push(searchDescription);
+  }
   if (panel === 'right') {
-    details.push(`個数・セット数: ${elements.countInput.value || 1}`);
+    const usesIndividualFavoriteCounts =
+      resultSourceMode === 'favorite-materials' &&
+      favoriteMaterialsListIds.length === 0 &&
+      favoriteCountEnabled() &&
+      !favoriteAnyOneMode();
+    if (!usesIndividualFavoriteCounts) {
+      const quantityLabel = resultSourceMode === 'favorite-materials' ? 'セット数' : '個数';
+      details.push(`${quantityLabel}: ${elements.countInput.value || 1}`);
+    }
     const mode = favoriteShareModeDescription();
     if (mode) details.push(`計算方法: ${mode}`);
   }
   return {
     title,
-    description: [descriptions[panel], ...details].filter(Boolean).join('\n'),
+    description: details.join('\n'),
     headingLines: multipleFavoriteLists ? favoriteLists.map(list => list.name) : []
   };
 }
@@ -7016,7 +7255,6 @@ function sharePanelSource(panel) {
   const wrapper = document.createElement('div');
   wrapper.className = `share-panel-source share-panel-source-${panel}`;
   if (panel === 'left') {
-    if (listMode === 'equipment') wrapper.appendChild(elements.equipmentSearchPanel.cloneNode(true));
     wrapper.appendChild(elements.recipeList.cloneNode(true));
   } else if (panel === 'middle') {
     wrapper.appendChild(elements.usesList.cloneNode(true));
@@ -7038,6 +7276,7 @@ function captureSelectedShareSnapshot() {
 }
 
 function highlightSharePanel(panel) {
+  if (isMobile()) return;
   const target = { left: elements.panelLeft, middle: elements.panelMiddle, right: elements.panelRight }[panel];
   if (!target) return;
   elements.contentShareOverlay.querySelector('.share-panel-highlight-overlay')?.remove();
@@ -7082,9 +7321,10 @@ function remainingCapacityText() {
 function refreshShareDialog() {
   const metadata = sharePanelMetadata(selectedSharePanel);
   elements.contentShareTitle.textContent = metadata.title;
+  const imageNotice = '画像生成には時間がかかる場合があります。生成中は画面を閉じたり再読み込みしないでください。';
   elements.contentShareDescription.textContent = shareStorageFullUntil > Date.now()
     ? remainingCapacityText()
-    : metadata.description;
+    : [metadata.description, imageNotice].filter(Boolean).join('\n');
   elements.contentShareImageBtn.disabled = shareStorageFullUntil > Date.now();
   renderSharePanelChoices();
 }
@@ -7190,6 +7430,45 @@ async function refreshShareCapacity() {
   }
 }
 
+function runShareStorageMaintenance(operation, { showProgress = true } = {}) {
+  if (shareMaintenancePromise) return shareMaintenancePromise;
+  const progress = createDataSetupProgressController({
+    enabled: showProgress,
+    initialPhase: '共有機能を準備しています',
+    onChange: showProgress
+      ? state => setShareProgress({ visible: state.progressVisible, ...state })
+      : () => {}
+  });
+  progress.report('共有機能を準備しています', 0);
+  shareMaintenancePromise = (async () => {
+    try {
+      await operation();
+      await refreshShareCapacity();
+      await progress.complete();
+    } catch (error) {
+      progress.cancel();
+      throw error;
+    } finally {
+      shareMaintenancePromise = null;
+    }
+  })();
+  return shareMaintenancePromise;
+}
+
+async function maintainShareStorage({ showProgress = true } = {}) {
+  if (!sharePngStore) return;
+  shareStorageReady = false;
+  updateShareButtonState();
+  const operation = () => runShareStorageMaintenance(() => sharePngStore.cleanup(), { showProgress });
+  try {
+    if (navigator.locks?.request) await navigator.locks.request('xivca-share-storage-v1', operation);
+    else await operation();
+  } finally {
+    shareStorageReady = true;
+    updateShareButtonState();
+  }
+}
+
 async function discardActiveShare({ keepStored = false } = {}) {
   clearTimeout(shareExpiryTimer);
   const id = activeShareRecordId;
@@ -7251,9 +7530,16 @@ async function generateSelectedShareImage({
     activeShareRetryCount = retryCount;
     const progress = createDataSetupProgressController({
       enabled: true,
-      onChange: state => setShareProgress({ visible: state.progressVisible, phase: state.phase, ...state })
+      progressDelayMs: 0,
+      initialPhase: '画像生成中',
+      onChange: state => setShareProgress({
+        visible: state.progressVisible,
+        ...state,
+        phase: state.phase === '画像生成中' ? state.phase : `画像生成中: ${state.phase}`
+      })
     });
     try {
+      await maintainShareStorage({ showProgress: false });
       const rendered = await renderShareImageWithWatchdog(snapshot, progress.report, initialScaleFactor);
       if (generationId !== shareGenerationId) throw new DOMException('画像生成を中止しました。', 'AbortError');
       const id = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
@@ -7360,12 +7646,13 @@ async function initializeShareFeature() {
       updateShareButtonState();
     }
   });
+  const hasExistingScreen = await shareCoordinator.hasReadyPeer();
   const initializeStore = async () => {
     sharePngStore = await createSharePngStore();
-    await sharePngStore.cleanup();
+    await runShareStorageMaintenance(() => hasExistingScreen ? sharePngStore.cleanup() : sharePngStore.clear());
     shareStorageReady = true;
-    await refreshShareCapacity();
     updateShareButtonState();
+    shareCoordinator.markPresenceReady();
   };
   if (navigator.locks?.request) await navigator.locks.request('xivca-share-storage-v1', initializeStore);
   else await initializeStore();
@@ -8004,17 +8291,21 @@ function bindEvents() {
     shareContentObserver.observe(panel, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
   });
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && sharePngStore) void refreshShareCapacity();
+    if (!document.hidden && sharePngStore) void maintainShareStorage();
   });
   window.addEventListener('pageshow', () => {
-    if (sharePngStore) void refreshShareCapacity();
+    if (sharePngStore) void maintainShareStorage();
   });
   window.addEventListener('pagehide', () => {
     shareGenerationId += 1;
     if (activeShareRecordId) void discardActiveShare();
     else shareCoordinator?.release();
+    itemIconPack?.close();
   });
-  window.addEventListener('beforeunload', () => shareCoordinator?.close());
+  window.addEventListener('beforeunload', () => {
+    shareCoordinator?.close();
+    void sharePngStore?.close();
+  });
   document.addEventListener('click', closeEquipmentSearchForExternalAction, true);
   document.addEventListener('pointerdown', handleDocumentPointerDown);
   window.addEventListener('resize', handleResize);
@@ -8045,8 +8336,28 @@ async function startApp() {
   }
 
   elements.loadingTitle.textContent = 'データ読み込み中...';
+  const dataProgress = createApplicationDataProgress(true);
+  dataProgress.report('アプリ情報を読み込んでいます', 0);
+  await waitForVisiblePaint();
   await loadAppVersion();
-  await init();
+  await init(dataProgress);
+}
+
+function waitForVisiblePaint() {
+  if (document.visibilityState !== 'visible' || typeof requestAnimationFrame !== 'function') {
+    return Promise.resolve();
+  }
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(fallback);
+      resolve();
+    };
+    const fallback = window.setTimeout(finish, 120);
+    requestAnimationFrame(() => requestAnimationFrame(finish));
+  });
 }
 
 startApp();

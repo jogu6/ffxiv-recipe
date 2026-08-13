@@ -28,3 +28,14 @@ test('coordinator broadcasts exclusive generation and ready state', async () => 
   first.close();
   second.close();
 });
+
+test('only a fully initialized existing screen answers the startup presence check', async () => {
+  FakeChannel.channels = [];
+  const first = createCoordinator({ BroadcastChannelClass: FakeChannel, ownerId: 'one' });
+  const second = createCoordinator({ BroadcastChannelClass: FakeChannel, ownerId: 'two' });
+  assert.equal(await second.hasReadyPeer(1), false);
+  first.markPresenceReady();
+  assert.equal(await second.hasReadyPeer(10), true);
+  first.close();
+  second.close();
+});

@@ -194,6 +194,54 @@ test('purchased intermediate keeps rows visible and marks its unused materials',
   await expect(restoredPurchasedNode.locator('.shop-info-btn')).toHaveText('🛒');
 });
 
+test('prepared intermediate is an independent toggle and bulk purchase preserves it', async ({ page }) => {
+  await openApp(page);
+  await searchFor(page, 'ブラスバスタードソード');
+  await page.getByText('ブラスバスタードソード', { exact: true }).first().click();
+  await page.locator('#materialsViewBtn').click();
+
+  const intermediate = name => page
+    .locator('.intermediate-tree-row .material-name')
+    .filter({ hasText: new RegExp(`^${name}$`) })
+    .locator('xpath=ancestor::li[contains(@class,"intermediate-tree-node")]');
+  const bastard = intermediate('バスタードソード');
+  const preparedButton = bastard.locator('.item-action-buttons button').first();
+  await expect(preparedButton).toHaveClass(/intermediate-prepared-btn/);
+  await expect(preparedButton).toHaveText('📦');
+  await expect(preparedButton).toHaveAttribute('aria-pressed', 'false');
+  await preparedButton.click();
+  await expect(bastard).toHaveClass(/prepared-selected/);
+  await expect(bastard).not.toHaveClass(/purchase-selected/);
+  await expect(bastard.locator('.intermediate-prepared-btn')).toHaveAttribute('aria-pressed', 'true');
+  expect(await bastard.locator('.intermediate-prepared-btn').evaluate(button => getComputedStyle(button).textShadow))
+    .toContain('rgb(0, 0, 0)');
+  await expect(intermediate('メープル材')).toHaveClass(/purchase-unneeded/);
+  await expect(page.locator('.materials-list li').filter({ hasText: 'メープル原木' }).locator('.purchase-status'))
+    .toHaveText('中間素材準備済📦の為不要');
+
+  const bulk = page.locator('.materials-section-header').filter({ hasText: '製作する中間素材' })
+    .locator('xpath=following-sibling::*[1]');
+  await bulk.getByRole('button', { name: '全て購入' }).click();
+  await expect(bastard).toHaveClass(/prepared-selected/);
+  await expect(bastard).not.toHaveClass(/purchase-selected/);
+  await bulk.getByRole('button', { name: '購入取消' }).click();
+  await expect(bastard).toHaveClass(/prepared-selected/);
+
+  await bastard.locator('.shop-info-btn').click();
+  await page.getByLabel('この中間素材は購入💰して用意する').check();
+  await page.locator('#shopCloseBtn').click();
+  await expect(bastard).toHaveClass(/purchase-selected/);
+  await expect(bastard).not.toHaveClass(/prepared-selected/);
+  await expect(bastard.locator('.intermediate-prepared-btn')).toHaveAttribute('aria-pressed', 'false');
+
+  await bastard.locator('.intermediate-prepared-btn').click();
+  await expect(bastard).toHaveClass(/prepared-selected/);
+  await expect(bastard).not.toHaveClass(/purchase-selected/);
+  await page.reload();
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await expect(intermediate('バスタードソード')).toHaveClass(/prepared-selected/);
+});
+
 test('intermediate and necessary-material bulk purchases stay independent and collapsible', async ({ page }) => {
   await openApp(page);
   await searchFor(page, 'ブラスバスタードソード');

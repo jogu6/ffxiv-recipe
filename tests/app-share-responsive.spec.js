@@ -4,7 +4,7 @@ const { searchFor } = require('./helpers/app.js');
 test('share controls and dialog fit compact devices at the largest font size', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('ff14_font_size_level_v2', '10'));
   await page.goto('/');
-  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/, { timeout: 15_000 });
   await searchFor(page, 'バスタードソード');
   await expect.poll(() => page.locator('#shareBtn img').evaluate(image => image.naturalWidth)).toBe(96);
 

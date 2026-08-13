@@ -29,7 +29,8 @@ test('intermediate materials follow craft order, show usage, and open an indepen
   await expect(bastardNode.locator('.badge')).toHaveText('鍛冶Lv2');
   await expect(bastardNode.locator('.badge .job-icon')).toHaveCount(0);
   const craftJobIcon = bastardNode.locator('.craft-job-label > .job-icon');
-  await expect(craftJobIcon).toHaveAttribute('src', './assets/job-icons/blacksmith.webp');
+  await expect(craftJobIcon).toHaveAttribute('src', /^blob:/);
+  await expect(craftJobIcon).toHaveAttribute('data-item-icon-file', 'job-icons/blacksmith.webp');
   await expect(craftJobIcon).toHaveAttribute('alt', '');
   await expect(craftJobIcon).toHaveAttribute('aria-hidden', 'true');
   const craftBadgeSizes = await bastardNode.locator('.material-primary').evaluate(primary => ({
@@ -184,14 +185,14 @@ test('timed gathering dialog uses gatherer icons only for its gathering methods'
   await page.locator('#recipeList .gathering-timer-btn').first().click();
   const miningBadge = page.locator('#gatheringContent .gathering-method').first();
   await expect(miningBadge).toContainText('採掘');
-  await expect(miningBadge.locator('.job-icon')).toHaveAttribute('src', './assets/job-icons/miner.webp');
+  await expect(miningBadge.locator('.job-icon')).toHaveAttribute('src', /^blob:/);
   await page.locator('#gatheringCloseBtn').click();
 
   await searchFor(page, 'ブラックトリュフ');
   await page.locator('#recipeList .gathering-timer-btn').first().click();
   const botanyBadge = page.locator('#gatheringContent .gathering-method').first();
   await expect(botanyBadge).toContainText('草刈');
-  await expect(botanyBadge.locator('.job-icon')).toHaveAttribute('src', './assets/job-icons/botanist.webp');
+  await expect(botanyBadge.locator('.job-icon')).toHaveAttribute('src', /^blob:/);
   const alignment = await botanyBadge.evaluate(badge => {
     const icon = badge.querySelector('.job-icon').getBoundingClientRect();
     const text = badge.querySelector('.job-badge-text').getBoundingClientRect();

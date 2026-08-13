@@ -20,6 +20,23 @@ function fixture(enabled = true) {
   return { changes, controller, frames, timers };
 }
 
+test('即時指定では工程名とプログレスバーを同期して表示する', () => {
+  const changes = [];
+  createProgressController({
+    enabled: true,
+    progressDelayMs: 0,
+    initialPhase: '画像生成中',
+    onChange: state => changes.push(state)
+  });
+  assert.deepEqual(changes.at(-1), {
+    detailVisible: true,
+    progressVisible: true,
+    percentVisible: false,
+    phase: '画像生成中',
+    percent: 0
+  });
+});
+
 test('世代変更処理は2秒で工程と進捗バーを同時に示す', () => {
   const state = fixture();
   state.controller.report('レシピを関連付けています', 42);
@@ -46,6 +63,23 @@ test('7秒で進捗バーの右隣に数値パーセントを追加する', () =
     phase: '装備索引を作成しています',
     percent: 86
   });
+});
+
+test('主スレッド停止でタイマーが遅れても実経過時間から表示段階を復元する', () => {
+  let elapsed = 0;
+  const changes = [];
+  const controller = createProgressController({
+    enabled: true,
+    now: () => elapsed,
+    onChange: state => changes.push(state),
+    setTimer: () => 0,
+    clearTimer: () => {}
+  });
+  elapsed = 7100;
+  controller.report('画像を検証しています', 65);
+  assert.equal(changes.at(-1).progressVisible, true);
+  assert.equal(changes.at(-1).percentVisible, true);
+  assert.equal(changes.at(-1).percent, 65);
 });
 
 test('表示した進捗バーは100%を描画後200ms維持してから閉じる', async () => {

@@ -8,6 +8,7 @@ async function dispatchSyntheticSwipe(page, fromRatio, toRatio) {
   await page.mouse.down();
   await page.mouse.move(rect.x + rect.width * toRatio, y, { steps: 8 });
   await page.mouse.up();
+  await page.waitForTimeout(50);
   await page.waitForFunction(() => !document.querySelector('.main')?.swiper?.animating);
 }
 
@@ -21,12 +22,14 @@ test('mobile panel swipe works in every supported browser engine', async ({ page
   await expect(page.locator('#panelLeft')).toHaveClass(/mobile-visible/);
 
   await page.locator('#searchBox').fill('バスタードソード');
-  await page.getByText('バスタードソード', { exact: true }).first().click();
+  await page.locator('#panelLeft #recipeList').getByText('バスタードソード', { exact: true }).first().click();
   await expect(page.locator('#panelRight')).toHaveClass(/mobile-visible/);
   await dispatchSyntheticSwipe(page, 0.2, 0.8);
   await expect(page.locator('#panelLeft')).toHaveClass(/mobile-visible/);
+  await expect(page.locator('[data-mobile-panel="left-boundary-startup"]')).toHaveCount(0);
   await dispatchSyntheticSwipe(page, 0.2, 0.8);
-  await expect(page.locator('#searchBox')).toHaveValue('');
+  await expect(page.locator('#panelLeft')).toHaveClass(/mobile-visible/);
+  await expect(page.locator('#panelLeft #searchBox')).toHaveValue('バスタードソード');
 });
 
 test('saved level 10 fits the viewport and keeps live changes inside the preview', async ({ page }) => {

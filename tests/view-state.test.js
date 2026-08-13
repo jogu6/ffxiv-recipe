@@ -46,6 +46,7 @@ test('view state normalizes every persisted section with bounded enums', () => {
       materials: {
         sections: { normal: false, bad: 1 },
         purchasedNames: ['A', null],
+        preparedNames: ['P', null],
         purchasedMaterialNames: ['B'],
         checkedImageKeys: ['C', 1]
       },
@@ -63,6 +64,7 @@ test('view state normalizes every persisted section with bounded enums', () => {
   assert.equal(result.state.view.favoriteListActionsId, 'f1');
   assert.deepEqual(result.state.materials.sections, { normal: false });
   assert.deepEqual(result.state.materials.purchasedNames, ['A']);
+  assert.deepEqual(result.state.materials.preparedNames, ['P']);
   assert.deepEqual(result.state.scroll, { recipeList: 12, usesList: 0, treeContainer: 0, panelRight: 5 });
 });
 

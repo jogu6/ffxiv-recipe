@@ -297,6 +297,7 @@ test('equipment custom dropdown stays inside a mobile viewport', async ({ page }
 });
 
 test('short search runs on blur and clear button resets it', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('ff14_search_history', JSON.stringify(['岩塩', 'ブロンズインゴット'])));
   await openApp(page);
   await page.locator('#searchBox').fill('岩塩');
   await expect(page.locator('#recipeList')).not.toContainText('岩塩');
@@ -315,6 +316,8 @@ test('short search runs on blur and clear button resets it', async ({ page }) =>
   expect(messageBox).toBeTruthy();
   expect(scopeBox).toBeTruthy();
   expect(scopeBox.y).toBeGreaterThanOrEqual(messageBox.y + messageBox.height);
+  await expect(page.locator('#searchHistory')).not.toHaveClass(/open/);
+  await expect(page.locator('#searchBox')).not.toBeFocused();
 });
 
 test('updated search results and result views return to the top', async ({ page }) => {

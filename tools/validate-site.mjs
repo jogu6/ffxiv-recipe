@@ -1,8 +1,10 @@
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import process from 'node:process';
+import zlib from 'node:zlib';
+import { JOB_ICON_PACK_NAMES, validateItemIconPack } from '../pipeline/tool/item-icon-pack.mjs';
+import { expectedAppCacheVersion } from './app-cache-version.mjs';
 
 const repositoryRoot = path.resolve(import.meta.dirname, '..');
 const siteRoot = path.join(repositoryRoot, 'site');
@@ -22,6 +24,7 @@ for (const relativePath of [
   'calculation.js',
   'pwa-update.js',
   'data-setup-progress.js',
+  'item-icon-pack.js',
   'share-content-model.js',
   'share-coordinator.js',
   'share-png-store.js',
@@ -33,6 +36,7 @@ for (const relativePath of [
   'sw.js',
   'manifest.webmanifest',
   'data/Item.json',
+  'data/item-icons.pack.gz',
   'data/legacy-item-ids.json',
   'data/tips.md',
   'assets/app-icons/favicon.png',
@@ -66,6 +70,11 @@ const legacyItemIds = JSON.parse(fs.readFileSync(requireFile('data/legacy-item-i
 if (!legacyItemIds?.Items || typeof legacyItemIds.Items !== 'object') throw new Error('Invalid legacy-item-ids.json.');
 const tipsMarkdown = fs.readFileSync(requireFile('data/tips.md'), 'utf8');
 const serviceWorkerSource = fs.readFileSync(requireFile('sw.js'), 'utf8');
+const declaredAppCacheVersion = serviceWorkerSource.match(/const\s+APP_CACHE_VERSION\s*=\s*['"]([^'"]+)['"];/u)?.[1];
+const expectedCacheVersion = expectedAppCacheVersion({ siteRoot, serviceWorkerSource });
+if (declaredAppCacheVersion !== expectedCacheVersion) {
+  throw new Error(`APP_CACHE_VERSION is stale. Run npm run cache:app (${expectedCacheVersion}).`);
+}
 const currentAppVersion = extractAppVersion(serviceWorkerSource);
 if (!currentAppVersion || !extractReleaseMarkdown(tipsMarkdown, currentAppVersion)) {
   throw new Error(`tips.md does not contain the current release section: ${currentAppVersion || 'unknown'}`);
@@ -79,27 +88,14 @@ if (manifest.name !== applicationName || manifest.short_name !== 'XIVca') {
   throw new Error('Application name is not synchronized with manifest.webmanifest.');
 }
 
-const invalidStaticItemIconReferences = [];
-for (const match of indexHtml.matchAll(/(?:\.\/)?assets\/item-icons\/([^"'?#\s<>)]+)/g)) {
-  const referencedPath = match[1];
-  const parts = referencedPath.split('/');
-  const folder = parts.at(-2) || '';
-  const fileName = parts.at(-1) || '';
-  if (
-    parts.length !== 2
-    || !/^[0-9a-f]{20}-[0-9a-f]{12}\.webp$/.test(fileName)
-    || folder !== fileName.slice(0, 3)
-    || !fs.existsSync(path.join(siteRoot, 'assets', 'item-icons', referencedPath))
-  ) {
-    invalidStaticItemIconReferences.push(referencedPath);
-  }
+const forbiddenStaticItemIconReferences = [...indexHtml.matchAll(/(?:\.\/)?assets\/item-icons\//g)];
+if (forbiddenStaticItemIconReferences.length > 0) {
+  throw new Error('index.html must use the packed item icon data instead of individual item icon files.');
 }
-if (invalidStaticItemIconReferences.length > 0) {
-  throw new Error(`Invalid static item icon references: ${invalidStaticItemIconReferences.join(', ')}`);
+if (fs.existsSync(path.join(siteRoot, 'assets', 'item-icons'))) {
+  throw new Error('site/assets/item-icons must not be published; keep individual item icons under pipeline/cache.');
 }
 
-const missingIcons = [];
-const invalidIconFiles = [];
 const invalidEquipmentPerformance = [];
 const invalidPublicItems = [];
 const pipelineOnlyItemKeys = [
@@ -149,17 +145,6 @@ for (const item of items) {
       invalidEquipmentPerformance.push(item.Name || item.ID);
     }
   }
-  if (!item.IconFile) continue;
-  const relativePath = path.join('assets', 'item-icons', item.IconFile.slice(0, 3), item.IconFile);
-  const absolutePath = path.join(siteRoot, relativePath);
-  if (!fs.existsSync(absolutePath)) {
-    missingIcons.push(relativePath);
-    continue;
-  }
-  const bytes = fs.readFileSync(absolutePath);
-  const nameHash = crypto.createHash('sha256').update(String(item.Name), 'utf8').digest('hex').slice(0, 20);
-  const contentHash = crypto.createHash('sha256').update(bytes).digest('hex').slice(0, 12);
-  if (item.IconFile !== `${nameHash}-${contentHash}.webp`) invalidIconFiles.push(`${item.Name}: ${item.IconFile}`);
 }
 
 if (invalidPublicItems.length > 0) {
@@ -172,12 +157,17 @@ if (invalidEquipmentPerformance.length > 0) {
   );
 }
 
-if (missingIcons.length > 0) {
-  throw new Error(`Missing item icon files: ${missingIcons.slice(0, 10).join(', ')}`);
-}
-
-if (invalidIconFiles.length > 0) {
-  throw new Error(`Invalid item icon filenames: ${invalidIconFiles.slice(0, 10).join(', ')}`);
+const actualItemIconPack = zlib.gunzipSync(fs.readFileSync(requireFile('data/item-icons.pack.gz')));
+const validatedItemIconPack = validateItemIconPack({
+  document: itemData,
+  bytes: actualItemIconPack,
+  additionalKeys: JOB_ICON_PACK_NAMES.map(file => `job-icons/${file}`)
+});
+const itemIconPackScript = fs.readFileSync(requireFile('item-icon-pack.js'), 'utf8');
+const declaredItemIconPackVersion = itemIconPackScript.match(/const\s+PACK_VERSION\s*=\s*['"]([0-9a-f]+)['"];/u)?.[1];
+const expectedItemIconPackVersion = validatedItemIconPack.bodyHash;
+if (declaredItemIconPackVersion !== expectedItemIconPackVersion) {
+  throw new Error('PACK_VERSION does not match item-icons.pack.gz. Rebuild the item icon pack.');
 }
 
 const powershellFiles = [];

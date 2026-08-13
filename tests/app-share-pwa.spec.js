@@ -3,6 +3,7 @@ const { expect, test } = require('@playwright/test');
 test('share assets are precached and the app reloads offline under Service Worker control', async ({ page, context }) => {
   await page.goto('/');
   await expect(page.locator('#loadStatus')).toHaveText(/patch \d+\.\d+ 対応/);
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready;
     if (!navigator.serviceWorker.controller) {
@@ -14,10 +15,11 @@ test('share assets are precached and the app reloads offline under Service Worke
 
   const cachedAssets = await page.evaluate(async () => {
     const keys = await caches.keys();
-    const appKey = keys.find(key => key.includes('share6-v3.1'));
+    const appKey = keys.find(key => key.startsWith('ff14recipe-app-'));
     const cache = appKey ? await caches.open(appKey) : null;
     const required = [
       './share-content-model.js',
+      './item-icon-pack.js',
       './share-coordinator.js',
       './share-png-store.js',
       './share-image-renderer.js',
@@ -30,7 +32,7 @@ test('share assets are precached and the app reloads offline under Service Worke
     };
   });
   expect(cachedAssets.appKey).toBeTruthy();
-  expect(cachedAssets.matches).toEqual([true, true, true, true, true, true]);
+  expect(cachedAssets.matches).toEqual([true, true, true, true, true, true, true]);
 
   await context.setOffline(true);
   await page.reload();

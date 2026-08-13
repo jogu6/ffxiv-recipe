@@ -68,8 +68,13 @@ test('GUI creates only declared settings, accordions, and actions', async ({ pag
   await expect(page.locator('[data-setting-id="lodestone-delay"] input')).toHaveValue('100');
   await expect(page.locator('[data-setting-id="webp-quality"] input')).toHaveValue('80');
   await expect(page.locator('[data-setting-id="icon-size"] input')).toHaveValue('80');
-  await expect(page.locator('.action-item')).toHaveCount(6);
+  await expect(page.locator('.action-item')).toHaveCount(11);
   await expect(page.getByRole('button', { name: '最新Item.jsonを一括生成' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '3. ローカル画像キャッシュ準備' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '7. 公開画像パック再生成' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '8. シェアコード広場画像同期' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '9. 公開画像パック検証' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '10. アプリキャッシュ版更新' })).toBeVisible();
   await expect(page.getByText('Oxidizer')).toHaveCount(0);
   await expect(page.locator('.section-toggle')).toHaveCount(2);
   await expect(page.locator('.section-toggle').first()).toHaveAttribute('aria-expanded', 'true');
@@ -128,12 +133,12 @@ test('valid settings persist and invalid settings disable only dependent actions
   await expect(page.getByRole('button', { name: '1. Lodestone完全監査' })).toBeEnabled();
   await delay.fill('10');
   await expect(page.getByRole('button', { name: '1. Lodestone完全監査' })).toBeDisabled();
-  await expect(page.getByRole('button', { name: '4. Item.json公開反映' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '6. Item.json公開反映' })).toBeEnabled();
   await page.reload();
   await expect(delay).toHaveValue('350');
 });
 
-test('one click runs all four autonomous Item.json commands with declared values', async ({ page }) => {
+test('one click runs the complete autonomous publication sequence with declared values', async ({ page }) => {
   await openPipelineGui(page);
   await page.locator('[data-setting-id="lodestone-delay"] input').fill('300');
   await page.getByRole('button', { name: '最新Item.jsonを一括生成' }).click();
@@ -144,8 +149,11 @@ test('one click runs all four autonomous Item.json commands with declared values
   expect(calls.map(call => call.payload)).toEqual([
     { command: 'lodestone-audit', args: ['--delay', '300'] },
     { command: 'build-lodestone-candidate', args: ['--delay', '300'] },
+    { command: 'item-icon-cache', args: [] },
     { command: 'lodestone-candidate-icons', args: ['--delay', '300', '--quality', '80', '--size', '80'] },
     { command: 'publish-lodestone-candidate', args: [] },
+    { command: 'share-code-plaza-icons', args: [] },
+    { command: 'item-icon-validate', args: [] },
   ]);
 });
 
@@ -167,15 +175,18 @@ test('resume skips completed audit and continues from the failed downstream step
     'lodestone-audit',
     'build-lodestone-candidate',
     'build-lodestone-candidate',
+    'item-icon-cache',
     'lodestone-candidate-icons',
     'publish-lodestone-candidate',
+    'share-code-plaza-icons',
+    'item-icon-validate',
   ]);
 });
 
 test('running locks settings and all actions while preserving common progress, cancel, and log layout', async ({ page }) => {
   await openPipelineGui(page);
   await page.evaluate(() => { window.__pipelineGuiTest.holdCommand = 'lodestone-candidate-icons'; });
-  await page.getByRole('button', { name: '3. 画像整備・生成' }).click();
+  await page.getByRole('button', { name: '5. 画像整備・生成' }).click();
   await expect(page.locator('#cancelBtn')).toBeVisible();
   await expect(page.locator('[data-setting-id="webp-quality"] input')).toBeDisabled();
   await expect(page.locator('.action-item button').first()).toBeDisabled();

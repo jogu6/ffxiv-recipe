@@ -8,12 +8,14 @@
   function createState({
     intermediateContext = '',
     intermediateNames = [],
+    preparedNames = [],
     materialContext = '',
     materialNames = []
   } = {}) {
     return {
       intermediateContext: String(intermediateContext || ''),
       intermediateNames: new Set(intermediateNames),
+      preparedNames: new Set(preparedNames),
       materialContext: String(materialContext || ''),
       materialNames: new Set(materialNames)
     };
@@ -39,6 +41,7 @@
     if (state.intermediateContext !== context) {
       state.intermediateContext = context;
       state.intermediateNames.clear();
+      state.preparedNames.clear();
       changed = true;
     }
     if (state.materialContext !== context) {
@@ -52,6 +55,7 @@
   function resetForContext(state, context) {
     state.intermediateContext = context;
     state.intermediateNames.clear();
+    state.preparedNames.clear();
     state.materialContext = context;
     state.materialNames.clear();
   }
@@ -62,22 +66,40 @@
   }
 
   function namesFor(state, kind) {
-    return kind === 'material' ? state.materialNames : state.intermediateNames;
+    if (kind === 'material') return state.materialNames;
+    if (kind === 'prepared') return state.preparedNames;
+    return state.intermediateNames;
   }
 
   function setPurchased(state, kind, name, checked, context) {
     const names = namesFor(state, kind);
     if (kind === 'material') state.materialContext = context;
     else state.intermediateContext = context;
-    if (checked) names.add(name);
+    if (checked) {
+      names.add(name);
+      if (kind === 'intermediate') state.preparedNames.delete(name);
+    }
     else names.delete(name);
+  }
+
+  function setPrepared(state, name, checked, context) {
+    state.intermediateContext = context;
+    if (checked) {
+      state.preparedNames.add(name);
+      state.intermediateNames.delete(name);
+    } else {
+      state.preparedNames.delete(name);
+    }
   }
 
   function addAll(state, kind, names, context) {
     if (kind === 'material') state.materialContext = context;
     else state.intermediateContext = context;
     const target = namesFor(state, kind);
-    names.forEach(name => target.add(name));
+    names.forEach(name => {
+      if (kind === 'intermediate' && state.preparedNames.has(name)) return;
+      target.add(name);
+    });
   }
 
   function clear(state, kind, context) {
@@ -102,6 +124,7 @@
     return {
       purchasedContext: state.intermediateContext,
       purchasedNames: [...state.intermediateNames],
+      preparedNames: [...state.preparedNames],
       purchasedMaterialContext: state.materialContext,
       purchasedMaterialNames: [...state.materialNames]
     };
@@ -119,6 +142,7 @@
     retargetContext,
     serialize,
     setPurchased,
+    setPrepared,
     syncContext
   });
 });

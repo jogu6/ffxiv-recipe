@@ -101,6 +101,7 @@
         sections: normalizeBooleanMap(materials.sections),
         purchasedContext: stringValue(materials.purchasedContext),
         purchasedNames: stringArray(materials.purchasedNames),
+        preparedNames: stringArray(materials.preparedNames),
         purchasedMaterialContext: stringValue(materials.purchasedMaterialContext),
         purchasedMaterialNames: stringArray(materials.purchasedMaterialNames),
         imageCheckContext: stringValue(materials.imageCheckContext),
