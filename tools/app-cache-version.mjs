@@ -3,6 +3,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 
+const TEXT_EXTENSIONS = new Set(['.css', '.html', '.js', '.json', '.md', '.webmanifest']);
+
+function canonicalAssetBytes(relative, bytes) {
+  if (!TEXT_EXTENSIONS.has(path.extname(relative).toLowerCase())) return bytes;
+  return Buffer.from(bytes.toString('utf8').replaceAll('\r\n', '\n'), 'utf8');
+}
+
 export function expectedAppCacheVersion({ siteRoot, serviceWorkerSource }) {
   const current = serviceWorkerSource.match(/const\s+APP_CACHE_VERSION\s*=\s*['"]([^'"]+)['"];/u)?.[1] || '';
   const release = current.match(/v\d+(?:\.\d+)*/iu)?.[0];
@@ -14,7 +21,7 @@ export function expectedAppCacheVersion({ siteRoot, serviceWorkerSource }) {
   files.forEach(relative => {
     const file = path.join(siteRoot, relative.slice(2));
     if (!fs.existsSync(file)) throw new Error(`プリキャッシュ対象がありません: ${relative}`);
-    hash.update(relative).update('\0').update(fs.readFileSync(file));
+    hash.update(relative).update('\0').update(canonicalAssetBytes(relative, fs.readFileSync(file)));
   });
   return `ff14recipe-app-${release}-${hash.digest('hex').slice(0, 12)}`;
 }
