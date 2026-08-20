@@ -97,6 +97,8 @@ test('exports and imports all favorite lists through one text file', async ({ pa
   await page.locator('#importAllFavoritesFile').setInputFiles(upload);
   await expect(page.locator('#confirmMsg')).toContainText('2件のお気に入りリストを読み込みます');
   await expect(page.locator('#confirmYes')).toHaveText('読み込む');
+  await expect(page.locator('.favorite-list-file-selection')).toHaveCount(2);
+  await expect(page.locator('.favorite-list-file-selection:checked')).toHaveCount(2);
   const importDialogLayout = await page.locator('#confirmDialog').evaluate(dialog => ({
     width: dialog.getBoundingClientRect().width,
     previewMaxHeight: Number.parseFloat(getComputedStyle(dialog.querySelector('.favorite-list-file-preview')).maxHeight),
@@ -107,21 +109,36 @@ test('exports and imports all favorite lists through one text file', async ({ pa
   expect(importDialogLayout.width).toBeGreaterThan(500);
   expect(importDialogLayout.previewMaxHeight).toBeCloseTo(importDialogLayout.viewportHeight * 0.45, 0);
   expect(importDialogLayout.previewFontSize).toBe(importDialogLayout.dialogFontSize);
+  await page.locator('.favorite-list-file-selection').nth(1).uncheck();
+  await expect(page.locator('.favorite-list-file-selection-summary')).toHaveText(
+    '2件中1件のお気に入りリストを読み込みます'
+  );
+  const selectionDialogWidth = (await page.locator('#confirmDialog').boundingBox()).width;
   await page.locator('#confirmYes').click();
-  await expect(page.locator('#favoriteListFileStatus')).toContainText('2件のお気に入りリストを追加して読み込みました');
+  await expect(page.locator('#confirmMsg')).toContainText('1件のお気に入りリストを読み込みます');
+  await expect(page.locator('#confirmMsg')).toContainText('選択したリストを既存のお気に入りへ追加します');
+  await expect(page.locator('#confirmYes')).toHaveText('はい');
+  expect((await page.locator('#confirmDialog').boundingBox()).width).toBeCloseTo(selectionDialogWidth, 1);
+  await page.locator('#confirmYes').click();
+  await expect(page.locator('#favoriteListFileStatus')).toContainText('1件のお気に入りリストを追加して読み込みました');
   expect(
     await page.evaluate(() =>
       JSON.parse(localStorage.getItem('ff14_favorite_lists_v3')).lists
         .filter(list => list.id !== 'SYSTEM_RECENT_ITEMS')
         .map(list => list.name)
     )
-  ).toEqual(['一括リストA', '一括リストB', '一括リストA（1）', '一括リストB（1）']);
+  ).toEqual(['一括リストA', '一括リストB', '一括リストA（1）']);
 
   await page.locator('#importAllFavoritesFile').setInputFiles(upload);
+  await page.locator('.favorite-list-file-selection').first().uncheck();
   await page.locator('#confirmMsg input[value="replace"]').check();
   await page.locator('#confirmYes').click();
+  await expect(page.locator('#confirmMsg')).toContainText(
+    '既存のお気に入りリストをすべて削除し、選択したリストで置き換えます'
+  );
+  await page.locator('#confirmYes').click();
   await expect(page.locator('#favoriteListFileStatus')).toContainText(
-    '2件のお気に入りリストを置き換えて読み込みました'
+    '1件のお気に入りリストを置き換えて読み込みました'
   );
   expect(
     await page.evaluate(() =>
@@ -129,7 +146,84 @@ test('exports and imports all favorite lists through one text file', async ({ pa
         .filter(list => list.id !== 'SYSTEM_RECENT_ITEMS')
         .map(list => list.name)
     )
-  ).toEqual(['一括リストA', '一括リストB']);
+  ).toEqual(['一括リストB']);
+});
+
+test('favorite file import disables confirmation with no selection and resizes within the viewport', async ({
+  page
+}) => {
+  await page.addInitScript(() => {
+    const lists = Array.from({ length: 24 }, (_, index) => ({
+      id: `file-height-${index}`,
+      name: `可変高リスト${String(index + 1).padStart(2, '0')}`,
+      itemIds: [4422],
+      recipeSelections: {}
+    }));
+    localStorage.setItem(
+      'ff14_favorite_lists_v3',
+      JSON.stringify({ version: 3, selectedListId: lists[0].id, lists })
+    );
+  });
+  await openApp(page, 720, 620);
+  await page.locator('#settingsBtn').click();
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.locator('#exportAllFavoritesBtn').click()
+  ]);
+  const stream = await download.createReadStream();
+  const chunks = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  await page.locator('#importAllFavoritesFile').setInputFiles({
+    name: 'favorite-lists.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.concat(chunks)
+  });
+
+  const dialog = page.locator('#confirmDialog');
+  const preview = page.locator('.favorite-list-file-preview');
+  await expect(page.locator('.favorite-list-file-selection')).toHaveCount(24);
+  const selectionStyle = await page.locator('.favorite-list-file-selection').first().evaluate(input => ({
+    accent: (() => {
+      const probe = document.createElement('span');
+      probe.style.background = 'var(--accent)';
+      document.body.appendChild(probe);
+      const color = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return color;
+    })(),
+    appearance: getComputedStyle(input).appearance,
+    background: getComputedStyle(input).backgroundColor,
+    height: input.getBoundingClientRect().height,
+    listStyle: getComputedStyle(input.closest('ul')).listStyleType,
+    width: input.getBoundingClientRect().width
+  }));
+  expect(selectionStyle.appearance).toBe('none');
+  expect(selectionStyle.background).toBe(selectionStyle.accent);
+  expect(selectionStyle.height).toBeCloseTo(selectionStyle.width, 1);
+  expect(selectionStyle.listStyle).toBe('none');
+  expect((await dialog.boundingBox()).height).toBeLessThanOrEqual(596);
+  expect(await preview.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
+  const contentWidths = await page.locator('#confirmMsg').evaluate(message => {
+    const messageWidth = message.getBoundingClientRect().width;
+    const selection = message.querySelector('.favorite-list-file-confirm');
+    return {
+      message: messageWidth,
+      selection: selection.getBoundingClientRect().width,
+      actions: selection.querySelector('.favorite-list-file-selection-actions').getBoundingClientRect().width,
+      preview: selection.querySelector('.favorite-list-file-preview').getBoundingClientRect().width
+    };
+  });
+  expect(contentWidths.selection).toBeCloseTo(contentWidths.message, 1);
+  expect(contentWidths.actions).toBeCloseTo(contentWidths.message, 1);
+  expect(contentWidths.preview).toBeCloseTo(contentWidths.message, 1);
+
+  await page.getByRole('button', { name: 'すべて解除' }).click();
+  await expect(page.locator('#confirmYes')).toBeDisabled();
+  await page.getByRole('button', { name: 'すべて選択' }).click();
+  await expect(page.locator('#confirmYes')).toBeEnabled();
+  await page.locator('#confirmOverlay').click({ position: { x: 2, y: 2 } });
+  await expect(page.locator('#confirmOverlay')).not.toHaveClass(/open/);
+  await expect(page.locator('#favoriteListFileStatus')).toBeEmpty();
 });
 
 test('favorite target dialog grows with list count within the existing viewport limit', async ({ page }) => {
@@ -489,6 +583,36 @@ test('favorite list count mode excludes zero-count items from materials', async 
   expect(storedCountsWhileEnabled).not.toContain('enabled');
 
   const aripebreRow = page.locator('#recipeList li.fav-item-row').filter({ hasText: 'アリペブレ' });
+  const favoriteCountInput = aripebreRow.locator('.favorite-item-count-controls input');
+  const favoriteCountButton = aripebreRow.locator('.favorite-item-count-controls button').first();
+  await expect(favoriteCountInput).toHaveClass(/count-input/);
+  await expect(favoriteCountButton).toHaveClass(/count-btn/);
+  const sharedControlMetrics = await page.evaluate(() => {
+    const metrics = element => {
+      const style = getComputedStyle(element);
+      return { fontSize: style.fontSize, height: style.height, width: style.width };
+    };
+    return {
+      mainInput: metrics(document.querySelector('#countInput')),
+      favoriteInput: metrics(document.querySelector('#recipeList .favorite-item-count-controls input')),
+      mainButton: metrics(document.querySelector('#countDecreaseBtn')),
+      favoriteButton: metrics(document.querySelector('#recipeList .favorite-item-count-controls button'))
+    };
+  });
+  expect(sharedControlMetrics.favoriteInput.fontSize).toBe(sharedControlMetrics.mainInput.fontSize);
+  expect(
+    Math.abs(Number.parseFloat(sharedControlMetrics.favoriteInput.height) - Number.parseFloat(sharedControlMetrics.mainInput.height))
+  ).toBeLessThan(0.1);
+  expect(
+    Math.abs(Number.parseFloat(sharedControlMetrics.favoriteInput.width) - Number.parseFloat(sharedControlMetrics.mainInput.width))
+  ).toBeLessThan(0.1);
+  expect(sharedControlMetrics.favoriteButton.fontSize).toBe(sharedControlMetrics.mainButton.fontSize);
+  expect(
+    Math.abs(Number.parseFloat(sharedControlMetrics.favoriteButton.height) - Number.parseFloat(sharedControlMetrics.mainButton.height))
+  ).toBeLessThan(0.1);
+  expect(
+    Math.abs(Number.parseFloat(sharedControlMetrics.favoriteButton.width) - Number.parseFloat(sharedControlMetrics.mainButton.width))
+  ).toBeLessThan(0.1);
   await aripebreRow.locator('.favorite-item-count-controls input').fill('0');
   await aripebreRow.locator('.favorite-item-count-controls input').dispatchEvent('change');
   await expect(aripebreRow).toHaveClass(/favorite-count-zero/);
@@ -730,6 +854,14 @@ test('mobile pin turns active after adding to a favorite list', async ({ page })
   await secondPin.click();
   await page.locator('#favoriteTargetChoices').getByText('スマホ確認').click();
   await expect(page.locator('#confirmMsg')).toContainText('「スマホ確認」に登録しますか？');
+  const mobileConfirmationWidth = await page.locator('#confirmDialog').evaluate(dialog => ({
+    dialog: dialog.getBoundingClientRect().width,
+    viewport: window.innerWidth
+  }));
+  expect(mobileConfirmationWidth.dialog).toBeCloseTo(
+    Math.min(560, mobileConfirmationWidth.viewport - 24),
+    1
+  );
   await page.locator('#confirmNo').click();
   await expect(page.locator('#favoriteTargetOverlay')).toHaveClass(/open/);
   await expect(secondPin).toHaveClass(/inactive/);

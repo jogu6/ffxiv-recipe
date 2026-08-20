@@ -130,11 +130,11 @@
           <div class="equipment-search-field">
             <span>装備レベル</span>
             <div class="equipment-level-control">
-              <button id="equipmentLevelDown5Btn" type="button">-5</button>
-              <button id="equipmentLevelDownBtn" type="button">－</button>
+              <button class="equipment-level-step-wide" id="equipmentLevelDown5Btn" type="button">-5</button>
+              <button class="equipment-level-step" id="equipmentLevelDownBtn" type="button">－</button>
               <input id="equipmentLevelInput" type="number" min="1" inputmode="numeric">
-              <button id="equipmentLevelUpBtn" type="button">＋</button>
-              <button id="equipmentLevelUp5Btn" type="button">+5</button>
+              <button class="equipment-level-step" id="equipmentLevelUpBtn" type="button">＋</button>
+              <button class="equipment-level-step-wide" id="equipmentLevelUp5Btn" type="button">+5</button>
             </div>
           </div>
           <label>
@@ -189,7 +189,7 @@
         <div class="count-control">
           <button class="count-btn count-step-wide" id="countDecrease5Btn">-5</button>
           <button class="count-btn" id="countDecreaseBtn">－</button>
-          <input type="number" id="countInput" value="1" min="1" max="999" step="1" inputmode="numeric">
+          <input class="count-input" type="number" id="countInput" value="1" min="1" max="999" step="1" inputmode="numeric">
           <button class="count-btn" id="countIncreaseBtn">＋</button>
           <button class="count-btn count-step-wide" id="countIncrease5Btn">+5</button>
         </div>
@@ -427,6 +427,26 @@
   </div>
 </div>
 
+<div id="preparedCountOverlay">
+  <div id="preparedCountDialog" role="dialog" aria-modal="true" aria-labelledby="preparedCountTitle">
+    <div id="preparedCountTitle" class="prepared-count-title"></div>
+    <div class="count-control prepared-count-control">
+      <button class="count-btn count-step-wide" id="preparedCountDecrease5Btn" type="button">-5</button>
+      <button class="count-btn" id="preparedCountDecreaseBtn" type="button">－</button>
+      <input class="count-input" type="number" id="preparedCountInput" value="0" min="0" step="1" inputmode="numeric" aria-label="準備済み個数">
+      <button class="count-btn" id="preparedCountIncreaseBtn" type="button">＋</button>
+      <button class="count-btn count-step-wide" id="preparedCountIncrease5Btn" type="button">+5</button>
+    </div>
+    <div class="prepared-count-presets">
+      <button id="preparedCountZeroBtn" type="button">0個</button>
+      <button id="preparedCountMaximumBtn" type="button">最大数</button>
+    </div>
+    <div class="settings-close">
+      <button class="confirm-btn no" id="preparedCountCloseBtn" type="button">閉じる</button>
+    </div>
+  </div>
+</div>
+
 <div id="materialTreeOverlay">
   <div id="materialTreeDialog">
     <div class="material-tree-dialog-header">
@@ -436,7 +456,7 @@
         <div class="count-control">
           <button class="count-btn count-step-wide" id="materialTreeDecrease5Btn" type="button">-5</button>
           <button class="count-btn" id="materialTreeDecreaseBtn" type="button">－</button>
-          <input type="number" id="materialTreeCountInput" value="1" min="1" max="999" step="1" inputmode="numeric">
+          <input class="count-input" type="number" id="materialTreeCountInput" value="1" min="1" max="999" step="1" inputmode="numeric">
           <button class="count-btn" id="materialTreeIncreaseBtn" type="button">＋</button>
           <button class="count-btn count-step-wide" id="materialTreeIncrease5Btn" type="button">+5</button>
         </div>
@@ -458,6 +478,7 @@
 <script src="./favorite-list-file.js"></script>
 <script src="./favorite-count-model.js"></script>
 <script src="./data-setup-progress.js"></script>
+<script src="./application-data-cache.js"></script>
 <script src="./item-icon-pack.js"></script>
 <script src="./share-content-model.js"></script>
 <script src="./share-coordinator.js"></script>

@@ -313,6 +313,36 @@ test('multiple rings show production bulk controls and preserve purchases when c
   ).toHaveClass(/purchase-selected/);
 });
 
+test('prepared quantities are consumed once in combined and any-one favorite calculations', async ({ page }) => {
+  await seedFavoriteLists(page, [
+    { id: 'barber-a', name: 'バーバーA', itemIds: [21834], materialSelected: true },
+    { id: 'barber-b', name: 'バーバーB', itemIds: [21834], materialSelected: true }
+  ]);
+  await openApp(page);
+  await page.locator('#checkedFavoriteMaterialsBtn').click();
+
+  const potion = () => page
+    .locator('.intermediate-tree-row .material-name')
+    .filter({ hasText: /^エクスポーション$/ })
+    .locator('xpath=ancestor::li[contains(@class,"intermediate-tree-node")]');
+  await expect(potion().locator('.material-qty')).toHaveText('× 4');
+  await potion().locator('.intermediate-prepared-btn').click();
+  await page.locator('#preparedCountZeroBtn').click();
+  await page.locator('#preparedCountIncreaseBtn').click();
+  await page.locator('#preparedCountCloseBtn').click();
+  await expect(potion().locator('.material-qty')).toHaveText('× 3');
+
+  await page.locator('#checkedFavoriteAnyOneModeBtn').click();
+  await page.locator('#checkedFavoriteMaterialsBtn').click();
+  await expect(potion().locator('.material-qty')).toHaveText('× 2');
+  await potion().locator('.intermediate-prepared-btn').click();
+  await page.locator('#preparedCountZeroBtn').click();
+  await page.locator('#preparedCountIncreaseBtn').click();
+  await page.locator('#preparedCountCloseBtn').click();
+  await expect(potion().locator('.material-qty')).toHaveText('× 1');
+  await expect(potion().locator('.craft-supplement-count')).toHaveText('1');
+});
+
 test('combined favorite materials supports ring count toggles and restores them', async ({ page }) => {
   await seedFavoriteLists(page, [
     { id: 'list-ring-a', name: '指輪A', itemIds: [4422], materialSelected: true },

@@ -31,6 +31,13 @@
     );
   }
 
+  function normalizePositiveIntegerMap(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    return Object.fromEntries(
+      Object.entries(value).filter(([, entry]) => Number.isSafeInteger(entry) && entry > 0)
+    );
+  }
+
   function normalizeRingCounts(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
     const normalized = {};
@@ -102,6 +109,7 @@
         purchasedContext: stringValue(materials.purchasedContext),
         purchasedNames: stringArray(materials.purchasedNames),
         preparedNames: stringArray(materials.preparedNames),
+        preparedCounts: normalizePositiveIntegerMap(materials.preparedCounts),
         purchasedMaterialContext: stringValue(materials.purchasedMaterialContext),
         purchasedMaterialNames: stringArray(materials.purchasedMaterialNames),
         imageCheckContext: stringValue(materials.imageCheckContext),

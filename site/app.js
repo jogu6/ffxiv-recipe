@@ -15,6 +15,7 @@ const LS_FAV_COUNTS = 'ff14_favorite_item_counts_v1';
 const LS_SEARCH_HISTORY = 'ff14_search_history';
 const LS_VIEW_STATE = 'ff14_view_state_v1';
 const LS_PANEL_LEFT_WIDTH = 'ff14_panel_left_width_v1';
+const LS_SUCCESSFUL_BOOT = 'ff14_successful_boot_v1';
 const SS_SKIP_RESTORE_ONCE = 'ff14_skip_restore_once';
 const fontSizeSettings = FontSizeSettings;
 fontSizeSettings.assertStorageAvailable();
@@ -35,13 +36,17 @@ const LICENSE_NOTICE_FILE = './docs/license-notice.md';
 const PRIVACY_POLICY_FILE = './docs/privacy-policy.md';
 const CONTACT_URL = 'https://discord.gg/eZP5temK6e';
 const REQUEST_COUNT_MAX = 999;
-const MIN_LOADING_OVERLAY_MS = 2000;
+const FIRST_LOADING_OVERLAY_MS = 2000;
+const minimumLoadingOverlayMs = localStorage.getItem(LS_SUCCESSFUL_BOOT) === '1'
+  ? 0
+  : FIRST_LOADING_OVERLAY_MS;
 const PACK_ICON_PREFIX = 'item-pack:';
 const loadingOverlayStartedAt = Date.now();
 const EORZEA_TIME_MULTIPLIER = 144 / 7;
 const {
   calculateCraft,
   calculateRequirements,
+  compareRequirementResults,
   mergeAlternativeRequirements,
   mergeSummedRequirements,
   validateRequestedCount
@@ -100,10 +105,11 @@ const {
   retargetContext: retargetMaterialPurchases,
   serialize: serializeMaterialPurchaseState,
   setPurchased: setMaterialPurchased,
-  setPrepared: setMaterialPrepared,
+  setPreparedCount: setMaterialPreparedCount,
   syncContext: syncMaterialPurchaseContext
 } = MaterialPurchaseState;
 const { buildRecipeData, buildRecipeDataAsync } = RecipeDataModel;
+const { load: loadApplicationDataCache, save: saveApplicationDataCache } = ApplicationDataCache;
 const { createProgressController: createDataSetupProgressController } = DataSetupProgress;
 const {
   createSnapshot: createShareSnapshot,
@@ -315,6 +321,16 @@ const elements = {
   materialTreeIncrease5Btn: document.getElementById('materialTreeIncrease5Btn'),
   materialTreeContent: document.getElementById('materialTreeContent'),
   materialTreeCloseBtn: document.getElementById('materialTreeCloseBtn'),
+  preparedCountOverlay: document.getElementById('preparedCountOverlay'),
+  preparedCountTitle: document.getElementById('preparedCountTitle'),
+  preparedCountInput: document.getElementById('preparedCountInput'),
+  preparedCountDecrease5Btn: document.getElementById('preparedCountDecrease5Btn'),
+  preparedCountDecreaseBtn: document.getElementById('preparedCountDecreaseBtn'),
+  preparedCountIncreaseBtn: document.getElementById('preparedCountIncreaseBtn'),
+  preparedCountIncrease5Btn: document.getElementById('preparedCountIncrease5Btn'),
+  preparedCountZeroBtn: document.getElementById('preparedCountZeroBtn'),
+  preparedCountMaximumBtn: document.getElementById('preparedCountMaximumBtn'),
+  preparedCountCloseBtn: document.getElementById('preparedCountCloseBtn'),
   gatheringOverlay: document.getElementById('gatheringOverlay'),
   gatheringTitle: document.getElementById('gatheringTitle'),
   gatheringContent: document.getElementById('gatheringContent'),
@@ -337,6 +353,7 @@ const floatingWindows = {
   gathering: createFloatingWindow(elements.gatheringOverlay, floatingWindowOptions),
   license: createFloatingWindow(elements.licenseOverlay, floatingWindowOptions),
   materialTree: createFloatingWindow(elements.materialTreeOverlay, floatingWindowOptions),
+  preparedCount: createFloatingWindow(elements.preparedCountOverlay, floatingWindowOptions),
   fontSizeDiscard: createFloatingWindow(elements.fontSizeDiscardOverlay, floatingWindowOptions),
   settings: createFloatingWindow(elements.settingsOverlay, floatingWindowOptions),
   sharePlaza: createFloatingWindow(elements.sharePlazaOverlay, {
@@ -367,6 +384,7 @@ let idToItemName = {};
 let legacyItemNamesById = {};
 let itemNameAliases = {};
 let applicationDataGeneration = '';
+let pendingApplicationDataCache = null;
 let usedIn = {};
 let ingredientNames = [];
 let prevPanel = 'left';
@@ -393,6 +411,8 @@ let wasMobile = isMobile();
 let reorderDrag = null;
 let favoriteItemReorderEnabled = false;
 let materialTreeRecipe = null;
+let preparedCountTargetName = '';
+let preparedCountMaximum = 0;
 let expandedFavoriteListActionsId = null;
 let expandedFavoriteMaterialActions = false;
 let favoriteMaterialsListIds = [];
@@ -410,7 +430,7 @@ let canSaveViewState = false;
 let suppressViewStateSave = false;
 const materialPurchaseState = createMaterialPurchaseState();
 const purchasedIntermediateNames = materialPurchaseState.intermediateNames;
-const preparedIntermediateNames = materialPurchaseState.preparedNames;
+const preparedIntermediateCounts = materialPurchaseState.preparedCounts;
 const purchasedMaterialNames = materialPurchaseState.materialNames;
 let imageCheckContext = '';
 let checkedImageKeys = new Set();
@@ -736,21 +756,17 @@ function measureEquipmentLevelMinimumWidth() {
   const controlStyle = getComputedStyle(elements.equipmentLevelControl);
   const controlFontSize = pixelValue(controlStyle.fontSize);
   const gap = pixelValue(controlStyle.columnGap);
-  const buttonWidths = [...elements.equipmentLevelControl.querySelectorAll('button')].map(button => {
-    const range = document.createRange();
-    range.selectNodeContents(button);
-    const style = getComputedStyle(button);
-    const contentWidth = range.getBoundingClientRect().width;
-    return Math.max(
-      controlFontSize * 2.2,
-      contentWidth +
-        pixelValue(style.paddingLeft) +
-        pixelValue(style.paddingRight) +
-        pixelValue(style.borderLeftWidth) +
-        pixelValue(style.borderRightWidth)
-    );
-  });
-  return buttonWidths.reduce((sum, width) => sum + width, controlFontSize * 4 + gap * 4);
+  const buttonWidths = [...elements.equipmentLevelControl.querySelectorAll('button')].map(button =>
+    controlFontSize * (button.classList.contains('equipment-level-step-wide') ? 2.2 : 1.8)
+  );
+  const inputStyle = getComputedStyle(elements.equipmentLevelInput);
+  const inputWidth =
+    controlFontSize * 4.5 +
+    pixelValue(inputStyle.paddingLeft) +
+    pixelValue(inputStyle.paddingRight) +
+    pixelValue(inputStyle.borderLeftWidth) +
+    pixelValue(inputStyle.borderRightWidth);
+  return buttonWidths.reduce((sum, width) => sum + width, inputWidth + gap * 4);
 }
 
 let panelLayoutMetricsKey = '';
@@ -801,7 +817,11 @@ function measurePanelLayoutMetrics() {
 
 function updatePanelLayout() {
   if (isMobile()) {
-    elements.panelLeft.classList.add('equipment-search-stacked');
+    const metrics = measurePanelLayoutMetrics();
+    elements.panelLeft.classList.toggle(
+      'equipment-search-stacked',
+      elements.panelLeft.clientWidth < metrics.sideBySideLeftMinimum
+    );
     return null;
   }
 
@@ -1163,9 +1183,14 @@ function restoreViewState() {
     materialPurchaseState.intermediateContext = state.materials.purchasedContext;
     purchasedIntermediateNames.clear();
     state.materials.purchasedNames.forEach(name => purchasedIntermediateNames.add(name));
-    preparedIntermediateNames.clear();
+    preparedIntermediateCounts.clear();
+    Object.entries(state.materials.preparedCounts).forEach(([name, preparedCount]) => {
+      if (!purchasedIntermediateNames.has(name)) preparedIntermediateCounts.set(name, preparedCount);
+    });
     state.materials.preparedNames.forEach(name => {
-      if (!purchasedIntermediateNames.has(name)) preparedIntermediateNames.add(name);
+      if (!purchasedIntermediateNames.has(name) && !preparedIntermediateCounts.has(name)) {
+        preparedIntermediateCounts.set(name, Number.MAX_SAFE_INTEGER);
+      }
     });
     materialPurchaseState.materialContext = state.materials.purchasedMaterialContext;
     purchasedMaterialNames.clear();
@@ -2058,12 +2083,14 @@ function saveEquipmentSearchAsFavorite() {
 
 function showConfirm(msg, onYes) {
   elements.confirmOverlay.classList.remove('favorite-list-file-dialog');
+  elements.confirmOverlay.classList.remove('favorite-list-file-final-confirm');
   elements.confirmOverlay.classList.remove('recipe-resolution-info');
   elements.confirmMsg.classList.remove('markdown-content');
   elements.confirmMsg.textContent = msg;
   pendingConfirmAction = onYes;
   elements.confirmOverlay.classList.remove('info');
   elements.confirmYes.textContent = 'はい';
+  elements.confirmYes.disabled = false;
   elements.confirmNo.textContent = 'いいえ';
   elements.confirmYes.classList.remove('hidden');
   floatingWindows.confirm.open();
@@ -2071,12 +2098,14 @@ function showConfirm(msg, onYes) {
 
 function showConfirmContent(content, onYes) {
   elements.confirmOverlay.classList.remove('favorite-list-file-dialog');
+  elements.confirmOverlay.classList.remove('favorite-list-file-final-confirm');
   elements.confirmOverlay.classList.remove('recipe-resolution-info');
   elements.confirmMsg.classList.remove('markdown-content');
   elements.confirmMsg.replaceChildren(content);
   pendingConfirmAction = onYes;
   elements.confirmOverlay.classList.remove('info');
   elements.confirmYes.textContent = 'はい';
+  elements.confirmYes.disabled = false;
   elements.confirmNo.textContent = 'いいえ';
   elements.confirmYes.classList.remove('hidden');
   floatingWindows.confirm.open();
@@ -2084,6 +2113,7 @@ function showConfirmContent(content, onYes) {
 
 function showInfo(msg, { markdown = false } = {}) {
   elements.confirmOverlay.classList.remove('favorite-list-file-dialog');
+  elements.confirmOverlay.classList.remove('favorite-list-file-final-confirm');
   elements.confirmOverlay.classList.remove('recipe-resolution-info');
   elements.confirmMsg.classList.toggle('markdown-content', markdown);
   if (markdown) elements.confirmMsg.innerHTML = renderMarkdown(msg);
@@ -2097,6 +2127,7 @@ function showInfo(msg, { markdown = false } = {}) {
 
 function showRecipeResolutionInfo(content) {
   elements.confirmOverlay.classList.remove('favorite-list-file-dialog');
+  elements.confirmOverlay.classList.remove('favorite-list-file-final-confirm');
   elements.confirmMsg.classList.remove('markdown-content');
   elements.confirmMsg.replaceChildren(content);
   pendingConfirmAction = null;
@@ -2111,10 +2142,12 @@ function closeConfirm() {
   elements.confirmOverlay.classList.remove('info');
   elements.confirmOverlay.classList.remove('recipe-resolution-info');
   elements.confirmOverlay.classList.remove('favorite-list-file-dialog');
+  elements.confirmOverlay.classList.remove('favorite-list-file-final-confirm');
   elements.confirmMsg.textContent = '';
   elements.confirmMsg.classList.remove('markdown-content');
   elements.confirmYes.classList.remove('hidden');
   elements.confirmYes.textContent = 'はい';
+  elements.confirmYes.disabled = false;
   elements.confirmNo.textContent = 'いいえ';
   pendingConfirmAction = null;
 }
@@ -3627,9 +3660,11 @@ function makeFavLi(name, index) {
     } else {
       const dec = document.createElement('button');
       dec.type = 'button';
+      dec.className = 'count-btn';
       dec.textContent = '－';
       const input = document.createElement('input');
       input.type = 'number';
+      input.className = 'count-input';
       input.min = '0';
       input.max = String(REQUEST_COUNT_MAX);
       input.step = '1';
@@ -3637,6 +3672,7 @@ function makeFavLi(name, index) {
       input.value = String(itemCount);
       const inc = document.createElement('button');
       inc.type = 'button';
+      inc.className = 'count-btn';
       inc.textContent = '＋';
       const commit = value => {
         setFavoriteItemCount(itemId, value);
@@ -4019,17 +4055,7 @@ function applyRecipeSelectionContext(recipeSelections = {}) {
   });
 }
 
-async function buildApplicationData(rawList, onProgress = () => {}, { incremental = false } = {}) {
-  const buildOptions = {
-    craftTypeNames: CRAFT_TYPE_NAME,
-    crystalExclude: CRYSTAL_EXCLUDE,
-    iconPath,
-    sortRecipeNames
-  };
-  const data = await buildRecipeDataAsync(rawList, buildOptions, {
-    chunkSize: incremental ? 250 : 4000,
-    onProgress: progress => onProgress(progress.phase, 80 + progress.percent * 0.12)
-  });
+function applyApplicationData(data) {
   ({
     activeRecipeIds,
     defaultRecipeIds,
@@ -4051,10 +4077,62 @@ async function buildApplicationData(rawList, onProgress = () => {}, { incrementa
     itemIdForName,
     normalizeSelections: normalizeRecipeSelections
   });
+}
+
+function validCachedApplicationData(data) {
+  return Boolean(
+    data?.itemMaster && data?.recipes && data?.recipeVariants && data?.defaultRecipeIds
+    && Array.isArray(data?.recipeNames) && Array.isArray(data?.ingredientNames)
+  );
+}
+
+async function buildApplicationData(
+  rawList,
+  onProgress = () => {},
+  { incremental = false, cachedData = null } = {}
+) {
+  const buildOptions = {
+    craftTypeNames: CRAFT_TYPE_NAME,
+    crystalExclude: CRYSTAL_EXCLUDE,
+    iconPath,
+    sortRecipeNames
+  };
+  const recipeModelStartedAt = performance.now();
+  const cacheHit = validCachedApplicationData(cachedData);
+  if (cacheHit) performance.mark('application-derived-cache-hit');
+  const data = cacheHit
+    ? cachedData
+    : await buildRecipeDataAsync(rawList, buildOptions, {
+      chunkSize: incremental ? 250 : 4000,
+      onProgress: progress => onProgress(progress.phase, 80 + progress.percent * 0.12)
+    });
+  performance.measure('application-recipe-model-build', {
+    start: recipeModelStartedAt,
+    end: performance.now()
+  });
+  applyApplicationData(data);
   onProgress('装備索引を作成しています', 94);
+  const equipmentIndexStartedAt = performance.now();
   buildEquipmentSearchIndexes();
+  performance.measure('application-equipment-index-build', {
+    start: equipmentIndexStartedAt,
+    end: performance.now()
+  });
   onProgress('保存データを確認しています', 96);
-  return data.version || data.maxPatch;
+  return { cacheHit, data, version: data.version || data.maxPatch };
+}
+
+function scheduleApplicationDataCacheSave() {
+  if (!pendingApplicationDataCache) return;
+  const pending = pendingApplicationDataCache;
+  pendingApplicationDataCache = null;
+  const save = () => {
+    saveApplicationDataCache(pending.generation, pending.data).catch(error => {
+      console.warn('[Cache] 起動データ保存失敗:', error);
+    });
+  };
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(save, { timeout: 5000 });
+  else window.setTimeout(save, 0);
 }
 
 function createApplicationDataProgress(enabled) {
@@ -4243,17 +4321,20 @@ function showLoadError(error) {
 function hideLoadingOverlay() {
   const overlay = elements.loadingOverlay;
   if (!overlay) return;
-  const remaining = Math.max(0, MIN_LOADING_OVERLAY_MS - (Date.now() - loadingOverlayStartedAt));
-  window.setTimeout(() => overlay.classList.remove('open'), remaining);
+  const remaining = Math.max(0, minimumLoadingOverlayMs - (Date.now() - loadingOverlayStartedAt));
+  window.setTimeout(() => {
+    overlay.classList.remove('open');
+    if (!performance.getEntriesByName('application-startup-total').length) {
+      performance.measure('application-startup-total', { start: 0, end: performance.now() });
+    }
+  }, remaining);
 }
 
-async function init(dataProgress) {
+async function init(dataProgress, startupMetadataPromise) {
   updatePopupButtonVisibility();
   loadFavorites();
   updateCheckedFavoriteMaterialsButton();
   loadSearchHistory();
-  dataProgress.report('お知らせを読み込んでいます', 0);
-  await loadTips();
 
   renderList();
   renderTips();
@@ -4274,15 +4355,35 @@ async function init(dataProgress) {
       previousDataGeneration && applicationDataGeneration && previousDataGeneration !== applicationDataGeneration
     );
     const applicationDataStartedAt = performance.now();
-    await prepareItemImages(rawList, (phase, percent) => dataProgress.report(phase, percent));
-    const dataVersion = await buildApplicationData(
+    const itemImagesStartedAt = performance.now();
+    const derivedCacheStartedAt = performance.now();
+    const derivedCachePromise = loadApplicationDataCache(applicationDataGeneration).catch(error => {
+      console.warn('[Cache] 起動データ読み込み失敗:', error);
+      return null;
+    });
+    const [, cachedApplicationData] = await Promise.all([
+      prepareItemImages(rawList, (phase, percent) => dataProgress.report(phase, percent)),
+      derivedCachePromise
+    ]);
+    performance.measure('application-item-images-prepare', {
+      start: itemImagesStartedAt,
+      end: performance.now()
+    });
+    performance.measure('application-derived-cache-read', {
+      start: derivedCacheStartedAt,
+      end: performance.now()
+    });
+    const applicationData = await buildApplicationData(
       rawList,
       (phase, percent) => dataProgress.report(phase, percent),
-      { incremental: dataGenerationChanged }
+      { incremental: dataGenerationChanged, cachedData: cachedApplicationData }
     );
+    if (!applicationData.cacheHit && applicationDataGeneration) {
+      pendingApplicationDataCache = { generation: applicationDataGeneration, data: applicationData.data };
+    }
     dataProgress.report('お気に入りを現行データへ移行しています', 97);
     pendingFavoriteMigration = migrateFavoriteItemKeys();
-    updatePatchStatus(dataVersion);
+    updatePatchStatus(applicationData.version);
     dataProgress.report('画面を準備しています', 98);
     validateFavoriteRecipeSelections();
     setupEquipmentSearchControls();
@@ -4295,17 +4396,21 @@ async function init(dataProgress) {
       else clearMobilePanels();
       saveViewState();
     }
+    await startupMetadataPromise;
+    renderTips();
     dataProgress.report('完了しています', 100);
     await dataProgress.complete();
     performance.measure('application-data-setup', {
       start: applicationDataStartedAt,
       end: performance.now()
     });
+    localStorage.setItem(LS_SUCCESSFUL_BOOT, '1');
     window.ff14RecipeBoot?.complete();
+    scheduleApplicationDataCacheSave();
     if (!showPendingReleaseNotice()) {
       setReleaseNoticeBackgroundInert(false);
       hideLoadingOverlay();
-      window.setTimeout(showPendingRemovedFavoritesNotice, MIN_LOADING_OVERLAY_MS);
+      window.setTimeout(showPendingRemovedFavoritesNotice, minimumLoadingOverlayMs);
     }
   } catch (e) {
     dataProgress?.cancel();
@@ -4813,8 +4918,30 @@ function createCraftSupplementEntriesForRecipe(recipe, neededQty) {
   return entries;
 }
 
-function createCraftSupplementEntries(name, neededQty) {
-  return createCraftSupplementEntriesForRecipe(recipes[name], neededQty);
+function createCraftSupplementEntries(name, neededQty, state = null, originalState = null) {
+  if (!state) return createCraftSupplementEntriesForRecipe(recipes[name], neededQty);
+  const entries = [];
+  const surplusAdjusted = Boolean(originalState && state.surplus !== originalState.surplus);
+  const craftTimesAdjusted = Boolean(originalState && state.craftTimes !== originalState.craftTimes);
+  if (state.surplus > 0 || surplusAdjusted) {
+    entries.push({
+      label: '↩',
+      qty: state.surplus,
+      suffix: '個余り',
+      kind: 'surplus',
+      adjusted: surplusAdjusted
+    });
+  }
+  if (!EXCHANGE_CRAFT_TYPES.has(recipes[name]?.craftType) && (state.craftTimes >= 1 || craftTimesAdjusted)) {
+    entries.push({
+      label: '🔨',
+      qty: state.craftTimes,
+      suffix: '回製作',
+      kind: 'craft',
+      adjusted: craftTimesAdjusted
+    });
+  }
+  return entries;
 }
 
 function createCraftSupplementRow(entry, { parenthesized = false } = {}) {
@@ -4823,7 +4950,8 @@ function createCraftSupplementRow(entry, { parenthesized = false } = {}) {
   const numberClasses = [
     'craft-supplement-num',
     entry.kind === 'surplus' ? 'craft-supplement-surplus' : '',
-    entry.kind === 'craft' ? 'craft-supplement-count' : ''
+    entry.kind === 'craft' ? 'craft-supplement-count' : '',
+    entry.adjusted ? 'prepared-adjusted-value' : ''
   ]
     .filter(Boolean)
     .join(' ');
@@ -5015,15 +5143,16 @@ function effectiveRecipeSelectionSignature(recipeSelections = {}) {
   return recipeSelectionModel.effectiveSelectionSignature(recipeSelections);
 }
 
-function calculateMaterialRequirements(rootItems, terminalNames = [], recipeSelections = null) {
+function calculateMaterialRequirements(rootItems, terminalNames = [], recipeSelections = null, availableCounts = new Map()) {
   const recipeMap = recipeSelections === null ? recipes : recipeMapForSelections(recipeSelections);
   return calculateRequirements(recipeMap, rootItems, {
     exchangeCraftTypes: EXCHANGE_CRAFT_TYPES,
-    terminalNames
+    terminalNames,
+    availableCounts
   });
 }
 
-function calculateFavoriteListGroups(lists, terminalNames = []) {
+function calculateFavoriteListGroups(lists, terminalNames = [], availableCounts = new Map()) {
   const groups = new Map();
   lists.forEach(list => {
     const signature = effectiveRecipeSelectionSignature(list.recipeSelections);
@@ -5033,13 +5162,22 @@ function calculateFavoriteListGroups(lists, terminalNames = []) {
       roots.set(root.name, (roots.get(root.name) || 0) + root.qty);
     });
   });
-  const results = [...groups.values()].map(group =>
-    calculateMaterialRequirements(
+  const remainingCounts = new Map(availableCounts);
+  const results = [...groups.values()].map(group => {
+    const result = calculateMaterialRequirements(
       [...group.roots].filter(([, qty]) => qty > 0).map(([name, qty]) => ({ name, qty })),
       terminalNames,
-      group.recipeSelections
-    )
-  );
+      group.recipeSelections,
+      remainingCounts
+    );
+    result.states.forEach(state => {
+      if (!state.availableUsed) return;
+      const remaining = Math.max(0, (remainingCounts.get(state.name) || 0) - state.availableUsed);
+      if (remaining > 0) remainingCounts.set(state.name, remaining);
+      else remainingCounts.delete(state.name);
+    });
+    return result;
+  });
   return results.length === 1 ? results[0] : mergeSummedRequirements(results);
 }
 
@@ -5327,7 +5465,9 @@ function orderedIntermediateRows(result, recipeMap = recipes) {
     if (!state.recipe || state.isRoot || state.isExchange || crystalKind(state.name)) return;
     rows.set(state.name, {
       name: state.name,
-      qty: state.needed,
+      qty: state.craftNeeded ?? state.needed,
+      totalNeeded: state.needed,
+      availableUsed: state.availableUsed || 0,
       craftTimes: state.craftTimes,
       produced: state.produced,
       surplus: state.surplus,
@@ -5448,7 +5588,7 @@ function currentMaterialPurchaseContext() {
   return selectedRecipeContextKey();
 }
 
-function getCurrentMaterialRequirements(terminalNames = []) {
+function getCurrentMaterialRequirements(terminalNames = [], availableCounts = preparedIntermediateCounts) {
   const count = readRequestedCount(elements.countInput);
   if (
     resultSourceMode === 'favorite-materials' &&
@@ -5456,7 +5596,7 @@ function getCurrentMaterialRequirements(terminalNames = []) {
     checkedFavoriteMaterialCalcMode === 'any-one'
   ) {
     const results = getActiveFavoriteMaterialLists().map(list =>
-      calculateMaterialRequirements(getFavoriteListMaterialRoots(list), terminalNames, list.recipeSelections)
+      calculateMaterialRequirements(getFavoriteListMaterialRoots(list), terminalNames, list.recipeSelections, availableCounts)
     );
     return mergeAlternativeRequirementsWithUsage(results);
   }
@@ -5464,19 +5604,25 @@ function getCurrentMaterialRequirements(terminalNames = []) {
     const roots = getFavoriteMaterialRoots();
     const list = getDisplayedFavoriteList();
     const results = roots.map(root =>
-      calculateMaterialRequirements([{ name: root.name, qty: root.qty }], terminalNames, list?.recipeSelections || {})
+      calculateMaterialRequirements(
+        [{ name: root.name, qty: root.qty }],
+        terminalNames,
+        list?.recipeSelections || {},
+        availableCounts
+      )
     );
     return mergeAlternativeRequirementsWithUsage(results);
   }
   if (resultSourceMode === 'favorite-materials' && favoriteMaterialsListIds.length >= 1) {
-    return calculateFavoriteListGroups(getActiveFavoriteMaterialLists(), terminalNames);
+    return calculateFavoriteListGroups(getActiveFavoriteMaterialLists(), terminalNames, availableCounts);
   }
   const roots =
     resultSourceMode === 'favorite-materials' ? getFavoriteMaterialRoots() : [{ name: selectedRecipe, qty: count }];
   return calculateMaterialRequirements(
     roots,
     terminalNames,
-    resultSourceMode === 'favorite-materials' ? getDisplayedFavoriteList()?.recipeSelections || {} : null
+    resultSourceMode === 'favorite-materials' ? getDisplayedFavoriteList()?.recipeSelections || {} : null,
+    availableCounts
   );
 }
 
@@ -5577,7 +5723,7 @@ function recipeDependsOn(name, target, visited = new Set()) {
 }
 
 function purchasedIntermediateBlockers(name) {
-  return [...new Set([...purchasedIntermediateNames, ...preparedIntermediateNames])].filter(
+  return [...new Set([...purchasedIntermediateNames, ...preparedIntermediateCounts.keys()])].filter(
     terminalName => terminalName !== name && recipeDependsOn(terminalName, name)
   );
 }
@@ -5586,7 +5732,7 @@ function intermediateTerminalReason(name) {
   const purchased = [...purchasedIntermediateNames].some(
     terminalName => terminalName !== name && recipeDependsOn(terminalName, name)
   );
-  const prepared = [...preparedIntermediateNames].some(
+  const prepared = [...preparedIntermediateCounts.keys()].some(
     terminalName => terminalName !== name && recipeDependsOn(terminalName, name)
   );
   if (purchased && prepared) return '上位中間素材の指定により不要';
@@ -5594,42 +5740,34 @@ function intermediateTerminalReason(name) {
   return '中間素材購入💰の為不要';
 }
 
-function createIntermediatePreparedButton(name, { disabled = false } = {}) {
-  const prepared = preparedIntermediateNames.has(name);
+function createIntermediatePreparedButton(name, maximum, { disabled = false } = {}) {
+  const preparedCount = Math.min(maximum, preparedIntermediateCounts.get(name) || 0);
+  const prepared = preparedCount > 0;
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'intermediate-prepared-btn';
-  button.textContent = '📦';
-  button.title = prepared ? `${name}の準備済みを解除` : `${name}を準備済みにする`;
+  button.textContent = prepared ? formatNumber(preparedCount) : '📦';
+  button.title = `${name}の準備済み個数を変更`;
   button.setAttribute('aria-label', button.title);
   button.setAttribute('aria-pressed', String(prepared));
   button.classList.toggle('active', prepared);
   button.disabled = disabled && !prepared;
   button.addEventListener('click', event => {
     event.stopPropagation();
-    setMaterialPrepared(
-      materialPurchaseState,
-      name,
-      !prepared,
-      currentMaterialPurchaseContext()
-    );
-    saveViewState();
-    renderUiChange(UI_CHANGE.PURCHASE_STATUS_CHANGED);
+    openPreparedCountDialog(name, maximum);
   });
   return button;
 }
 
 function renderMaterialsList() {
   const count = readRequestedCount(elements.countInput);
-  const requirements = getCurrentMaterialRequirements();
   const purchaseContext = currentMaterialPurchaseContext();
   syncMaterialPurchaseContext(materialPurchaseState, purchaseContext);
-  let terminalIntermediateNames = new Set([...purchasedIntermediateNames, ...preparedIntermediateNames]);
-  let requirementsAfterPurchases = terminalIntermediateNames.size
-    ? getCurrentMaterialRequirements(terminalIntermediateNames)
-    : requirements;
+  const requirements = getCurrentMaterialRequirements([], new Map());
   const validTerminalIntermediateNames = new Set(
-    [...terminalIntermediateNames].filter(name => requirementsAfterPurchases.states.has(name))
+    [...requirements.states]
+      .filter(([, state]) => state.recipe && !state.isRoot && !state.isExchange)
+      .map(([name]) => name)
   );
   const prunedIntermediate = pruneMaterialPurchases(
     materialPurchaseState,
@@ -5641,14 +5779,33 @@ function renderMaterialsList() {
     'prepared',
     validTerminalIntermediateNames
   );
-  if (prunedIntermediate || prunedPrepared) {
-    terminalIntermediateNames = new Set([...purchasedIntermediateNames, ...preparedIntermediateNames]);
-    requirementsAfterPurchases = terminalIntermediateNames.size
-      ? getCurrentMaterialRequirements(terminalIntermediateNames)
-      : requirements;
+  let clampedPrepared = false;
+  preparedIntermediateCounts.forEach((preparedCount, name) => {
+    const maximum = requirements.states.get(name)?.needed || 0;
+    const clamped = Math.min(preparedCount, maximum);
+    if (clamped !== preparedCount) {
+      if (clamped > 0) preparedIntermediateCounts.set(name, clamped);
+      else preparedIntermediateCounts.delete(name);
+      clampedPrepared = true;
+    }
+  });
+  const terminalIntermediateNames = new Set(purchasedIntermediateNames);
+  const requirementsAfterPurchases = getCurrentMaterialRequirements(
+    terminalIntermediateNames,
+    preparedIntermediateCounts
+  );
+  const requirementsAfterPurchasesOnly = preparedIntermediateCounts.size > 0
+    ? getCurrentMaterialRequirements(terminalIntermediateNames, new Map())
+    : requirementsAfterPurchases;
+  const preparationChanges = compareRequirementResults(
+    requirementsAfterPurchasesOnly,
+    requirementsAfterPurchases
+  );
+  if (prunedIntermediate || prunedPrepared || clampedPrepared) {
     saveViewState();
   }
   const originalRows = materialRowsFromRequirements(requirements);
+  const purchaseOnlyRows = materialRowsFromRequirements(requirementsAfterPurchasesOnly);
   const recalculatedRows = materialRowsFromRequirements(requirementsAfterPurchases);
   const activeMaterialNames = new Set(
     recalculatedRows.filter(row => row.type === 'item' && hasShopInfo(row.name)).map(row => row.name)
@@ -5656,22 +5813,121 @@ function renderMaterialsList() {
   if (pruneMaterialPurchases(materialPurchaseState, 'material', activeMaterialNames)) {
     saveViewState();
   }
-  const recalculatedRowsByKey = new Map(recalculatedRows.map(row => [`${row.type}:${row.name}`, row]));
-  const rows = originalRows.map(row => recalculatedRowsByKey.get(`${row.type}:${row.name}`) || row);
+  const rowKey = row => `${row.type}:${row.name}`;
+  const purchaseOnlyRowsByKey = new Map(purchaseOnlyRows.map(row => [rowKey(row), row]));
+  const recalculatedRowsByKey = new Map(recalculatedRows.map(row => [rowKey(row), row]));
+  const rows = originalRows.map(originalRow => {
+    const key = rowKey(originalRow);
+    const purchaseOnlyRow = purchaseOnlyRowsByKey.get(key);
+    const recalculatedRow = recalculatedRowsByKey.get(key);
+    const preparationChange = originalRow.type === 'item' ? preparationChanges.get(originalRow.name) || null : null;
+    if (recalculatedRow) return { ...recalculatedRow, preparationChange };
+    if (purchaseOnlyRow && preparationChange) {
+      return {
+        ...purchaseOnlyRow,
+        qty: 0,
+        supplements: purchaseOnlyRow.supplements?.map(entry => ({ ...entry, qty: 0 })),
+        preparationChange
+      };
+    }
+    return originalRow;
+  });
   const originalIntermediateRows = orderedIntermediateRows(requirements);
+  const purchaseOnlyIntermediateRowsByName = new Map(
+    orderedIntermediateRows(requirementsAfterPurchasesOnly).map(row => [row.name, row])
+  );
   const originalIntermediateRowsByName = new Map(originalIntermediateRows.map(row => [row.name, row]));
   const recalculatedIntermediateRowsByName = new Map(
     orderedIntermediateRows(requirementsAfterPurchases).map(row => [row.name, row])
   );
-  const intermediateRows = originalIntermediateRows.map(row => recalculatedIntermediateRowsByName.get(row.name) || row);
+  const intermediateRows = originalIntermediateRows.map(row => {
+    const recalculatedRow = recalculatedIntermediateRowsByName.get(row.name);
+    const purchaseOnlyRow = purchaseOnlyIntermediateRowsByName.get(row.name);
+    const withUsageChanges = (displayRow, beforeRow) => ({
+      ...displayRow,
+      usageAlternatives: (displayRow.usageAlternatives || []).map((entries, alternativeIndex) =>
+        entries.map(entry => {
+          const beforeEntry = beforeRow?.usageAlternatives?.[alternativeIndex]
+            ?.find(candidate => candidate.name === entry.name);
+          return {
+            ...entry,
+            preparationAdjusted: Boolean(beforeEntry && beforeEntry.qty !== entry.qty)
+          };
+        })
+      )
+    });
+    if (recalculatedRow) return withUsageChanges(recalculatedRow, purchaseOnlyRow);
+    if (purchaseOnlyRow && preparationChanges.has(row.name)) {
+      return withUsageChanges({
+        ...purchaseOnlyRow,
+        qty: 0,
+        craftTimes: 0,
+        produced: 0,
+        surplus: 0,
+        usageAlternatives: (purchaseOnlyRow.usageAlternatives || []).map(entries =>
+          entries.map(entry => ({ ...entry, qty: 0 }))
+        )
+      }, purchaseOnlyRow);
+    }
+    return row;
+  });
   const categorizedRows = categorizeMaterialRows(rows);
   const list = document.createElement('ul');
   list.className = 'materials-list';
+  const exchangeSummaryBeforePreparation = createSupplementSummaryState();
   const exchangeSummary = createSupplementSummaryState();
+  purchaseOnlyRows.forEach(row => {
+    if (row.type === 'item' && row.supplements?.length) {
+      accumulateSupplementSummary(exchangeSummaryBeforePreparation, row.supplements);
+    }
+  });
   recalculatedRows.forEach(row => {
     if (row.type === 'item' && row.supplements?.length) {
       accumulateSupplementSummary(exchangeSummary, row.supplements);
     }
+  });
+  const fixedSummaryKeys = new Set([
+    ...exchangeSummaryBeforePreparation.fixed.keys(),
+    ...exchangeSummary.fixed.keys()
+  ]);
+  const fixedSummaryEntries = [...fixedSummaryKeys].map(key => {
+    const before = exchangeSummaryBeforePreparation.fixed.get(key);
+    const after = exchangeSummary.fixed.get(key);
+    return {
+      ...(after || before),
+      qty: after?.qty || 0,
+      preparationAdjusted: Boolean(before && before.qty !== (after?.qty || 0))
+    };
+  });
+  const choiceIdentity = entries => sortSupplementEntries(entries)
+    .map(entry => `${entry.name}:${entry.refinable ? 1 : 0}`)
+    .join('|');
+  const normalizeSummaryChoices = summary => {
+    const normalized = new Map();
+    summary.choices.forEach(entries => {
+      const identity = choiceIdentity(entries);
+      if (!normalized.has(identity)) {
+        normalized.set(identity, sortSupplementEntries(entries).map(entry => ({ ...entry })));
+        return;
+      }
+      const current = normalized.get(identity);
+      sortSupplementEntries(entries).forEach((entry, index) => {
+        current[index].qty += entry.qty;
+      });
+    });
+    return normalized;
+  };
+  const beforeSummaryChoices = normalizeSummaryChoices(exchangeSummaryBeforePreparation);
+  const afterSummaryChoices = normalizeSummaryChoices(exchangeSummary);
+  const choiceSummaryKeys = new Set([...beforeSummaryChoices.keys(), ...afterSummaryChoices.keys()]);
+  const choiceSummaryEntries = [...choiceSummaryKeys].map(key => {
+    const before = beforeSummaryChoices.get(key) || [];
+    const after = afterSummaryChoices.get(key) || [];
+    return (after.length ? after : before).map((entry, index) => ({
+      ...entry,
+      qty: after[index]?.qty || 0,
+      preparationAdjusted: Boolean(before[index] && before[index].qty !== (after[index]?.qty || 0))
+    }));
   });
 
   if (resultSourceMode === 'favorite-materials') {
@@ -5755,10 +6011,11 @@ function renderMaterialsList() {
       content.className = 'material-content';
       const primary = document.createElement('div');
       primary.className = 'material-primary';
-      primary.append(
-        createTextElement('span', 'material-name', row.name),
-        createTextElement('span', 'material-qty', `× ${formatNumber(row.qty)}`)
-      );
+      const quantity = createTextElement('span', 'material-qty', `× ${formatNumber(row.qty)}`);
+      if (row.preparationChange?.changedFields.includes('needed')) {
+        quantity.classList.add('prepared-adjusted-value');
+      }
+      primary.append(createTextElement('span', 'material-name', row.name), quantity);
       if (noLongerNeeded) {
         primary.appendChild(createTextElement('span', 'purchase-status', exclusionReason));
       }
@@ -5783,7 +6040,15 @@ function renderMaterialsList() {
             const supplementIcon = createItemIcon(itemMaster[entry.name]?.icon, 'material-supplement-icon');
             if (supplementIcon) entryRow.appendChild(supplementIcon);
             appendSupplementName(entryRow, entry, 'material-supplement-name');
-            entryRow.appendChild(createTextElement('span', 'material-supplement-qty', `× ${formatNumber(entry.qty)}`));
+            const supplementQuantity = createTextElement(
+              'span',
+              'material-supplement-qty',
+              `× ${formatNumber(entry.qty)}`
+            );
+            if (row.preparationChange?.changedFields.includes('craftTimes')) {
+              supplementQuantity.classList.add('prepared-adjusted-value');
+            }
+            entryRow.appendChild(supplementQuantity);
             appendItemActionButtons(entryRow, createShopInfoButton(entry.name), createGatheringTimerButton(entry.name));
           }
           supplement.appendChild(entryRow);
@@ -5800,7 +6065,9 @@ function renderMaterialsList() {
       li.dataset.shareTextBlock = [shareItemTextBlock(row.name, itemMaster[row.name] || {}, {
         quantity: row.qty,
         markers: shareItemMarkers(row.name, { purchased: materialPurchased })
-      }), exclusionReason ? `  ${exclusionReason}` : ''].filter(Boolean).join('\n');
+      }), row.preparationChange ? '  準備済み反映後' : '', exclusionReason ? `  ${exclusionReason}` : '']
+        .filter(Boolean)
+        .join('\n');
       if (exclusionReason) li.dataset.shareExclusionReason = exclusionReason;
     } else {
       li.appendChild(createMaterialChoiceContent(row));
@@ -5815,13 +6082,17 @@ function renderMaterialsList() {
     const li = document.createElement('li');
     li.className = 'intermediate-tree-node';
     const purchased = purchasedIntermediateNames.has(row.name);
-    const prepared = preparedIntermediateNames.has(row.name);
-    const noLongerNeeded = !purchased && !prepared && !requirementsAfterPurchases.states.has(row.name);
+    const preparedCount = preparedIntermediateCounts.get(row.name) || 0;
+    const hasPrepared = preparedCount > 0;
+    const affectedByPreparation = preparationChanges.has(row.name);
+    const noLongerNeeded = !purchased && !hasPrepared && !requirementsAfterPurchases.states.has(row.name);
     const exclusionReason = noLongerNeeded ? intermediateTerminalReason(row.name) : '';
     const originalQty = originalIntermediateRowsByName.get(row.name)?.qty || row.qty;
+    const originalRow = originalIntermediateRowsByName.get(row.name) || row;
+    const fullyPrepared = preparedCount >= originalQty;
     const reducedQty = Math.max(0, originalQty - (noLongerNeeded ? 0 : row.qty));
     if (purchased) li.classList.add('purchase-selected');
-    if (prepared) li.classList.add('prepared-selected');
+    if (fullyPrepared) li.classList.add('prepared-selected');
     if (noLongerNeeded) li.classList.add('purchase-unneeded');
     const rowElement = document.createElement('div');
     rowElement.className = 'intermediate-tree-row';
@@ -5847,17 +6118,16 @@ function renderMaterialsList() {
     }
     const nameAndQuantity = document.createElement('span');
     nameAndQuantity.className = 'material-name-quantity';
-    nameAndQuantity.append(
-      createTextElement('span', 'material-name', row.name),
-      createTextElement('span', 'material-qty', `× ${formatNumber(row.qty)}`)
-    );
+    const quantity = createTextElement('span', 'material-qty', `× ${formatNumber(row.qty)}`);
+    if (row.qty !== originalQty) quantity.classList.add('prepared-adjusted-value');
+    nameAndQuantity.append(createTextElement('span', 'material-name', row.name), quantity);
     primary.appendChild(nameAndQuantity);
     if (noLongerNeeded) {
       primary.appendChild(createTextElement('span', 'purchase-status', exclusionReason));
     }
     content.appendChild(primary);
 
-    const supplementEntries = createCraftSupplementEntries(row.name, row.qty);
+    const supplementEntries = createCraftSupplementEntries(row.name, row.qty, row, originalRow);
     const usageAlternatives = row.usageAlternatives || [];
     if (supplementEntries.length || usageAlternatives.some(entries => entries.length > 0)) {
       const supplement = document.createElement('div');
@@ -5879,9 +6149,11 @@ function renderMaterialsList() {
             document.createTextNode('に使用')
           );
         } else {
+          const quantity = createTextElement('span', 'material-usage-emphasis', formatNumber(entry.qty));
+          if (entry.preparationAdjusted) quantity.classList.add('prepared-adjusted-value');
           detail.append(
             document.createTextNode(prefix),
-            createTextElement('span', 'material-usage-emphasis', formatNumber(entry.qty)),
+            quantity,
             document.createTextNode(' 個は'),
             createTextElement('span', 'material-usage-emphasis', entry.name),
             document.createTextNode('に使用')
@@ -5892,7 +6164,11 @@ function renderMaterialsList() {
       if (usageAlternatives.length <= 1) {
         const entries = usageAlternatives[0] || [];
         entries.forEach(entry =>
-          appendUsageDetail('うち ', entry, entries.length === 1 && row.surplus === 0 && entry.qty === row.produced)
+          appendUsageDetail(
+            'うち ',
+            entry,
+            entry.qty > 0 && entries.length === 1 && row.surplus === 0 && entry.qty === row.produced
+          )
         );
       } else {
         usageAlternatives.forEach(entries => {
@@ -5910,17 +6186,18 @@ function renderMaterialsList() {
     treeButton.setAttribute('aria-label', `${row.name}のミニレシピツリー`);
     treeButton.addEventListener('click', event => {
       event.stopPropagation();
-      openMaterialTree(row.name, row.qty);
+      openMaterialTree(row.name, row.qty || originalQty);
     });
     rowElement.appendChild(content);
     appendItemActionButtons(
       rowElement,
-      createIntermediatePreparedButton(row.name, { disabled: noLongerNeeded }),
+      createIntermediatePreparedButton(row.name, originalQty, { disabled: noLongerNeeded }),
       createShopInfoButton(row.name, {
         intermediatePurchase: {
           disabled: noLongerNeeded,
           qty: noLongerNeeded ? 0 : row.qty,
           reducedQty,
+          preparedQty: preparedCount,
           blockers: purchasedIntermediateBlockers(row.name)
         }
       }),
@@ -5930,8 +6207,10 @@ function renderMaterialsList() {
     li.appendChild(rowElement);
     const shareLines = [shareItemTextBlock(row.name, master, {
       quantity: row.qty,
-      markers: shareItemMarkers(row.name, { purchased, prepared })
+      markers: shareItemMarkers(row.name, { purchased, prepared: hasPrepared })
     })];
+    if (hasPrepared) shareLines.push(`  準備済み反映: ${formatNumber(preparedCount)}個`);
+    else if (affectedByPreparation) shareLines.push('  準備済み反映後');
     supplementEntries.forEach(entry => {
       if (entry.kind === 'surplus') shareLines.push(`  余り: ${formatNumber(entry.qty)}個`);
       else if (entry.kind === 'craft') shareLines.push(`  製作回数: ${formatNumber(entry.qty)}回`);
@@ -5939,12 +6218,16 @@ function renderMaterialsList() {
     if (usageAlternatives.length <= 1) {
       const entries = usageAlternatives[0] || [];
       entries.forEach(entry => {
-        const all = entries.length === 1 && row.surplus === 0 && entry.qty === row.produced;
-        shareLines.push(all ? `  用途: すべてを${entry.name}に使用` : `  用途: ${formatNumber(entry.qty)}個を${entry.name}に使用`);
+        const all = entry.qty > 0 && entries.length === 1 && row.surplus === 0 && entry.qty === row.produced;
+        shareLines.push(all
+          ? `  用途: すべてを${entry.name}に使用`
+          : `  用途: ${formatNumber(entry.qty)}個を${entry.name}に使用${entry.preparationAdjusted ? '（準備済み反映後）' : ''}`);
       });
     } else {
       usageAlternatives.forEach(entries => entries.forEach(entry => {
-        shareLines.push(`  使用先候補: ${entry.name}（${formatNumber(entry.qty)}個）`);
+        shareLines.push(
+          `  使用先候補: ${entry.name}（${formatNumber(entry.qty)}個）${entry.preparationAdjusted ? '（準備済み反映後）' : ''}`
+        );
       }));
     }
     li.dataset.shareTextBlock = shareLines.join('\n');
@@ -5971,7 +6254,7 @@ function renderMaterialsList() {
     purchaseAllButton.textContent = purchaseLabel;
     purchaseAllButton.disabled = purchasableIntermediateNames.every(
       name => purchasedIntermediateNames.has(name) || !requirementsAfterPurchases.states.has(name)
-        || preparedIntermediateNames.has(name)
+        || preparedIntermediateCounts.has(name)
     );
     purchaseAllButton.addEventListener('click', event => {
       event.stopPropagation();
@@ -6040,10 +6323,10 @@ function renderMaterialsList() {
   appendSectionHeader('必要素材', false, materialSectionRows, createMaterialBulkPurchaseRow());
   appendSectionHeader('必要なシャード/クリスタル/クラスター', true, crystalSectionRows);
 
-  if (exchangeSummary.fixed.size > 0 || exchangeSummary.choices.size > 0) {
+  if (fixedSummaryEntries.length > 0 || choiceSummaryEntries.length > 0) {
     const summaryRows = [];
 
-    [...exchangeSummary.fixed.values()]
+    fixedSummaryEntries
       .sort((a, b) => compareItemNames(a.name, b.name) || Number(a.refinable) - Number(b.refinable))
       .forEach(entry => {
         const li = document.createElement('li');
@@ -6060,18 +6343,19 @@ function renderMaterialsList() {
         }
         const primary = document.createElement('div');
         primary.className = 'material-primary';
-        primary.append(
-          createTextElement('span', 'material-name', entry.name),
-          createTextElement('span', 'material-qty', `× ${formatNumber(entry.qty)}`)
-        );
+        const quantity = createTextElement('span', 'material-qty', `× ${formatNumber(entry.qty)}`);
+        if (entry.preparationAdjusted) quantity.classList.add('prepared-adjusted-value');
+        primary.append(createTextElement('span', 'material-name', entry.name), quantity);
         content.appendChild(primary);
         li.appendChild(content);
-        li.dataset.shareTextBlock = `・${entry.name} ×${formatNumber(entry.qty)}`;
+        li.dataset.shareTextBlock = [
+          `・${entry.name} ×${formatNumber(entry.qty)}`,
+          entry.preparationAdjusted ? '  準備済み反映後' : ''
+        ].filter(Boolean).join('\n');
         summaryRows.push(li);
       });
 
-    [...exchangeSummary.choices.values()]
-      .map(sortSupplementEntries)
+    choiceSummaryEntries
       .sort((a, b) => compareItemNames(a[0]?.name || '', b[0]?.name || ''))
       .forEach(entries => {
         const li = document.createElement('li');
@@ -6098,17 +6382,15 @@ function renderMaterialsList() {
             labelRow.appendChild(createRefinableSupplementLabel());
             const infoRow = document.createElement('div');
             infoRow.className = 'material-primary';
-            infoRow.append(
-              createTextElement('span', 'material-name', entry.name),
-              createTextElement('span', 'material-qty', `× ${formatNumber(entry.qty)}`)
-            );
+            const quantity = createTextElement('span', 'material-qty', `× ${formatNumber(entry.qty)}`);
+            if (entry.preparationAdjusted) quantity.classList.add('prepared-adjusted-value');
+            infoRow.append(createTextElement('span', 'material-name', entry.name), quantity);
             entryContent.append(labelRow, infoRow);
             entryRow.appendChild(entryContent);
           } else {
-            entryRow.append(
-              createTextElement('span', 'material-name', entry.name),
-              createTextElement('span', 'material-qty', `× ${formatNumber(entry.qty)}`)
-            );
+            const quantity = createTextElement('span', 'material-qty', `× ${formatNumber(entry.qty)}`);
+            if (entry.preparationAdjusted) quantity.classList.add('prepared-adjusted-value');
+            entryRow.append(createTextElement('span', 'material-name', entry.name), quantity);
           }
           supplement.appendChild(entryRow);
         });
@@ -6118,6 +6400,9 @@ function renderMaterialsList() {
         li.dataset.shareTextBlock = entries
           .map((entry, index) => `${index === 0 ? '・' : '  または '}${entry.name} ×${formatNumber(entry.qty)}`)
           .join('\n');
+        if (entries.some(entry => entry.preparationAdjusted)) {
+          li.dataset.shareTextBlock += '\n  準備済み反映後';
+        }
         summaryRows.push(li);
       });
 
@@ -6254,6 +6539,58 @@ function lockMaterialTreeContentHeight() {
   const maxHeight = Math.max(120, Math.min(520, window.innerHeight * 0.52));
   const height = Math.min(Math.ceil(content.getBoundingClientRect().height), maxHeight);
   content.style.height = `${height}px`;
+}
+
+function preparedCountInputValue() {
+  const value = Number.parseInt(elements.preparedCountInput.value, 10);
+  return Math.max(0, Math.min(preparedCountMaximum, Number.isFinite(value) ? value : 0));
+}
+
+function updatePreparedCountControls({ normalize = false } = {}) {
+  const value = preparedCountInputValue();
+  if (normalize) elements.preparedCountInput.value = String(value);
+  elements.preparedCountDecrease5Btn.disabled = value === 0;
+  elements.preparedCountDecreaseBtn.disabled = value === 0;
+  elements.preparedCountIncreaseBtn.disabled = value === preparedCountMaximum;
+  elements.preparedCountIncrease5Btn.disabled = value === preparedCountMaximum;
+  elements.preparedCountZeroBtn.disabled = value === 0;
+  elements.preparedCountMaximumBtn.disabled = value === preparedCountMaximum;
+}
+
+function changePreparedCount(delta) {
+  elements.preparedCountInput.value = String(
+    Math.max(0, Math.min(preparedCountMaximum, preparedCountInputValue() + delta))
+  );
+  updatePreparedCountControls();
+}
+
+function openPreparedCountDialog(name, maximum) {
+  preparedCountTargetName = name;
+  preparedCountMaximum = Math.max(0, Number(maximum) || 0);
+  elements.preparedCountTitle.textContent = `${name}の準備済み個数`;
+  elements.preparedCountInput.max = String(preparedCountMaximum);
+  elements.preparedCountInput.value = String(
+    preparedIntermediateCounts.has(name)
+      ? Math.min(preparedCountMaximum, preparedIntermediateCounts.get(name))
+      : preparedCountMaximum
+  );
+  updatePreparedCountControls();
+  floatingWindows.preparedCount.open();
+  elements.preparedCountInput.focus();
+  elements.preparedCountInput.select();
+}
+
+function closePreparedCountDialog() {
+  if (!floatingWindows.preparedCount.isOpen()) return;
+  const name = preparedCountTargetName;
+  const count = preparedCountInputValue();
+  elements.preparedCountInput.value = String(count);
+  setMaterialPreparedCount(materialPurchaseState, name, count, currentMaterialPurchaseContext());
+  floatingWindows.preparedCount.close();
+  preparedCountTargetName = '';
+  preparedCountMaximum = 0;
+  saveViewState();
+  renderUiChange(UI_CHANGE.PURCHASE_STATUS_CHANGED);
 }
 
 function openMaterialTree(name, neededQty) {
@@ -6587,16 +6924,20 @@ function showShopDialog(
             : 'この中間素材は購入💰して用意する';
       purchaseLabel.append(checkbox, document.createTextNode(text));
       if (intermediatePurchase?.reducedQty > 0) {
-        const blockerText = intermediatePurchase.blockers?.length
-          ? `「${intermediatePurchase.blockers.join('」「')}」の購入指定により`
-          : '上位中間素材の購入指定により';
+        const blockerText = intermediatePurchase.preparedQty > 0
+          ? `準備済み${formatNumber(intermediatePurchase.preparedQty)}個を反映し、`
+          : intermediatePurchase.blockers?.length
+            ? `「${intermediatePurchase.blockers.join('」「')}」の購入指定により`
+            : '上位中間素材の購入指定により';
         purchaseLabel.appendChild(
           createTextElement(
             'span',
             'shop-purchase-reason',
             checkbox.disabled
               ? `${blockerText}不要です`
-              : `${blockerText}${formatNumber(intermediatePurchase.reducedQty)}個不要になりました`
+              : intermediatePurchase.preparedQty > 0
+                ? `${blockerText}残り${formatNumber(qty)}個です`
+                : `${blockerText}${formatNumber(intermediatePurchase.reducedQty)}個不要になりました`
           )
         );
       }
@@ -7855,11 +8196,29 @@ function applyFavoriteListFileImport(decodedLists, mode) {
 function confirmFavoriteListFileImport(decodedLists) {
   const content = document.createElement('div');
   content.className = 'favorite-list-file-confirm';
-  content.appendChild(createTextElement('div', '', `${decodedLists.length}件のお気に入りリストを読み込みます`));
+  const summary = createTextElement('div', 'favorite-list-file-selection-summary', '');
+  const selectionActions = document.createElement('div');
+  selectionActions.className = 'favorite-list-file-selection-actions';
+  const selectAllButton = createTextElement('button', '', 'すべて選択');
+  const clearAllButton = createTextElement('button', '', 'すべて解除');
+  selectAllButton.type = 'button';
+  clearAllButton.type = 'button';
+  selectionActions.append(selectAllButton, clearAllButton);
   const preview = document.createElement('ul');
   preview.className = 'favorite-list-file-preview';
-  decodedLists.forEach(list => preview.appendChild(createTextElement('li', '', list.name)));
-  content.appendChild(preview);
+  decodedLists.forEach((list, index) => {
+    const row = document.createElement('li');
+    const label = document.createElement('label');
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.className = 'favorite-list-file-selection';
+    input.value = String(index);
+    input.checked = true;
+    label.append(input, createTextElement('span', '', list.name));
+    row.appendChild(label);
+    preview.appendChild(row);
+  });
+  content.append(summary, selectionActions, preview);
   const choices = document.createElement('div');
   choices.className = 'favorite-list-file-import-modes';
   const createChoice = (value, text, checked = false) => {
@@ -7874,15 +8233,43 @@ function confirmFavoriteListFileImport(decodedLists) {
   };
   choices.append(
     createChoice('add', '既存を残して追加', true),
-    createChoice('replace', '既存をすべて削除して置き換える')
+    createChoice('replace', '既存をすべて削除し、選択したリストで置き換える')
   );
   content.appendChild(choices);
   showConfirmContent(content, () => {
     const mode = choices.querySelector('input:checked')?.value === 'replace' ? 'replace' : 'add';
-    applyFavoriteListFileImport(decodedLists, mode);
+    const selectedLists = [...preview.querySelectorAll('.favorite-list-file-selection:checked')]
+      .map(input => decodedLists[Number(input.value)])
+      .filter(Boolean);
+    if (selectedLists.length === 0) return;
+    const action = mode === 'replace'
+      ? '既存のお気に入りリストをすべて削除し、選択したリストで置き換えます'
+      : '選択したリストを既存のお気に入りへ追加します';
+    showConfirm(
+      `${selectedLists.length}件のお気に入りリストを読み込みます。\n${action}。よろしいですか？`,
+      () => applyFavoriteListFileImport(selectedLists, mode)
+    );
+    elements.confirmOverlay.classList.add('favorite-list-file-final-confirm');
   });
   elements.confirmOverlay.classList.add('favorite-list-file-dialog');
   elements.confirmYes.textContent = '読み込む';
+  const updateSelectionState = () => {
+    const selectedCount = preview.querySelectorAll('.favorite-list-file-selection:checked').length;
+    summary.textContent = `${decodedLists.length}件中${selectedCount}件のお気に入りリストを読み込みます`;
+    elements.confirmYes.disabled = selectedCount === 0;
+    selectAllButton.disabled = selectedCount === decodedLists.length;
+    clearAllButton.disabled = selectedCount === 0;
+  };
+  preview.addEventListener('change', updateSelectionState);
+  selectAllButton.addEventListener('click', () => {
+    preview.querySelectorAll('.favorite-list-file-selection').forEach(input => { input.checked = true; });
+    updateSelectionState();
+  });
+  clearAllButton.addEventListener('click', () => {
+    preview.querySelectorAll('.favorite-list-file-selection').forEach(input => { input.checked = false; });
+    updateSelectionState();
+  });
+  updateSelectionState();
 }
 
 async function importAllFavoriteLists(event) {
@@ -8149,6 +8536,30 @@ function bindEvents() {
   });
   bindStepButtons(
     [
+      [elements.preparedCountDecrease5Btn, -5],
+      [elements.preparedCountDecreaseBtn, -1],
+      [elements.preparedCountIncreaseBtn, 1],
+      [elements.preparedCountIncrease5Btn, 5]
+    ],
+    changePreparedCount
+  );
+  elements.preparedCountInput.addEventListener('input', () => updatePreparedCountControls());
+  elements.preparedCountInput.addEventListener('change', () => updatePreparedCountControls({ normalize: true }));
+  elements.preparedCountZeroBtn.addEventListener('click', () => {
+    elements.preparedCountInput.value = '0';
+    updatePreparedCountControls();
+  });
+  elements.preparedCountMaximumBtn.addEventListener('click', () => {
+    elements.preparedCountInput.value = String(preparedCountMaximum);
+    updatePreparedCountControls();
+  });
+  bindOverlayDismissal(
+    elements.preparedCountOverlay,
+    closePreparedCountDialog,
+    elements.preparedCountCloseBtn
+  );
+  bindStepButtons(
+    [
       [elements.materialTreeDecrease5Btn, -5],
       [elements.materialTreeDecreaseBtn, -1],
       [elements.materialTreeIncreaseBtn, 1],
@@ -8218,6 +8629,14 @@ function bindEvents() {
   document.addEventListener('keydown', handleReleaseNoticeKeydown, true);
   elements.confirmYes.addEventListener('click', confirmPendingAction);
   elements.confirmNo.addEventListener('click', closeConfirm);
+  elements.confirmOverlay.addEventListener('click', event => {
+    if (
+      event.target === elements.confirmOverlay &&
+      elements.confirmOverlay.classList.contains('favorite-list-file-dialog')
+    ) {
+      closeConfirm();
+    }
+  });
   bindOverlayDismissal(elements.settingsOverlay, requestCloseSettings, elements.settingsCloseBtn);
   elements.settingsShareTab.addEventListener('click', () => selectSettingsTab('share', { focus: false }));
   elements.settingsDisplayTab.addEventListener('click', () => selectSettingsTab('display', { focus: false }));
@@ -8334,9 +8753,9 @@ async function startApp() {
   elements.loadingTitle.textContent = 'データ読み込み中...';
   const dataProgress = createApplicationDataProgress(true);
   dataProgress.report('アプリ情報を読み込んでいます', 0);
+  const startupMetadataPromise = Promise.all([loadAppVersion(), loadTips()]);
   await waitForVisiblePaint();
-  await loadAppVersion();
-  await init(dataProgress);
+  await init(dataProgress, startupMetadataPromise);
 }
 
 function waitForVisiblePaint() {

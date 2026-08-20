@@ -432,11 +432,20 @@ test('image and text sharing preserve purchased and prepared intermediate marker
   await page.locator('#shareDiscardBtn').click();
 
   await purchasedNode.locator('.intermediate-prepared-btn').click();
+  await page.locator('#preparedCountCloseBtn').click();
   await expect(purchasedNode).toHaveClass(/prepared-selected/);
+  const preparedCount = await purchasedNode.locator('.intermediate-prepared-btn').textContent();
+  expect(Number(preparedCount)).toBeGreaterThan(0);
   await page.locator('#shareBtn').click();
   if (await materialChoice.count()) await materialChoice.click();
   await page.locator('#contentShareTextBtn').click();
-  expect(await page.evaluate(() => window.__sharedText || '')).toContain('中間素材準備済📦の為不要');
+  const preparedSharedText = await page.evaluate(() => window.__sharedText || '');
+  expect(preparedSharedText).toContain('バスタードソード ×0');
+  expect(preparedSharedText).toContain(`準備済み反映: ${preparedCount}個`);
+  expect(preparedSharedText).toContain('製作回数: 0回');
+  expect(preparedSharedText).toContain('銅鉱 ×4');
+  expect(preparedSharedText).toContain('準備済み反映後');
+  expect(preparedSharedText).toContain('中間素材準備済📦の為不要');
   await page.evaluate(() => {
     const original = window.html2canvas;
     window.html2canvas = async (host, options) => {
@@ -444,6 +453,13 @@ test('image and text sharing preserve purchased and prepared intermediate marker
         .map(marker => marker.textContent).join('');
       window.__preparedShareReasons = [...host.querySelectorAll('[data-share-exclusion-status="true"]')]
         .map(status => status.textContent).join('\n');
+      window.__preparedAdjustedShareValues = [...host.querySelectorAll('.prepared-adjusted-value')]
+        .map(value => ({
+          text: value.textContent,
+          name: value.closest('li')?.querySelector('.material-name')?.textContent || '',
+          background: getComputedStyle(value).backgroundColor,
+          opacity: getComputedStyle(value).opacity
+        }));
       return original(host, options);
     };
   });
@@ -451,8 +467,14 @@ test('image and text sharing preserve purchased and prepared intermediate marker
   if (await materialChoice.count()) await materialChoice.click();
   await page.locator('#contentShareImageBtn').click();
   await expect(page.locator('#shareReadyBtn')).toBeVisible({ timeout: 30_000 });
-  expect(await page.evaluate(() => window.__preparedShareMarkers)).toContain('📦');
+  expect(await page.evaluate(() => window.__preparedShareMarkers)).toContain(preparedCount);
   expect(await page.evaluate(() => window.__preparedShareReasons)).toContain('中間素材準備済📦の為不要');
+  const preparedAdjustedShareValues = await page.evaluate(() => window.__preparedAdjustedShareValues);
+  expect(preparedAdjustedShareValues.some(value => value.text.includes('× 0'))).toBe(true);
+  expect(preparedAdjustedShareValues.some(value => value.text === '0')).toBe(true);
+  expect(preparedAdjustedShareValues.some(value => value.name === '銅鉱' && value.text.includes('× 4'))).toBe(true);
+  expect(preparedAdjustedShareValues.every(value => value.background === 'rgb(59, 52, 29)')).toBe(true);
+  expect(preparedAdjustedShareValues.every(value => value.opacity === '1')).toBe(true);
   await page.locator('#shareDiscardBtn').click();
 });
 

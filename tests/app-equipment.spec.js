@@ -8,6 +8,7 @@ const {
   importFavoriteFromPlaza,
   loadPublishedItems,
   openApp,
+  publishedDataVersion,
   routeMirageRecipeVariants,
   searchFor
 } = require('./helpers/app.js');
@@ -254,6 +255,45 @@ test('desktop left panel resizes, persists, and stacks equipment fields only whe
   await expect.poll(async () =>
     Math.abs((await page.locator('#panelLeft').evaluate(panel => panel.getBoundingClientRect().width)) - resizedWidth)
   ).toBeLessThanOrEqual(1);
+});
+
+test('mobile equipment job and level share a row when their controls fit', async ({ page }) => {
+  await openApp(page, 480, 800);
+  await page.locator('#equipmentSearchToggle').click();
+  await expect(page.locator('#panelLeft')).not.toHaveClass(/equipment-search-stacked/);
+
+  const layout = await page.locator('#equipmentSearchPanel').evaluate(panel => {
+    const job = panel.querySelector('.equipment-search-grid > label').getBoundingClientRect();
+    const level = panel.querySelector('.equipment-search-field').getBoundingClientRect();
+    const input = panel.querySelector('#equipmentLevelInput').getBoundingClientRect();
+    const buttons = [...panel.querySelectorAll('.equipment-level-control button')].map(button =>
+      button.getBoundingClientRect()
+    );
+    return {
+      rowOffset: Math.abs(job.top - level.top),
+      inputHeight: input.height,
+      inputWidth: input.width,
+      buttonHeights: buttons.map(button => button.height),
+      buttonWidths: buttons.map(button => button.width),
+      controlGaps: [
+        buttons[1].left - buttons[0].right,
+        input.left - buttons[1].right,
+        buttons[2].left - input.right,
+        buttons[3].left - buttons[2].right
+      ]
+    };
+  });
+  expect(layout.rowOffset).toBeLessThan(1);
+  for (const buttonHeight of layout.buttonHeights) {
+    expect(Math.abs(layout.inputHeight - buttonHeight)).toBeLessThan(0.1);
+  }
+  expect(Math.abs(layout.buttonWidths[0] - layout.buttonWidths[3])).toBeLessThan(0.1);
+  expect(Math.abs(layout.buttonWidths[1] - layout.buttonWidths[2])).toBeLessThan(0.1);
+  expect(layout.buttonWidths[0]).toBeGreaterThan(layout.buttonWidths[1]);
+  expect(layout.inputWidth).toBeLessThan(80);
+  for (const gap of layout.controlGaps) {
+    expect(Math.abs(gap - 3)).toBeLessThan(0.1);
+  }
 });
 
 test('middle panel uses temporary width and yields before the right panel', async ({ page }) => {
@@ -526,7 +566,7 @@ test('equipment search keeps classes separate and falls back per slot', async ({
     );
     await route.fulfill({
       contentType: 'application/json',
-      body: JSON.stringify({ Version: '7.55', Items: items })
+      body: JSON.stringify({ Version: publishedDataVersion, Items: items })
     });
   });
   await openApp(page);
@@ -607,7 +647,7 @@ test('equipment search prefers tenacity or piety and shows only differing tied p
     );
     await route.fulfill({
       contentType: 'application/json',
-      body: JSON.stringify({ Version: '7.55', Items: items })
+      body: JSON.stringify({ Version: publishedDataVersion, Items: items })
     });
   });
   await openApp(page);

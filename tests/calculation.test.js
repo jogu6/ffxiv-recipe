@@ -5,6 +5,7 @@ const test = require('node:test');
 const {
   calculateCraft,
   calculateRequirements,
+  compareRequirementResults,
   createIntermediateForest,
   mergeAlternativeRequirements,
   mergeSummedRequirements,
@@ -18,8 +19,8 @@ function recipe(recipeYield, ingredients = [], craftType = '0') {
   return { yield: recipeYield, ingredients, craftType };
 }
 
-function requirements(recipes, roots) {
-  return calculateRequirements(recipes, roots, { exchangeCraftTypes });
+function requirements(recipes, roots, options = {}) {
+  return calculateRequirements(recipes, roots, { exchangeCraftTypes, ...options });
 }
 
 function loadRealRecipeData() {
@@ -79,6 +80,107 @@ test('propagates integer demand through multiple recipe levels', () => {
   assert.equal(result.states.get('Part').craftTimes, 2);
   assert.equal(result.states.get('Part').surplus, 2);
   assert.equal(result.states.get('Ore').needed, 8);
+});
+
+test('uses prepared intermediate quantities once and crafts only the remainder', () => {
+  const recipes = {
+    Product: recipe(1, [{ name: 'Part', qty: 7 }]),
+    Part: recipe(3, [{ name: 'Ore', qty: 4 }])
+  };
+  const partial = requirements(recipes, [{ name: 'Product', qty: 1 }], {
+    availableCounts: new Map([['Part', 2]])
+  });
+  const part = partial.states.get('Part');
+
+  assert.equal(part.needed, 7);
+  assert.equal(part.availableUsed, 2);
+  assert.equal(part.craftNeeded, 5);
+  assert.equal(part.craftTimes, 2);
+  assert.equal(part.produced, 8);
+  assert.equal(part.surplus, 1);
+  assert.equal(partial.states.get('Ore').needed, 8);
+
+  const complete = requirements(recipes, [{ name: 'Product', qty: 1 }], {
+    availableCounts: { Part: 7 }
+  });
+  assert.equal(complete.states.get('Part').craftTimes, 0);
+  assert.equal(complete.states.has('Ore'), false);
+});
+
+test('prepared quantities propagate through every lower material and expose exact calculation changes', () => {
+  const recipes = {
+    Product: recipe(1, [{ name: 'Part', qty: 7 }]),
+    Part: recipe(3, [
+      { name: 'Ore', qty: 4 },
+      { name: 'Crystal', qty: 2 },
+      { name: 'ExchangeItem', qty: 1 }
+    ]),
+    ExchangeItem: recipe(1, [{ name: 'Token', qty: 10 }], '9')
+  };
+  const before = requirements(recipes, [{ name: 'Product', qty: 1 }]);
+  const after = requirements(recipes, [{ name: 'Product', qty: 1 }], {
+    availableCounts: { Part: 2 }
+  });
+  const changes = compareRequirementResults(before, after);
+
+  assert.deepEqual(
+    ['Part', 'Ore', 'Crystal', 'ExchangeItem'].map(name => [name, after.states.get(name)?.needed || 0]),
+    [['Part', 7], ['Ore', 8], ['Crystal', 4], ['ExchangeItem', 2]]
+  );
+  assert.deepEqual(
+    changes.get('Part'),
+    {
+      name: 'Part',
+      before: { needed: 7, availableUsed: 0, craftNeeded: 7, craftTimes: 3, produced: 9, surplus: 2 },
+      after: { needed: 7, availableUsed: 2, craftNeeded: 5, craftTimes: 2, produced: 8, surplus: 1 },
+      changedFields: ['availableUsed', 'craftNeeded', 'craftTimes', 'produced', 'surplus']
+    }
+  );
+  for (const name of ['Ore', 'Crystal']) {
+    assert.deepEqual(changes.get(name).changedFields, ['needed', 'craftNeeded', 'produced']);
+  }
+  assert.deepEqual(
+    changes.get('ExchangeItem').changedFields,
+    ['needed', 'craftNeeded', 'craftTimes', 'produced']
+  );
+  assert.equal(after.states.has('Token'), false);
+});
+
+test('prepared shared intermediates are consumed once after aggregate demand', () => {
+  const recipes = {
+    ProductA: recipe(1, [{ name: 'Shared', qty: 2 }]),
+    ProductB: recipe(1, [{ name: 'Shared', qty: 2 }]),
+    Shared: recipe(3, [{ name: 'Ore', qty: 5 }])
+  };
+  const result = requirements(recipes, [
+    { name: 'ProductA', qty: 1 },
+    { name: 'ProductB', qty: 1 }
+  ], { availableCounts: { Shared: 1 } });
+
+  assert.deepEqual(
+    Object.fromEntries(['needed', 'availableUsed', 'craftNeeded', 'craftTimes', 'produced', 'surplus']
+      .map(field => [field, result.states.get('Shared')[field]])),
+    { needed: 4, availableUsed: 1, craftNeeded: 3, craftTimes: 1, produced: 4, surplus: 0 }
+  );
+  assert.equal(result.states.get('Ore').needed, 5);
+});
+
+test('full preparation removes every lower requirement and records zero-valued results', () => {
+  const recipes = {
+    Product: recipe(1, [{ name: 'Part', qty: 2 }]),
+    Part: recipe(2, [{ name: 'Subpart', qty: 3 }]),
+    Subpart: recipe(1, [{ name: 'Ore', qty: 4 }])
+  };
+  const before = requirements(recipes, [{ name: 'Product', qty: 1 }]);
+  const after = requirements(recipes, [{ name: 'Product', qty: 1 }], { availableCounts: { Part: 2 } });
+  const changes = compareRequirementResults(before, after);
+
+  assert.equal(after.states.get('Part').craftNeeded, 0);
+  assert.equal(after.states.get('Part').craftTimes, 0);
+  assert.equal(after.states.has('Subpart'), false);
+  assert.equal(after.states.has('Ore'), false);
+  assert.equal(changes.get('Subpart').after.needed, 0);
+  assert.equal(changes.get('Ore').after.needed, 0);
 });
 
 test('calculates contextual recipe overrides inherited from an immutable default map', () => {
@@ -390,6 +492,24 @@ test('builds an unambiguous intermediate hierarchy without duplicates', () => {
   assert.equal(forest.length, 1);
   assert.equal(forest[0].name, 'Part');
   assert.equal(forest[0].children[0].name, 'Subpart');
+});
+
+test('intermediate hierarchy exposes the remaining quantity after prepared stock', () => {
+  const recipes = {
+    Product: recipe(1, [{ name: 'Part', qty: 1 }]),
+    Part: recipe(2, [{ name: 'Ore', qty: 3 }])
+  };
+  const forest = createIntermediateForest(
+    requirements(recipes, [{ name: 'Product', qty: 5 }], {
+      availableCounts: { Part: 2 }
+    })
+  );
+
+  assert.equal(forest[0].qty, 3);
+  assert.equal(forest[0].totalNeeded, 5);
+  assert.equal(forest[0].availableUsed, 2);
+  assert.equal(forest[0].craftTimes, 2);
+  assert.equal(forest[0].surplus, 1);
 });
 
 test('keeps a shared intermediate at the forest root', () => {

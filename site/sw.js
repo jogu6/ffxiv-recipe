@@ -1,4 +1,4 @@
-const APP_CACHE_VERSION = 'ff14recipe-app-v3.21-d2bd0501314c';
+const APP_CACHE_VERSION = 'ff14recipe-app-v3.22-34ec9ad3c6f1';
 const DATA_CACHE_VERSION = 'ff14recipe-data-7.55-528bd67b';
 const CACHE_PREFIX = 'ff14recipe-';
 
@@ -15,6 +15,7 @@ const PRECACHE_FILES = [
   './favorite-list-file.js',
   './favorite-count-model.js',
   './data-setup-progress.js',
+  './application-data-cache.js',
   './item-icon-pack.js',
   './share-content-model.js',
   './share-coordinator.js',

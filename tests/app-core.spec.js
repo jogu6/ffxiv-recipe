@@ -7,6 +7,8 @@ const {
   dragHandleAfter,
   importFavoriteFromPlaza,
   openApp,
+  publishedAppVersion,
+  publishedPatchStatus,
   routeMirageRecipeVariants,
   searchFor
 } = require('./helpers/app.js');
@@ -20,7 +22,7 @@ test('loading overlay blocks interaction while it is displayed', async ({ page }
     'FinalFantasy XIV® Crafting Assistant XIVca(シヴカ)'
   );
   await expect(page.locator('#loadingOverlay')).toHaveCSS('pointer-events', 'auto');
-  await expect(page.locator('header #loadStatus')).toHaveText('patch 7.55 対応');
+  await expect(page.locator('header #loadStatus')).toHaveText(publishedPatchStatus);
   const cachedItemRequests = await page.evaluate(async () => {
     const dataCacheName = (await caches.keys()).find(name => name.startsWith('ff14recipe-data-'));
     const cache = await caches.open(dataCacheName);
@@ -28,7 +30,7 @@ test('loading overlay blocks interaction while it is displayed', async ({ page }
   });
   expect(cachedItemRequests).toBe(1);
   await page.locator('#settingsBtn').click();
-  await expect(page.locator('#settingsDialog #appVersion')).toHaveText('v3.21');
+  await expect(page.locator('#settingsDialog #appVersion')).toHaveText(publishedAppVersion);
 });
 
 test('paints startup progress before beginning the data-loading work', async ({ page }) => {
@@ -42,7 +44,40 @@ test('paints startup progress before beginning the data-loading work', async ({ 
   await expect(page.locator('#loadingProgressRow')).toBeVisible();
   await expect(page.locator('#loadingDetail')).toBeVisible();
   await expect(page.locator('#loadingProgressPercent')).toBeHidden();
-  await expect(page.locator('#loadStatus')).toHaveText('patch 7.55 対応', { timeout: 10_000 });
+  await expect(page.locator('#loadStatus')).toHaveText(publishedPatchStatus, { timeout: 10_000 });
+});
+
+test('keeps the first loading presentation and closes returning startup as soon as setup finishes', async ({ page }) => {
+  const firstStartedAt = Date.now();
+  await openApp(page);
+  const firstDuration = Date.now() - firstStartedAt;
+  expect(firstDuration).toBeGreaterThanOrEqual(1900);
+  await expect.poll(() => page.evaluate(() => new Promise(resolve => {
+    const request = indexedDB.open(ApplicationDataCache.DATABASE_NAME, 1);
+    request.onerror = () => resolve(false);
+    request.onsuccess = () => {
+      const database = request.result;
+      const transaction = database.transaction(ApplicationDataCache.STORE_NAME, 'readonly');
+      const countRequest = transaction.objectStore(ApplicationDataCache.STORE_NAME).count();
+      countRequest.onerror = () => resolve(false);
+      countRequest.onsuccess = () => {
+        database.close();
+        resolve(countRequest.result === 1);
+      };
+    };
+  }))).toBe(true);
+
+  const returningStartedAt = Date.now();
+  await page.reload();
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  const returningDuration = Date.now() - returningStartedAt;
+  const measuredDuration = await page.evaluate(
+    () => performance.getEntriesByName('application-startup-total').at(-1)?.duration
+  );
+
+  expect(returningDuration).toBeLessThan(firstDuration);
+  expect(await page.evaluate(() => performance.getEntriesByName('application-derived-cache-hit').length)).toBe(1);
+  expect(measuredDuration).toBeGreaterThan(0);
 });
 
 test('shows a startup error instead of leaving the loading message indefinitely', async ({ page }) => {
@@ -645,24 +680,52 @@ test('count step buttons adjust the selected recipe count', async ({ page }) => 
   await expect(page.locator('#countInput')).toHaveValue('1');
 });
 
-test('number inputs hide native spin buttons', async ({ page }) => {
+test('number inputs share the count component, scale together, and hide native spin buttons', async ({ page }) => {
   await openApp(page, 900);
 
-  for (const selector of ['#countInput', '#materialTreeCountInput']) {
+  const standardInputs = ['#countInput', '#materialTreeCountInput', '#preparedCountInput'];
+  for (const input of await page.locator('input[type="number"]').all()) {
+    await expect(input).toHaveCSS('appearance', 'textfield');
+  }
+  for (const selector of standardInputs) {
     await expect(page.locator(selector)).toHaveCSS('appearance', 'textfield');
     await expect(page.locator(selector)).toHaveCSS('color', 'rgb(200, 168, 75)');
     await expect(page.locator(selector)).toHaveCSS('font-size', '19.8px');
     await expect(page.locator(selector)).toHaveCSS('font-weight', '700');
     await expect.poll(() => page.locator(selector).evaluate(element => Number.parseFloat(getComputedStyle(element).height))).toBeGreaterThanOrEqual(24);
+    await expect(page.locator(selector)).toHaveClass(/count-input/);
+  }
+  await expect(page.locator('#equipmentLevelInput')).not.toHaveClass(/count-input/);
+
+  const controlMetrics = await page.evaluate(() => {
+    const metrics = id => {
+      const style = getComputedStyle(document.getElementById(id));
+      return { fontSize: style.fontSize, height: style.height, width: style.width };
+    };
+    return {
+      normal: ['countDecreaseBtn', 'materialTreeDecreaseBtn', 'preparedCountDecreaseBtn'].map(metrics),
+      wide: ['countDecrease5Btn', 'materialTreeDecrease5Btn', 'preparedCountDecrease5Btn'].map(metrics)
+    };
+  });
+  expect(new Set(controlMetrics.normal.map(value => JSON.stringify(value))).size).toBe(1);
+  expect(new Set(controlMetrics.wide.map(value => JSON.stringify(value))).size).toBe(1);
+  expect(controlMetrics.wide[0].height).toBe(controlMetrics.normal[0].height);
+  expect(controlMetrics.wide[0].fontSize).toBe(controlMetrics.normal[0].fontSize);
+  expect(Number.parseFloat(controlMetrics.wide[0].width)).toBeGreaterThan(
+    Number.parseFloat(controlMetrics.normal[0].width)
+  );
+  for (const selector of standardInputs) {
+    const inputHeight = await page.locator(selector).evaluate(element => getComputedStyle(element).height);
+    expect(inputHeight).toBe(controlMetrics.normal[0].height);
   }
 
   await page.setViewportSize({ width: 600, height: 700 });
-  await expect(page.locator('#countInput')).toHaveCSS('appearance', 'textfield');
-  await expect(page.locator('#countInput')).toHaveCSS('font-size', '24.2px');
-  await expect.poll(() => page.locator('#countInput').evaluate(element => Number.parseFloat(getComputedStyle(element).height))).toBeGreaterThanOrEqual(32);
-  await expect(page.locator('#materialTreeCountInput')).toHaveCSS('font-size', '19.8px');
-  for (const selector of ['#materialTreeCountInput', '#materialTreeDecreaseBtn', '#materialTreeIncreaseBtn']) {
-    await expect.poll(() => page.locator(selector).evaluate(element => Number.parseFloat(getComputedStyle(element).height))).toBeGreaterThanOrEqual(24);
+  for (const selector of standardInputs) {
+    await expect(page.locator(selector)).toHaveCSS('font-size', '24.2px');
+    await expect.poll(() => page.locator(selector).evaluate(element => Number.parseFloat(getComputedStyle(element).height))).toBeGreaterThanOrEqual(27);
+    const inputHeight = await page.locator(selector).evaluate(element => getComputedStyle(element).height);
+    const buttonHeight = await page.locator('#countDecreaseBtn').evaluate(element => getComputedStyle(element).height);
+    expect(inputHeight).toBe(buttonHeight);
   }
 
   await searchFor(page, 'ブラスバスタードソード');

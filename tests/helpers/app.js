@@ -1,12 +1,37 @@
+const { closeSync, openSync, readFileSync, readSync } = require('node:fs');
 const { readFile } = require('node:fs/promises');
 const path = require('node:path');
 const { expect } = require('@playwright/test');
 
 let publishedItemJsonPromise;
 
+function readFilePrefix(file, maximumBytes = 512) {
+  const descriptor = openSync(file, 'r');
+  try {
+    const buffer = Buffer.alloc(maximumBytes);
+    const bytesRead = readSync(descriptor, buffer, 0, buffer.length, 0);
+    return buffer.toString('utf8', 0, bytesRead);
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+const publishedItemPath = path.resolve(__dirname, '../../site/data/Item.json');
+const publishedItemPrefix = readFilePrefix(publishedItemPath);
+const publishedDataVersion = publishedItemPrefix.match(/^\{"Version":"([^"]+)"/u)?.[1] || '';
+const publishedServiceWorker = readFileSync(path.resolve(__dirname, '../../site/sw.js'), 'utf8');
+const publishedAppVersion = publishedServiceWorker.match(
+  /const\s+APP_CACHE_VERSION\s*=\s*['"][^'"]*?(v\d+(?:\.\d+)*)[^'"]*['"]/iu
+)?.[1] || '';
+const publishedPatchStatus = `patch ${publishedDataVersion} 対応`;
+
+if (!publishedDataVersion || !publishedAppVersion) {
+  throw new Error('公開データまたはアプリのバージョンを正本から取得できません。');
+}
+
 async function loadPublishedItems() {
   publishedItemJsonPromise ||= readFile(
-    path.resolve(__dirname, '../../site/data/Item.json'),
+    publishedItemPath,
     'utf8'
   );
   return JSON.parse(await publishedItemJsonPromise).Items;
@@ -56,7 +81,10 @@ async function routeMirageRecipeVariants(page, { parentName = '', includeVariant
       const parent = items.find(item => item.Name === parentName);
       parent.Recipe.Ingredients = [{ Name: target.Name, Amount: '1' }];
     }
-    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ Version: '7.55', Items: items }) });
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ Version: publishedDataVersion, Items: items })
+    });
   });
 }
 
@@ -164,6 +192,9 @@ module.exports = {
   importFavoriteFromPlaza,
   loadPublishedItems,
   openApp,
+  publishedAppVersion,
+  publishedDataVersion,
+  publishedPatchStatus,
   routeMirageRecipeVariants,
   searchFor,
   swipe

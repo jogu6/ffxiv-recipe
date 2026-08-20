@@ -7,6 +7,7 @@ const {
   dragHandleAfter,
   importFavoriteFromPlaza,
   openApp,
+  publishedPatchStatus,
   routeMirageRecipeVariants,
   searchFor
 } = require('./helpers/app.js');
@@ -29,6 +30,7 @@ test('creates a named favorite list from a tree pin and exports a compact share 
 
   await page.locator('#recipeList .pin-btn').first().click();
   await expect(page.locator('#confirmMsg')).toContainText('「剣リスト」から削除しますか？');
+  expect((await page.locator('#confirmDialog').boundingBox()).width).toBeGreaterThan(500);
   await page.locator('#confirmNo').click();
 
   await page.locator('#settingsBtn').click();
@@ -96,7 +98,7 @@ test('removes legacy favorites excluded from Lodestone and reports their names',
   });
 
   await openApp(page);
-  await expect(page.locator('#loadStatus')).toHaveText('patch 7.55 対応');
+  await expect(page.locator('#loadStatus')).toHaveText(publishedPatchStatus);
   await expect(page.locator('#loadStatus')).not.toHaveAttribute('title');
   await expect(page.locator('#confirmOverlay')).toHaveClass(/info/);
   await expect(page.locator('#confirmMsg')).toHaveText(
@@ -108,7 +110,7 @@ test('removes legacy favorites excluded from Lodestone and reports their names',
   expect(stored.lists.find(list => list.id === 'legacy-excluded').itemIds).toEqual(['バスタードソード']);
 
   await page.reload();
-  await expect(page.locator('#loadStatus')).toHaveText('patch 7.55 対応');
+  await expect(page.locator('#loadStatus')).toHaveText(publishedPatchStatus);
   await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
   await expect(page.locator('#confirmOverlay')).not.toHaveClass(/info/);
 });
@@ -143,7 +145,7 @@ test('silently removes non-recipe items from recent history and keeps them remov
   expect(recentItems).toEqual([]);
 
   await page.reload();
-  await expect(page.locator('#loadStatus')).toHaveText('patch 7.55 対応');
+  await expect(page.locator('#loadStatus')).toHaveText(publishedPatchStatus);
   await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
   await expect(page.locator('#confirmOverlay')).not.toHaveClass(/info/);
   recentItems = await page.evaluate(() => {
@@ -432,7 +434,7 @@ test('restores selected view state after reload without saving calculated materi
     .toBeLessThanOrEqual(2);
 
   await page.reload();
-  await expect(page.locator('#loadStatus')).toHaveText('patch 7.55 対応');
+  await expect(page.locator('#loadStatus')).toHaveText(publishedPatchStatus);
   await expect(page.locator('#searchBox')).toHaveValue('アリペブレ');
   await expect(page.locator('#countInput')).toHaveValue('6');
   await expect(page.locator('.result-root-summary')).toContainText('アリペブレ');
@@ -520,7 +522,7 @@ test('limits the protected recent-items list to one hundred entries', async ({ p
     );
   });
   await page.reload();
-  await expect(page.locator('#loadStatus')).toHaveText('patch 7.55 対応');
+  await expect(page.locator('#loadStatus')).toHaveText(publishedPatchStatus);
   await page.locator('#favBtn').click();
   await page.locator('#favoriteLists').getByText('検索履歴', { exact: true }).click();
   await expect(page.locator('#recipeList li.fav-item-row')).toHaveCount(100);

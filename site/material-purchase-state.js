@@ -8,6 +8,7 @@
   function createState({
     intermediateContext = '',
     intermediateNames = [],
+    preparedCounts = {},
     preparedNames = [],
     materialContext = '',
     materialNames = []
@@ -15,7 +16,10 @@
     return {
       intermediateContext: String(intermediateContext || ''),
       intermediateNames: new Set(intermediateNames),
-      preparedNames: new Set(preparedNames),
+      preparedCounts: new Map([
+        ...Object.entries(preparedCounts || {}).map(([name, count]) => [name, Number(count)]),
+        ...preparedNames.map(name => [name, Number.MAX_SAFE_INTEGER])
+      ].filter(([, count]) => Number.isSafeInteger(count) && count > 0)),
       materialContext: String(materialContext || ''),
       materialNames: new Set(materialNames)
     };
@@ -41,7 +45,7 @@
     if (state.intermediateContext !== context) {
       state.intermediateContext = context;
       state.intermediateNames.clear();
-      state.preparedNames.clear();
+      state.preparedCounts.clear();
       changed = true;
     }
     if (state.materialContext !== context) {
@@ -55,7 +59,7 @@
   function resetForContext(state, context) {
     state.intermediateContext = context;
     state.intermediateNames.clear();
-    state.preparedNames.clear();
+    state.preparedCounts.clear();
     state.materialContext = context;
     state.materialNames.clear();
   }
@@ -67,7 +71,7 @@
 
   function namesFor(state, kind) {
     if (kind === 'material') return state.materialNames;
-    if (kind === 'prepared') return state.preparedNames;
+    if (kind === 'prepared') return state.preparedCounts;
     return state.intermediateNames;
   }
 
@@ -77,18 +81,19 @@
     else state.intermediateContext = context;
     if (checked) {
       names.add(name);
-      if (kind === 'intermediate') state.preparedNames.delete(name);
+      if (kind === 'intermediate') state.preparedCounts.delete(name);
     }
     else names.delete(name);
   }
 
-  function setPrepared(state, name, checked, context) {
+  function setPreparedCount(state, name, count, context) {
     state.intermediateContext = context;
-    if (checked) {
-      state.preparedNames.add(name);
+    const normalizedCount = Number(count);
+    if (Number.isSafeInteger(normalizedCount) && normalizedCount > 0) {
+      state.preparedCounts.set(name, normalizedCount);
       state.intermediateNames.delete(name);
     } else {
-      state.preparedNames.delete(name);
+      state.preparedCounts.delete(name);
     }
   }
 
@@ -97,7 +102,7 @@
     else state.intermediateContext = context;
     const target = namesFor(state, kind);
     names.forEach(name => {
-      if (kind === 'intermediate' && state.preparedNames.has(name)) return;
+      if (kind === 'intermediate' && state.preparedCounts.has(name)) return;
       target.add(name);
     });
   }
@@ -112,7 +117,8 @@
     const names = namesFor(state, kind);
     const valid = validNames instanceof Set ? validNames : new Set(validNames);
     let changed = false;
-    [...names].forEach(name => {
+    const entries = names instanceof Map ? [...names.keys()] : [...names];
+    entries.forEach(name => {
       if (valid.has(name)) return;
       names.delete(name);
       changed = true;
@@ -124,7 +130,7 @@
     return {
       purchasedContext: state.intermediateContext,
       purchasedNames: [...state.intermediateNames],
-      preparedNames: [...state.preparedNames],
+      preparedCounts: Object.fromEntries(state.preparedCounts),
       purchasedMaterialContext: state.materialContext,
       purchasedMaterialNames: [...state.materialNames]
     };
@@ -142,7 +148,7 @@
     retargetContext,
     serialize,
     setPurchased,
-    setPrepared,
+    setPreparedCount,
     syncContext
   });
 });

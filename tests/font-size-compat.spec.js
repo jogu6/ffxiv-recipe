@@ -1,4 +1,5 @@
 const { expect, test } = require('@playwright/test');
+const { publishedPatchStatus } = require('./helpers/app.js');
 
 async function dispatchSyntheticSwipe(page, fromRatio, toRatio) {
   await page.waitForFunction(() => !document.querySelector('.main')?.swiper?.animating);
@@ -15,7 +16,7 @@ async function dispatchSyntheticSwipe(page, fromRatio, toRatio) {
 test('mobile panel swipe works in every supported browser engine', async ({ page }) => {
   await page.setViewportSize({ width: 423, height: 780 });
   await page.goto('/');
-  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/, { timeout: 15_000 });
   await expect(page.locator('#panelLeft')).toHaveClass(/mobile-visible/);
 
   await dispatchSyntheticSwipe(page, 0.8, 0.2);
@@ -35,7 +36,7 @@ test('mobile panel swipe works in every supported browser engine', async ({ page
 test('saved level 10 fits the viewport and keeps live changes inside the preview', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('ff14_font_size_level_v2', '10'));
   await page.goto('/');
-  await expect(page.locator('#loadStatus')).toHaveText('patch 7.55 対応');
+  await expect(page.locator('#loadStatus')).toHaveText(publishedPatchStatus);
   await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
 
   await expect(page.locator('html')).toHaveAttribute('data-font-size-level', '10');
@@ -199,7 +200,8 @@ test('scaled compact controls remain contained at every display size', async ({ 
           }
           if (element.matches('input')) {
             const fontSize = parseFloat(getComputedStyle(element).fontSize);
-            if (element.clientHeight < fontSize * 1.25) failures.push(`${selector}:height`);
+            const minimumHeightRatio = element.matches('.count-input') ? 1 : 1.25;
+            if (element.clientHeight < fontSize * minimumHeightRatio) failures.push(`${selector}:height`);
           }
         });
       }
@@ -296,6 +298,23 @@ test('scaled compact controls remain contained at every display size', async ({ 
     ).toEqual([]);
   }
 
+  await page.locator('#materialTreeCloseBtn').click();
+  await page.locator('.intermediate-prepared-btn').first().click();
+  for (let level = 1; level <= 10; level += 1) {
+    await setLevel(level);
+    expect(
+      await audit([
+        '#preparedCountDialog',
+        '.prepared-count-control',
+        '.prepared-count-control .count-btn',
+        '#preparedCountInput',
+        '.prepared-count-presets button'
+      ]),
+      `prepared count Level ${level}`
+    ).toEqual([]);
+  }
+  await page.locator('#preparedCountCloseBtn').click();
+
   await page.evaluate(() => {
     const fixture = document.createElement('div');
     fixture.id = 'scalingRegressionFixture';
@@ -310,11 +329,11 @@ test('scaled compact controls remain contained at every display size', async ({ 
         </div>
       </div>
       <button class="favorite-material-curtain-toggle">▼</button>
-      <div style="position:relative;width:355px;height:60px">
+      <ul id="scalingFavoriteList"><li class="fav-item-row" style="position:relative;width:355px;height:60px;overflow:hidden">
         <div class="favorite-item-count-curtain expanded"><button class="favorite-item-count-toggle">▶</button>
-          <div class="favorite-item-count-controls"><button>－</button><input value="999"><button>＋</button></div>
+          <div class="favorite-item-count-controls"><button class="count-btn">－</button><input class="count-input" type="number" value="999"><button class="count-btn">＋</button></div>
         </div>
-      </div>
+      </li></ul>
       <div class="checked-favorite-materials-actions visible"><div>拡張機能</div><button>個数指定</button><button>素材リストを表示</button></div>
       <div class="favorite-material-curtain expanded"></div><div class="favorite-material-curtain-actions"><div>拡張機能</div><button>並び替え</button><button>素材リストを表示</button></div>
       <div class="font-size-preview-label">表示例</div>

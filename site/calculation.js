@@ -12,6 +12,13 @@
     return value;
   }
 
+  function requireNonNegativeInteger(value, label) {
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new TypeError(`${label} must be a non-negative safe integer`);
+    }
+    return value;
+  }
+
   function checkedAdd(left, right, label) {
     const value = left + right;
     if (!Number.isSafeInteger(value)) throw new RangeError(`${label} exceeds the safe integer range`);
@@ -77,6 +84,14 @@
       [...(options.exchangeCraftTypes || [])].map(value => String(value))
     );
     const terminalNames = new Set(options.terminalNames || []);
+    const availableCounts = new Map(
+      options.availableCounts instanceof Map
+        ? options.availableCounts
+        : Object.entries(options.availableCounts || {})
+    );
+    availableCounts.forEach((value, name) => {
+      availableCounts.set(name, requireNonNegativeInteger(Number(value), `${name} available quantity`));
+    });
     const rootNames = new Set();
     const demand = new Map();
 
@@ -106,7 +121,10 @@
       if (!recipe) continue;
       validateRecipe(name, recipe);
 
-      const info = calculateCraft(demand.get(name), recipe.yield);
+      const craftNeeded = Math.max(0, demand.get(name) - (availableCounts.get(name) || 0));
+      const info = craftNeeded > 0
+        ? calculateCraft(craftNeeded, recipe.yield)
+        : { craftTimes: 0 };
       const previousCraftTimes = craftTimes.get(name) || 0;
       if (info.craftTimes <= previousCraftTimes) continue;
       craftTimes.set(name, info.craftTimes);
@@ -135,13 +153,18 @@
     const states = new Map();
     demand.forEach((needed, name) => {
       const recipe = recipes[name];
-      const craft = recipe ? calculateCraft(needed, recipe.yield) : null;
+      const availableUsed = recipe ? Math.min(needed, availableCounts.get(name) || 0) : 0;
+      const craftNeeded = recipe ? needed - availableUsed : needed;
+      const craft = recipe && craftNeeded > 0 ? calculateCraft(craftNeeded, recipe.yield) : null;
+      const produced = recipe ? availableUsed + (craft?.produced || 0) : needed;
       states.set(name, {
         name,
         needed,
+        availableUsed,
+        craftNeeded,
         craftTimes: craft?.craftTimes || 0,
-        produced: craft?.produced || needed,
-        surplus: craft?.surplus || 0,
+        produced,
+        surplus: recipe ? produced - needed : 0,
         recipe: recipe || null,
         isRoot: rootNames.has(name),
         isExchange: Boolean(recipe && exchangeTypes.has(String(recipe.craftType))),
@@ -259,13 +282,18 @@
     terminalDemand.forEach((needed, name) => {
       const state = states.get(name);
       if (!state) return;
-      const craft = state.recipe ? calculateCraft(needed, state.recipe.yield) : null;
+      const availableUsed = Math.min(needed, state.availableUsed || 0);
+      const craftNeeded = state.recipe ? needed - availableUsed : needed;
+      const craft = state.recipe && craftNeeded > 0 ? calculateCraft(craftNeeded, state.recipe.yield) : null;
+      const produced = state.recipe ? availableUsed + (craft?.produced || 0) : needed;
       states.set(name, {
         ...state,
         needed,
+        availableUsed,
+        craftNeeded,
         craftTimes: craft?.craftTimes || 0,
-        produced: craft?.produced || needed,
-        surplus: craft?.surplus || 0,
+        produced,
+        surplus: state.recipe ? produced - needed : 0,
         parents: new Set(terminalParents.get(name) || state.parents)
       });
     });
@@ -299,6 +327,16 @@
           return;
         }
         current.needed = checkedAdd(current.needed, state.needed, `${name} summed demand`);
+        current.availableUsed = checkedAdd(
+          current.availableUsed || 0,
+          state.availableUsed || 0,
+          `${name} summed available quantity`
+        );
+        current.craftNeeded = checkedAdd(
+          current.craftNeeded ?? current.needed,
+          state.craftNeeded ?? state.needed,
+          `${name} summed craft demand`
+        );
         current.craftTimes = checkedAdd(current.craftTimes, state.craftTimes, `${name} summed craft times`);
         current.produced = checkedAdd(current.produced, state.produced, `${name} summed production`);
         current.surplus = checkedAdd(current.surplus, state.surplus, `${name} summed surplus`);
@@ -318,13 +356,35 @@
     return { states, roots, exchangeTypes };
   }
 
+  function compareRequirementResults(before, after) {
+    if (!(before?.states instanceof Map) || !(after?.states instanceof Map)) {
+      throw new TypeError('Requirement results with state maps are required');
+    }
+    const fields = ['needed', 'availableUsed', 'craftNeeded', 'craftTimes', 'produced', 'surplus'];
+    const changes = new Map();
+    const names = new Set([...before.states.keys(), ...after.states.keys()]);
+    names.forEach(name => {
+      const beforeState = before.states.get(name);
+      const afterState = after.states.get(name);
+      const beforeValues = Object.fromEntries(fields.map(field => [field, Number(beforeState?.[field] || 0)]));
+      const afterValues = Object.fromEntries(fields.map(field => [field, Number(afterState?.[field] || 0)]));
+      const changedFields = fields.filter(field => beforeValues[field] !== afterValues[field]);
+      if (changedFields.length > 0) {
+        changes.set(name, { name, before: beforeValues, after: afterValues, changedFields });
+      }
+    });
+    return changes;
+  }
+
   function createIntermediateForest(result, predicate = () => true) {
     const nodes = new Map();
     result.states.forEach(state => {
       if (state.recipe && !state.isRoot && !state.isExchange && predicate(state)) {
         nodes.set(state.name, {
           name: state.name,
-          qty: state.needed,
+          qty: state.craftNeeded ?? state.needed,
+          totalNeeded: state.needed,
+          availableUsed: state.availableUsed || 0,
           craftTimes: state.craftTimes,
           produced: state.produced,
           surplus: state.surplus,
@@ -345,6 +405,7 @@
   return {
     calculateCraft,
     calculateRequirements,
+    compareRequirementResults,
     createIntermediateForest,
     mergeAlternativeRequirements,
     mergeSummedRequirements,

@@ -9,6 +9,8 @@ const {
   endSwipe,
   importFavoriteFromPlaza,
   openApp,
+  publishedAppVersion,
+  publishedPatchStatus,
   routeMirageRecipeVariants,
   searchFor,
   swipe
@@ -125,6 +127,7 @@ test('font size settings warn before discarding and backdrop continues editing',
 
   await page.locator('#settingsCloseBtn').click();
   await expect(page.locator('#fontSizeDiscardOverlay')).toHaveClass(/open/);
+  expect((await page.locator('#fontSizeDiscardDialog').boundingBox()).width).toBeGreaterThan(500);
   await page.locator('#fontSizeDiscardOverlay').click({ position: { x: 2, y: 2 } });
   await expect(page.locator('#fontSizeDiscardOverlay')).not.toHaveClass(/open/);
   await expect(page.locator('#settingsOverlay')).toHaveClass(/open/);
@@ -376,17 +379,17 @@ test('tips groups releases before v3.0 in a collapsed accordion', async ({ page 
 });
 
 test('updated app blocks use until the current release notice is accepted', async ({ page }) => {
-  await page.addInitScript(() => {
+  await page.addInitScript(previousVersion => {
     sessionStorage.setItem('ff14_update_reload_pending', '1');
-    localStorage.setItem('ff14_acknowledged_release_version', 'v2.97');
-  });
+    localStorage.setItem('ff14_acknowledged_release_version', previousVersion);
+  }, `${publishedAppVersion}-previous`);
   await openApp(page);
 
   const overlay = page.locator('#releaseNoticeOverlay');
   const content = page.locator('#releaseNoticeContent');
   await expect(overlay).toHaveClass(/open/);
   await expect(content).toContainText('アイテム画像はクリック/タップで ✔ を On/Off');
-  await expect(content).toContainText('v3.21');
+  await expect(content).toContainText(publishedAppVersion);
   await expect(content).not.toContainText('v2.98 リリース');
   await expect(page.locator('.main')).toHaveJSProperty('inert', true);
   await expect(page.locator('#releaseNoticeOkBtn')).toBeFocused();
@@ -402,28 +405,28 @@ test('updated app blocks use until the current release notice is accepted', asyn
   await expect(page.locator('#searchBox')).toBeFocused();
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem('ff14_acknowledged_release_version')))
-    .toBe('v3.21');
+    .toBe(publishedAppVersion);
 });
 
 test('small popup reads the current release heading without a load error', async ({ page }) => {
   await openApp(page);
-  await page.evaluate(() => {
-    localStorage.setItem('ff14_acknowledged_release_version', 'v3.0');
+  await page.evaluate(previousVersion => {
+    localStorage.setItem('ff14_acknowledged_release_version', previousVersion);
     sessionStorage.setItem('ff14_update_reload_pending', '1');
-  });
+  }, `${publishedAppVersion}-previous`);
 
   const popupPromise = page.waitForEvent('popup');
   await page.locator('#popupBtn').click();
   const popup = await popupPromise;
   await expect.poll(() => popup.evaluate(() => window.innerWidth)).toBe(601);
   await expect(popup.locator('#releaseNoticeOverlay')).toHaveClass(/open/);
-  await expect(popup.locator('#releaseNoticeContent')).toContainText('v3.21');
-  await expect(popup.locator('#loadStatus')).toHaveText('patch 7.55 対応');
+  await expect(popup.locator('#releaseNoticeContent')).toContainText(publishedAppVersion);
+  await expect(popup.locator('#loadStatus')).toHaveText(publishedPatchStatus);
   await expect(popup.locator('.error-msg')).toHaveCount(0);
   await popup.locator('#releaseNoticeOkBtn').click();
   await expect
     .poll(() => popup.evaluate(() => localStorage.getItem('ff14_acknowledged_release_version')))
-    .toBe('v3.21');
+    .toBe(publishedAppVersion);
   await popup.close();
 });
 
@@ -740,7 +743,7 @@ test('header information keeps both full lines visible and shrinks each only as 
   await openApp(page, 1440, 900);
   await expect(page.locator('#headerAppFullName')).toHaveText(fullName);
   await expect(page.locator('#headerAppFullName')).toBeVisible();
-  await expect(page.locator('#loadStatus')).toHaveText('patch 7.55 対応');
+  await expect(page.locator('#loadStatus')).toHaveText(publishedPatchStatus);
 
   const assertHeaderInformationLayout = async () => {
     const metrics = await page.evaluate(() => {

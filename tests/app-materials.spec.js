@@ -8,6 +8,7 @@ const {
   importFavoriteFromPlaza,
   loadPublishedItems,
   openApp,
+  publishedDataVersion,
   routeMirageRecipeVariants,
   searchFor
 } = require('./helpers/app.js');
@@ -581,7 +582,10 @@ test('otherwise equivalent intermediate materials sort normal recipe levels befo
         CraftInfo: [{ job: '鍛冶師', level: 100 }]
       }
     );
-    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ Version: '7.55', Items: items }) });
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ Version: publishedDataVersion, Items: items })
+    });
   });
   await openApp(page);
   await searchFor(page, '試験用並び順完成品');
