@@ -76,6 +76,24 @@
     });
   }
 
+  function preserveDeclaredControlStates(content) {
+    content.querySelectorAll('[data-share-state-controls] button, [data-share-state-controls] [role="button"]').forEach(control => {
+      const state = document.createElement('span');
+      state.className = control.className;
+      state.classList.add('share-control-state');
+      state.append(...control.childNodes);
+      control.replaceWith(state);
+    });
+    content.querySelectorAll('[data-share-state-controls] input, [data-share-state-controls] select, [data-share-state-controls] textarea').forEach(control => {
+      const state = document.createElement('span');
+      state.className = `${control.className} share-control-state`.trim();
+      state.textContent = control.matches('input[type="checkbox"], input[type="radio"]')
+        ? (control.checked ? '☑' : '☐')
+        : (control.selectedOptions?.[0]?.textContent || control.value || '');
+      control.replaceWith(state);
+    });
+  }
+
   async function render({ snapshot, html2canvas = globalThis.html2canvas, scaleFactor = 1, onProgress = () => {} }) {
     if (typeof html2canvas !== 'function') throw new Error('画像描画機能を読み込めませんでした。');
     const host = document.createElement('section');
@@ -100,6 +118,7 @@
     preserveItemActionMarkers(content);
     preserveExclusionReasons(content);
     preserveRecipeMethodSelections(content);
+    preserveDeclaredControlStates(content);
     content.querySelectorAll('img.job-icon[aria-hidden="true"]').forEach(image => image.removeAttribute('aria-hidden'));
     content.querySelectorAll(OMIT_SELECTOR).forEach(node => node.remove());
     content.querySelectorAll('[hidden], [aria-hidden="true"], .hidden').forEach(node => node.remove());

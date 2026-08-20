@@ -28,7 +28,7 @@ test('loading overlay blocks interaction while it is displayed', async ({ page }
   });
   expect(cachedItemRequests).toBe(1);
   await page.locator('#settingsBtn').click();
-  await expect(page.locator('#settingsDialog #appVersion')).toHaveText('v3.2');
+  await expect(page.locator('#settingsDialog #appVersion')).toHaveText('v3.21');
 });
 
 test('paints startup progress before beginning the data-loading work', async ({ page }) => {

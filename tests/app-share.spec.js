@@ -15,9 +15,11 @@ test('share button follows panel availability and opens panel selection on deskt
   await expect(page.locator('#contentShareOverlay')).toHaveClass(/open/);
   await expect(page.locator('#contentSharePanelChoices button')).toHaveCount(3);
   await expect(page.locator('#contentSharePanelChoices button').nth(1)).toBeDisabled();
+  await expect(page.locator('#contentSharePanelChoices button').nth(1)).toHaveText('');
   await expect(page.locator('#contentShareTitle')).toHaveText('検索結果');
   await page.locator('#contentSharePanelChoices button').last().click();
   await expect(page.locator('#contentShareTitle')).toContainText('レシピツリー');
+  await expect(page.locator('#contentShareDescription')).not.toContainText(/^(個数|セット数):/m);
 });
 
 test('mobile sharing targets only the current panel without showing a selector', async ({ page }) => {
@@ -257,6 +259,30 @@ test('favorite, used-in, and material sharing use semantic text blocks and retai
   expect(text).toContain('☑️');
   expect(text).toContain('⬜');
   expect(text).not.toMatch(/[▼▶]/u);
+
+  await page.locator('.favorite-ring-toggle button').filter({ hasText: '2つ' }).click();
+  await page.evaluate(() => {
+    const original = window.html2canvas;
+    window.html2canvas = async (host, options) => {
+      const toggle = host.querySelector('.favorite-ring-toggle');
+      window.__ringShareState ||= {
+        labels: [...(toggle?.querySelectorAll('.share-control-state') || [])].map(state => state.textContent),
+        active: toggle?.querySelector('.share-control-state.active')?.textContent || '',
+        interactiveButtons: toggle?.querySelectorAll('button').length || 0
+      };
+      return original(host, options);
+    };
+  });
+  await page.locator('#shareBtn').click();
+  await selectSharePanelIfShown('指輪の素材リスト');
+  await page.locator('#contentShareImageBtn').click();
+  await expect(page.locator('#shareReadyBtn')).toBeVisible({ timeout: 30_000 });
+  expect(await page.evaluate(() => window.__ringShareState)).toEqual({
+    labels: ['0', '1つ', '2つ'],
+    active: '2つ',
+    interactiveButtons: 0
+  });
+  await page.locator('#shareDiscardBtn').click();
 
   await page.locator('#favBtn').click();
   await page.locator('#favoriteLists').getByText('指輪', { exact: true }).click();

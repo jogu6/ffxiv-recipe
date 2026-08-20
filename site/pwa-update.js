@@ -141,11 +141,112 @@
       }
     }
 
+    function createForegroundUpdateChecker({
+      serviceWorkerContainer,
+      scriptUrl = "./sw.js",
+      coalesceMs = 200,
+      onUpdateApplied = () => {},
+      logger = globalThis.console,
+      now = () => Date.now(),
+      setTimer = (callback, delay) => setTimeout(callback, delay),
+      clearTimer = timer => clearTimeout(timer),
+    } = {}) {
+      if (!serviceWorkerContainer) {
+        return Object.freeze({ schedule: () => false, close: () => {} });
+      }
+
+      const hadController = Boolean(serviceWorkerContainer.controller);
+      const observedWorkers = new WeakSet();
+      let registration = null;
+      let registrationUpdateFound = null;
+      let scheduledTimer = null;
+      let lastStartedAt = Number.NEGATIVE_INFINITY;
+      let updateApplied = false;
+      let closed = false;
+
+      const applyUpdateOnce = () => {
+        if (!hadController || updateApplied || closed) return;
+        updateApplied = true;
+        onUpdateApplied();
+      };
+
+      const observeWorker = worker => {
+        if (!worker || observedWorkers.has(worker)) return;
+        observedWorkers.add(worker);
+        const handleStateChange = () => {
+          if (worker.state === "installed") worker.postMessage?.({ type: "SKIP_WAITING" });
+          if (worker.state === "activated") applyUpdateOnce();
+          if (TERMINAL_WORKER_STATES.has(worker.state)) {
+            worker.removeEventListener("statechange", handleStateChange);
+          }
+        };
+        worker.addEventListener("statechange", handleStateChange);
+        handleStateChange();
+      };
+
+      const observeRegistration = nextRegistration => {
+        if (!nextRegistration) return;
+        if (registration !== nextRegistration) {
+          if (registration && registrationUpdateFound) {
+            registration.removeEventListener("updatefound", registrationUpdateFound);
+          }
+          registration = nextRegistration;
+          registrationUpdateFound = () => observeWorker(registration.installing || registration.waiting);
+          registration.addEventListener("updatefound", registrationUpdateFound);
+        }
+        observeWorker(registration.installing);
+        observeWorker(registration.waiting);
+      };
+
+      const runCheck = async () => {
+        lastStartedAt = now();
+        try {
+          const currentRegistration = registration || await serviceWorkerContainer.register(scriptUrl, {
+            updateViaCache: "none",
+          });
+          if (closed) return;
+          observeRegistration(currentRegistration);
+          await currentRegistration.update();
+          if (!closed) observeRegistration(currentRegistration);
+        } catch (error) {
+          logger?.warn?.("[SW] バックグラウンド更新確認失敗:", error);
+        }
+      };
+
+      const schedule = () => {
+        if (closed || scheduledTimer !== null) return false;
+        const elapsed = now() - lastStartedAt;
+        const delay = Number.isFinite(elapsed) ? Math.max(0, coalesceMs - elapsed) : 0;
+        scheduledTimer = setTimer(() => {
+          scheduledTimer = null;
+          void runCheck();
+        }, delay);
+        return true;
+      };
+
+      const handleControllerChange = () => applyUpdateOnce();
+      serviceWorkerContainer.addEventListener("controllerchange", handleControllerChange);
+
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        if (scheduledTimer !== null) clearTimer(scheduledTimer);
+        scheduledTimer = null;
+        serviceWorkerContainer.removeEventListener("controllerchange", handleControllerChange);
+        if (registration && registrationUpdateFound) {
+          registration.removeEventListener("updatefound", registrationUpdateFound);
+        }
+      };
+
+      return Object.freeze({ close, schedule });
+    }
+
     return Object.freeze({
       ACKNOWLEDGED_VERSION_KEY,
       UPDATE_RELOAD_PENDING_KEY,
       extractAppVersion,
       extractReleaseMarkdown,
+      createForegroundUpdateChecker,
       shouldShowRelease,
       updateBeforeUse,
       waitForWorkerTerminalState,

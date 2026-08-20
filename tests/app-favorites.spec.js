@@ -236,7 +236,19 @@ test('reorders favorite lists locally with the rightmost drag handle', async ({ 
   await expect(listA.locator('.favorite-list-curtain')).not.toHaveClass(/expanded/);
   await expect(listA.locator('.favorite-list-name')).toHaveCSS('font-size', '14.3px');
   const nameBoxBefore = await listA.locator('.favorite-list-name').boundingBox();
-  await listA.locator('.favorite-list-curtain-toggle').click();
+  const curtainAnimation = await listA.locator('.favorite-list-curtain').evaluate(async curtain => {
+    const width = () => curtain.getBoundingClientRect().width;
+    const start = width();
+    const target = Number.parseFloat(getComputedStyle(curtain).getPropertyValue('--favorite-list-curtain-expanded-width'));
+    curtain.querySelector('.favorite-list-curtain-toggle').click();
+    await new Promise(resolve => setTimeout(resolve, 60));
+    const middle = width();
+    await new Promise(resolve => setTimeout(resolve, 180));
+    return { start, middle, end: width(), target };
+  });
+  expect(curtainAnimation.middle).toBeGreaterThan(curtainAnimation.start);
+  expect(curtainAnimation.middle).toBeLessThan(curtainAnimation.end);
+  expect(curtainAnimation.end).toBeCloseTo(curtainAnimation.target, 0);
   await expect(listA.locator('.favorite-list-curtain')).toHaveClass(/expanded/);
   await expect(listA).toHaveCSS('user-select', 'none');
   await expect.poll(() => listA.locator('.favorite-list-curtain').evaluate(element => element.getBoundingClientRect().width)).toBeGreaterThanOrEqual(170);

@@ -130,10 +130,10 @@ const { resolvePanelLayout } = PanelLayout;
 const {
   ACKNOWLEDGED_VERSION_KEY,
   UPDATE_RELOAD_PENDING_KEY,
+  createForegroundUpdateChecker,
   extractAppVersion,
   extractReleaseMarkdown,
-  shouldShowRelease,
-  updateBeforeUse
+  shouldShowRelease
 } = PwaUpdate;
 
 const CRAFT_TYPE_NAME = {
@@ -435,7 +435,7 @@ let panelLeftResizeState = null;
 let panelLayoutFrame = 0;
 let mobilePanelSwipeController = null;
 let mobilePanelName = 'left';
-let resumeUpdatePromise = null;
+let foregroundUpdateChecker = null;
 let headerInfoResizeObserver = null;
 let lastInteractedSharePanel = 'left';
 let selectedSharePanel = 'left';
@@ -2420,6 +2420,16 @@ function updateFavoriteListsMaxHeight() {
   list.style.setProperty('--favorite-lists-max-height', `${maxHeight}px`);
 }
 
+function updateFavoriteListCurtainWidths() {
+  elements.favoriteLists?.querySelectorAll('.favorite-list-curtain').forEach(curtain => {
+    const rowWidth = curtain.closest('li')?.clientWidth || 0;
+    const expandedWidth = Math.ceil(Math.min(curtain.scrollWidth, rowWidth || curtain.scrollWidth));
+    if (expandedWidth > 0) {
+      curtain.style.setProperty('--favorite-list-curtain-expanded-width', `${expandedWidth}px`);
+    }
+  });
+}
+
 function selectFavoriteList(listId) {
   const changedList = getDisplayedFavoriteList()?.id !== listId;
   resetFavoriteOperationModes();
@@ -2893,6 +2903,7 @@ function renderFavoriteLists() {
   }
 
   elements.favoriteLists.replaceChildren(frag);
+  updateFavoriteListCurtainWidths();
   updateCheckedFavoriteMaterialsButton();
 }
 
@@ -3904,37 +3915,19 @@ function reloadAfterServiceWorkerUpdate() {
   location.reload();
 }
 
-function setBackgroundStatus(message = '') {
-  if (!elements.backgroundStatus) return;
-  elements.backgroundStatus.textContent = message;
-  elements.backgroundStatus.hidden = !message;
+function requestForegroundUpdateCheck() {
+  if (document.hidden) return false;
+  return foregroundUpdateChecker?.schedule() || false;
 }
 
-function checkForUpdateAfterResume() {
-  if (resumeUpdatePromise || !('serviceWorker' in navigator)) return resumeUpdatePromise;
-  let latestStatus = '更新を確認しています...';
-  let statusVisible = false;
-  const statusTimer = window.setTimeout(() => {
-    statusVisible = true;
-    setBackgroundStatus(latestStatus);
-  }, 500);
-  resumeUpdatePromise = updateBeforeUse({
+function initializeForegroundUpdateChecks() {
+  if (!('serviceWorker' in navigator)) return;
+  hadServiceWorkerControllerAtBoot = Boolean(navigator.serviceWorker.controller);
+  foregroundUpdateChecker = createForegroundUpdateChecker({
     serviceWorkerContainer: navigator.serviceWorker,
-    onStatus: status => {
-      latestStatus = status;
-      if (statusVisible) setBackgroundStatus(status);
-    }
-  })
-    .then(result => {
-      if (result.updateApplied) reloadAfterServiceWorkerUpdate();
-      return result;
-    })
-    .finally(() => {
-      window.clearTimeout(statusTimer);
-      setBackgroundStatus();
-      resumeUpdatePromise = null;
-    });
-  return resumeUpdatePromise;
+    onUpdateApplied: reloadAfterServiceWorkerUpdate
+  });
+  requestForegroundUpdateCheck();
 }
 
 // Data loading and index construction
@@ -4926,6 +4919,7 @@ function renderFavoriteRingControls(container, list = null) {
 
     const toggle = document.createElement('div');
     toggle.className = 'favorite-ring-toggle';
+    toggle.dataset.shareStateControls = 'true';
 
     [0, 1, 2].forEach(value => {
       const button = document.createElement('button');
@@ -7227,9 +7221,13 @@ function sharePanelMetadata(panel) {
     multipleFavoriteLists
   });
   const details = [];
+  const dialogDetails = [];
   if (panel === 'left') {
     const searchDescription = leftPanelShareDescription();
-    if (searchDescription) details.push(searchDescription);
+    if (searchDescription) {
+      details.push(searchDescription);
+      dialogDetails.push(searchDescription);
+    }
   }
   if (panel === 'right') {
     const usesIndividualFavoriteCounts =
@@ -7242,11 +7240,15 @@ function sharePanelMetadata(panel) {
       details.push(`${quantityLabel}: ${elements.countInput.value || 1}`);
     }
     const mode = favoriteShareModeDescription();
-    if (mode) details.push(`計算方法: ${mode}`);
+    if (mode) {
+      details.push(`計算方法: ${mode}`);
+      dialogDetails.push(`計算方法: ${mode}`);
+    }
   }
   return {
     title,
     description: details.join('\n'),
+    dialogDescription: dialogDetails.join('\n'),
     headingLines: multipleFavoriteLists ? favoriteLists.map(list => list.name) : []
   };
 }
@@ -7304,7 +7306,7 @@ function renderSharePanelChoices() {
   labels.forEach(({ panel, title }) => {
     const button = document.createElement('button');
     button.type = 'button';
-    button.textContent = title;
+    button.textContent = available[panel] ? title : '';
     button.disabled = !available[panel];
     button.classList.toggle('active', panel === selectedSharePanel);
     button.addEventListener('click', () => selectSharePanel(panel));
@@ -7324,7 +7326,7 @@ function refreshShareDialog() {
   const imageNotice = '画像生成には時間がかかる場合があります。生成中は画面を閉じたり再読み込みしないでください。';
   elements.contentShareDescription.textContent = shareStorageFullUntil > Date.now()
     ? remainingCapacityText()
-    : [metadata.description, imageNotice].filter(Boolean).join('\n');
+    : [metadata.dialogDescription, imageNotice].filter(Boolean).join('\n');
   elements.contentShareImageBtn.disabled = shareStorageFullUntil > Date.now();
   renderSharePanelChoices();
 }
@@ -8168,12 +8170,13 @@ function bindEvents() {
     if (document.hidden) stopGatheringTimerUpdates();
     else {
       startGatheringTimerUpdates();
-      void checkForUpdateAfterResume();
+      requestForegroundUpdateCheck();
     }
   });
-  window.addEventListener('pageshow', event => {
-    if (event.persisted && !document.hidden) void checkForUpdateAfterResume();
+  window.addEventListener('pageshow', () => {
+    requestForegroundUpdateCheck();
   });
+  window.addEventListener('focus', requestForegroundUpdateCheck);
   Object.entries(scrollPositionContainers()).forEach(([key, container]) => {
     container.addEventListener(
       'scroll',
@@ -8192,7 +8195,10 @@ function bindEvents() {
   });
   window.addEventListener('resize', () => {
     updateHeaderFullNameVisibility();
-    if (elements.favoriteLists.classList.contains('open')) updateFavoriteListsMaxHeight();
+    if (elements.favoriteLists.classList.contains('open')) {
+      updateFavoriteListsMaxHeight();
+      updateFavoriteListCurtainWidths();
+    }
     const shopEntries = elements.shopContent.querySelector('.shop-entry-list');
     if (floatingWindows.shop.isOpen() && shopEntries) layoutShopEntries(shopEntries);
     updateSettingsDialogHeight();
@@ -8303,6 +8309,7 @@ function bindEvents() {
     itemIconPack?.close();
   });
   window.addEventListener('beforeunload', () => {
+    foregroundUpdateChecker?.close();
     shareCoordinator?.close();
     void sharePngStore?.close();
   });
@@ -8315,6 +8322,7 @@ async function startApp() {
   initializeFontSizePreviewContent();
   initializeHeaderFullNameVisibility();
   bindEvents();
+  initializeForegroundUpdateChecks();
   void initializeShareFeature().catch(error => {
     shareStorageReady = false;
     updateShareButtonState();
@@ -8323,18 +8331,6 @@ async function startApp() {
   initializeMobilePanelSwipe();
   initializePanelLayout();
   if (isMobile()) showMobilePanel('left', { animate: false });
-  const updateResult = await updateBeforeUse({
-    serviceWorkerContainer: 'serviceWorker' in navigator ? navigator.serviceWorker : null,
-    onStatus: status => {
-      elements.loadingTitle.textContent = status;
-    }
-  });
-  hadServiceWorkerControllerAtBoot = updateResult.hadController;
-  if (updateResult.updateApplied) {
-    reloadAfterServiceWorkerUpdate();
-    return;
-  }
-
   elements.loadingTitle.textContent = 'データ読み込み中...';
   const dataProgress = createApplicationDataProgress(true);
   dataProgress.report('アプリ情報を読み込んでいます', 0);

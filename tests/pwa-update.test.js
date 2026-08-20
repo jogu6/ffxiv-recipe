@@ -1,6 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
+  createForegroundUpdateChecker,
   extractAppVersion,
   extractReleaseMarkdown,
   shouldShowRelease,
@@ -11,6 +12,11 @@ class FakeWorker extends EventTarget {
   constructor(state = "installing") {
     super();
     this.state = state;
+    this.messages = [];
+  }
+
+  postMessage(message) {
+    this.messages.push(message);
   }
 
   transition(state) {
@@ -172,4 +178,74 @@ test("does not block first startup while the service worker installs", async () 
     updateApplied: false,
   });
   assert.deepEqual(statuses, ["更新を確認しています..."]);
+});
+
+test("foreground update scheduling returns immediately and never waits for a stalled check", async () => {
+  let updateCalls = 0;
+  const registration = new FakeRegistration({
+    update: () => {
+      updateCalls += 1;
+      return new Promise(() => {});
+    },
+  });
+  const container = new FakeServiceWorkerContainer({ controller: {}, registration });
+  const checker = createForegroundUpdateChecker({
+    serviceWorkerContainer: container,
+    coalesceMs: 0,
+  });
+
+  const started = performance.now();
+  assert.equal(checker.schedule(), true);
+  assert.ok(performance.now() - started < 10);
+  await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(updateCalls, 1);
+
+  assert.equal(checker.schedule(), true);
+  await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(updateCalls, 2);
+  checker.close();
+});
+
+test("foreground checker observes late activation and applies an existing-install update once", async () => {
+  const worker = new FakeWorker();
+  const registration = new FakeRegistration({
+    update: async () => {
+      registration.installing = worker;
+      registration.dispatchEvent(new Event("updatefound"));
+    },
+  });
+  const container = new FakeServiceWorkerContainer({ controller: {}, registration });
+  let applied = 0;
+  const checker = createForegroundUpdateChecker({
+    serviceWorkerContainer: container,
+    coalesceMs: 0,
+    onUpdateApplied: () => { applied += 1; },
+  });
+
+  checker.schedule();
+  await new Promise(resolve => setTimeout(resolve, 10));
+  worker.transition("installed");
+  assert.deepEqual(worker.messages, [{ type: "SKIP_WAITING" }]);
+  worker.transition("activated");
+  container.dispatchEvent(new Event("controllerchange"));
+  assert.equal(applied, 1);
+  checker.close();
+});
+
+test("foreground checker does not reload for the first service-worker installation", async () => {
+  const registration = new FakeRegistration();
+  const container = new FakeServiceWorkerContainer({ registration });
+  let applied = 0;
+  const checker = createForegroundUpdateChecker({
+    serviceWorkerContainer: container,
+    coalesceMs: 0,
+    onUpdateApplied: () => { applied += 1; },
+  });
+
+  checker.schedule();
+  await new Promise(resolve => setTimeout(resolve, 10));
+  container.controller = {};
+  container.dispatchEvent(new Event("controllerchange"));
+  assert.equal(applied, 0);
+  checker.close();
 });

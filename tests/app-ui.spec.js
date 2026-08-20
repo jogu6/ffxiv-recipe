@@ -386,7 +386,7 @@ test('updated app blocks use until the current release notice is accepted', asyn
   const content = page.locator('#releaseNoticeContent');
   await expect(overlay).toHaveClass(/open/);
   await expect(content).toContainText('アイテム画像はクリック/タップで ✔ を On/Off');
-  await expect(content).toContainText('v3.2');
+  await expect(content).toContainText('v3.21');
   await expect(content).not.toContainText('v2.98 リリース');
   await expect(page.locator('.main')).toHaveJSProperty('inert', true);
   await expect(page.locator('#releaseNoticeOkBtn')).toBeFocused();
@@ -402,7 +402,7 @@ test('updated app blocks use until the current release notice is accepted', asyn
   await expect(page.locator('#searchBox')).toBeFocused();
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem('ff14_acknowledged_release_version')))
-    .toBe('v3.2');
+    .toBe('v3.21');
 });
 
 test('small popup reads the current release heading without a load error', async ({ page }) => {
@@ -417,13 +417,13 @@ test('small popup reads the current release heading without a load error', async
   const popup = await popupPromise;
   await expect.poll(() => popup.evaluate(() => window.innerWidth)).toBe(601);
   await expect(popup.locator('#releaseNoticeOverlay')).toHaveClass(/open/);
-  await expect(popup.locator('#releaseNoticeContent')).toContainText('v3.2');
+  await expect(popup.locator('#releaseNoticeContent')).toContainText('v3.21');
   await expect(popup.locator('#loadStatus')).toHaveText('patch 7.55 対応');
   await expect(popup.locator('.error-msg')).toHaveCount(0);
   await popup.locator('#releaseNoticeOkBtn').click();
   await expect
     .poll(() => popup.evaluate(() => localStorage.getItem('ff14_acknowledged_release_version')))
-    .toBe('v3.2');
+    .toBe('v3.21');
   await popup.close();
 });
 
