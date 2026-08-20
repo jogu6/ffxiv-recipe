@@ -14,13 +14,19 @@ export function validateE2eArgs(args) {
   }
 }
 
+export function createE2eEnvironment(source = process.env) {
+  const env = { ...source };
+  delete env.NO_COLOR;
+  return env;
+}
+
 async function main() {
   const args = process.argv.slice(2);
   validateE2eArgs(args);
   const cli = require.resolve('@playwright/test/cli');
   const child = spawn(process.execPath, [cli, 'test', ...args], {
     stdio: 'inherit',
-    env: process.env
+    env: createE2eEnvironment()
   });
   child.on('error', error => {
     console.error(error);

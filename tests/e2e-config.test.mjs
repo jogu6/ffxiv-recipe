@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import test from 'node:test';
-import { validateE2eArgs } from '../tools/run-e2e.mjs';
+import { createE2eEnvironment, validateE2eArgs } from '../tools/run-e2e.mjs';
 
 const require = createRequire(import.meta.url);
 const config = require('../playwright.config.js');
@@ -21,6 +21,16 @@ test('E2E runner rejects stability overrides', () => {
   assert.doesNotThrow(() => validateE2eArgs(['--grep', 'shop dialog']));
   assert.throws(() => validateE2eArgs(['--workers=4']), /上書きできません/);
   assert.throws(() => validateE2eArgs(['--config', 'other.config.js']), /上書きできません/);
+});
+
+test('E2E runner does not pass conflicting Node color variables to workers', () => {
+  assert.deepEqual(
+    createE2eEnvironment({ NO_COLOR: '1', FORCE_COLOR: '', PATH: 'example' }),
+    { FORCE_COLOR: '', PATH: 'example' }
+  );
+  assert.deepEqual(createE2eEnvironment({ NO_COLOR: '1', PATH: 'example' }), {
+    PATH: 'example'
+  });
 });
 
 test('frequent checks preserve the full gates while offering scoped app E2E', () => {
