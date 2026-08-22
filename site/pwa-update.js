@@ -144,7 +144,7 @@
     function createForegroundUpdateChecker({
       serviceWorkerContainer,
       scriptUrl = "./sw.js",
-      coalesceMs = 200,
+      coalesceMs = 5000,
       onUpdateApplied = () => {},
       logger = globalThis.console,
       now = () => Date.now(),
@@ -161,6 +161,7 @@
       let registrationUpdateFound = null;
       let scheduledTimer = null;
       let lastStartedAt = Number.NEGATIVE_INFINITY;
+      let checkInProgress = false;
       let updateApplied = false;
       let closed = false;
 
@@ -199,6 +200,8 @@
       };
 
       const runCheck = async () => {
+        if (closed || checkInProgress) return;
+        checkInProgress = true;
         lastStartedAt = now();
         try {
           const currentRegistration = registration || await serviceWorkerContainer.register(scriptUrl, {
@@ -210,17 +213,19 @@
           if (!closed) observeRegistration(currentRegistration);
         } catch (error) {
           logger?.warn?.("[SW] バックグラウンド更新確認失敗:", error);
+        } finally {
+          checkInProgress = false;
         }
       };
 
       const schedule = () => {
-        if (closed || scheduledTimer !== null) return false;
+        if (closed || scheduledTimer !== null || checkInProgress) return false;
         const elapsed = now() - lastStartedAt;
-        const delay = Number.isFinite(elapsed) ? Math.max(0, coalesceMs - elapsed) : 0;
+        if (Number.isFinite(elapsed) && elapsed < coalesceMs) return false;
         scheduledTimer = setTimer(() => {
           scheduledTimer = null;
           void runCheck();
-        }, delay);
+        }, 0);
         return true;
       };
 

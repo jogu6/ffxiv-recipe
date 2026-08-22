@@ -428,6 +428,7 @@ const expandedFavoriteCountRows = new Set();
 let gatheringTimerIntervalId = null;
 let canSaveViewState = false;
 let suppressViewStateSave = false;
+let updateReloadInProgress = false;
 const materialPurchaseState = createMaterialPurchaseState();
 const purchasedIntermediateNames = materialPurchaseState.intermediateNames;
 const preparedIntermediateCounts = materialPurchaseState.preparedCounts;
@@ -756,9 +757,7 @@ function measureEquipmentLevelMinimumWidth() {
   const controlStyle = getComputedStyle(elements.equipmentLevelControl);
   const controlFontSize = pixelValue(controlStyle.fontSize);
   const gap = pixelValue(controlStyle.columnGap);
-  const buttonWidths = [...elements.equipmentLevelControl.querySelectorAll('button')].map(button =>
-    controlFontSize * (button.classList.contains('equipment-level-step-wide') ? 2.2 : 1.8)
-  );
+  const buttonWidths = [...elements.equipmentLevelControl.querySelectorAll('button')].map(() => controlFontSize * 2.2);
   const inputStyle = getComputedStyle(elements.equipmentLevelInput);
   const inputWidth =
     controlFontSize * 4.5 +
@@ -793,6 +792,7 @@ function measurePanelLayoutMetrics() {
   equipmentPanelProbe.remove();
 
   const equipmentControlWidth = measureEquipmentLevelMinimumWidth();
+  const equipmentJobMinimumWidth = Math.max(120, pixelValue(equipmentGridStyle.fontSize) * 6);
   const equipmentColumnGap = pixelValue(equipmentGridStyle.columnGap);
   const resultHeaderStyle = getComputedStyle(elements.resultHeader);
   const resultHeaderPadding = pixelValue(resultHeaderStyle.paddingLeft) + pixelValue(resultHeaderStyle.paddingRight);
@@ -801,7 +801,9 @@ function measurePanelLayoutMetrics() {
 
   panelLayoutMetricsKey = metricsKey;
   panelLayoutMetrics = Object.freeze({
-    sideBySideLeftMinimum: Math.ceil(horizontalPadding + equipmentControlWidth * 2 + equipmentColumnGap),
+    sideBySideLeftMinimum: Math.ceil(
+      horizontalPadding + equipmentJobMinimumWidth + equipmentControlWidth + equipmentColumnGap
+    ),
     stackedLeftMinimum: Math.ceil(horizontalPadding + equipmentControlWidth),
     middlePreferredWidth: Math.max(
       MIDDLE_PANEL_MINIMUM_WIDTH,
@@ -918,6 +920,33 @@ function toNumeric(value, fallback = 0) {
   return Number.isFinite(number) ? number : fallback;
 }
 
+function visibleViewportMetrics() {
+  const measured = window.appViewport?.measure?.();
+  const width =
+    measured?.visibleWidth ||
+    measured?.width ||
+    window.innerWidth ||
+    document.documentElement.clientWidth ||
+    0;
+  const height =
+    measured?.visibleHeight ||
+    measured?.height ||
+    window.innerHeight ||
+    document.documentElement.clientHeight ||
+    0;
+  const left = Number.isFinite(measured?.visibleLeft)
+    ? measured.visibleLeft
+    : Number.isFinite(measured?.left)
+      ? measured.left
+      : 0;
+  const top = Number.isFinite(measured?.visibleTop)
+    ? measured.visibleTop
+    : Number.isFinite(measured?.top)
+      ? measured.top
+      : 0;
+  return { width, height, left, top, right: left + width, bottom: top + height };
+}
+
 function formatNumber(value) {
   return toNumeric(value).toLocaleString('ja-JP');
 }
@@ -970,13 +999,21 @@ function markSkipRestoreOnce() {
   }
 }
 
+function isUpdateReloadPending() {
+  try {
+    return sessionStorage.getItem(UPDATE_RELOAD_PENDING_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 function currentMobilePanel() {
   if (!isMobile()) return '';
   return mobilePanelName;
 }
 
 function saveViewState() {
-  if (!canSaveViewState || suppressViewStateSave) return;
+  if (!canSaveViewState || suppressViewStateSave || updateReloadInProgress) return;
   rememberVisibleScrollPositions();
   writeStoredJson(LS_VIEW_STATE, {
     v: 1,
@@ -1745,8 +1782,8 @@ function closeSearchHistory() {
 function positionSearchHistory() {
   if (!elements.searchHistory.classList.contains('open')) return;
   const listTop = elements.searchHistory.getBoundingClientRect().top;
-  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
-  elements.searchHistory.style.maxHeight = `${Math.max(0, viewportHeight - listTop - 8)}px`;
+  const viewport = visibleViewportMetrics();
+  elements.searchHistory.style.maxHeight = `${Math.max(0, viewport.bottom - listTop - 8)}px`;
 }
 
 function sortEquipmentJobs(jobs) {
@@ -1774,27 +1811,26 @@ function closeAllCustomSelects(except = null) {
 function positionFloatingList(trigger, list, { minWidth = 0, maxHeight = 320, gap = 3 } = {}) {
   if (!trigger || !list) return;
   const rect = trigger.getBoundingClientRect();
-  const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
-  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+  const viewport = visibleViewportMetrics();
   const margin = 8;
-  const width = Math.min(Math.max(rect.width, minWidth), Math.max(0, viewportWidth - margin * 2));
+  const width = Math.min(Math.max(rect.width, minWidth), Math.max(0, viewport.width - margin * 2));
   list.style.width = `${width}px`;
-  const below = Math.max(0, viewportHeight - rect.bottom - gap - margin);
-  const above = Math.max(0, rect.top - gap - margin);
+  const below = Math.max(0, viewport.bottom - rect.bottom - gap - margin);
+  const above = Math.max(0, rect.top - viewport.top - gap - margin);
   const preferredHeight = Math.min(list.scrollHeight, maxHeight);
   const placeBelow = below >= preferredHeight || below >= above;
   const availableHeight = placeBelow ? below : above;
   const resolvedMaxHeight = Math.min(maxHeight, availableHeight);
   list.style.maxHeight = `${resolvedMaxHeight}px`;
   const desiredHeight = Math.min(list.scrollHeight, resolvedMaxHeight);
-  const left = Math.max(margin, Math.min(rect.left, viewportWidth - width - margin));
+  const left = Math.max(viewport.left + margin, Math.min(rect.left, viewport.right - width - margin));
   const top = placeBelow ? rect.bottom + gap : rect.top - gap - desiredHeight;
   const containingBlock = list.offsetParent;
   const containingRect = containingBlock && containingBlock !== document.body
     ? containingBlock.getBoundingClientRect()
     : { left: 0, top: 0 };
   list.style.left = `${left - containingRect.left}px`;
-  list.style.top = `${Math.max(margin, top) - containingRect.top}px`;
+  list.style.top = `${Math.max(viewport.top + margin, top) - containingRect.top}px`;
 }
 
 function positionCustomSelectOptions(select) {
@@ -2434,7 +2470,7 @@ function closeFavoriteLists() {
 function updateFavoriteListsMaxHeight() {
   const list = elements.favoriteLists;
   if (!list) return;
-  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+  const viewport = visibleViewportMetrics();
   const listRect = list.getBoundingClientRect();
   const actions = elements.checkedFavoriteMaterialsActions;
   let listTop = listRect.top;
@@ -2448,8 +2484,8 @@ function updateFavoriteListsMaxHeight() {
     listTop += Math.max(0, targetActionsHeight - actionsRect.height);
   }
   const bottomPadding = 12;
-  const availableHeight = Math.max(0, viewportHeight - listTop - bottomPadding);
-  const maxHeight = Math.floor(Math.min(viewportHeight * 0.7, availableHeight));
+  const availableHeight = Math.max(0, viewport.bottom - listTop - bottomPadding);
+  const maxHeight = Math.floor(Math.min(viewport.height * 0.7, availableHeight));
   list.style.setProperty('--favorite-lists-max-height', `${maxHeight}px`);
 }
 
@@ -3450,7 +3486,7 @@ function showReleaseLoadError() {
 }
 
 function showPendingReleaseNotice() {
-  const updateReloadPending = sessionStorage.getItem(UPDATE_RELOAD_PENDING_KEY) === '1';
+  const updateReloadPending = isUpdateReloadPending();
   const acknowledgedVersion = localStorage.getItem(ACKNOWLEDGED_VERSION_KEY) || '';
   if (updateReloadPending && !currentAppVersion) {
     return showReleaseLoadError();
@@ -3660,8 +3696,8 @@ function makeFavLi(name, index) {
     } else {
       const dec = document.createElement('button');
       dec.type = 'button';
-      dec.className = 'count-btn';
-      dec.textContent = '－';
+      dec.className = 'count-btn count-step-unit count-step-decrease';
+      dec.setAttribute('aria-label', '1減らす');
       const input = document.createElement('input');
       input.type = 'number';
       input.className = 'count-input';
@@ -3672,8 +3708,8 @@ function makeFavLi(name, index) {
       input.value = String(itemCount);
       const inc = document.createElement('button');
       inc.type = 'button';
-      inc.className = 'count-btn';
-      inc.textContent = '＋';
+      inc.className = 'count-btn count-step-unit count-step-increase';
+      inc.setAttribute('aria-label', '1増やす');
       const commit = value => {
         setFavoriteItemCount(itemId, value);
         renderUiChange(UI_CHANGE.FAVORITE_CONTENT_UPDATED);
@@ -3945,9 +3981,12 @@ async function loadAppVersion() {
 }
 
 function reloadAfterServiceWorkerUpdate() {
+  if (updateReloadInProgress) return;
+  updateReloadInProgress = true;
+  canSaveViewState = false;
+  sessionStorage.setItem(UPDATE_RELOAD_PENDING_KEY, '1');
   clearViewState();
   markSkipRestoreOnce();
-  sessionStorage.setItem(UPDATE_RELOAD_PENDING_KEY, '1');
   location.reload();
 }
 
@@ -3964,6 +4003,23 @@ function initializeForegroundUpdateChecks() {
     onUpdateApplied: reloadAfterServiceWorkerUpdate
   });
   requestForegroundUpdateCheck();
+}
+
+function updateViewportDependentLayout() {
+  updateHeaderFullNameVisibility();
+  updateMobileHeaderVisibility();
+  if (elements.favoriteLists.classList.contains('open')) {
+    updateFavoriteListsMaxHeight();
+    updateFavoriteListCurtainWidths();
+  }
+  const shopEntries = elements.shopContent.querySelector('.shop-entry-list');
+  if (floatingWindows.shop.isOpen() && shopEntries) layoutShopEntries(shopEntries);
+  updateSettingsDialogHeight();
+  positionSearchHistory();
+  document.querySelectorAll('.custom-select.open').forEach(positionCustomSelectOptions);
+  if (elements.exportListChoices.classList.contains('open')) {
+    positionFloatingList(elements.exportListToggle, elements.exportListChoices, { maxHeight: 370, gap: 4 });
+  }
 }
 
 // Data loading and index construction
@@ -4387,9 +4443,12 @@ async function init(dataProgress, startupMetadataPromise) {
     dataProgress.report('画面を準備しています', 98);
     validateFavoriteRecipeSelections();
     setupEquipmentSearchControls();
+    const updateReloadPending = isUpdateReloadPending();
+    const skipRestoreOnce = consumeSkipRestoreOnce();
+    if (updateReloadPending) clearViewState();
     canSaveViewState = true;
-    dataProgress.report('画面を復元しています', 99);
-    if (consumeSkipRestoreOnce() || !restoreViewState()) {
+    dataProgress.report(updateReloadPending ? '初期画面を準備しています' : '画面を復元しています', 99);
+    if (updateReloadPending || skipRestoreOnce || !restoreViewState()) {
       renderList();
       renderResultView();
       if (isMobile()) showMobilePanel('left', { animate: false });
@@ -6536,7 +6595,7 @@ function lockMaterialTreeContentHeight() {
   if (!floatingWindows.materialTree.isOpen()) return;
   const content = elements.materialTreeContent;
   content.style.height = '';
-  const maxHeight = Math.max(120, Math.min(520, window.innerHeight * 0.52));
+  const maxHeight = Math.max(120, Math.min(520, visibleViewportMetrics().height * 0.52));
   const height = Math.min(Math.ceil(content.getBoundingClientRect().height), maxHeight);
   content.style.height = `${height}px`;
 }
@@ -7290,7 +7349,7 @@ function updateSettingsDialogHeight() {
     measureSettingsPanelHeight(elements.settingsSharePanel),
     measureSettingsPanelHeight(elements.settingsDisplayPanel)
   );
-  const viewportHeight = Math.min(window.innerHeight, window.visualViewport?.height || window.innerHeight);
+  const viewportHeight = visibleViewportMetrics().height;
   const height = Math.min(Math.ceil(fixedHeight + contentHeight), viewportHeight - 24);
   dialog.style.setProperty('--settings-dialog-height', `${height}px`);
 }
@@ -8584,10 +8643,9 @@ function bindEvents() {
       requestForegroundUpdateCheck();
     }
   });
-  window.addEventListener('pageshow', () => {
-    requestForegroundUpdateCheck();
+  window.addEventListener('pageshow', event => {
+    if (event.persisted) requestForegroundUpdateCheck();
   });
-  window.addEventListener('focus', requestForegroundUpdateCheck);
   Object.entries(scrollPositionContainers()).forEach(([key, container]) => {
     container.addEventListener(
       'scroll',
@@ -8604,21 +8662,8 @@ function bindEvents() {
     saveViewState();
     stopGatheringTimerUpdates();
   });
-  window.addEventListener('resize', () => {
-    updateHeaderFullNameVisibility();
-    if (elements.favoriteLists.classList.contains('open')) {
-      updateFavoriteListsMaxHeight();
-      updateFavoriteListCurtainWidths();
-    }
-    const shopEntries = elements.shopContent.querySelector('.shop-entry-list');
-    if (floatingWindows.shop.isOpen() && shopEntries) layoutShopEntries(shopEntries);
-    updateSettingsDialogHeight();
-    positionSearchHistory();
-    document.querySelectorAll('.custom-select.open').forEach(positionCustomSelectOptions);
-    if (elements.exportListChoices.classList.contains('open')) {
-      positionFloatingList(elements.exportListToggle, elements.exportListChoices, { maxHeight: 370, gap: 4 });
-    }
-  });
+  window.addEventListener('resize', updateViewportDependentLayout);
+  window.addEventListener('appviewportchange', updateViewportDependentLayout);
   elements.settingsSharePanel.addEventListener('scroll', () => {
     if (elements.exportListChoices.classList.contains('open')) {
       positionFloatingList(elements.exportListToggle, elements.exportListChoices, { maxHeight: 370, gap: 4 });
@@ -8735,9 +8780,11 @@ function bindEvents() {
   document.addEventListener('click', closeEquipmentSearchForExternalAction, true);
   document.addEventListener('pointerdown', handleDocumentPointerDown);
   window.addEventListener('resize', handleResize);
+  window.addEventListener('appviewportchange', handleResize);
 }
 
 async function startApp() {
+  if (window.ff14RecipeBrowserSupported === false) return;
   initializeFontSizePreviewContent();
   initializeHeaderFullNameVisibility();
   bindEvents();

@@ -180,7 +180,7 @@ test("does not block first startup while the service worker installs", async () 
   assert.deepEqual(statuses, ["更新を確認しています..."]);
 });
 
-test("foreground update scheduling returns immediately and never waits for a stalled check", async () => {
+test("foreground update scheduling returns immediately and rejects duplicates while a check is running", async () => {
   let updateCalls = 0;
   const registration = new FakeRegistration({
     update: () => {
@@ -200,6 +200,33 @@ test("foreground update scheduling returns immediately and never waits for a sta
   await new Promise(resolve => setTimeout(resolve, 10));
   assert.equal(updateCalls, 1);
 
+  assert.equal(checker.schedule(), false);
+  await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(updateCalls, 1);
+  checker.close();
+});
+
+test("foreground checker suppresses completed checks during the coalescing interval", async () => {
+  let updateCalls = 0;
+  let currentTime = 1000;
+  const registration = new FakeRegistration({
+    update: async () => {
+      updateCalls += 1;
+    },
+  });
+  const container = new FakeServiceWorkerContainer({ controller: {}, registration });
+  const checker = createForegroundUpdateChecker({
+    serviceWorkerContainer: container,
+    coalesceMs: 5000,
+    now: () => currentTime,
+  });
+
+  assert.equal(checker.schedule(), true);
+  await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(checker.schedule(), false);
+  assert.equal(updateCalls, 1);
+
+  currentTime += 5000;
   assert.equal(checker.schedule(), true);
   await new Promise(resolve => setTimeout(resolve, 10));
   assert.equal(updateCalls, 2);

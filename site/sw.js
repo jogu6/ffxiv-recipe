@@ -1,4 +1,4 @@
-const APP_CACHE_VERSION = 'ff14recipe-app-v3.22-34ec9ad3c6f1';
+const APP_CACHE_VERSION = 'ff14recipe-app-v3.23-ac3e12bfb7b0';
 const DATA_CACHE_VERSION = 'ff14recipe-data-7.55-528bd67b';
 const CACHE_PREFIX = 'ff14recipe-';
 
@@ -6,6 +6,7 @@ const PRECACHE_FILES = [
   './index.html',
   './styles.css',
   './font-size-settings.js',
+  './viewport-size.js',
   './calculation.js',
   './event-wiring.js',
   './floating-window.js',

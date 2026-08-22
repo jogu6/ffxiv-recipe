@@ -10,6 +10,10 @@
 <link rel="manifest" href="./manifest.webmanifest">
 <script>
   (() => {
+    const firefoxBrowser = /(?:Firefox\/|FxiOS\/)/i.test(navigator.userAgent || '');
+    window.ff14RecipeBrowserSupported = !firefoxBrowser;
+    document.documentElement.dataset.browserSupport = firefoxBrowser ? 'blocked' : 'supported';
+
     const reportedMobile = navigator.userAgentData?.mobile === true;
     const mobileUserAgent = /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(navigator.userAgent || '');
     const ipadDesktopMode = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
@@ -19,8 +23,36 @@
     let bootFailed = false;
     let bootErrorDetail = '';
 
+    function showUnsupportedBrowser() {
+      if (!firefoxBrowser) return;
+      const loadStatus = document.getElementById('loadStatus');
+      const loadingTitle = document.getElementById('loadingTitle');
+      const loadingDetail = document.getElementById('loadingDetail');
+      if (loadStatus) loadStatus.textContent = '非対応ブラウザー';
+      if (loadingTitle) loadingTitle.textContent = 'FirefoxではXIVcaを利用できません';
+      if (loadingDetail) {
+        loadingDetail.textContent = [
+          '次のいずれかのブラウザーを使用してください。',
+          '・Google Chrome 111 以上',
+          '・Microsoft Edge 111 以上',
+          '・Brave Browser 1.49 以上',
+          '・Safari 16.4 以上',
+          '最新バージョンをご利用されることをお勧めします。',
+        ].join('\n');
+        loadingDetail.hidden = false;
+      }
+    }
+
+    if (firefoxBrowser) {
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', showUnsupportedBrowser, { once: true });
+      } else {
+        showUnsupportedBrowser();
+      }
+    }
+
     function showBootError() {
-      if (!bootFailed || document.documentElement.dataset.appReady === 'true') return;
+      if (firefoxBrowser || !bootFailed || document.documentElement.dataset.appReady === 'true') return;
       const loadStatus = document.getElementById('loadStatus');
       const loadingTitle = document.querySelector('#loadingOverlay .loading-title');
       const loadingDetail = document.getElementById('loadingErrorDetail');
@@ -33,7 +65,7 @@
     }
 
     function reportBootError(detail) {
-      if (document.documentElement.dataset.appReady === 'true') return;
+      if (firefoxBrowser || document.documentElement.dataset.appReady === 'true') return;
       bootFailed = true;
       if (detail && !bootErrorDetail) bootErrorDetail = String(detail);
       if (document.readyState === 'loading') {
@@ -70,12 +102,14 @@
     });
     window.ff14RecipeBoot = {
       complete() {
+        if (firefoxBrowser) return;
         document.documentElement.dataset.appReady = 'true';
       }
     };
   })();
 </script>
 <script src="./font-size-settings.js"></script>
+<script src="./viewport-size.js"></script>
 <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
@@ -131,9 +165,9 @@
             <span>装備レベル</span>
             <div class="equipment-level-control">
               <button class="equipment-level-step-wide" id="equipmentLevelDown5Btn" type="button">-5</button>
-              <button class="equipment-level-step" id="equipmentLevelDownBtn" type="button">－</button>
+              <button class="equipment-level-step count-step-unit count-step-decrease" id="equipmentLevelDownBtn" type="button" aria-label="1減らす"></button>
               <input id="equipmentLevelInput" type="number" min="1" inputmode="numeric">
-              <button class="equipment-level-step" id="equipmentLevelUpBtn" type="button">＋</button>
+              <button class="equipment-level-step count-step-unit count-step-increase" id="equipmentLevelUpBtn" type="button" aria-label="1増やす"></button>
               <button class="equipment-level-step-wide" id="equipmentLevelUp5Btn" type="button">+5</button>
             </div>
           </div>
@@ -188,9 +222,9 @@
         <label id="countLabel">個数:</label>
         <div class="count-control">
           <button class="count-btn count-step-wide" id="countDecrease5Btn">-5</button>
-          <button class="count-btn" id="countDecreaseBtn">－</button>
+          <button class="count-btn count-step-unit count-step-decrease" id="countDecreaseBtn" aria-label="1減らす"></button>
           <input class="count-input" type="number" id="countInput" value="1" min="1" max="999" step="1" inputmode="numeric">
-          <button class="count-btn" id="countIncreaseBtn">＋</button>
+          <button class="count-btn count-step-unit count-step-increase" id="countIncreaseBtn" aria-label="1増やす"></button>
           <button class="count-btn count-step-wide" id="countIncrease5Btn">+5</button>
         </div>
       </div>
@@ -432,9 +466,9 @@
     <div id="preparedCountTitle" class="prepared-count-title"></div>
     <div class="count-control prepared-count-control">
       <button class="count-btn count-step-wide" id="preparedCountDecrease5Btn" type="button">-5</button>
-      <button class="count-btn" id="preparedCountDecreaseBtn" type="button">－</button>
+      <button class="count-btn count-step-unit count-step-decrease" id="preparedCountDecreaseBtn" type="button" aria-label="1減らす"></button>
       <input class="count-input" type="number" id="preparedCountInput" value="0" min="0" step="1" inputmode="numeric" aria-label="準備済み個数">
-      <button class="count-btn" id="preparedCountIncreaseBtn" type="button">＋</button>
+      <button class="count-btn count-step-unit count-step-increase" id="preparedCountIncreaseBtn" type="button" aria-label="1増やす"></button>
       <button class="count-btn count-step-wide" id="preparedCountIncrease5Btn" type="button">+5</button>
     </div>
     <div class="prepared-count-presets">
@@ -455,9 +489,9 @@
         <label for="materialTreeCountInput">個数:</label>
         <div class="count-control">
           <button class="count-btn count-step-wide" id="materialTreeDecrease5Btn" type="button">-5</button>
-          <button class="count-btn" id="materialTreeDecreaseBtn" type="button">－</button>
+          <button class="count-btn count-step-unit count-step-decrease" id="materialTreeDecreaseBtn" type="button" aria-label="1減らす"></button>
           <input class="count-input" type="number" id="materialTreeCountInput" value="1" min="1" max="999" step="1" inputmode="numeric">
-          <button class="count-btn" id="materialTreeIncreaseBtn" type="button">＋</button>
+          <button class="count-btn count-step-unit count-step-increase" id="materialTreeIncreaseBtn" type="button" aria-label="1増やす"></button>
           <button class="count-btn count-step-wide" id="materialTreeIncrease5Btn" type="button">+5</button>
         </div>
       </div>

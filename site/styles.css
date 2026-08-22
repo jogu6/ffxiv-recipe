@@ -30,6 +30,16 @@
   --active-bg: #2a2a1a;
   --overlay-bg: rgba(0, 0, 0, 0.6);
   --footer-space: 22px;
+  --app-layout-viewport-height: 100vh;
+  --app-viewport-height: 100vh;
+  --app-viewport-width: 100vw;
+}
+@supports (height: 100dvh) {
+  :root {
+    --app-layout-viewport-height: 100dvh;
+    --app-viewport-height: 100dvh;
+    --app-viewport-width: 100dvw;
+  }
 }
 :root[data-font-size-level="1"],
 [data-font-size-level="1"] {
@@ -179,10 +189,10 @@ body {
   font-size: calc(14px * var(--font-size-scale));
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  height: 100dvh;
-  min-height: 100vh;
+  height: var(--app-layout-viewport-height);
+  min-height: var(--app-layout-viewport-height);
   overflow: hidden;
+  position: relative;
 }
 
 header {
@@ -269,6 +279,19 @@ header h1 {
 #loadingOverlay.open {
   display: flex;
 }
+html[data-browser-support="blocked"],
+html[data-browser-support="blocked"] body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+html[data-browser-support="blocked"] [data-app-content] {
+  display: none;
+}
+html[data-browser-support="blocked"] #loadingOverlay {
+  overflow: hidden;
+  touch-action: none;
+  background: var(--bg);
+}
 .loading-card {
   max-width: min(360px, calc(100vw - 32px));
   padding: 14px 16px;
@@ -286,6 +309,7 @@ header h1 {
   margin-top: 8px;
   color: var(--muted);
   font-size: calc(12px * var(--font-size-scale));
+  white-space: pre-line;
 }
 .loading-progress-row {
   display: flex;
@@ -520,8 +544,9 @@ body.panel-left-resizing * {
 }
 .equipment-search-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(max(120px, 6em), 1fr) max-content;
   gap: 6px;
+  font-size: calc(13px * var(--font-size-scale));
 }
 .equipment-search-grid label,
 .equipment-search-grid .equipment-search-field {
@@ -605,7 +630,7 @@ body.panel-left-resizing * {
   display: none;
   position: fixed;
   z-index: 80;
-  max-height: min(320px, calc(100vh - 20px));
+  max-height: min(320px, calc(var(--app-viewport-height) - 20px));
   overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -645,7 +670,7 @@ body.panel-left-resizing * {
 }
 .equipment-level-control {
   display: grid;
-  grid-template-columns: 2.2em 1.8em 4.5em 1.8em 2.2em;
+  grid-template-columns: 2.2em 2.2em 4.5em 2.2em 2.2em;
   justify-content: center;
   gap: 3px;
 }
@@ -731,7 +756,7 @@ body.panel-left-resizing * {
 }
 #searchHistory.open {
   border-width: 1px;
-  max-height: calc(100dvh - 8px);
+  max-height: calc(var(--app-viewport-height) - 8px);
   overflow-y: auto;
   visibility: visible;
   pointer-events: auto;
@@ -1564,7 +1589,7 @@ li.ingredient-row.selected {
   gap: 4px;
 }
 .count-btn {
-  width: 1.4em;
+  width: 1.9em;
   height: 1.4em;
   background: var(--bg);
   border: 1px solid var(--border);
@@ -1578,6 +1603,29 @@ li.ingredient-row.selected {
   justify-content: center;
   line-height: 1;
   padding: 0;
+}
+.count-step-unit {
+  position: relative;
+}
+.count-step-unit::before,
+.count-step-increase::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: block;
+  border-radius: 1em;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.count-step-unit::before {
+  width: 0.68em;
+  height: 0.1em;
+}
+.count-step-increase::after {
+  width: 0.1em;
+  height: 0.68em;
 }
 .count-step-wide {
   width: 1.9em;
@@ -2833,7 +2881,7 @@ button.intermediate-prepared-btn.active {
   display: flex;
   flex-direction: column;
   width: min(560px, 100%);
-  max-height: calc(100dvh - 24px);
+  max-height: calc(var(--app-viewport-height) - 24px);
   padding: 18px 20px;
   background: var(--surface);
   border: 1px solid var(--accent);
@@ -2899,7 +2947,7 @@ button.intermediate-prepared-btn.active {
   border-radius: 6px;
   padding: 10px 12px;
   width: 90%;
-  max-height: calc(100dvh - 24px);
+  max-height: calc(var(--app-viewport-height) - 24px);
 }
 #confirmDialog {
   width: min(560px, calc(100vw - 24px));
@@ -2910,7 +2958,7 @@ button.intermediate-prepared-btn.active {
 }
 #confirmOverlay.info #confirmDialog {
   max-width: min(560px, calc(100vw - 24px));
-  max-height: calc(100dvh - 24px);
+  max-height: calc(var(--app-viewport-height) - 24px);
   display: flex;
   flex-direction: column;
 }
@@ -3082,7 +3130,7 @@ button.intermediate-prepared-btn.active {
   position: relative;
   z-index: 1;
   width: min(520px, calc(100vw - 24px));
-  max-height: calc(100dvh - 24px);
+  max-height: calc(var(--app-viewport-height) - 24px);
   overflow: auto;
   padding: 14px;
   border: 1px solid var(--border);
@@ -3284,14 +3332,14 @@ button.intermediate-prepared-btn.active {
   display: block;
   width: 100%;
   height: 100%;
-  height: 100dvh;
+  height: var(--app-viewport-height);
   border: 0;
   background: var(--bg);
 }
 #settingsDialog {
   max-width: 460px;
   height: var(--settings-dialog-height, auto);
-  max-height: calc(100dvh - 24px);
+  max-height: calc(var(--app-viewport-height) - 24px);
   overflow: hidden;
   position: relative;
   display: flex;
@@ -3784,7 +3832,7 @@ button.intermediate-prepared-btn.active {
   border-radius: 6px;
   background: var(--surface);
   text-align: center;
-  max-height: calc(100dvh - 24px);
+  max-height: calc(var(--app-viewport-height) - 24px);
   display: flex;
   flex-direction: column;
 }
@@ -3803,7 +3851,7 @@ button.intermediate-prepared-btn.active {
 }
 #licenseDialog {
   max-width: 640px;
-  max-height: calc(100dvh - 24px);
+  max-height: calc(var(--app-viewport-height) - 24px);
   display: flex;
   flex-direction: column;
 }
@@ -3866,7 +3914,7 @@ button.intermediate-prepared-btn.active {
   width: max-content;
   min-width: min(300px, calc(100vw - 24px));
   max-width: min(420px, calc(100vw - 24px));
-  max-height: calc(100dvh - 24px);
+  max-height: calc(var(--app-viewport-height) - 24px);
   display: flex;
   flex-direction: column;
 }
@@ -3990,7 +4038,7 @@ button.intermediate-prepared-btn.active {
   width: max-content;
   min-width: min(300px, calc(100vw - 24px));
   max-width: min(880px, calc(100vw - 24px));
-  max-height: calc(100dvh - 24px);
+  max-height: calc(var(--app-viewport-height) - 24px);
   display: flex;
   flex-direction: column;
 }
@@ -4179,7 +4227,7 @@ button.intermediate-prepared-btn.active {
   width: max-content;
   min-width: min(320px, calc(100vw - 24px));
   max-width: calc(100vw - 24px);
-  max-height: calc(100dvh - 24px);
+  max-height: calc(var(--app-viewport-height) - 24px);
   display: flex;
   flex-direction: column;
 }
@@ -4231,7 +4279,7 @@ button.intermediate-prepared-btn.active {
 #favoriteTargetDialog {
   width: max-content;
   max-width: min(560px, calc(100vw - 24px));
-  max-height: min(88vh, calc(100dvh - 24px));
+  max-height: min(88vh, calc(var(--app-viewport-height) - 24px));
   display: flex;
   flex-direction: column;
   text-align: center;
@@ -4344,8 +4392,6 @@ button.intermediate-prepared-btn.active {
     flex-direction: column;
   }
   body {
-    height: 100svh;
-    min-height: 100svh;
     padding-bottom: env(safe-area-inset-bottom, 0px);
     overflow: hidden;
     display: flex;
@@ -4580,7 +4626,7 @@ button.intermediate-prepared-btn.active {
     line-height: 2;
   }
   .count-btn {
-    width: 1.4em;
+    width: 1.9em;
     height: 1.4em;
     font-size: calc(18px * var(--font-size-scale));
   }

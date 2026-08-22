@@ -43,7 +43,7 @@ test('favorites and shares an ingredient while preserving search results', async
   const favoriteIngredient = page.locator('#recipeList li.fav-item-row');
   await expect(favoriteIngredient).toContainText('使用先');
   await expect(favoriteIngredient).not.toContainText('素材');
-  await favoriteIngredient.click();
+  await favoriteIngredient.getByRole('button', { name: '使用先' }).click();
   await expect(page.locator('#usesTitle')).toContainText('山羊乳');
 
   await page.locator('#settingsBtn').click();
@@ -762,7 +762,7 @@ test('favorite child count changes preserve the list scroll position', async ({ 
   expect(scrollTop).toBeGreaterThan(0);
 
   const lastControls = page.locator('#recipeList li.fav-item-row .favorite-item-count-controls').last();
-  await lastControls.getByRole('button', { name: '＋' }).click();
+  await lastControls.getByRole('button', { name: '1増やす' }).click();
   await expect.poll(() => page.locator('#recipeList').evaluate(list => list.scrollTop)).toBe(scrollTop);
   await expect(lastControls.locator('input')).toHaveValue('2');
 
@@ -771,7 +771,7 @@ test('favorite child count changes preserve the list scroll position', async ({ 
   await expect.poll(() => page.locator('#recipeList').evaluate(list => list.scrollTop)).toBe(scrollTop);
   await expect(lastControls.locator('input')).toHaveValue('4');
 
-  await lastControls.getByRole('button', { name: '－' }).click();
+  await lastControls.getByRole('button', { name: '1減らす' }).click();
   await expect.poll(() => page.locator('#recipeList').evaluate(list => list.scrollTop)).toBe(scrollTop);
   await expect(lastControls.locator('input')).toHaveValue('3');
 });

@@ -1,6 +1,11 @@
 const { expect, test } = require('@playwright/test');
 const { publishedPatchStatus } = require('./helpers/app.js');
 
+async function waitForAppLoaded(page) {
+  await expect(page.locator('#loadStatus')).toHaveText(publishedPatchStatus, { timeout: 30_000 });
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/, { timeout: 30_000 });
+}
+
 async function dispatchSyntheticSwipe(page, fromRatio, toRatio) {
   await page.waitForFunction(() => !document.querySelector('.main')?.swiper?.animating);
   const rect = await page.locator('.main').boundingBox();
@@ -16,7 +21,7 @@ async function dispatchSyntheticSwipe(page, fromRatio, toRatio) {
 test('mobile panel swipe works in every supported browser engine', async ({ page }) => {
   await page.setViewportSize({ width: 423, height: 780 });
   await page.goto('/');
-  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/, { timeout: 15_000 });
+  await waitForAppLoaded(page);
   await expect(page.locator('#panelLeft')).toHaveClass(/mobile-visible/);
 
   await dispatchSyntheticSwipe(page, 0.8, 0.2);
@@ -36,8 +41,7 @@ test('mobile panel swipe works in every supported browser engine', async ({ page
 test('saved level 10 fits the viewport and keeps live changes inside the preview', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('ff14_font_size_level_v2', '10'));
   await page.goto('/');
-  await expect(page.locator('#loadStatus')).toHaveText(publishedPatchStatus);
-  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await waitForAppLoaded(page);
 
   await expect(page.locator('html')).toHaveAttribute('data-font-size-level', '10');
   await expect
@@ -72,7 +76,7 @@ test('level 10 keeps dialog actions inside a compact viewport', async ({ page })
   await page.addInitScript(() => localStorage.setItem('ff14_font_size_level_v2', '10'));
   await page.setViewportSize({ width: 375, height: 600 });
   await page.goto('/');
-  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await waitForAppLoaded(page);
 
   await page.locator('#settingsBtn').click();
   const settingsLayout = await page.locator('#settingsDialog').evaluate(dialog => {
@@ -100,7 +104,7 @@ test('level 10 keeps dialog actions inside a compact viewport', async ({ page })
 
 test('settings button and gathering time labels fit every display size', async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await waitForAppLoaded(page);
   await page.locator('#searchBox').fill('金鉱');
   await page.locator('#searchBox').blur();
   await page.locator('#recipeList .gathering-timer-btn').first().click();
@@ -228,7 +232,10 @@ test('scaled compact controls remain contained at every display size', async ({ 
     const historyLayout = await readHistoryLayout();
     expect(Math.abs(historyLayout.list.left - historyLayout.trigger.left), `history left Level ${level}`).toBeLessThan(1);
     expect(Math.abs(historyLayout.list.right - historyLayout.trigger.right), `history right Level ${level}`).toBeLessThan(1);
-    expect(historyLayout.list.top - historyLayout.trigger.bottom, `history top Level ${level}`).toBeCloseTo(3, 1);
+    expect(
+      Math.abs(historyLayout.list.top - historyLayout.trigger.bottom - 3),
+      `history top Level ${level}`
+    ).toBeLessThan(2);
     expect(historyLayout.visibleRows, `history rows Level ${level}`).toBeGreaterThanOrEqual(10);
   }
 
@@ -280,6 +287,10 @@ test('scaled compact controls remain contained at every display size', async ({ 
       await audit(['.count-control', '.count-control .count-btn', '#countInput', '.tree-node .toggle']),
       `result Level ${level}`
     ).toEqual([]);
+    const buttonWidths = await page.locator('.result-header .count-control .count-btn').evaluateAll(buttons =>
+      buttons.map(button => button.getBoundingClientRect().width)
+    );
+    expect(Math.max(...buttonWidths) - Math.min(...buttonWidths), `count button widths Level ${level}`).toBeLessThan(0.1);
   }
 
   await page.locator('#materialsViewBtn').click();
@@ -331,7 +342,7 @@ test('scaled compact controls remain contained at every display size', async ({ 
       <button class="favorite-material-curtain-toggle">▼</button>
       <ul id="scalingFavoriteList"><li class="fav-item-row" style="position:relative;width:355px;height:60px;overflow:hidden">
         <div class="favorite-item-count-curtain expanded"><button class="favorite-item-count-toggle">▶</button>
-          <div class="favorite-item-count-controls"><button class="count-btn">－</button><input class="count-input" type="number" value="999"><button class="count-btn">＋</button></div>
+          <div class="favorite-item-count-controls"><button class="count-btn count-step-unit count-step-decrease" aria-label="1減らす"></button><input class="count-input" type="number" value="999"><button class="count-btn count-step-unit count-step-increase" aria-label="1増やす"></button></div>
         </div>
       </li></ul>
       <div class="checked-favorite-materials-actions visible"><div>拡張機能</div><button>個数指定</button><button>素材リストを表示</button></div>

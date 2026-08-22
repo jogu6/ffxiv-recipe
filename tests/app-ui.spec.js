@@ -379,11 +379,22 @@ test('tips groups releases before v3.0 in a collapsed accordion', async ({ page 
 });
 
 test('updated app blocks use until the current release notice is accepted', async ({ page }) => {
-  await page.addInitScript(previousVersion => {
+  await openApp(page);
+  await searchFor(page, 'バスタードソード');
+  await page.getByText('バスタードソード', { exact: true }).first().click();
+  await page.locator('.result-root-summary .pin-btn').first().click();
+  await page.locator('#favoriteTargetCreate').getByText('新規作成').click();
+  await page.locator('#textInputField').fill('更新後も保持するリスト');
+  await page.locator('#textInputOkBtn').click();
+  await expect(page.locator('.result-root-summary')).toContainText('バスタードソード');
+
+  await page.evaluate(previousVersion => {
     sessionStorage.setItem('ff14_update_reload_pending', '1');
     localStorage.setItem('ff14_acknowledged_release_version', previousVersion);
   }, `${publishedAppVersion}-previous`);
-  await openApp(page);
+  await page.reload();
+  await expect(page.locator('#loadStatus')).toHaveText(publishedPatchStatus);
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
 
   const overlay = page.locator('#releaseNoticeOverlay');
   const content = page.locator('#releaseNoticeContent');
@@ -393,6 +404,13 @@ test('updated app blocks use until the current release notice is accepted', asyn
   await expect(content).not.toContainText('v2.98 リリース');
   await expect(page.locator('.main')).toHaveJSProperty('inert', true);
   await expect(page.locator('#releaseNoticeOkBtn')).toBeFocused();
+  await expect(page.locator('#searchBox')).toHaveValue('');
+  await expect(page.locator('#countInput')).toHaveValue('1');
+  await expect(page.locator('.result-root-summary')).toHaveCount(0);
+  await expect(page.locator('#favoriteLists')).not.toHaveClass(/open/);
+  await expect
+    .poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('ff14_view_state_v1'))?.selected?.recipe || ''))
+    .toBe('');
 
   await page.keyboard.press('Escape');
   await expect(overlay).toHaveClass(/open/);
@@ -406,6 +424,9 @@ test('updated app blocks use until the current release notice is accepted', asyn
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem('ff14_acknowledged_release_version')))
     .toBe(publishedAppVersion);
+  await page.keyboard.press('Escape');
+  await page.locator('#favBtn').click();
+  await expect(page.locator('#favoriteLists')).toContainText('更新後も保持するリスト');
 });
 
 test('small popup reads the current release heading without a load error', async ({ page }) => {

@@ -287,9 +287,9 @@ test('mobile equipment job and level share a row when their controls fit', async
   for (const buttonHeight of layout.buttonHeights) {
     expect(Math.abs(layout.inputHeight - buttonHeight)).toBeLessThan(0.1);
   }
-  expect(Math.abs(layout.buttonWidths[0] - layout.buttonWidths[3])).toBeLessThan(0.1);
-  expect(Math.abs(layout.buttonWidths[1] - layout.buttonWidths[2])).toBeLessThan(0.1);
-  expect(layout.buttonWidths[0]).toBeGreaterThan(layout.buttonWidths[1]);
+  for (const buttonWidth of layout.buttonWidths.slice(1)) {
+    expect(Math.abs(layout.buttonWidths[0] - buttonWidth)).toBeLessThan(0.1);
+  }
   expect(layout.inputWidth).toBeLessThan(80);
   for (const gap of layout.controlGaps) {
     expect(Math.abs(gap - 3)).toBeLessThan(0.1);
