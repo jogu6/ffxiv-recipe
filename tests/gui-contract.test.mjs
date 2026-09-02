@@ -112,6 +112,9 @@ test('persistent run logs use JST timestamps', () => {
   assert.match(rustSource, /fn jst_timestamp/);
   assert.match(rustSource, /\+09:00/);
   assert.match(rustSource, /format!\("\[\{}\] \[\{}\]/);
+  assert.match(guiSource, /function jstIso/);
+  assert.doesNotMatch(guiSource, /new Date\(\)\.toISOString\(\)/);
+  assert.match(pipelineSource, /function nowIso\(\)[\s\S]*?\+09:00/);
 });
 
 test('Windows release exe and child node process do not open console windows', () => {

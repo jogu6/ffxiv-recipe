@@ -98,6 +98,7 @@ test('full Lodestone audit fetches every source fresh in one sequential queue an
     assert.deepEqual(calls, [RECIPE_LIST_URL, RECIPE_DETAIL_URL, ITEM_LIST_URL, RECIPE_LIST_URL]);
     assert.equal(result.resumed, false);
     assert.equal(result.snapshot.AuditId, 'audit-1');
+    assert.equal(result.snapshot.CheckedAt, '1970-01-01T09:00:00.100+09:00');
     assert.equal(result.snapshot.Items[0].Name, '完成品');
     assert.equal(result.snapshot.Recipes[0].AuditResourceKey, 'recipe:aaa');
     assert.equal(getPromotedLodestoneAudit(store).id, 'audit-1');

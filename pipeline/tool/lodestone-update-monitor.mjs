@@ -144,7 +144,7 @@ export async function runMonitor() {
   const config = readConfig();
   validateWebhookUrl(config.discordWebhookUrl);
   const previousState = readJson(statePath, { initialized: false, consecutiveFailures: 0 });
-  const checkedAt = new Date().toISOString();
+  const checkedAt = formatJstTimestamp();
   let current;
   try {
     current = await readLodestoneMonitorState({

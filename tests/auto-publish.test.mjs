@@ -35,6 +35,7 @@ test("auto publish settings are enabled with safe repository defaults", () => {
     deployPollSeconds: 15,
     iconQuality: 80,
     iconSize: 80,
+    nodeHeapMb: 8192,
   });
 });
 
@@ -50,8 +51,15 @@ test("authentication failures include fixed Japanese reauthentication advice", (
     error: { detail: "HTTP 401" },
     phase: "push",
     version: "7.6",
+    logPath:
+      "C:\\FF14_RecipeTree\\ffxiv-recipe\\pipeline\\logs\\runs\\test.log",
   });
   assert.match(notification, /対象Lodestone版: 7\.6/);
+  assert.match(
+    notification,
+    /確認ログ: C:\\FF14_RecipeTree\\ffxiv-recipe\\pipeline\\logs\\runs\\test\.log/,
+  );
+  assert.match(notification, /\+09:00/);
 });
 
 test("source monitoring distinguishes no response from unreadable HTML", () => {
@@ -123,6 +131,9 @@ test("automatic publication runs the shared pipeline and finishes without Git wr
   });
   assert.equal(result.status, "published");
   assert.ok(calls.some((call) => call.includes("lodestone-audit")));
+  assert.ok(
+    calls.some((call) => call.includes("--max-old-space-size=8192")),
+  );
   assert.ok(calls.some((call) => call.includes("publish-lodestone-candidate")));
   assert.ok(calls.some((call) => call.includes("app-cache-version")));
   assert.equal(

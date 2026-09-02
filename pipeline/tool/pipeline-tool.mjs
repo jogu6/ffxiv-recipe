@@ -474,7 +474,11 @@ export function pipelineWorkflowStatus() {
 }
 
 function timestampForPath(date = new Date()) {
-  return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+  const shifted = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+  return shifted
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\.\d{3}Z$/, '+0900');
 }
 
 export function compressLodestoneHtml(text, { maxOutputLength = lodestoneHtmlMaxBytes } = {}) {
@@ -753,7 +757,8 @@ export function refreshAppCacheVersion() {
 }
 
 function nowIso() {
-  return new Date().toISOString();
+  const shifted = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  return `${shifted.toISOString().slice(0, -1)}+09:00`;
 }
 
 function parseArgs(argv) {

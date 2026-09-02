@@ -92,6 +92,12 @@ export function readLodestoneAuditArtifact(root, resource) {
   return source.toString('utf8');
 }
 
+function jstIso(value = Date.now()) {
+  const date = new Date(value);
+  const shifted = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+  return `${shifted.toISOString().slice(0, -1)}+09:00`;
+}
+
 export function lodestoneRecipeCatalogFingerprint(catalog) {
   const hash = crypto.createHash('sha256');
   hash.update(`${catalog.version}\0${catalog.total}\n`);
@@ -211,7 +217,7 @@ export function loadLodestoneAuditSnapshot({ store, artifactRoot, audit }) {
   const snapshot = {
     SchemaVersion: 3,
     AuditId: audit.id,
-    CheckedAt: new Date(audit.completedAt).toISOString(),
+    CheckedAt: jstIso(audit.completedAt),
     Version: items.version,
     ItemCount: items.total,
     RecipeCount: recipes.total,
@@ -376,7 +382,7 @@ export async function runLodestoneFullAudit({
   const snapshot = {
     SchemaVersion: 3,
     AuditId: audit.id,
-    CheckedAt: new Date(now()).toISOString(),
+    CheckedAt: jstIso(now()),
     Version: items.version,
     ItemCount: items.total,
     RecipeCount: finalRecipes.total,

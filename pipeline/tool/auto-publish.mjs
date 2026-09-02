@@ -64,7 +64,7 @@ function acquireLock(lockPath) {
     const handle = fs.openSync(lockPath, "wx");
     fs.writeFileSync(
       handle,
-      `${JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() })}\n`,
+      `${JSON.stringify({ pid: process.pid, startedAt: jstTimestamp() })}\n`,
       "utf8",
     );
     return () => {
@@ -222,6 +222,7 @@ export function normalizeSettings(config = {}) {
     deployPollSeconds: Math.max(5, Number(source.deployPollSeconds || 15)),
     iconQuality: Math.min(100, Math.max(1, Number(source.iconQuality || 80))),
     iconSize: Math.max(1, Number(source.iconSize || 80)),
+    nodeHeapMb: Math.max(4096, Number(source.nodeHeapMb || 8192)),
   };
 }
 
@@ -325,7 +326,7 @@ function sanitizeNotificationValue(value) {
     .slice(0, 500);
 }
 
-export function buildFailureNotification({ error, phase, version }) {
+export function buildFailureNotification({ error, phase, version, logPath }) {
   const explanation = explainAutomationFailure(error, phase);
   const phaseLabel =
     {
@@ -344,6 +345,7 @@ export function buildFailureNotification({ error, phase, version }) {
     `対象Lodestone版: ${version || "確認前"}`,
     `原因: ${explanation.reason}`,
     `対応方法: ${explanation.advice}`,
+    ...(logPath ? [`確認ログ: ${path.resolve(logPath)}`] : []),
     `記録日時: ${jstTimestamp()}`,
   ].join("\n");
 }
@@ -539,7 +541,7 @@ function savePublicationState(statePath, previous, update) {
     ...previous,
     ...update,
     schemaVersion: 1,
-    updatedAt: new Date().toISOString(),
+    updatedAt: jstTimestamp(),
   };
   writeJsonAtomic(statePath, next);
   return next;
@@ -693,7 +695,7 @@ export async function runAutomaticPublication({
       state = savePublicationState(statePath, state, {
         status: "published",
         deploymentUrl: deployment.url,
-        completedAt: new Date().toISOString(),
+        completedAt: jstTimestamp(),
       });
       await notifySafely({
         webhookUrl: config.discordWebhookUrl,
@@ -723,7 +725,7 @@ export async function runAutomaticPublication({
       });
       state = savePublicationState(statePath, state, {
         status: "pushed",
-        pushedAt: new Date().toISOString(),
+        pushedAt: jstTimestamp(),
       });
       return runAutomaticPublication({
         config,
@@ -769,7 +771,7 @@ export async function runAutomaticPublication({
           status: "committed",
           commitSha: recoveryHead,
           changedFiles: recoveredFiles,
-          recoveredAt: new Date().toISOString(),
+          recoveredAt: jstTimestamp(),
         });
         return runAutomaticPublication({
           config,
@@ -790,7 +792,7 @@ export async function runAutomaticPublication({
         await rollbackAllowedFiles(run, repositoryRoot, logger);
       state = savePublicationState(statePath, state, {
         status: "idle",
-        recoveredAt: new Date().toISOString(),
+        recoveredAt: jstTimestamp(),
       });
     }
     const status = await commandText(run, "git", ["status", "--porcelain"], {
@@ -835,7 +837,7 @@ export async function runAutomaticPublication({
       status: "generating",
       targetVersion: version,
       targetKey,
-      startedAt: new Date().toISOString(),
+      startedAt: jstTimestamp(),
       commitSha: null,
       baseCommit: localHead,
       deploymentUrl: null,
@@ -848,11 +850,15 @@ export async function runAutomaticPublication({
       "pipeline-tool.mjs",
     );
     for (const args of pipelineCommands(settings)) {
-      await run(process.execPath, [pipelineTool, ...args], {
-        cwd: repositoryRoot,
-        logger,
-        timeoutMs: 12 * 60 * 60 * 1000,
-      });
+      await run(
+        process.execPath,
+        [`--max-old-space-size=${settings.nodeHeapMb}`, pipelineTool, ...args],
+        {
+          cwd: repositoryRoot,
+          logger,
+          timeoutMs: 12 * 60 * 60 * 1000,
+        },
+      );
     }
     const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
     await run(npmCommand, ["run", "check"], {
@@ -876,7 +882,7 @@ export async function runAutomaticPublication({
     if (!changedFiles.length) {
       state = savePublicationState(statePath, state, {
         status: "published",
-        completedAt: new Date().toISOString(),
+        completedAt: jstTimestamp(),
         changedFiles,
       });
       await notifySafely({
@@ -928,7 +934,7 @@ export async function runAutomaticPublication({
       status: "committed",
       commitSha,
       changedFiles,
-      committedAt: new Date().toISOString(),
+      committedAt: jstTimestamp(),
     });
     generated = false;
     return runAutomaticPublication({
@@ -965,7 +971,12 @@ export async function runAutomaticPublication({
     });
     error.discordNotified = await notifySafely({
       webhookUrl: config?.discordWebhookUrl,
-      content: buildFailureNotification({ error, phase: error.phase, version }),
+      content: buildFailureNotification({
+        error,
+        phase: error.phase,
+        version,
+        logPath: logger?.runFile,
+      }),
       logger,
       fetchImpl,
     });
@@ -994,6 +1005,7 @@ export async function notifyMonitorFailure({
       error: wrapped,
       phase: "source",
       version: null,
+      logPath: logger?.runFile,
     }),
     logger,
     fetchImpl,

@@ -1304,13 +1304,25 @@ function setCollapsedAnimated(element, collapsed) {
   element.addEventListener('transitionend', cleanup);
 }
 
+function jstDateParts(date = new Date()) {
+  const shifted = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth() + 1,
+    day: shifted.getUTCDate(),
+    hours: shifted.getUTCHours(),
+    minutes: shifted.getUTCMinutes(),
+    seconds: shifted.getUTCSeconds()
+  };
+}
+
 function formatDefaultListName() {
-  const now = new Date();
+  const now = jstDateParts();
   const pad = value => String(value).padStart(2, '0');
   return (
-    [now.getFullYear(), pad(now.getMonth() + 1), pad(now.getDate())].join('-') +
+    [now.year, pad(now.month), pad(now.day)].join('-') +
     ' ' +
-    [pad(now.getHours()), pad(now.getMinutes()), pad(now.getSeconds())].join(':')
+    [pad(now.hours), pad(now.minutes), pad(now.seconds)].join(':')
   );
 }
 
@@ -8335,7 +8347,8 @@ function setFavoriteListFileStatus(message = '', { error = false } = {}) {
 
 function localDateStamp(date = new Date()) {
   const pad = value => String(value).padStart(2, '0');
-  return [date.getFullYear(), pad(date.getMonth() + 1), pad(date.getDate())].join('-');
+  const jst = jstDateParts(date);
+  return [jst.year, pad(jst.month), pad(jst.day)].join('-');
 }
 
 function exportAllFavoriteLists() {

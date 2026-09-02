@@ -63,6 +63,11 @@ function jstTime(date = new Date()) {
   }).format(date);
 }
 
+function jstIso(date = new Date()) {
+  const shifted = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+  return `${shifted.toISOString().slice(0, -1)}+09:00`;
+}
+
 function appendLog(message, level = 'info') {
   const text = String(message || '').replace(/https:\/\/[^\s]+\/api\/webhooks\/[^\s]+/gi, '[Webhook URL]');
   pendingLogLines.push({ text: `[${jstTime()}] ${text}`, level });
@@ -673,7 +678,7 @@ function durationPrediction(actionId) {
 function recordDuration(actionId, seconds, outcome) {
   const key = historyKey(actionId);
   const samples = etaHistory[key] || [];
-  samples.push({ seconds, outcome, completedAt: new Date().toISOString() });
+  samples.push({ seconds, outcome, completedAt: jstIso() });
   etaHistory[key] = samples.slice(-MAX_ETA_SAMPLES);
   writeStorage(ETA_HISTORY_KEY, etaHistory);
 }
@@ -815,7 +820,7 @@ async function runAction(action, { resumeState = null } = {}) {
     moduleSchemaVersion: activeModule.schemaVersion,
     actionId: action.id,
     settings: settingsSnapshot(),
-    startedAt: resumeState?.startedAt || new Date().toISOString(),
+    startedAt: resumeState?.startedAt || jstIso(),
     completedStepIds: [...completedStepIds],
     currentStepId: null,
   });
@@ -875,7 +880,7 @@ async function runAction(action, { resumeState = null } = {}) {
     recordDuration(action.id, (performance.now() - startedAt) / 1000, outcome);
     elements.statusText.textContent = cancellationRequested ? '中断' : '失敗';
     appendLog(cancellationRequested ? '安全な処理境界で中断しました。' : `実行に失敗しました: ${String(error)}`, cancellationRequested ? 'warning' : 'error');
-    persistInterruptedRun({ ...interruptedRun, failedAt: new Date().toISOString(), outcome });
+    persistInterruptedRun({ ...interruptedRun, failedAt: jstIso(), outcome });
   } finally {
     activeCommand = '';
     activeRun = null;
