@@ -33,6 +33,36 @@ test('registers the service worker and precaches the published application shell
   expect(state.updateViaCache).toBe('none');
 });
 
+test('keeps an installed cache update waiting without reloading the initialized app', async ({ page }) => {
+  await openApp(page);
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  if (!(await page.evaluate(() => Boolean(navigator.serviceWorker.controller)))) {
+    await page.reload();
+    await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  }
+
+  let itemDataRequests = 0;
+  page.on('request', request => {
+    if (/\/data\/Item\.json$/u.test(new URL(request.url()).pathname)) itemDataRequests += 1;
+  });
+  const instanceId = await page.evaluate(() => {
+    window.__pwaUpdateTestInstance = crypto.randomUUID();
+    return window.__pwaUpdateTestInstance;
+  });
+
+  await page.evaluate(() => {
+    void navigator.serviceWorker.register('./sw.js?e2e-cache-update=1', { updateViaCache: 'none' });
+  });
+  await expect.poll(() => page.evaluate(async () => {
+    const registration = await navigator.serviceWorker.getRegistration();
+    return registration?.waiting?.scriptURL || '';
+  })).toContain('e2e-cache-update=1');
+
+  expect(await page.evaluate(() => window.__pwaUpdateTestInstance)).toBe(instanceId);
+  expect(itemDataRequests).toBe(0);
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+});
+
 test('stores one expanded item image pack and does not cache individual item images', async ({ page }) => {
   const itemImageRequests = [];
   const jobImageRequests = [];

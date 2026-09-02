@@ -120,13 +120,14 @@ test('name-key Lodestone data uses names for identity and SortOrder only for sor
         Name: '完成品', SortOrder: 45000, ItemCategory: '木材',
         Recipe: { RecipeKey: 'abc', CraftType: '0', AmountResult: '1', Ingredients: [{ Name: '素材', Amount: '2' }] }
       },
-      { Name: '素材', SortOrder: 123, ItemCategory: '石材' }
+      { Name: '素材', SortOrder: 123, MaterialSortOrder: 7, ItemCategory: '石材' }
     ]
   }, { craftTypeNames: { 0: '木工師' } });
   assert.equal(result.version, '7.55');
   assert.equal(result.itemMaster['完成品'].id, '完成品');
   assert.equal(result.itemMaster['完成品'].sortOrder, 45000);
   assert.equal(result.itemMaster['素材'].uiCategoryName, '石材');
+  assert.equal(result.itemMaster['素材'].materialSortOrder, 7);
   assert.equal(result.recipes['完成品'].recipeId, 'abc');
   assert.deepEqual(result.recipes['完成品'].ingredients, [{ name: '素材', qty: 2, itemId: '素材' }]);
 });

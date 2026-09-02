@@ -223,19 +223,40 @@ test('scaled compact controls remain contained at every display size', async ({ 
       return {
         trigger,
         list,
+        placement: document.querySelector('#searchHistory').dataset.placement,
         visibleRows: Math.floor(list.height / firstRow.height),
-        staysWithinViewport: list.bottom <= window.innerHeight + 1
+        staysWithinViewport: list.top >= 15 && list.bottom <= window.innerHeight - 15
       };
     });
     await expect.poll(async () => (await readHistoryLayout()).visibleRows).toBeGreaterThanOrEqual(10);
     await expect.poll(async () => (await readHistoryLayout()).staysWithinViewport).toBe(true);
+    await expect.poll(async () => {
+      const layout = await readHistoryLayout();
+      return Math.max(
+        Math.abs(layout.list.left - layout.trigger.left),
+        Math.abs(layout.list.right - layout.trigger.right)
+      );
+    }).toBeLessThan(1);
+    await expect.poll(async () => {
+      const layout = await readHistoryLayout();
+      return layout.placement === 'below'
+        ? Math.abs(layout.list.top - layout.trigger.bottom - 3)
+        : Math.abs(layout.trigger.top - layout.list.bottom - 3);
+    }, { message: `history gap Level ${level}` }).toBeLessThan(2);
     const historyLayout = await readHistoryLayout();
     expect(Math.abs(historyLayout.list.left - historyLayout.trigger.left), `history left Level ${level}`).toBeLessThan(1);
     expect(Math.abs(historyLayout.list.right - historyLayout.trigger.right), `history right Level ${level}`).toBeLessThan(1);
-    expect(
-      Math.abs(historyLayout.list.top - historyLayout.trigger.bottom - 3),
-      `history top Level ${level}`
-    ).toBeLessThan(2);
+    if (historyLayout.placement === 'below') {
+      expect(
+        Math.abs(historyLayout.list.top - historyLayout.trigger.bottom - 3),
+        `history below Level ${level}`
+      ).toBeLessThan(2);
+    } else {
+      expect(
+        Math.abs(historyLayout.trigger.top - historyLayout.list.bottom - 3),
+        `history above Level ${level}`
+      ).toBeLessThan(2);
+    }
     expect(historyLayout.visibleRows, `history rows Level ${level}`).toBeGreaterThanOrEqual(10);
   }
 
@@ -413,4 +434,65 @@ test('scaled compact controls remain contained at every display size', async ({ 
     previewFontSizes.push(fixtureAudit.previewFontSize);
   }
   expect(previewFontSizes.at(-1)).toBeGreaterThan(previewFontSizes[0] * 2);
+});
+
+test('search history remains aligned and fully usable while a favorite list is displayed', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('ff14_search_history', JSON.stringify(Array.from({ length: 30 }, (_, index) => `履歴${index + 1}`)));
+    localStorage.setItem('ff14_favorite_lists_v3', JSON.stringify({
+      version: 3,
+      selectedListId: 'history-layout-favorite',
+      lists: [
+        { id: 'SYSTEM_RECENT_ITEMS', name: '検索履歴', itemIds: [], recipeSelections: {} },
+        {
+          id: 'history-layout-favorite',
+          name: '履歴表示確認',
+          itemIds: [1602],
+          recipeSelections: {},
+          equipmentParameterNames: []
+        }
+      ]
+    }));
+  });
+  await page.goto('/');
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await page.locator('#favBtn').click();
+  await page.locator('#favoriteLists li').filter({ hasText: '履歴表示確認' }).click();
+  await expect(page.locator('#favBtn')).toContainText('履歴表示確認');
+  if (await page.locator('#confirmOverlay.info.open').isVisible()) {
+    await page.locator('#confirmNo').click();
+    await expect(page.locator('#confirmOverlay')).not.toHaveClass(/open/);
+  }
+  await page.locator('#searchBox').click();
+
+  const readLayout = () => page.evaluate(() => {
+    const trigger = document.querySelector('#searchBox').getBoundingClientRect();
+    const listElement = document.querySelector('#searchHistory');
+    const list = listElement.getBoundingClientRect();
+    const firstRow = listElement.querySelector('li').getBoundingClientRect();
+    const placement = listElement.dataset.placement;
+    const gap = placement === 'above'
+      ? trigger.top - list.bottom
+      : list.top - trigger.bottom;
+    return {
+      horizontalDifference: Math.max(
+        Math.abs(list.left - trigger.left),
+        Math.abs(list.right - trigger.right)
+      ),
+      gapDifference: Math.abs(gap - 3),
+      visibleRows: Math.floor(list.height / firstRow.height),
+      staysWithinSafeArea: list.top >= 15 && list.bottom <= window.innerHeight - 15
+    };
+  });
+
+  for (let level = 1; level <= 10; level += 1) {
+    await page.locator('html').evaluate((element, value) => {
+      element.dataset.fontSizeLevel = String(value);
+      window.dispatchEvent(new Event('resize'));
+    }, level);
+    await expect.poll(async () => (await readLayout()).horizontalDifference).toBeLessThan(1);
+    await expect.poll(async () => (await readLayout()).gapDifference).toBeLessThan(2);
+    await expect.poll(async () => (await readLayout()).staysWithinSafeArea).toBe(true);
+    await expect.poll(async () => (await readLayout()).visibleRows).toBeGreaterThanOrEqual(10);
+  }
 });

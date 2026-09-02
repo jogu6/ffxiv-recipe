@@ -1,5 +1,6 @@
-const APP_CACHE_VERSION = 'ff14recipe-app-v3.23-ac3e12bfb7b0';
-const DATA_CACHE_VERSION = 'ff14recipe-data-7.55-528bd67b';
+const APP_CACHE_VERSION = 'ff14recipe-app-v3.24-c554536f4163';
+const DATA_CACHE_VERSION = 'ff14recipe-data-7.55-1d211d8a';
+const VERIFIED_DATA_CACHE_VERSION = `ff14recipe-verified-data-${DATA_CACHE_VERSION.replace('ff14recipe-data-', '')}`;
 const CACHE_PREFIX = 'ff14recipe-';
 
 const PRECACHE_FILES = [
@@ -55,12 +56,7 @@ const CACHE_FIRST_PATTERNS = [
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(
-    Promise.all([
-      caches.open(APP_CACHE_VERSION).then(cache => cache.addAll(PRECACHE_FILES)),
-      self.skipWaiting()
-    ])
-  );
+  event.waitUntil(caches.open(APP_CACHE_VERSION).then(cache => cache.addAll(PRECACHE_FILES)));
 });
 
 self.addEventListener('activate', event => {
@@ -68,15 +64,15 @@ self.addEventListener('activate', event => {
     caches.keys().then(keys =>
       Promise.all(
         keys
-          .filter(key => key.startsWith(CACHE_PREFIX) && ![APP_CACHE_VERSION, DATA_CACHE_VERSION].includes(key))
+          .filter(
+            key =>
+              key.startsWith(CACHE_PREFIX) &&
+              ![APP_CACHE_VERSION, DATA_CACHE_VERSION, VERIFIED_DATA_CACHE_VERSION].includes(key)
+          )
           .map(key => caches.delete(key))
       )
     ).then(() => self.clients.claim())
   );
-});
-
-self.addEventListener('message', event => {
-  if (event.data?.type === 'SKIP_WAITING') event.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener('fetch', event => {
@@ -110,14 +106,21 @@ self.addEventListener('fetch', event => {
 });
 
 async function cacheFirst(request, cacheName) {
-  const cache = await caches.open(cacheName);
-  const cached = await cache.match(request);
+  let cache = null;
+  let cached = null;
+  try {
+    cache = await caches.open(cacheName);
+    cached = await cache.match(request);
+  } catch {}
   if (cached) return cached;
 
   try {
     const response = await fetch(request);
     if (response.ok) {
-      await cache.put(request, response.clone());
+      try {
+        cache ||= await caches.open(cacheName);
+        await cache.put(request, response.clone());
+      } catch {}
     }
     return response;
   } catch {

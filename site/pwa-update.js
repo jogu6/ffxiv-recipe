@@ -49,98 +49,6 @@
       return Boolean(hadController || updateReloadPending);
     }
 
-    function waitForWorkerTerminalState(worker) {
-      if (!worker || TERMINAL_WORKER_STATES.has(worker.state)) {
-        return Promise.resolve(worker?.state || "");
-      }
-      return new Promise((resolve) => {
-        const handleStateChange = () => {
-          if (!TERMINAL_WORKER_STATES.has(worker.state)) return;
-          worker.removeEventListener("statechange", handleStateChange);
-          resolve(worker.state);
-        };
-        worker.addEventListener("statechange", handleStateChange);
-      });
-    }
-
-    async function updateBeforeUse({
-      serviceWorkerContainer,
-      scriptUrl = "./sw.js",
-      onStatus = () => {},
-      logger = globalThis.console,
-    } = {}) {
-      if (!serviceWorkerContainer) {
-        return { supported: false, hadController: false, updateApplied: false };
-      }
-
-      const initialController = serviceWorkerContainer.controller;
-      const hadController = Boolean(initialController);
-      let controllerChanged = false;
-      const handleControllerChange = () => {
-        controllerChanged = true;
-      };
-      serviceWorkerContainer.addEventListener(
-        "controllerchange",
-        handleControllerChange,
-      );
-
-      try {
-        onStatus("更新を確認しています...");
-        const registration = await serviceWorkerContainer.register(scriptUrl, {
-          updateViaCache: "none",
-        });
-        let discoveredWorker =
-          registration.installing || registration.waiting || null;
-        const handleUpdateFound = () => {
-          discoveredWorker = registration.installing || discoveredWorker;
-        };
-        registration.addEventListener("updatefound", handleUpdateFound);
-
-        let updateError = null;
-        if (!discoveredWorker) {
-          try {
-            await registration.update();
-          } catch (error) {
-            updateError = error;
-          }
-          discoveredWorker =
-            discoveredWorker ||
-            registration.installing ||
-            registration.waiting ||
-            null;
-        }
-
-        let workerState = "";
-        if (discoveredWorker && hadController) {
-          onStatus("更新を適用しています...");
-          if (discoveredWorker.state === "installed") {
-            discoveredWorker.postMessage?.({ type: "SKIP_WAITING" });
-          }
-          workerState = await waitForWorkerTerminalState(discoveredWorker);
-        }
-        registration.removeEventListener("updatefound", handleUpdateFound);
-
-        if (updateError && !discoveredWorker) {
-          logger?.warn?.("[SW] 更新確認失敗:", updateError);
-        }
-
-        return {
-          supported: true,
-          hadController,
-          updateApplied:
-            hadController && (controllerChanged || workerState === "activated"),
-        };
-      } catch (error) {
-        logger?.warn?.("[SW] 登録失敗:", error);
-        return { supported: true, hadController, updateApplied: false, error };
-      } finally {
-        serviceWorkerContainer.removeEventListener(
-          "controllerchange",
-          handleControllerChange,
-        );
-      }
-    }
-
     function createForegroundUpdateChecker({
       serviceWorkerContainer,
       scriptUrl = "./sw.js",
@@ -175,7 +83,6 @@
         if (!worker || observedWorkers.has(worker)) return;
         observedWorkers.add(worker);
         const handleStateChange = () => {
-          if (worker.state === "installed") worker.postMessage?.({ type: "SKIP_WAITING" });
           if (worker.state === "activated") applyUpdateOnce();
           if (TERMINAL_WORKER_STATES.has(worker.state)) {
             worker.removeEventListener("statechange", handleStateChange);
@@ -253,8 +160,6 @@
       extractReleaseMarkdown,
       createForegroundUpdateChecker,
       shouldShowRelease,
-      updateBeforeUse,
-      waitForWorkerTerminalState,
     });
   },
 );

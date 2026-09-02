@@ -42,6 +42,16 @@ test("complete Item.json action resolves to all required publication commands an
   ]);
 });
 
+test("GUI candidate generation includes material ordering", () => {
+  const definition = getPipelineUiDefinition();
+  const module = definition.modules.find(entry => entry.id === "lodestone-item-json");
+  const action = module.actions.find(entry => entry.id === "build-lodestone-candidate");
+  assert.equal(action.command, "build-lodestone-candidate");
+  assert.match(action.description, /素材の表示順/);
+  const complete = module.actions.find(entry => entry.id === "generate-item-json");
+  assert.ok(complete.sequence.includes(action.id));
+});
+
 test("invalid recursive definitions are rejected before rendering", () => {
   const definition = getPipelineUiDefinition();
   definition.modules[0].settings[0].children.push({ ...definition.modules[0].settings[0].children[0] });

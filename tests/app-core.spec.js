@@ -94,6 +94,33 @@ test('shows a startup error instead of leaving the loading message indefinitely'
   await expect(page.locator('#loadStatus')).toHaveText('読み込みエラー');
 });
 
+test('recovers essential data from a transient failure and the last verified copy', async ({ page }) => {
+  let itemRequests = 0;
+  await page.route('**/data/Item.json*', route => {
+    itemRequests += 1;
+    if (itemRequests === 1) return route.fulfill({ status: 503, body: 'temporary failure' });
+    return route.continue();
+  });
+  await openApp(page);
+  expect(itemRequests).toBeGreaterThanOrEqual(2);
+  await expect(page.locator('#loadStatus')).toHaveText(/patch \d+\.\d+ 対応/);
+
+  await page.unroute('**/data/Item.json*');
+  await page.evaluate(async () => {
+    for (const cacheName of await caches.keys()) {
+      if (!cacheName.startsWith('ff14recipe-data-')) continue;
+      const cache = await caches.open(cacheName);
+      for (const request of await cache.keys()) {
+        if (new URL(request.url).pathname.endsWith('/data/Item.json')) await cache.delete(request);
+      }
+    }
+  });
+  await page.route('**/data/Item.json*', route => route.fulfill({ status: 503, body: 'temporary failure' }));
+  await page.reload();
+  await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+  await expect(page.locator('#loadStatus')).toHaveText(/patch \d+\.\d+ 対応/);
+});
+
 test('keeps search and favorites available when the item image pack cannot be prepared', async ({ page }) => {
   await seedAppStorage(page, {
     favoritesV3: favoriteStore({
@@ -592,6 +619,21 @@ test('offers the same recipe selector for an intermediate item in the tree and m
     .locator('.intermediate-tree-node > .intermediate-tree-row .material-name')
     .filter({ hasText: /^ミラージュプリズム$/ })
     .locator('xpath=ancestor::li[contains(@class,"intermediate-tree-node")]');
+  const mobileColumnPolicy = await mobileMaterialIntermediate.locator('.intermediate-tree-row').evaluate(row => {
+    const style = getComputedStyle(row);
+    return {
+      leadingWidth: style.getPropertyValue('--material-leading-column-width'),
+      mainWidth: style.getPropertyValue('--material-main-column-width'),
+      actionWidth: style.getPropertyValue('--material-action-column-width'),
+      justifyContent: style.justifyContent
+    };
+  });
+  expect(mobileColumnPolicy).toEqual({
+    leadingWidth: '',
+    mainWidth: '',
+    actionWidth: '',
+    justifyContent: 'normal'
+  });
   const materialMethod = mobileMaterialIntermediate.locator('.material-content > .recipe-method-control');
   await materialMethod.locator('.recipe-method-summary').click();
   const mobileMethodLayout = await mobileMaterialIntermediate.evaluate(node => {
@@ -626,6 +668,86 @@ test('offers the same recipe selector for an intermediate item in the tree and m
   expect(Math.abs(narrowLayout.iconCenter)).toBeLessThan(1);
   expect(Math.abs(narrowLayout.actionCenter)).toBeLessThan(1);
   expect(narrowLayout.selectorActionGap).toBeGreaterThanOrEqual(0);
+});
+
+test('desktop material groups align their own columns while tree actions follow each item', async ({ page }) => {
+  await openApp(page, 1365, 900);
+  await searchFor(page, 'エバーキープ・サイドボード');
+  await page.locator('#recipeList li').filter({ hasText: 'エバーキープ・サイドボード' }).first().click();
+  await page.locator('#materialsViewBtn').click();
+  const whiteGold = page
+    .locator('.intermediate-tree-node')
+    .filter({ has: page.getByText('ホワイトゴールドインゴット', { exact: true }) });
+  for (let level = 1; level <= 10; level += 1) {
+    await page.locator('html').evaluate((root, value) => {
+      root.dataset.fontSizeLevel = String(value);
+      window.dispatchEvent(new Event('resize'));
+    }, level);
+    const layout = await whiteGold.locator('.intermediate-tree-row').evaluate(row => {
+      const rowBox = row.getBoundingClientRect();
+      const content = row.querySelector(':scope > .material-content').getBoundingClientRect();
+      const actions = row.querySelector(':scope > .item-action-buttons').getBoundingClientRect();
+      return {
+        columns: getComputedStyle(row).gridTemplateColumns.split(' ').length,
+        gridTemplateColumns: getComputedStyle(row).gridTemplateColumns,
+        justifyContent: getComputedStyle(row).justifyContent,
+        contentActionGap: actions.left - content.right,
+        contained: row.scrollWidth <= row.clientWidth + 1,
+        actionCenter: actions.top + actions.height / 2 - (rowBox.top + rowBox.height / 2)
+      };
+    });
+    expect(layout.columns).toBe(3);
+    expect(layout.justifyContent).toBe('start');
+    expect(layout.contentActionGap, JSON.stringify({ level, ...layout })).toBeGreaterThanOrEqual(5);
+    expect(layout.contained).toBe(true);
+    expect(Math.abs(layout.actionCenter)).toBeLessThan(1);
+
+    const groupColumns = await page.locator('[data-material-column-group]').evaluateAll(rows => {
+      const groups = {};
+      rows.forEach(row => {
+        const group = row.dataset.materialColumnGroup;
+        (groups[group] ||= []).push(getComputedStyle(row).gridTemplateColumns);
+      });
+      return groups;
+    });
+    Object.entries(groupColumns).forEach(([group, columns]) => {
+      expect(new Set(columns).size, `${group} at display level ${level}: ${JSON.stringify(columns)}`).toBe(1);
+    });
+  }
+
+  await page.locator('#treeViewBtn').click();
+  const rootRow = page.locator('.result-root-summary .node-row');
+  await expect(rootRow.locator(':scope > .item-cell-leading > .pin-btn')).toHaveCount(1);
+  await expect(rootRow.locator(':scope > .item-action-buttons .pin-btn')).toHaveCount(0);
+  expect(await rootRow.evaluate(row => row.scrollWidth <= row.clientWidth + 1)).toBe(true);
+
+  const childRow = page.locator('.tree-node > .node-row').first();
+  await expect(childRow.locator(':scope > .item-cell-leading > .pin-btn')).toHaveCount(1);
+  await expect(childRow.locator(':scope > .item-action-buttons .pin-btn')).toHaveCount(0);
+  const childLayout = await childRow.evaluate(row => {
+    const rowBox = row.getBoundingClientRect();
+    const main = row.querySelector(':scope > .node-main').getBoundingClientRect();
+    const actions = row.querySelector(':scope > .item-action-buttons')?.getBoundingClientRect();
+    return {
+      nextElementGap: actions ? actions.left - main.right : rowBox.right - main.right,
+      hasActions: Boolean(actions),
+      justifyContent: getComputedStyle(row).justifyContent
+    };
+  });
+  expect(childLayout.justifyContent).toBe('start');
+  if (childLayout.hasActions) {
+    expect(childLayout.nextElementGap).toBeGreaterThanOrEqual(5);
+    expect(childLayout.nextElementGap).toBeLessThanOrEqual(7);
+  } else {
+    expect(childLayout.nextElementGap).toBeGreaterThan(20);
+  }
+
+  await page.locator('#settingsBtn').click();
+  await page.locator('#settingsDisplayTab').click();
+  const preview = page.locator('#fontSizePreview .node-row');
+  await expect(preview.locator(':scope > .item-cell-leading > #fontSizePreviewPin')).toHaveCount(1);
+  await expect(preview.locator(':scope > .item-action-buttons')).toHaveCount(0);
+  expect(await preview.evaluate(row => row.scrollWidth <= row.clientWidth + 1)).toBe(true);
 });
 
 test('opens the license notice from settings', async ({ page }) => {
@@ -680,7 +802,7 @@ test('count step buttons adjust the selected recipe count', async ({ page }) => 
   await expect(page.locator('#countInput')).toHaveValue('1');
 });
 
-test('number inputs share the count component, scale together, and hide native spin buttons', async ({ page }) => {
+test('number inputs share the count component, keep every step button equally wide, and hide native spin buttons', async ({ page }) => {
   await openApp(page, 900);
 
   const standardInputs = ['#countInput', '#materialTreeCountInput', '#preparedCountInput'];
@@ -711,9 +833,7 @@ test('number inputs share the count component, scale together, and hide native s
   expect(new Set(controlMetrics.wide.map(value => JSON.stringify(value))).size).toBe(1);
   expect(controlMetrics.wide[0].height).toBe(controlMetrics.normal[0].height);
   expect(controlMetrics.wide[0].fontSize).toBe(controlMetrics.normal[0].fontSize);
-  expect(Number.parseFloat(controlMetrics.wide[0].width)).toBeGreaterThan(
-    Number.parseFloat(controlMetrics.normal[0].width)
-  );
+  expect(controlMetrics.wide[0].width).toBe(controlMetrics.normal[0].width);
   for (const selector of standardInputs) {
     const inputHeight = await page.locator(selector).evaluate(element => getComputedStyle(element).height);
     expect(inputHeight).toBe(controlMetrics.normal[0].height);

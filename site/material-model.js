@@ -132,7 +132,8 @@
       const master = getItemMaster(name) || {};
       return {
         uiCategory: toNumeric(master.uiCategory),
-        id: toNumeric(master.numericId || master.id)
+        id: toNumeric(master.numericId || master.id),
+        materialSortOrder: toNumeric(master.materialSortOrder, Number.MAX_SAFE_INTEGER)
       };
     };
     const compareItemNames = (leftName, rightName) => {
@@ -141,6 +142,16 @@
       return (
         left.uiCategory - right.uiCategory ||
         left.id - right.id ||
+        leftName.localeCompare(rightName, 'ja')
+      );
+    };
+    const compareMaterialChronology = (leftName, rightName) => {
+      const left = itemSortKey(leftName);
+      const right = itemSortKey(rightName);
+      return (
+        left.materialSortOrder - right.materialSortOrder ||
+        left.id - right.id ||
+        left.uiCategory - right.uiCategory ||
         leftName.localeCompare(rightName, 'ja')
       );
     };
@@ -257,7 +268,7 @@
       });
       normal.sort((left, right) => {
         if (left.type === 'item' && right.type === 'item') {
-          return compareItemNames(left.name, right.name);
+          return compareMaterialChronology(left.name, right.name);
         }
         if (left.type === 'item') return -1;
         if (right.type === 'item') return 1;

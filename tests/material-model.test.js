@@ -13,8 +13,8 @@ const {
 
 function createOrderingFixture() {
   const masters = {
-    通常B: { uiCategory: 2, id: 20 },
-    通常A: { uiCategory: 1, id: 10 },
+    通常B: { uiCategory: 1, id: 20, materialSortOrder: 1 },
+    通常A: { uiCategory: 2, id: 10, materialSortOrder: 2 },
     交換A: { uiCategory: 5, id: 50, craftType: '8' },
     交換B: { uiCategory: 5, id: 51, craftType: '8' },
     ファイアシャード: { uiCategory: 9, id: 90 },
@@ -130,7 +130,7 @@ test('material item merging sums numbered rows but keeps unknown quantities sepa
   );
 });
 
-test('material ordering separates normal, exchange, and crystal rows deterministically', () => {
+test('material ordering applies chronology only to normal rows and preserves exchange and crystal rules', () => {
   const ordering = createOrderingFixture();
   const choice = { type: 'choice', options: [] };
   const result = ordering.categorizeMaterialRows([
@@ -143,8 +143,8 @@ test('material ordering separates normal, exchange, and crystal rows determinist
     { type: 'item', name: '通常A', qty: 1 }
   ]);
 
-  assert.deepEqual(result.normal.map(row => row.name || row.type), ['通常A', '通常B', 'choice']);
-  assert.deepEqual(result.exchange.map(row => row.name), ['交換A', '交換B']);
+  assert.deepEqual(result.normal.map(row => row.name || row.type), ['通常B', '通常A', 'choice']);
+  assert.deepEqual(result.exchange.map(row => row.name), ['交換B', '交換A']);
   assert.deepEqual(result.crystals.map(row => row.name), ['ファイアシャード', 'アイスクリスタル']);
 });
 

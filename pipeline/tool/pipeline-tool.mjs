@@ -88,6 +88,7 @@ const friendlyTribeShopsPath = path.join(inputRoot, 'friendly-tribe-shops.json')
 const equipmentRoleOverridesPath = path.join(inputRoot, 'equipment-role-overrides.json');
 const publicationDecisionsPath = path.join(inputRoot, 'publication-decisions.json');
 const craftJobsPath = path.join(inputRoot, 'web-app', 'craft-jobs.json');
+const crystalsPath = path.join(inputRoot, 'web-app', 'crystals.json');
 const lodestoneItemUrlsPath = path.join(stateRoot, 'lodestone-item-urls.json');
 const lodestoneSourceSnapshotPath = path.join(stateRoot, 'lodestone-source-snapshot.json');
 const defaultIconQuality = 80;
@@ -1933,6 +1934,73 @@ export function extractLodestoneShopInfo(detailHtml) {
   }
   if (!shops.length) return null;
   return { price, shops };
+}
+
+const materialAcquisitionOrder = ['採掘', '砕岩', '伐採', '草刈', '狩猟', '購入', 'その他', '交換'];
+
+function extractLodestoneSection(detailHtml, heading) {
+  const source = String(detailHtml || '');
+  const headingPattern = new RegExp(`<h3\\b[^>]*>\\s*${escapeRegExp(heading)}\\s*</h3>`, 'i');
+  const match = headingPattern.exec(source);
+  if (!match || match.index == null) return '';
+  const start = match.index + match[0].length;
+  const nextHeading = source.slice(start).search(/<h3\b/i);
+  return nextHeading < 0 ? source.slice(start) : source.slice(start, start + nextHeading);
+}
+
+export function extractLodestoneMaterialSortInfo(detailHtml) {
+  const source = String(detailHtml || '');
+  const gatheringSection = extractLodestoneSection(source, 'このアイテムの採集手帳');
+  const gathering = [];
+  for (const rowMatch of gatheringSection.matchAll(/<tr\b[\s\S]*?<\/tr>/gi)) {
+    const cells = extractTableCells(rowMatch[0]);
+    const method = materialAcquisitionOrder.slice(0, 4).find(name => cells[0] === name);
+    const level = Number(cells[1]);
+    if (method && Number.isFinite(level)) gathering.push({ method, level });
+  }
+
+  const recipeSection = extractLodestoneSection(source, '関連製作手帳');
+  const craftLevels = [];
+  if (normalizeHtmlText(recipeSection).includes('製作Lv')) {
+    for (const rowMatch of recipeSection.matchAll(/<tr\b[\s\S]*?<\/tr>/gi)) {
+      const cells = extractTableCells(rowMatch[0]);
+      const level = Number(cells[1]);
+      if (Number.isFinite(level)) craftLevels.push(level);
+    }
+  }
+
+  const gatheringByPriority = [...gathering].sort(
+    (left, right) => materialAcquisitionOrder.indexOf(left.method) - materialAcquisitionOrder.indexOf(right.method)
+  )[0];
+  let acquisition = gatheringByPriority?.method || '';
+  if (!acquisition && source.includes('ドロップする敵NPC')) acquisition = '狩猟';
+  if (!acquisition && extractLodestoneShopPrice(source) != null) acquisition = '購入';
+  if (!acquisition && source.includes('取引に必要なアイテム')) acquisition = '交換';
+  if (!acquisition) acquisition = 'その他';
+
+  return {
+    acquisition,
+    chronology: gatheringByPriority?.level ?? (craftLevels.length ? Math.min(...craftLevels) : null)
+  };
+}
+
+export function assignMaterialSortOrders(items, materialNames, sourceByName, sortInfoByName) {
+  const materialItems = items.filter(item => materialNames.has(item.Name));
+  for (const item of items) delete item.MaterialSortOrder;
+  const ordered = materialItems.map(item => {
+    const info = sortInfoByName.get(item.Name);
+    const source = sourceByName.get(item.Name);
+    if (!info || !source) throw new Error(`素材ソート情報がありません: ${item.Name}`);
+    if (!Number.isFinite(info.chronology)) throw new Error(`素材の年代指標を取得できません: ${item.Name}`);
+    return { item, info, source };
+  }).sort((left, right) => (
+    materialAcquisitionOrder.indexOf(left.info.acquisition) - materialAcquisitionOrder.indexOf(right.info.acquisition)
+    || left.info.chronology - right.info.chronology
+    || Number(left.source.SortOrder || 0) - Number(right.source.SortOrder || 0)
+    || left.item.Name.localeCompare(right.item.Name, 'ja')
+  ));
+  ordered.forEach((entry, index) => { entry.item.MaterialSortOrder = index + 1; });
+  return ordered.map(entry => entry.item.Name);
 }
 
 export function isConditionalLodestoneShop(shopHtml) {
@@ -4507,6 +4575,29 @@ export async function buildLodestoneCandidate({
     if (existing?.IconFile) items.push({ Name: currencyName, IconFile: existing.IconFile });
     else items.push({ Name: currencyName });
   }
+  const crystalDefinition = readJson(crystalsPath, { elements: [], kinds: [] });
+  const crystalNames = new Set(crystalDefinition.elements.flatMap(element =>
+    crystalDefinition.kinds.map(kind => `${element.name}${kind.name}`)
+  ));
+  const tokenCurrencyNames = new Set(tokenRows.map(row => row[1]));
+  const materialNames = new Set([...usedNames].filter(name =>
+    !recipeVariants.has(name) && !crystalNames.has(name) && !tokenCurrencyNames.has(name)
+  ));
+  const materialSortInfoByName = new Map();
+  log(`素材の表示順をLodestone詳細から生成します: ${materialNames.size}件`);
+  let materialIndex = 0;
+  for (const name of materialNames) {
+    assertNotCancelled();
+    const source = listedByName.get(name);
+    if (!source?.DetailPath) throw new Error(`素材のLodestone詳細URLがありません: ${name}`);
+    const detailHtml = await fetchCachedLodestoneText(`${LODESTONE_BASE_URL}${source.DetailPath}`, delayMs);
+    materialSortInfoByName.set(name, extractLodestoneMaterialSortInfo(detailHtml));
+    materialIndex += 1;
+    if (materialIndex % 250 === 0 || materialIndex === materialNames.size) {
+      log(`素材表示順 ${materialIndex}/${materialNames.size}`);
+    }
+  }
+  assignMaterialSortOrders(items, materialNames, listedByName, materialSortInfoByName);
   const currentNameByLodestoneKey = new Map(snapshot.Items.map(item => [item.LodestoneKey, item.Name]));
   const publishedLegacy = readJson(path.join(siteRoot, 'data', 'legacy-item-ids.json'), { Items: {} });
   const legacyIds = {

@@ -11,6 +11,8 @@ import {
   extractLodestoneRecipeData,
   extractLodestoneRecipePaths,
   extractLodestoneShopInfo,
+  extractLodestoneMaterialSortInfo,
+  assignMaterialSortOrders,
   compressLodestoneHtml,
   decompressLodestoneHtml,
   applyEquipmentRoleOverrides,
@@ -87,6 +89,60 @@ test('new candidate items receive required Lodestone detail data without another
     url: 'https://jp.finalfantasyxiv.com/lodestone/playguide/db/item/newitem/',
     delayMs: 125
   }]);
+});
+
+test('Lodestone material sort info uses acquisition priority and the matching chronology proxy', () => {
+  const gathered = extractLodestoneMaterialSortInfo(`
+    <table><thead><tr><th>ドロップする敵NPC</th></tr></thead></table>
+    <p><span>SHOP販売価格:</span>18 Gil</p>
+    <h3 class="ic_silver">このアイテムの採集手帳</h3>
+    <table><tbody>
+      <tr><td><a>草刈</a></td><td>65</td></tr>
+      <tr><td><a>採掘</a></td><td>14</td></tr>
+    </tbody></table>
+    <h3>関連製作手帳</h3>
+    <table><thead><tr><th>タイトル</th><th>製作Lv</th></tr></thead>
+      <tbody><tr><td>製作品</td><td>70</td></tr></tbody></table>
+  `);
+  assert.deepEqual(gathered, { acquisition: '採掘', chronology: 14 });
+
+  const exchanged = extractLodestoneMaterialSortInfo(`
+    <div>取引に必要なアイテム</div>
+    <h3>関連製作手帳</h3>
+    <table><thead><tr><th>タイトル</th><th>製作Lv</th></tr></thead><tbody>
+      <tr><td>新製品</td><td>90</td></tr><tr><td>旧製品</td><td>68</td></tr>
+    </tbody></table>
+  `);
+  assert.deepEqual(exchanged, { acquisition: '交換', chronology: 68 });
+});
+
+test('material sort numbers are global, sequential, and keep classification metadata internal', () => {
+  const items = [
+    { Name: '交換素材' },
+    { Name: '新しい採掘素材' },
+    { Name: 'その他素材' },
+    { Name: '古い採掘素材' },
+    { Name: '中間素材', Recipe: {} }
+  ];
+  const names = new Set(['交換素材', '新しい採掘素材', 'その他素材', '古い採掘素材']);
+  const sources = new Map([
+    ['交換素材', { SortOrder: 100 }],
+    ['新しい採掘素材', { SortOrder: 400 }],
+    ['その他素材', { SortOrder: 200 }],
+    ['古い採掘素材', { SortOrder: 300 }]
+  ]);
+  const info = new Map([
+    ['交換素材', { acquisition: '交換', chronology: 1 }],
+    ['新しい採掘素材', { acquisition: '採掘', chronology: 90 }],
+    ['その他素材', { acquisition: 'その他', chronology: 10 }],
+    ['古い採掘素材', { acquisition: '採掘', chronology: 10 }]
+  ]);
+
+  assert.deepEqual(assignMaterialSortOrders(items, names, sources, info), [
+    '古い採掘素材', '新しい採掘素材', 'その他素材', '交換素材'
+  ]);
+  assert.deepEqual(items.map(item => item.MaterialSortOrder), [4, 2, 3, 1, undefined]);
+  assert.ok(items.every(item => !Object.hasOwn(item, 'acquisition') && !Object.hasOwn(item, 'chronology')));
 });
 
 test('Lodestone recipe details are fetched sequentially for autonomous candidate generation', async () => {

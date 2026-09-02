@@ -60,6 +60,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--bind", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=4173)
     parser.add_argument("--directory", type=Path, default=Path("site"))
+    parser.add_argument("--owner-token", help=argparse.SUPPRESS)
     return parser.parse_args()
 
 

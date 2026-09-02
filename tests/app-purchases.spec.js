@@ -302,7 +302,7 @@ test('prepared intermediate count dialog clamps, confirms on close, and recalcul
   });
   expect(stepButtonSizes.wide.height).toBeCloseTo(stepButtonSizes.normal.height, 1);
   expect(stepButtonSizes.wide.fontSize).toBe(stepButtonSizes.normal.fontSize);
-  expect(stepButtonSizes.wide.width).toBeGreaterThan(stepButtonSizes.normal.width);
+  expect(stepButtonSizes.wide.width).toBeCloseTo(stepButtonSizes.normal.width, 1);
   await page.locator('#preparedCountZeroBtn').click();
   await page.locator('#preparedCountIncreaseBtn').click();
   await page.locator('#preparedCountCloseBtn').click();

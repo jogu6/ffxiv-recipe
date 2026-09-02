@@ -324,16 +324,42 @@ test('middle panel uses temporary width and yields before the right panel', asyn
   );
 });
 
-test('equipment custom dropdown stays inside a mobile viewport', async ({ page }) => {
+test('equipment custom dropdown uses available height and stays aligned at every display size', async ({ page }) => {
   await openApp(page, 423, 780);
   await page.locator('#equipmentSearchToggle').click();
-  await page.locator('#equipmentJobSelect .custom-select-toggle').click();
-  const rect = await page.locator('#equipmentJobSelect .custom-select-options').boundingBox();
-  expect(rect).toBeTruthy();
-  expect(rect.x).toBeGreaterThanOrEqual(0);
-  expect(rect.y).toBeGreaterThanOrEqual(0);
-  expect(rect.x + rect.width).toBeLessThanOrEqual(423);
-  expect(rect.y + rect.height).toBeLessThanOrEqual(780);
+  for (let level = 1; level <= 10; level += 1) {
+    await page.locator('html').evaluate((root, value) => {
+      root.dataset.fontSizeLevel = String(value);
+      window.dispatchEvent(new Event('resize'));
+    }, level);
+    for (const id of ['equipmentJobSelect', 'equipmentSlotSelect']) {
+      const select = page.locator(`#${id}`);
+      await select.locator('.custom-select-toggle').click();
+      const layout = await select.evaluate(element => {
+        const trigger = element.getBoundingClientRect();
+        const listElement = element.querySelector('.custom-select-options');
+        const list = listElement.getBoundingClientRect();
+        return {
+          trigger,
+          list,
+          placement: listElement.dataset.placement,
+          scrollHeight: listElement.scrollHeight,
+          viewportHeight: window.innerHeight
+        };
+      });
+      expect(Math.abs(layout.list.left - layout.trigger.left), `${id} left Level ${level}`).toBeLessThan(1);
+      expect(Math.abs(layout.list.right - layout.trigger.right), `${id} right Level ${level}`).toBeLessThan(1);
+      expect(layout.list.top, `${id} safe top Level ${level}`).toBeGreaterThanOrEqual(15);
+      expect(layout.list.bottom, `${id} safe bottom Level ${level}`).toBeLessThanOrEqual(layout.viewportHeight - 15);
+      if (layout.placement === 'below') {
+        expect(Math.abs(layout.list.top - layout.trigger.bottom - 3), `${id} below Level ${level}`).toBeLessThan(1);
+      } else {
+        expect(Math.abs(layout.trigger.top - layout.list.bottom - 3), `${id} above Level ${level}`).toBeLessThan(1);
+      }
+      if (id === 'equipmentJobSelect' && level === 1) expect(layout.list.height).toBeGreaterThan(320);
+      await select.locator('.custom-select-toggle').click();
+    }
+  }
 });
 
 test('short search runs on blur and clear button resets it', async ({ page }) => {

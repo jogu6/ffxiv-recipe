@@ -5,7 +5,6 @@ const {
   extractAppVersion,
   extractReleaseMarkdown,
   shouldShowRelease,
-  updateBeforeUse,
 } = require("../site/pwa-update.js");
 
 class FakeWorker extends EventTarget {
@@ -128,58 +127,6 @@ test("shows a release only for an existing installation or an update reload", ()
   );
 });
 
-test("explicitly checks for an update without HTTP cache and waits for activation", async () => {
-  const oldController = {};
-  const registration = new FakeRegistration();
-  const container = new FakeServiceWorkerContainer({
-    controller: oldController,
-    registration,
-  });
-  registration.update = async () => {
-    const worker = new FakeWorker();
-    registration.installing = worker;
-    registration.dispatchEvent(new Event("updatefound"));
-    queueMicrotask(() => {
-      worker.transition("activated");
-      container.controller = {};
-      container.dispatchEvent(new Event("controllerchange"));
-    });
-  };
-
-  const result = await updateBeforeUse({ serviceWorkerContainer: container });
-
-  assert.equal(container.registerOptions.updateViaCache, "none");
-  assert.deepEqual(result, {
-    supported: true,
-    hadController: true,
-    updateApplied: true,
-  });
-});
-
-test("does not block first startup while the service worker installs", async () => {
-  const worker = new FakeWorker();
-  const registration = new FakeRegistration({ installing: worker });
-  const container = new FakeServiceWorkerContainer({ registration });
-  const statuses = [];
-
-  const result = await Promise.race([
-    updateBeforeUse({
-      serviceWorkerContainer: container,
-      onStatus: status => statuses.push(status),
-    }),
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("first startup remained blocked")), 100),
-    ),
-  ]);
-
-  assert.deepEqual(result, {
-    supported: true,
-    hadController: false,
-    updateApplied: false,
-  });
-  assert.deepEqual(statuses, ["更新を確認しています..."]);
-});
-
 test("foreground update scheduling returns immediately and rejects duplicates while a check is running", async () => {
   let updateCalls = 0;
   const registration = new FakeRegistration({
@@ -233,7 +180,7 @@ test("foreground checker suppresses completed checks during the coalescing inter
   checker.close();
 });
 
-test("foreground checker observes late activation and applies an existing-install update once", async () => {
+test("foreground checker leaves an installed update waiting while the current app is open", async () => {
   const worker = new FakeWorker();
   const registration = new FakeRegistration({
     update: async () => {
@@ -252,10 +199,8 @@ test("foreground checker observes late activation and applies an existing-instal
   checker.schedule();
   await new Promise(resolve => setTimeout(resolve, 10));
   worker.transition("installed");
-  assert.deepEqual(worker.messages, [{ type: "SKIP_WAITING" }]);
-  worker.transition("activated");
-  container.dispatchEvent(new Event("controllerchange"));
-  assert.equal(applied, 1);
+  assert.deepEqual(worker.messages, []);
+  assert.equal(applied, 0);
   checker.close();
 });
 

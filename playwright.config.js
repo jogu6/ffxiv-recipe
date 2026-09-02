@@ -20,12 +20,8 @@ module.exports = defineConfig({
     serviceWorkers: 'block',
     trace: 'on-first-retry',
   },
-  webServer: {
-    command: 'py -m http.server 4173 --bind 0.0.0.0 --directory site',
-    url: 'http://127.0.0.1:4173',
-    reuseExistingServer: true,
-    timeout: 120000,
-  },
+  // サーバーの所有と終了保証は tools/run-e2e.mjs だけが担う。
+  webServer: undefined,
   projects: [
     {
       name: 'chromium',

@@ -26,8 +26,25 @@ function Get-LiveProcesses {
         return @()
     }
     return @($state.processes | ForEach-Object {
-        Get-Process -Id ([int]$_.id) -ErrorAction SilentlyContinue
-    } | Where-Object { $null -ne $_ })
+        $entry = $_
+        $process = Get-Process -Id ([int]$entry.id) -ErrorAction SilentlyContinue
+        if ($null -eq $process -or $null -eq $entry.startTimeUtcTicks -or $null -eq $entry.executablePath) {
+            return
+        }
+        try {
+            $startMatches = $process.StartTime.ToUniversalTime().Ticks.ToString([Globalization.CultureInfo]::InvariantCulture) -eq
+                [string]$entry.startTimeUtcTicks
+            $pathMatches = [StringComparer]::OrdinalIgnoreCase.Equals(
+                [System.IO.Path]::GetFullPath($process.Path),
+                [System.IO.Path]::GetFullPath([string]$entry.executablePath)
+            )
+            if ($startMatches -and $pathMatches) {
+                $process
+            }
+        } catch {
+            return
+        }
+    })
 }
 
 function Stop-LocalSites {
@@ -36,6 +53,7 @@ function Stop-LocalSites {
     $processes = Get-LiveProcesses
     foreach ($process in $processes) {
         Stop-Process -Id $process.Id -ErrorAction SilentlyContinue
+        Wait-Process -Id $process.Id -Timeout 5 -ErrorAction SilentlyContinue
     }
     Remove-Item -LiteralPath $statePath -Force -ErrorAction SilentlyContinue
     if (-not $Quiet) {
@@ -79,11 +97,11 @@ if (-not (Test-Path -LiteralPath $pythonPath)) {
 
 $app = Start-Process -FilePath $pythonPath -ArgumentList @(
     "tools/serve-local-app.py", "--port", "4173", "--bind", "0.0.0.0", "--directory", "site"
-) -WorkingDirectory $projectRoot -NoNewWindow -PassThru
+) -WorkingDirectory $projectRoot -WindowStyle Hidden -PassThru
 try {
     $about = Start-Process -FilePath "node.exe" -ArgumentList @(
         "tools/serve-site.mjs", "--port", "4174", "--bind", "0.0.0.0"
-    ) -WorkingDirectory $aboutRoot -NoNewWindow -PassThru
+    ) -WorkingDirectory $aboutRoot -WindowStyle Hidden -PassThru
 } catch {
     Stop-Process -Id $app.Id -ErrorAction SilentlyContinue
     throw
@@ -91,8 +109,20 @@ try {
 
 @{
     processes = @(
-        @{ id = $app.Id; name = "ffxiv-recipe"; port = 4173 },
-        @{ id = $about.Id; name = "ff14-recipe-about"; port = 4174 }
+        @{
+            id = $app.Id
+            name = "ffxiv-recipe"
+            port = 4173
+            executablePath = $app.Path
+            startTimeUtcTicks = $app.StartTime.ToUniversalTime().Ticks.ToString([Globalization.CultureInfo]::InvariantCulture)
+        },
+        @{
+            id = $about.Id
+            name = "ff14-recipe-about"
+            port = 4174
+            executablePath = $about.Path
+            startTimeUtcTicks = $about.StartTime.ToUniversalTime().Ticks.ToString([Globalization.CultureInfo]::InvariantCulture)
+        }
     )
 } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $statePath -Encoding UTF8
 

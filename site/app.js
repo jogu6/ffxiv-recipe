@@ -1,4 +1,5 @@
-const DATA_CACHE_VERSION = 'ff14recipe-data-7.55-528bd67b';
+const DATA_CACHE_VERSION = 'ff14recipe-data-7.55-1d211d8a';
+const VERIFIED_DATA_CACHE_VERSION = `ff14recipe-verified-data-${DATA_CACHE_VERSION.replace('ff14recipe-data-', '')}`;
 const DATA_FILE = `./data/Item.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 const LEGACY_ITEM_IDS_FILE = `./data/legacy-item-ids.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 const TIPS_FILE = './data/tips.md';
@@ -109,7 +110,11 @@ const {
   syncContext: syncMaterialPurchaseContext
 } = MaterialPurchaseState;
 const { buildRecipeData, buildRecipeDataAsync } = RecipeDataModel;
-const { load: loadApplicationDataCache, save: saveApplicationDataCache } = ApplicationDataCache;
+const {
+  generationKey: applicationDataCacheGenerationKey,
+  load: loadApplicationDataCache,
+  save: saveApplicationDataCache
+} = ApplicationDataCache;
 const { createProgressController: createDataSetupProgressController } = DataSetupProgress;
 const {
   createSnapshot: createShareSnapshot,
@@ -428,7 +433,6 @@ const expandedFavoriteCountRows = new Set();
 let gatheringTimerIntervalId = null;
 let canSaveViewState = false;
 let suppressViewStateSave = false;
-let updateReloadInProgress = false;
 const materialPurchaseState = createMaterialPurchaseState();
 const purchasedIntermediateNames = materialPurchaseState.intermediateNames;
 const preparedIntermediateCounts = materialPurchaseState.preparedCounts;
@@ -991,14 +995,6 @@ function consumeSkipRestoreOnce() {
   }
 }
 
-function markSkipRestoreOnce() {
-  try {
-    sessionStorage.setItem(SS_SKIP_RESTORE_ONCE, '1');
-  } catch {
-    // ignore
-  }
-}
-
 function isUpdateReloadPending() {
   try {
     return sessionStorage.getItem(UPDATE_RELOAD_PENDING_KEY) === '1';
@@ -1013,7 +1009,7 @@ function currentMobilePanel() {
 }
 
 function saveViewState() {
-  if (!canSaveViewState || suppressViewStateSave || updateReloadInProgress) return;
+  if (!canSaveViewState || suppressViewStateSave) return;
   rememberVisibleScrollPositions();
   writeStoredJson(LS_VIEW_STATE, {
     v: 1,
@@ -1730,6 +1726,8 @@ function rememberCurrentSearch() {
 
 // Search, favorites, and list rendering
 function renderSearchHistory() {
+  if (elements.searchHistory.parentElement !== document.body) document.body.appendChild(elements.searchHistory);
+  observeFloatingListTrigger(elements.searchBox);
   const query = elements.searchBox.value.trim();
   const entries = searchHistory.filter(value => !query || value.includes(query));
   const frag = document.createDocumentFragment();
@@ -1781,9 +1779,10 @@ function closeSearchHistory() {
 
 function positionSearchHistory() {
   if (!elements.searchHistory.classList.contains('open')) return;
-  const listTop = elements.searchHistory.getBoundingClientRect().top;
-  const viewport = visibleViewportMetrics();
-  elements.searchHistory.style.maxHeight = `${Math.max(0, viewport.bottom - listTop - 8)}px`;
+  positionFloatingList(elements.searchBox, elements.searchHistory, {
+    gap: 3,
+    safeMargin: 16
+  });
 }
 
 function sortEquipmentJobs(jobs) {
@@ -1797,6 +1796,24 @@ function customSelectValue(select) {
   return select?.dataset.value || '';
 }
 
+const observedFloatingListTriggers = new WeakSet();
+const floatingListResizeObserver = typeof ResizeObserver === 'function'
+  ? new ResizeObserver(entries => {
+      entries.forEach(({ target }) => {
+        if (target === elements.searchBox) positionSearchHistory();
+        else if (target.classList?.contains('custom-select') && target.classList.contains('open')) {
+          positionCustomSelectOptions(target);
+        }
+      });
+    })
+  : null;
+
+function observeFloatingListTrigger(trigger) {
+  if (!trigger || !floatingListResizeObserver || observedFloatingListTriggers.has(trigger)) return;
+  observedFloatingListTriggers.add(trigger);
+  floatingListResizeObserver.observe(trigger);
+}
+
 function closeCustomSelect(select) {
   select?.classList.remove('open');
   select?.querySelector('.custom-select-toggle')?.setAttribute('aria-expanded', 'false');
@@ -1808,12 +1825,18 @@ function closeAllCustomSelects(except = null) {
   });
 }
 
-function positionFloatingList(trigger, list, { minWidth = 0, maxHeight = 320, gap = 3 } = {}) {
+function positionFloatingList(
+  trigger,
+  list,
+  { minWidth = 0, maxHeight = Number.POSITIVE_INFINITY, gap = 3, safeMargin = 16, matchTriggerWidth = true } = {}
+) {
   if (!trigger || !list) return;
   const rect = trigger.getBoundingClientRect();
   const viewport = visibleViewportMetrics();
-  const margin = 8;
-  const width = Math.min(Math.max(rect.width, minWidth), Math.max(0, viewport.width - margin * 2));
+  const margin = Math.max(0, safeMargin);
+  const width = matchTriggerWidth
+    ? rect.width
+    : Math.min(Math.max(rect.width, minWidth), Math.max(0, viewport.width - margin * 2));
   list.style.width = `${width}px`;
   const below = Math.max(0, viewport.bottom - rect.bottom - gap - margin);
   const above = Math.max(0, rect.top - viewport.top - gap - margin);
@@ -1822,21 +1845,24 @@ function positionFloatingList(trigger, list, { minWidth = 0, maxHeight = 320, ga
   const availableHeight = placeBelow ? below : above;
   const resolvedMaxHeight = Math.min(maxHeight, availableHeight);
   list.style.maxHeight = `${resolvedMaxHeight}px`;
-  const desiredHeight = Math.min(list.scrollHeight, resolvedMaxHeight);
-  const left = Math.max(viewport.left + margin, Math.min(rect.left, viewport.right - width - margin));
-  const top = placeBelow ? rect.bottom + gap : rect.top - gap - desiredHeight;
+  const renderedHeight = Math.min(list.getBoundingClientRect().height, resolvedMaxHeight);
+  const left = matchTriggerWidth
+    ? rect.left
+    : Math.max(viewport.left + margin, Math.min(rect.left, viewport.right - width - margin));
+  const top = placeBelow ? rect.bottom + gap : rect.top - gap - renderedHeight;
   const containingBlock = list.offsetParent;
   const containingRect = containingBlock && containingBlock !== document.body
     ? containingBlock.getBoundingClientRect()
     : { left: 0, top: 0 };
   list.style.left = `${left - containingRect.left}px`;
   list.style.top = `${Math.max(viewport.top + margin, top) - containingRect.top}px`;
+  list.dataset.placement = placeBelow ? 'below' : 'above';
 }
 
 function positionCustomSelectOptions(select) {
   const options = select.querySelector('.custom-select-options');
   if (!options) return;
-  positionFloatingList(select, options, { minWidth: 120, maxHeight: 320, gap: 3 });
+  positionFloatingList(select, options, { gap: 3, safeMargin: 16 });
 }
 
 function openCustomSelect(select) {
@@ -1844,7 +1870,10 @@ function openCustomSelect(select) {
   closeAllCustomSelects(select);
   select.classList.toggle('open', opening);
   select.querySelector('.custom-select-toggle')?.setAttribute('aria-expanded', String(opening));
-  if (opening) positionCustomSelectOptions(select);
+  if (opening) {
+    observeFloatingListTrigger(select);
+    positionCustomSelectOptions(select);
+  }
 }
 
 function setCustomSelectValue(select, value, { notify = false } = {}) {
@@ -1918,6 +1947,7 @@ function setCustomSelectOptions(select, entries, preferred = '') {
     normalizedEntries.some(([value]) => String(value) === String(preferred)) ? preferred : fallback
   );
   toggle.disabled = normalizedEntries.length === 0;
+  observeFloatingListTrigger(select);
 }
 
 function buildEquipmentSearchIndexes() {
@@ -3386,11 +3416,14 @@ function createItemDisplayLabel(
 
 function createItemListRow(name, className = '', { recipeVariant = null, provisional = false } = {}) {
   const row = document.createElement('li');
-  row.className = className;
+  row.className = `${className} item-cell-row`.trim();
   row.title = name;
 
+  const leading = document.createElement('span');
+  leading.className = 'item-cell-leading';
   const icon = createItemIcon(itemMaster[name]?.icon);
-  if (icon) row.appendChild(icon);
+  if (icon) leading.appendChild(icon);
+  row.appendChild(leading);
   const label = createItemDisplayLabel(name, {
       favorite: className.split(/\s+/).includes('fav-item-row'),
       recipeVariant,
@@ -3630,8 +3663,6 @@ function makeFavLi(name, index) {
   const anyOneChecked = favoriteAnyOneTarget(itemId);
   li.classList.toggle('favorite-count-zero', countsEnabled && (anyOneMode ? !anyOneChecked : itemCount === 0));
 
-  const label = li.querySelector('.item-list-label') || li.querySelector('.list-name');
-
   const pin = document.createElement('button');
   pin.className = 'pin-btn';
   pin.textContent = '📌';
@@ -3640,9 +3671,10 @@ function makeFavLi(name, index) {
     event.stopPropagation();
     pinOff(name);
   });
-  if (!countsEnabled) li.insertBefore(pin, label);
 
-  appendItemActionButtons(
+  if (!countsEnabled) li.querySelector(':scope > .item-cell-leading')?.appendChild(pin);
+
+  const actions = appendItemActionButtons(
     li,
     createShopInfoButton(name),
     createGatheringTimerButton(name),
@@ -3651,15 +3683,15 @@ function makeFavLi(name, index) {
 
   if (favoriteItemReorderEnabled) {
     li.classList.add('reorder-enabled');
-    li.appendChild(
-      createReorderHandle(`「${name}」を並び替え`, event => {
-        startReorderDrag(event, {
-          container: elements.recipeList,
-          rowSelector: '#recipeList li.fav-item-row[data-reorder-index]',
-          onReorder: reorderFavoriteItems
-        });
-      })
-    );
+    const reorderHandle = createReorderHandle(`「${name}」を並び替え`, event => {
+      startReorderDrag(event, {
+        container: elements.recipeList,
+        rowSelector: '#recipeList li.fav-item-row[data-reorder-index]',
+        onReorder: reorderFavoriteItems
+      });
+    });
+    if (actions) actions.appendChild(reorderHandle);
+    else appendItemActionButtons(li, reorderHandle);
   }
 
   if (countsEnabled) {
@@ -3980,16 +4012,6 @@ async function loadAppVersion() {
   return currentAppVersion;
 }
 
-function reloadAfterServiceWorkerUpdate() {
-  if (updateReloadInProgress) return;
-  updateReloadInProgress = true;
-  canSaveViewState = false;
-  sessionStorage.setItem(UPDATE_RELOAD_PENDING_KEY, '1');
-  clearViewState();
-  markSkipRestoreOnce();
-  location.reload();
-}
-
 function requestForegroundUpdateCheck() {
   if (document.hidden) return false;
   return foregroundUpdateChecker?.schedule() || false;
@@ -3999,8 +4021,7 @@ function initializeForegroundUpdateChecks() {
   if (!('serviceWorker' in navigator)) return;
   hadServiceWorkerControllerAtBoot = Boolean(navigator.serviceWorker.controller);
   foregroundUpdateChecker = createForegroundUpdateChecker({
-    serviceWorkerContainer: navigator.serviceWorker,
-    onUpdateApplied: reloadAfterServiceWorkerUpdate
+    serviceWorkerContainer: navigator.serviceWorker
   });
   requestForegroundUpdateCheck();
 }
@@ -4020,6 +4041,7 @@ function updateViewportDependentLayout() {
   if (elements.exportListChoices.classList.contains('open')) {
     positionFloatingList(elements.exportListToggle, elements.exportListChoices, { maxHeight: 370, gap: 4 });
   }
+  synchronizeMaterialColumnWidths();
 }
 
 // Data loading and index construction
@@ -4033,14 +4055,66 @@ async function cacheFirstLoadResponse(path, response, cacheName) {
   }
 }
 
-async function fetchJson(path, errorMessage, cacheName = '') {
-  const response = await fetch(path);
-  if (!response.ok) throw new Error(errorMessage(response.status));
-  const cacheWrite = cacheFirstLoadResponse(path, response.clone(), cacheName);
-  const text = await response.text();
-  const data = await parseJsonOffMainThread(text);
-  await cacheWrite;
-  return data;
+function validItemDataDocument(data) {
+  return Boolean(data && typeof data === 'object' && typeof data.Version === 'string' && Array.isArray(data.Items));
+}
+
+function validLegacyItemIdsDocument(data) {
+  return Boolean(data && typeof data === 'object' && data.Items && typeof data.Items === 'object');
+}
+
+function waitForDataRetry(delay) {
+  return new Promise(resolve => window.setTimeout(resolve, delay));
+}
+
+async function readVerifiedJson(path, validate) {
+  if (!('caches' in globalThis)) return null;
+  try {
+    const response = await (await caches.open(VERIFIED_DATA_CACHE_VERSION)).match(path);
+    if (!response?.ok) return null;
+    const data = await parseJsonOffMainThread(await response.text());
+    return validate(data) ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+async function saveVerifiedJson(path, text) {
+  if (!('caches' in globalThis)) return;
+  try {
+    const cache = await caches.open(VERIFIED_DATA_CACHE_VERSION);
+    await cache.put(path, new Response(text, { headers: { 'Content-Type': 'application/json; charset=utf-8' } }));
+  } catch (error) {
+    console.warn('[Cache] 検証済み起動データの保存に失敗しました:', error);
+  }
+}
+
+async function fetchJson(path, errorMessage, cacheName = '', validate = data => Boolean(data)) {
+  let lastError = new Error(errorMessage('offline'));
+  const retryDelays = [120, 360];
+  for (let attempt = 0; attempt <= retryDelays.length; attempt += 1) {
+    try {
+      const response = await fetch(path);
+      if (!response.ok) throw new Error(errorMessage(response.status));
+      const text = await response.text();
+      const data = await parseJsonOffMainThread(text);
+      if (!validate(data)) throw new Error(`${path} の形式が不正です`);
+      await Promise.all([
+        cacheFirstLoadResponse(path, new Response(text, { headers: response.headers }), cacheName),
+        saveVerifiedJson(path, text)
+      ]);
+      return data;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (attempt < retryDelays.length) await waitForDataRetry(retryDelays[attempt]);
+    }
+  }
+  const verified = await readVerifiedJson(path, validate);
+  if (verified) {
+    console.warn(`[Cache] ${path} は直近の検証済みデータから復旧しました:`, lastError);
+    return verified;
+  }
+  throw lastError;
 }
 
 function parseJsonOffMainThread(text) {
@@ -4398,8 +4472,18 @@ async function init(dataProgress, startupMetadataPromise) {
   try {
     dataProgress.report('アイテムデータを読み込んでいます', 0);
     const [rawList, legacyItemIds] = await Promise.all([
-      fetchJson(DATA_FILE, status => `Item.json が見つかりません (${status})`, DATA_CACHE_VERSION),
-      fetchJson(LEGACY_ITEM_IDS_FILE, status => `旧ID互換データが見つかりません (${status})`, DATA_CACHE_VERSION)
+      fetchJson(
+        DATA_FILE,
+        status => `Item.json が見つかりません (${status})`,
+        DATA_CACHE_VERSION,
+        validItemDataDocument
+      ),
+      fetchJson(
+        LEGACY_ITEM_IDS_FILE,
+        status => `旧ID互換データが見つかりません (${status})`,
+        DATA_CACHE_VERSION,
+        validLegacyItemIdsDocument
+      )
     ]);
     legacyItemNamesById = legacyItemIds?.Items || {};
     itemNameAliases = rawList?.ItemNameAliases && typeof rawList.ItemNameAliases === 'object'
@@ -4407,13 +4491,17 @@ async function init(dataProgress, startupMetadataPromise) {
       : {};
     const previousDataGeneration = favoriteItemCountStore.dataGeneration || '';
     applicationDataGeneration = typeof rawList?.DataGeneration === 'string' ? rawList.DataGeneration : '';
+    const derivedDataCacheGeneration = applicationDataCacheGenerationKey(
+      applicationDataGeneration,
+      DATA_CACHE_VERSION
+    );
     const dataGenerationChanged = Boolean(
       previousDataGeneration && applicationDataGeneration && previousDataGeneration !== applicationDataGeneration
     );
     const applicationDataStartedAt = performance.now();
     const itemImagesStartedAt = performance.now();
     const derivedCacheStartedAt = performance.now();
-    const derivedCachePromise = loadApplicationDataCache(applicationDataGeneration).catch(error => {
+    const derivedCachePromise = loadApplicationDataCache(derivedDataCacheGeneration).catch(error => {
       console.warn('[Cache] 起動データ読み込み失敗:', error);
       return null;
     });
@@ -4434,8 +4522,8 @@ async function init(dataProgress, startupMetadataPromise) {
       (phase, percent) => dataProgress.report(phase, percent),
       { incremental: dataGenerationChanged, cachedData: cachedApplicationData }
     );
-    if (!applicationData.cacheHit && applicationDataGeneration) {
-      pendingApplicationDataCache = { generation: applicationDataGeneration, data: applicationData.data };
+    if (!applicationData.cacheHit && derivedDataCacheGeneration) {
+      pendingApplicationDataCache = { generation: derivedDataCacheGeneration, data: applicationData.data };
     }
     dataProgress.report('お気に入りを現行データへ移行しています', 97);
     pendingFavoriteMigration = migrateFavoriteItemKeys();
@@ -5818,6 +5906,46 @@ function createIntermediatePreparedButton(name, maximum, { disabled = false } = 
   return button;
 }
 
+function synchronizeMaterialColumnWidths(root = elements.treeContainer) {
+  const rows = [...root.querySelectorAll('.item-cell-row[data-material-column-group]')];
+  rows.forEach(row => {
+    row.style.removeProperty('--material-leading-column-width');
+    row.style.removeProperty('--material-main-column-width');
+    row.style.removeProperty('--material-action-column-width');
+  });
+  if (window.innerWidth <= MOBILE_BREAKPOINT || rows.length === 0) return;
+
+  const groups = new Map();
+  rows.forEach(row => {
+    const group = row.dataset.materialColumnGroup;
+    if (!groups.has(group)) groups.set(group, []);
+    groups.get(group).push(row);
+  });
+
+  groups.forEach(groupRows => {
+    const widths = [0, 0, 0];
+    groupRows.forEach(row => {
+      row.classList.add('material-column-measure');
+      const tracks = getComputedStyle(row).gridTemplateColumns
+        .split(/\s+/u)
+        .slice(0, 3)
+        .map(pixelValue);
+      row.classList.remove('material-column-measure');
+      tracks.forEach((width, index) => {
+        widths[index] = Math.max(widths[index], width);
+      });
+    });
+    const properties = [
+      '--material-leading-column-width',
+      '--material-main-column-width',
+      '--material-action-column-width'
+    ];
+    groupRows.forEach(row => {
+      properties.forEach((property, index) => row.style.setProperty(property, `${Math.ceil(widths[index])}px`));
+    });
+  });
+}
+
 function renderMaterialsList() {
   const count = readRequestedCount(elements.countInput);
   const purchaseContext = currentMaterialPurchaseContext();
@@ -6056,9 +6184,11 @@ function renderMaterialsList() {
     });
   };
 
-  const createMaterialRow = row => {
+  const createMaterialRow = (row, columnGroup) => {
     const li = document.createElement('li');
     if (row.type === 'item') {
+      li.classList.add('item-cell-row');
+      li.dataset.materialColumnGroup = columnGroup;
       const noLongerNeeded = !requirementsAfterPurchases.states.has(row.name);
       const exclusionReason = noLongerNeeded ? intermediateTerminalReason(row.name) : '';
       const materialPurchased = purchasedMaterialNames.has(row.name) && !noLongerNeeded;
@@ -6090,15 +6220,19 @@ function renderMaterialsList() {
 
           const entryRow = document.createElement('div');
           entryRow.className = 'material-supplement-row';
+          const entryMain = document.createElement('span');
+          entryMain.className = 'material-supplement-main';
           if (index === 0 && Number.isFinite(row.shopPrice)) {
-            entryRow.appendChild(createShopAlternativeSupplementLabel(row.shopPrice));
+            entryMain.appendChild(createShopAlternativeSupplementLabel(row.shopPrice));
           }
           if (entry.isTextOnly) {
-            appendSupplementName(entryRow, entry, 'material-supplement-name');
+            appendSupplementName(entryMain, entry, 'material-supplement-name');
+            entryRow.appendChild(entryMain);
           } else {
+            entryRow.classList.add('item-cell-row');
             const supplementIcon = createItemIcon(itemMaster[entry.name]?.icon, 'material-supplement-icon');
             if (supplementIcon) entryRow.appendChild(supplementIcon);
-            appendSupplementName(entryRow, entry, 'material-supplement-name');
+            appendSupplementName(entryMain, entry, 'material-supplement-name');
             const supplementQuantity = createTextElement(
               'span',
               'material-supplement-qty',
@@ -6107,7 +6241,8 @@ function renderMaterialsList() {
             if (row.preparationChange?.changedFields.includes('craftTimes')) {
               supplementQuantity.classList.add('prepared-adjusted-value');
             }
-            entryRow.appendChild(supplementQuantity);
+            entryMain.appendChild(supplementQuantity);
+            entryRow.appendChild(entryMain);
             appendItemActionButtons(entryRow, createShopInfoButton(entry.name), createGatheringTimerButton(entry.name));
           }
           supplement.appendChild(entryRow);
@@ -6129,6 +6264,8 @@ function renderMaterialsList() {
         .join('\n');
       if (exclusionReason) li.dataset.shareExclusionReason = exclusionReason;
     } else {
+      li.classList.add('item-cell-row');
+      li.dataset.materialColumnGroup = columnGroup;
       li.appendChild(createMaterialChoiceContent(row));
       li.dataset.shareTextBlock = row.options
         .map(option => option.map(item => `・${item.name}${item.qty === null ? '' : ` ×${formatNumber(item.qty)}`}`).join(' / '))
@@ -6154,7 +6291,8 @@ function renderMaterialsList() {
     if (fullyPrepared) li.classList.add('prepared-selected');
     if (noLongerNeeded) li.classList.add('purchase-unneeded');
     const rowElement = document.createElement('div');
-    rowElement.className = 'intermediate-tree-row';
+    rowElement.className = 'intermediate-tree-row item-cell-row';
+    rowElement.dataset.materialColumnGroup = 'intermediate';
     const icon = createCheckableItemIcon(row.name);
     if (icon) {
       li.classList.add('has-item-icon');
@@ -6298,8 +6436,9 @@ function renderMaterialsList() {
   };
 
   const intermediateSectionRows = intermediateRows.map(createIntermediateRow);
-  const materialSectionRows = [...categorizedRows.normal, ...categorizedRows.exchange].map(createMaterialRow);
-  const crystalSectionRows = categorizedRows.crystals.map(createMaterialRow);
+  const materialSectionRows = [...categorizedRows.normal, ...categorizedRows.exchange]
+    .map(row => createMaterialRow(row, 'material'));
+  const crystalSectionRows = categorizedRows.crystals.map(row => createMaterialRow(row, 'crystal'));
   const exchangeSourceRows = rows.filter(row => row.type === 'item' && row.supplements?.length);
   const shouldCollapseExchangeSummary =
     exchangeSourceRows.length > 0 && exchangeSourceRows.every(row => itemMaster[row.name]?.craftType === '9');
@@ -6389,7 +6528,8 @@ function renderMaterialsList() {
       .sort((a, b) => compareItemNames(a.name, b.name) || Number(a.refinable) - Number(b.refinable))
       .forEach(entry => {
         const li = document.createElement('li');
-        li.className = 'materials-summary-row';
+        li.className = 'materials-summary-row item-cell-row';
+        li.dataset.materialColumnGroup = 'exchange-currency';
         const icon = createItemIcon(itemMaster[entry.name]?.icon);
         if (icon) li.appendChild(icon);
         const content = document.createElement('div');
@@ -6418,7 +6558,8 @@ function renderMaterialsList() {
       .sort((a, b) => compareItemNames(a[0]?.name || '', b[0]?.name || ''))
       .forEach(entries => {
         const li = document.createElement('li');
-        li.className = 'materials-summary-row';
+        li.className = 'materials-summary-row item-cell-row';
+        li.dataset.materialColumnGroup = 'exchange-currency';
         const content = document.createElement('div');
         content.className = 'material-content';
         const supplement = document.createElement('div');
@@ -6469,6 +6610,7 @@ function renderMaterialsList() {
   }
 
   elements.treeContainer.appendChild(list);
+  synchronizeMaterialColumnWidths(list);
 }
 
 function renderTree() {
@@ -6542,12 +6684,15 @@ function createResultRootSummary(
   const wrapper = document.createElement('div');
   wrapper.className = className;
   const row = document.createElement('div');
-  row.className = 'node-row';
+  row.className = 'node-row item-cell-row';
+  const leading = document.createElement('span');
+  leading.className = 'item-cell-leading';
   const icon = className.includes('material-tree-root-summary')
     ? createItemIcon(master.icon, 'node-icon')
     : createCheckableItemIcon(name, 'node-icon');
-  if (showPin) row.appendChild(createTreePin(name));
-  if (icon) row.appendChild(icon);
+  if (showPin) leading.appendChild(createTreePin(name));
+  if (icon) leading.appendChild(icon);
+  row.appendChild(leading);
   const main = document.createElement('span');
   main.className = 'node-main root-item-main';
   const title = document.createElement('span');
@@ -6564,7 +6709,11 @@ function createResultRootSummary(
   if (subInfo) main.appendChild(subInfo);
   if (selector) prependRecipeMethodControl(main, selector);
   row.appendChild(main);
-  appendItemActionButtons(row, createShopInfoButton(name), createGatheringTimerButton(name));
+  appendItemActionButtons(
+    row,
+    createShopInfoButton(name),
+    createGatheringTimerButton(name)
+  );
   const shareLines = [shareItemTextBlock(name, master, {
     quantity: producedQty,
     markers: shareItemMarkers(name)
@@ -7167,17 +7316,20 @@ function buildNode(
   const node = document.createElement('div');
   node.className = 'tree-node';
   const row = document.createElement('div');
-  row.className = 'node-row';
+  row.className = 'node-row item-cell-row';
   const toggle = createTextElement('span', 'toggle', hasChildren ? '▼' : ' ');
   const hideCraftBadge = showCraftBadgeOnlyAtRoot && depth > 0 && CRAFT_JOBS_SET.has(master.method);
 
-  row.appendChild(toggle);
+  const leading = document.createElement('span');
+  leading.className = 'item-cell-leading';
+  leading.appendChild(toggle);
   const icon =
     showPins && unitCost === null
       ? createCheckableItemIcon(name, 'node-icon')
       : createItemIcon(master.icon, 'node-icon');
-  if (icon) row.appendChild(icon);
-  if (showPins) row.appendChild(createTreePin(name));
+  if (icon) leading.appendChild(icon);
+  if (showPins) leading.appendChild(createTreePin(name));
+  row.appendChild(leading);
   const main = createTreeMain(
     name,
     neededQty,
@@ -7186,7 +7338,11 @@ function buildNode(
   );
   if (selector) prependRecipeMethodControl(main, selector);
   row.appendChild(main);
-  appendItemActionButtons(row, createShopInfoButton(name), createGatheringTimerButton(name));
+  appendItemActionButtons(
+    row,
+    createShopInfoButton(name),
+    createGatheringTimerButton(name)
+  );
   if (selector) {
     node.classList.add('has-recipe-method');
   }

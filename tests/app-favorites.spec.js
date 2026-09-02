@@ -43,6 +43,8 @@ test('favorites and shares an ingredient while preserving search results', async
   const favoriteIngredient = page.locator('#recipeList li.fav-item-row');
   await expect(favoriteIngredient).toContainText('使用先');
   await expect(favoriteIngredient).not.toContainText('素材');
+  await expect(favoriteIngredient.locator(':scope > .item-cell-leading > .pin-btn')).toHaveCount(1);
+  await expect(favoriteIngredient.locator(':scope > .item-action-buttons .pin-btn')).toHaveCount(0);
   await favoriteIngredient.getByRole('button', { name: '使用先' }).click();
   await expect(page.locator('#usesTitle')).toContainText('山羊乳');
 

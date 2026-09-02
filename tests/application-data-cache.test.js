@@ -3,6 +3,15 @@ const test = require('node:test');
 
 const ApplicationDataCache = require('../site/application-data-cache.js');
 
+test('derived data cache keys change when either the data generation or published data version changes', () => {
+  assert.equal(ApplicationDataCache.generationKey('lodestone-1', 'data-a'), 'lodestone-1:data-a');
+  assert.notEqual(
+    ApplicationDataCache.generationKey('lodestone-1', 'data-a'),
+    ApplicationDataCache.generationKey('lodestone-1', 'data-b')
+  );
+  assert.equal(ApplicationDataCache.generationKey('', 'data-a'), '');
+});
+
 test('application data cache falls back safely when IndexedDB is unavailable', async () => {
   assert.equal(await ApplicationDataCache.load('generation-a', null), null);
   assert.equal(await ApplicationDataCache.save('generation-a', { recipes: {} }, null), false);

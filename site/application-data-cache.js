@@ -9,6 +9,13 @@
   const STORE_NAME = 'models';
   const SCHEMA_VERSION = 1;
 
+  function generationKey(dataGeneration, dataVersion) {
+    const generation = String(dataGeneration || '').trim();
+    const version = String(dataVersion || '').trim();
+    if (!generation || !version) return '';
+    return `${generation}:${version}`;
+  }
+
   function openDatabase(indexedDBApi = globalThis.indexedDB) {
     if (!indexedDBApi?.open) return Promise.resolve(null);
     return new Promise((resolve, reject) => {
@@ -72,5 +79,5 @@
     }
   }
 
-  return Object.freeze({ DATABASE_NAME, SCHEMA_VERSION, STORE_NAME, load, save });
+  return Object.freeze({ DATABASE_NAME, SCHEMA_VERSION, STORE_NAME, generationKey, load, save });
 });

@@ -93,7 +93,7 @@ const definition = {
           order: 2,
           command: "build-lodestone-candidate",
           label: "2. Item.json候補生成",
-          description: "Lodestoneキャッシュと手動交換データから名前キー候補を生成します。",
+          description: "Lodestoneキャッシュと手動交換データから名前キー候補を生成し、素材の表示順も付与します。",
           settingIds: ["lodestone-delay"],
           args: [{ flag: "--delay", settingId: "lodestone-delay" }],
           resume: "restart",
