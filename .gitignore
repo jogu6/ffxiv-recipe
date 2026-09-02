@@ -39,7 +39,9 @@ pipeline/cache/
 pipeline/logs/*.txt
 pipeline/logs/runs/
 pipeline/logs/latest.log
+pipeline/logs/archive/
 pipeline/state/*.json
+pipeline/state/*.lock
 pipeline/reports/
 pipeline/config/*.local.json
 pipeline/legacy-powershell/

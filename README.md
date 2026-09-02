@@ -118,17 +118,20 @@ SQUARE ENIX から修正、削除、公開停止、提供停止などの指示�
 
 詳細は [NOTICE.md](NOTICE.md) および [site/docs/license-notice.md](site/docs/license-notice.md) を参照してください。
 
-## Lodestone更新監視
+## Lodestone更新監視と自動公開
 
-Lodestoneのアイテム一覧と製作手帳一覧を毎日確認し、変更時だけDiscordへ通知できます。
+Lodestoneのアイテム一覧と製作手帳一覧を毎日確認します。正常に取得できて更新がない場合は通知せず終了し、更新を検知した場合だけItem.json生成、`sw.js`を含むキャッシュ版更新、検証、コミット、push、GitHub Pagesのデプロイ確認を自動実行します。この処理はNode.js、Git、GitHub CLIだけで動作し、CodexやAI APIを使用しません。
 
 詳細なセットアップ、タスク設定、ログ、テスト通知については [Lodestone update monitor](docs/lodestone-update-monitor.md) を参照してください。
 
 1. `pipeline/config/lodestone-monitor.example.json` を `pipeline/config/lodestone-monitor.local.json` としてコピーします。
 2. `discordWebhookUrl` に通知先のDiscord Webhook URLを設定します。ローカル設定はGitの追跡対象外です。
 3. Gitの追跡対象外であるローカルのタスク定義をタスクスケジューラへインポートし、実行ユーザーのパスワードを設定します。
-4. タスクを一度手動実行して基準状態を保存します。初回実行では通知しません。
+4. `gh auth login --hostname github.com --git-protocol https --web` と `gh auth setup-git` を実行し、GitHubへのpushとActions確認に使う認証を設定します。
+5. タスクを一度手動実行して基準状態を保存します。初回実行では通知も自動公開も行いません。
 
 Webhookへのテスト通知は `node pipeline/tool/lodestone-update-monitor.mjs --test-notification` で送信できます。この操作では監視の基準状態を変更しません。
 
-タスクは `wscript.exe` の非表示実行からNode.jsを起動するため、ターミナルウィンドウを表示しません。状態、取得キャッシュ、ログはそれぞれ `pipeline/state/`、`pipeline/cache/`、`pipeline/logs/` に保存され、いずれもGitの追跡対象外です。
+取得不能、HTML構造不整合、生成・検証失敗、想定外の差分、コミット・push・デプロイ失敗は日本語の原因と対応方法をDiscordへ通知して中止します。GitHub認証切れの場合は再認証コマンドも案内します。Discord Webhook自体が無効な場合は通知できないため、同じ日本語案内をローカルログへ保存します。
+
+タスクは `wscript.exe` の非表示実行からNode.jsを起動するため、ターミナルウィンドウを表示しません。状態、取得キャッシュ、ログはそれぞれ `pipeline/state/`、`pipeline/cache/`、`pipeline/logs/` に保存され、いずれもGitの追跡対象外です。自動公開はクリーンな`main`ブランチだけで開始し、コミット済み・push済みの途中状態を保存して次回の定期実行から安全に再開します。

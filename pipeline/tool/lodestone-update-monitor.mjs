@@ -13,6 +13,8 @@ import {
   extractLodestoneListMeta,
   lodestoneOrderSignature
 } from './lodestone-source.mjs';
+import { archivePipelineLogs } from './log-archive.mjs';
+import { notifyMonitorFailure, runAutomaticPublication } from './auto-publish.mjs';
 
 const repositoryRoot = path.resolve(import.meta.dirname, '..', '..');
 const pipelineRoot = path.join(repositoryRoot, 'pipeline');
@@ -134,16 +136,26 @@ export async function readLodestoneMonitorState({ previousState = {}, delayMs = 
 }
 
 export async function runMonitor() {
+  try {
+    archivePipelineLogs();
+  } catch (error) {
+    log(`ログアーカイブエラー: ${String(error.message || error)}`);
+  }
   const config = readConfig();
   validateWebhookUrl(config.discordWebhookUrl);
   const previousState = readJson(statePath, { initialized: false, consecutiveFailures: 0 });
   const checkedAt = new Date().toISOString();
-  const current = await readLodestoneMonitorState({
-    previousState,
-    delayMs: Math.max(0, Number(config.delayMs ?? DEFAULT_LODESTONE_DELAY_MS) || 0)
-  });
+  let current;
+  try {
+    current = await readLodestoneMonitorState({
+      previousState,
+      delayMs: Math.max(0, Number(config.delayMs ?? DEFAULT_LODESTONE_DELAY_MS) || 0)
+    });
+  } catch (error) {
+    return notifyMonitorFailure({ config, error });
+  }
   const changes = previousState.initialized ? diffLodestoneState(previousState, current) : [];
-  if (changes.length) await postDiscord(config.discordWebhookUrl, buildMessage(changes, checkedAt));
+  if (changes.length) await runAutomaticPublication({ config, current });
   writeAtomic(statePath, `${JSON.stringify({
     initialized: true,
     lastCheckedAt: checkedAt,

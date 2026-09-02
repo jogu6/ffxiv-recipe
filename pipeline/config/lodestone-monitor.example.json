@@ -1,4 +1,14 @@
 {
   "discordWebhookUrl": "*****",
-  "delayMs": 100
+  "delayMs": 100,
+  "autoPublish": {
+    "enabled": true,
+    "remote": "origin",
+    "branch": "main",
+    "deployWorkflow": "deploy-pages.yml",
+    "deployTimeoutMinutes": 20,
+    "deployPollSeconds": 15,
+    "iconQuality": 80,
+    "iconSize": 80
+  }
 }
