@@ -675,7 +675,7 @@ test('shop condition memory cache reuses decisions and stops admitting entries a
 });
 
 test('extractLodestoneCraftInfo reads job, level, and masterbook only', () => {
-  const html = '<title>エオルゼアデータベース「インダガトル・クラフターコート」 | FINAL FANTASY XIV, The Lodestone</title><main>製作手帳 裁縫師 秘伝書 秘伝書:第10巻 インダガトル・クラフターコート <section>裁縫師 Lv 90 <p class="db-view__recipe__text__book_name">裁縫秘伝書:第10巻</p><h2>インダガトル・クラフターコート</h2></section></main>';
+  const html = '<title>エオルゼアデータベース「インダガトル・クラフターコート」 | FINAL FANTASY XIV, The Lodestone</title><main>製作手帳 裁縫師 秘伝書 秘伝書:第10巻 インダガトル・クラフターコート <section><p class="db-view__item__text__job_name">裁縫師</p><span class="db-view__item__text__level__num">90</span><p class="db-view__recipe__text__book_name">裁縫秘伝書:第10巻</p><h2>インダガトル・クラフターコート</h2></section></main>';
   assert.deepEqual(extractLodestoneCraftInfo(html), {
     job: '裁縫師',
     level: 90,
@@ -684,7 +684,7 @@ test('extractLodestoneCraftInfo reads job, level, and masterbook only', () => {
 });
 
 test('extractLodestoneCraftInfo keeps non-numbered masterbook names', () => {
-  const html = '<main><section><p>錬金術師 Lv 50</p><p class="db-view__recipe__text__book_name">錬成秘伝書:デミマテリア</p></section></main>';
+  const html = '<main><section><p class="db-view__item__text__job_name">錬金術師</p><span class="db-view__item__text__level__num">50</span><p class="db-view__recipe__text__book_name">錬成秘伝書:デミマテリア</p></section></main>';
   assert.deepEqual(extractLodestoneCraftInfo(html), {
     job: '錬金術師',
     level: 50,
@@ -693,7 +693,7 @@ test('extractLodestoneCraftInfo keeps non-numbered masterbook names', () => {
 });
 
 test('extractLodestoneCraftInfo ignores masterbook menu entries', () => {
-  const html = '<title>エオルゼアデータベース「ブロンズインゴット」 | FINAL FANTASY XIV, The Lodestone</title><main>鍛冶師 Lv 1 ブロンズインゴット 製作Lv 91-95 秘伝書 秘伝書:第12巻</main>';
+  const html = '<title>エオルゼアデータベース「ブロンズインゴット」 | FINAL FANTASY XIV, The Lodestone</title><main><p class="db-view__item__text__job_name">鍛冶師</p><span class="db-view__item__text__level__num">1</span>ブロンズインゴット 製作Lv 91-95 秘伝書 秘伝書:第12巻</main>';
   assert.deepEqual(extractLodestoneCraftInfo(html), {
     job: '鍛冶師',
     level: 1
@@ -703,7 +703,8 @@ test('extractLodestoneCraftInfo ignores masterbook menu entries', () => {
 test('extractLodestoneRecipeData reads a Lodestone recipe variant and resolves ingredient keys', () => {
   const html = `
     <main>
-      <p>木工師 Lv 15</p>
+      <p class="db-view__item__text__job_name">木工師</p>
+      <span class="db-view__item__text__level__num">15</span>
       <p class="db-view__recipe__text__book_name">木工秘伝書:ミラージュプリズム</p>
       <span class="js__complete_craft_count">1</span>
       <div data-name="クリアプリズム" class="js__material db-tree" data-depth="1" data-num="1" data-key="clear"></div>

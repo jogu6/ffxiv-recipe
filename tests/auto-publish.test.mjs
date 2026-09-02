@@ -210,6 +210,50 @@ test("automatic publication commits allowed files, pushes once, and confirms the
   assert.ok(AUTO_PUBLISH_FILES.includes("site/sw.js"));
 });
 
+test("failed publication resumes after its last completed pipeline command", async (t) => {
+  const root = temporaryRoot(t);
+  const statePath = path.join(root, "pipeline", "state", "auto-publish.json");
+  fs.writeFileSync(
+    statePath,
+    `${JSON.stringify({
+      schemaVersion: 1,
+      status: "failed",
+      targetVersion: "7.6",
+      targetKey: "7.6||||",
+      baseCommit: "base",
+      completedCommands: ["lodestone-audit"],
+    })}\n`,
+  );
+  const calls = [];
+  const run = async (command, args) => {
+    calls.push([path.basename(command), ...args]);
+    if (args[0] === "branch") return response("main");
+    if (args[0] === "status" && args[1] === "--porcelain") return response("");
+    if (args[0] === "rev-parse") return response("base");
+    if (args[0] === "diff" && args[1] === "--name-only") return response("");
+    if (args[0] === "ls-files") return response("");
+    return response("");
+  };
+  const result = await runAutomaticPublication({
+    config: {
+      discordWebhookUrl: "https://discord.com/api/webhooks/1/token",
+      delayMs: 0,
+    },
+    current: { Version: "7.6" },
+    repositoryRoot: root,
+    statePath,
+    logger: { write() {} },
+    run,
+    fetchImpl: async () => ({ ok: true, status: 204 }),
+  });
+  assert.equal(result.status, "published");
+  assert.equal(calls.some((call) => call.includes("lodestone-audit")), false);
+  assert.equal(
+    calls.some((call) => call.includes("build-lodestone-candidate")),
+    true,
+  );
+});
+
 test("unexpected generated files stop publication, restore only approved files, and send a Japanese failure", async (t) => {
   const root = temporaryRoot(t);
   const calls = [];

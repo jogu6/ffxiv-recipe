@@ -791,7 +791,7 @@ export async function runAutomaticPublication({
       if (recoveryFiles.length)
         await rollbackAllowedFiles(run, repositoryRoot, logger);
       state = savePublicationState(statePath, state, {
-        status: "idle",
+        status: "failed",
         recoveredAt: jstTimestamp(),
       });
     }
@@ -831,6 +831,16 @@ export async function runAutomaticPublication({
         { phase, code: "BRANCH_DIVERGED" },
       );
 
+    const completedCommands =
+      state.status === "failed" &&
+      state.targetKey === targetKey &&
+      state.baseCommit === localHead &&
+      Array.isArray(state.completedCommands)
+        ? state.completedCommands.filter((command) =>
+            pipelineCommands(settings).some(([name]) => name === command),
+          )
+        : [];
+
     phase = "generation";
     generated = true;
     state = savePublicationState(statePath, state, {
@@ -842,6 +852,7 @@ export async function runAutomaticPublication({
       baseCommit: localHead,
       deploymentUrl: null,
       changedFiles: [],
+      completedCommands,
     });
     const pipelineTool = path.join(
       repositoryRoot,
@@ -850,6 +861,11 @@ export async function runAutomaticPublication({
       "pipeline-tool.mjs",
     );
     for (const args of pipelineCommands(settings)) {
+      const commandName = args[0];
+      if (state.completedCommands.includes(commandName)) {
+        logger?.write(`完了済み工程を再利用: ${commandName}`);
+        continue;
+      }
       await run(
         process.execPath,
         [`--max-old-space-size=${settings.nodeHeapMb}`, pipelineTool, ...args],
@@ -859,6 +875,9 @@ export async function runAutomaticPublication({
           timeoutMs: 12 * 60 * 60 * 1000,
         },
       );
+      state = savePublicationState(statePath, state, {
+        completedCommands: [...state.completedCommands, commandName],
+      });
     }
     const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
     await run(npmCommand, ["run", "check"], {

@@ -1638,6 +1638,10 @@ function normalizeHtmlText(html) {
     .trim();
 }
 
+function ownString(value) {
+  return Buffer.from(String(value || ''), 'utf8').toString('utf8');
+}
+
 function escapeRegExp(text) {
   return String(text || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -2596,14 +2600,20 @@ export async function refreshLodestoneAuditSnapshot({
 }
 
 export function extractLodestoneCraftInfo(recipeHtml) {
-  const text = normalizeHtmlText(recipeHtml);
-  const jobMatch = text.match(/(木工師|鍛冶師|甲冑師|彫金師|革細工師|裁縫師|錬金術師|調理師)\s+Lv\s*([0-9]+)/);
-  if (!jobMatch) return null;
+  const source = String(recipeHtml || '');
+  const job = ownString(normalizeHtmlText(source.match(
+    /<p\b[^>]*class=(["'])[^"']*\bdb-view__item__text__job_name\b[^"']*\1[^>]*>([\s\S]*?)<\/p>/i
+  )?.[2]));
+  const level = Number(normalizeHtmlText(source.match(
+    /<span\b[^>]*class=(["'])[^"']*\bdb-view__item__text__level__num\b[^"']*\1[^>]*>([\s\S]*?)<\/span>/i
+  )?.[2]));
+  if (!/^(?:木工師|鍛冶師|甲冑師|彫金師|革細工師|裁縫師|錬金術師|調理師)$/u.test(job) ||
+      !Number.isInteger(level) || level <= 0) return null;
   const info = {
-    job: jobMatch[1],
-    level: Number(jobMatch[2])
+    job,
+    level
   };
-  const masterbookMatch = String(recipeHtml || '').match(
+  const masterbookMatch = source.match(
     /<p\b[^>]*class=["'][^"']*\bdb-view__recipe__text__book_name\b[^"']*["'][^>]*>([\s\S]*?)<\/p>/i
   );
   if (masterbookMatch) info.masterbook = normalizeHtmlText(masterbookMatch[1]);
@@ -2614,7 +2624,7 @@ function htmlTagAttributes(tag) {
   return Object.fromEntries(
     [...String(tag || '').matchAll(/([\w:-]+)\s*=\s*(["'])(.*?)\2/gs)].map(([, name, , value]) => [
       name.toLowerCase(),
-      decodeHtml(value)
+      ownString(decodeHtml(value))
     ])
   );
 }
@@ -2640,28 +2650,25 @@ export function extractLodestoneRecipeData(
     throw new Error(`Lodestoneレシピ ${recipeId} から完成個数を取得できません`);
   }
 
-  const materialTags = [...String(recipeHtml || '').matchAll(/<div\b[^>]*>/gi)];
-  const ingredients = materialTags
-    .map(match => htmlTagAttributes(match[0]))
-    .filter(attributes => {
-      const classes = String(attributes.class || '').split(/\s+/);
-      return classes.includes('js__material') && classes.includes('db-tree');
-    })
-    .filter(attributes => Number(attributes['data-depth']) === 1)
-    .map(attributes => {
-      const lodestoneKey = attributes['data-key'] || '';
-      const itemId = itemIdByLodestoneKey.get(lodestoneKey);
-      const name = normalizeLodestoneItemName(attributes['data-name']);
-      const amount = Number(attributes['data-num']);
-      if (!name || !Number.isInteger(amount) || amount <= 0) {
-        throw new Error(`Lodestoneレシピ ${recipeId} の素材情報が不正です: ${name || lodestoneKey}`);
-      }
-      return {
-        ...(itemId ? { ItemID: String(itemId) } : {}),
-        Name: name,
-        Amount: String(amount)
-      };
+  const ingredients = [];
+  for (const match of String(recipeHtml || '').matchAll(/<div\b[^>]*>/gi)) {
+    const attributes = htmlTagAttributes(match[0]);
+    const classes = String(attributes.class || '').split(/\s+/);
+    if (!classes.includes('js__material') || !classes.includes('db-tree') ||
+        Number(attributes['data-depth']) !== 1) continue;
+    const lodestoneKey = attributes['data-key'] || '';
+    const itemId = itemIdByLodestoneKey.get(lodestoneKey);
+    const name = ownString(normalizeLodestoneItemName(attributes['data-name']));
+    const amount = Number(attributes['data-num']);
+    if (!name || !Number.isInteger(amount) || amount <= 0) {
+      throw new Error(`Lodestoneレシピ ${recipeId} の素材情報が不正です: ${name || lodestoneKey}`);
+    }
+    ingredients.push({
+      ...(itemId ? { ItemID: String(itemId) } : {}),
+      Name: name,
+      Amount: String(amount)
     });
+  }
   if (ingredients.length === 0) throw new Error(`Lodestoneレシピ ${recipeId} から直接素材を取得できません`);
 
   return {
