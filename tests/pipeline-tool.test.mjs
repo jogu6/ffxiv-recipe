@@ -6,6 +6,7 @@ import path from 'node:path';
 import sharp from 'sharp';
 import {
   extractLodestoneCraftInfo,
+  replaceDataCacheVersion,
   extractLodestoneEquipmentInfo,
   extractLodestoneIsEx,
   extractLodestoneRecipeData,
@@ -69,6 +70,18 @@ function createPromotedTestAudit(store, id) {
   }, { now: 102 });
   promoteCompletedLodestoneAudit(store, id, { now: 110 });
 }
+
+test('data cache version replacement accepts an already current version', () => {
+  const source = "const DATA_CACHE_VERSION = 'ff14recipe-data-7.55-current';\n";
+  assert.equal(
+    replaceDataCacheVersion(source, 'ff14recipe-data-7.55-current', 'sw.js'),
+    source
+  );
+  assert.throws(
+    () => replaceDataCacheVersion('const OTHER_VERSION = 1;', 'next', 'sw.js'),
+    /DATA_CACHE_VERSION was not found in sw\.js/
+  );
+});
 
 test('new candidate items receive required Lodestone detail data without another source', async () => {
   const calls = [];

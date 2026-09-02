@@ -587,24 +587,22 @@ function makeDataCacheVersion(itemJsonPath = publicItemJsonPath, salt = '') {
   return `ff14recipe-data-${version}-${hash.digest('hex').slice(0, 8)}`;
 }
 
+export function replaceDataCacheVersion(source, version, fileName) {
+  const pattern = /const\s+DATA_CACHE_VERSION\s*=\s*['"][^'"]+['"];/;
+  if (!pattern.test(source)) throw new Error(`DATA_CACHE_VERSION was not found in ${fileName}`);
+  return source.replace(pattern, `const DATA_CACHE_VERSION = '${version}';`);
+}
+
 function updateServiceWorkerDataCacheVersion(version) {
   const source = fs.readFileSync(serviceWorkerPath, 'utf8');
-  const next = source.replace(
-    /const\s+DATA_CACHE_VERSION\s*=\s*['"][^'"]+['"];/,
-    `const DATA_CACHE_VERSION = '${version}';`
-  );
-  if (next === source) throw new Error('DATA_CACHE_VERSION was not found in sw.js');
-  writeTextAtomic(serviceWorkerPath, next);
+  const next = replaceDataCacheVersion(source, version, 'sw.js');
+  if (next !== source) writeTextAtomic(serviceWorkerPath, next);
 }
 
 function updateAppDataCacheVersion(version) {
   const source = fs.readFileSync(appScriptPath, 'utf8');
-  const next = source.replace(
-    /const\s+DATA_CACHE_VERSION\s*=\s*['"][^'"]+['"];/,
-    `const DATA_CACHE_VERSION = '${version}';`
-  );
-  if (next === source) throw new Error('DATA_CACHE_VERSION was not found in app.js');
-  writeTextAtomic(appScriptPath, next);
+  const next = replaceDataCacheVersion(source, version, 'app.js');
+  if (next !== source) writeTextAtomic(appScriptPath, next);
 }
 
 function updateDataCacheVersion({
