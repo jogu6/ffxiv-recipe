@@ -33,7 +33,9 @@ function itemRow(name, key = 'itema') {
 
 function recipeDetailHtml({ amount = 1, ingredient = '素材', ingredientKey = 'material', ingredientAmount = 2 } = {}) {
   return `
-    <main>鍛冶師 Lv 100
+    <main>
+      <p class="db-view__item__text__job_name">鍛冶師</p>
+      <span class="db-view__item__text__level__num">100</span>
       <span class="js__complete_craft_count">${amount}</span>
       <p class="db-view__recipe__text__book_name">鍛冶秘伝書:第12巻</p>
       <div class="js__material db-tree" data-depth="1" data-key="${ingredientKey}" data-name="${ingredient}" data-num="${ingredientAmount}"></div>

@@ -222,7 +222,7 @@ export function normalizeSettings(config = {}) {
     deployPollSeconds: Math.max(5, Number(source.deployPollSeconds || 15)),
     iconQuality: Math.min(100, Math.max(1, Number(source.iconQuality || 80))),
     iconSize: Math.max(1, Number(source.iconSize || 80)),
-    nodeHeapMb: Math.max(4096, Number(source.nodeHeapMb || 8192)),
+    nodeHeapMb: Math.max(512, Number(source.nodeHeapMb || 1024)),
   };
 }
 

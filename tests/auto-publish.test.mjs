@@ -35,7 +35,7 @@ test("auto publish settings are enabled with safe repository defaults", () => {
     deployPollSeconds: 15,
     iconQuality: 80,
     iconSize: 80,
-    nodeHeapMb: 8192,
+    nodeHeapMb: 1024,
   });
 });
 
@@ -132,7 +132,7 @@ test("automatic publication runs the shared pipeline and finishes without Git wr
   assert.equal(result.status, "published");
   assert.ok(calls.some((call) => call.includes("lodestone-audit")));
   assert.ok(
-    calls.some((call) => call.includes("--max-old-space-size=8192")),
+    calls.some((call) => call.includes("--max-old-space-size=1024")),
   );
   assert.ok(calls.some((call) => call.includes("publish-lodestone-candidate")));
   assert.ok(calls.some((call) => call.includes("app-cache-version")));

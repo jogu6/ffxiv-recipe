@@ -10,7 +10,9 @@ import {
 function detail({ amount = 1, ingredient = '素材A', ingredientKey = 'item-a', ingredientAmount = 2 } = {}) {
   return `
     <aside>監査対象外の共通表示</aside>
-    <main>鍛冶師 Lv 90
+    <main>
+      <p class="db-view__item__text__job_name">鍛冶師</p>
+      <span class="db-view__item__text__level__num">90</span>
       <span class="js__complete_craft_count">${amount}</span>
       <p class="db-view__recipe__text__book_name">鍛冶秘伝書:第10巻</p>
       <div data-num="${ingredientAmount}" data-name="${ingredient}" class="db-tree js__material" data-key="${ingredientKey}" data-depth="1"></div>

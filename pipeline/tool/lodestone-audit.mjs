@@ -113,19 +113,37 @@ async function crawlFreshList({ baseUrl, extractEntries, request, onProgress, st
   const firstHtml = await request(firstUrl);
   const meta = extractLodestoneListMeta(firstHtml);
   const entries = extractEntries(firstHtml);
-  pages.push({ page: 1, url: firstUrl, text: firstHtml });
+  pages.push(compressAuditPage(1, firstUrl, firstHtml));
   onProgress({ stage, completed: 1, total: meta.pages });
   for (let page = 2; page <= meta.pages; page += 1) {
     const url = pageUrl(baseUrl, page);
     const text = await request(url);
     entries.push(...extractEntries(text));
-    pages.push({ page, url, text });
+    pages.push(compressAuditPage(page, url, text));
     onProgress({ stage, completed: page, total: meta.pages });
   }
   if (entries.length !== meta.total) {
     throw new Error(`Lodestone一覧件数が一致しません: 表示 ${meta.total} / 取得 ${entries.length}`);
   }
   return { ...meta, entries, pages };
+}
+
+function compressAuditPage(page, url, text) {
+  const source = Buffer.from(String(text), 'utf8');
+  if (source.length > MAX_AUDIT_HTML_BYTES) {
+    throw new Error(`監査一覧HTMLが上限を超えています: ${source.length} > ${MAX_AUDIT_HTML_BYTES}`);
+  }
+  return {
+    page,
+    url,
+    compressed: zlib.gzipSync(source, { level: 1 }),
+  };
+}
+
+function auditPageText(page) {
+  return zlib.gunzipSync(page.compressed, {
+    maxOutputLength: MAX_AUDIT_HTML_BYTES,
+  }).toString('utf8');
 }
 
 function pageResources(catalog, kind, prefix = '') {
@@ -141,7 +159,12 @@ function persistHtmlBatch(store, artifactRoot, auditId, planned, pages, now) {
   const completed = pending.map(({ resource, page }) => ({
     kind: resource.kind,
     key: resource.key,
-    ...writeLodestoneAuditArtifact(artifactRoot, auditId, resource.kind, page.text)
+    ...writeLodestoneAuditArtifact(
+      artifactRoot,
+      auditId,
+      resource.kind,
+      auditPageText(page),
+    )
   }));
   completeLodestoneAuditResources(store, auditId, completed, { now: now() });
   return planned.map(resource => getLodestoneAuditResource(store, auditId, resource.kind, resource.key));

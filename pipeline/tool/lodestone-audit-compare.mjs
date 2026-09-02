@@ -26,8 +26,12 @@ function tagAttributes(tag) {
 
 export function canonicalLodestoneRecipeContent(html) {
   const source = String(html || '');
-  const text = normalizeText(source);
-  const jobAndLevel = text.match(/(木工師|鍛冶師|甲冑師|彫金師|革細工師|裁縫師|錬金術師|調理師)\s+Lv\s*([0-9]+)/);
+  const job = normalizeText(source.match(
+    /<p\b[^>]*class=(["'])[^"']*\bdb-view__item__text__job_name\b[^"']*\1[^>]*>([\s\S]*?)<\/p>/i
+  )?.[2]);
+  const level = Number(normalizeText(source.match(
+    /<span\b[^>]*class=(["'])[^"']*\bdb-view__item__text__level__num\b[^"']*\1[^>]*>([\s\S]*?)<\/span>/i
+  )?.[2]));
   const amount = Number(normalizeText(source.match(
     /<span\b[^>]*class=(["'])[^"']*\bjs__complete_craft_count\b[^"']*\1[^>]*>([\s\S]*?)<\/span>/i
   )?.[2]));
@@ -44,14 +48,16 @@ export function canonicalLodestoneRecipeContent(html) {
       Name: normalizeText(attributes['data-name']),
       Amount: Number(attributes['data-num'])
     }));
-  if (!jobAndLevel || !Number.isInteger(amount) || amount <= 0 || ingredients.length === 0 ||
+  if (!/^(?:木工師|鍛冶師|甲冑師|彫金師|革細工師|裁縫師|錬金術師|調理師)$/u.test(job) ||
+      !Number.isInteger(level) || level <= 0 || !Number.isInteger(amount) || amount <= 0 ||
+      ingredients.length === 0 ||
       ingredients.some(ingredient => !ingredient.LodestoneKey || !ingredient.Name ||
         !Number.isInteger(ingredient.Amount) || ingredient.Amount <= 0)) {
     throw new Error('Lodestoneレシピ詳細を比較用に正規化できません');
   }
   return {
-    Job: jobAndLevel[1],
-    Level: Number(jobAndLevel[2]),
+    Job: job,
+    Level: level,
     Masterbook: masterbook,
     AmountResult: amount,
     Ingredients: ingredients
@@ -79,13 +85,10 @@ function selectedRecipeResource(resources, recipe) {
   return resource;
 }
 
-function recipeContentByKey(snapshot, resources, readArtifact) {
-  const result = new Map();
-  for (const recipe of snapshot.Recipes || []) {
-    const resource = selectedRecipeResource(resources, recipe);
-    result.set(recipe.RecipeKey, canonicalLodestoneRecipeContent(readArtifact(resource)));
-  }
-  return result;
+function recipeContent(resources, recipe, readArtifact) {
+  return canonicalLodestoneRecipeContent(
+    readArtifact(selectedRecipeResource(resources, recipe)),
+  );
 }
 
 function normalizedRecipeContent(content) {
@@ -208,7 +211,6 @@ export function compareInitialLodestoneAudit({
       throw new Error(`初回監査基準のレシピ名が公開Item.jsonと一致しません: ${key}`);
     }
   }
-  const currentContent = recipeContentByKey(currentSnapshot, currentResources, readCurrentArtifact);
   const contentChanged = [];
   for (const [recipeKey, currentRecipe] of recipes.current) {
     const previousRecipe = recipes.previous.get(recipeKey);
@@ -224,7 +226,7 @@ export function compareInitialLodestoneAudit({
         return { LodestoneKey: baselineItem.LodestoneKey, Amount: ingredient.Amount };
       })
     };
-    const current = currentContent.get(recipeKey);
+    const current = recipeContent(currentResources, currentRecipe, readCurrentArtifact);
     const afterComparable = comparableAuditRecipeContent(current);
     if (sha256Json(beforeComparable) === sha256Json(afterComparable)) continue;
     contentChanged.push({
@@ -257,17 +259,20 @@ export function compareInitialLodestoneAudit({
 }
 
 export function lodestoneAuditDataGeneration(snapshot, resources, readArtifact) {
-  const recipeContent = recipeContentByKey(snapshot, resources, readArtifact);
-  return sha256Json({
-    Version: snapshot.Version,
-    Items: (snapshot.Items || []).map(item => [item.LodestoneKey, item.Name, item.SortOrder]),
-    Recipes: (snapshot.Recipes || []).map(recipe => [
+  const hash = crypto.createHash('sha256');
+  const items = (snapshot.Items || []).map(item => [item.LodestoneKey, item.Name, item.SortOrder]);
+  hash.update(`{"Version":${JSON.stringify(snapshot.Version)},"Items":${JSON.stringify(items)},"Recipes":[`);
+  for (const [index, recipe] of (snapshot.Recipes || []).entries()) {
+    if (index > 0) hash.update(',');
+    hash.update(JSON.stringify([
       recipe.RecipeKey,
       recipe.Name,
       recipe.Job,
-      recipeContent.get(recipe.RecipeKey)
-    ])
-  });
+      recipeContent(resources, recipe, readArtifact),
+    ]));
+  }
+  hash.update(']}');
+  return hash.digest('hex');
 }
 
 function compareEntries(previousEntries, currentEntries, key, label) {
@@ -297,14 +302,12 @@ export function compareLodestoneAudits({
 }) {
   const items = compareEntries(previousSnapshot.Items, currentSnapshot.Items, 'LodestoneKey', 'アイテム');
   const recipes = compareEntries(previousSnapshot.Recipes, currentSnapshot.Recipes, 'RecipeKey', 'レシピ');
-  const previousContent = recipeContentByKey(previousSnapshot, previousResources, readPreviousArtifact);
-  const currentContent = recipeContentByKey(currentSnapshot, currentResources, readCurrentArtifact);
   const contentChanged = [];
   for (const [recipeKey, currentRecipe] of recipes.current) {
     const previousRecipe = recipes.previous.get(recipeKey);
     if (!previousRecipe) continue;
-    const before = previousContent.get(recipeKey);
-    const after = currentContent.get(recipeKey);
+    const before = recipeContent(previousResources, previousRecipe, readPreviousArtifact);
+    const after = recipeContent(currentResources, currentRecipe, readCurrentArtifact);
     if (sha256Json(comparableAuditRecipeContent(before)) === sha256Json(comparableAuditRecipeContent(after))) continue;
     contentChanged.push({
       RecipeKey: recipeKey,

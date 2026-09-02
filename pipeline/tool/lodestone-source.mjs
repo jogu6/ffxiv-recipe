@@ -21,6 +21,10 @@ function stripHtml(value) {
   return decodeHtml(String(value || '').replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
 }
 
+function ownString(value) {
+  return Buffer.from(String(value || ''), 'utf8').toString('utf8');
+}
+
 export function normalizeLodestoneName(value) {
   return stripHtml(value).replace(/[\uE000-\uF8FF]/g, '').trim();
 }
@@ -36,8 +40,11 @@ export function extractLodestoneListMeta(html) {
   return { version, total, pages: Math.ceil(total / LODESTONE_PAGE_SIZE) };
 }
 
-function rowBlocks(html) {
-  return [...String(html || '').matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)].map(match => match[1]);
+function* rowBlocks(html) {
+  const pattern = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+  const source = String(html || '');
+  let match;
+  while ((match = pattern.exec(source)) !== null) yield match[1];
 }
 
 export function extractLodestoneItemList(html) {
@@ -51,11 +58,11 @@ export function extractLodestoneItemList(html) {
     const categories = [...typeBlock.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/gi)].map(category => stripHtml(category[1]));
     const iconUrl = decodeHtml(row.match(/<img\b[^>]*src=["'](https:\/\/lds-img\.finalfantasyxiv\.com\/itemicon\/[^"']+)["']/i)?.[1] || '');
     entries.push({
-      Name: normalizeLodestoneName(match[3]),
-      LodestoneKey: match[2],
-      DetailPath: match[1],
-      ItemCategory: categories.at(-1) || categories[0] || '',
-      IconUrl: iconUrl
+      Name: ownString(normalizeLodestoneName(match[3])),
+      LodestoneKey: ownString(match[2]),
+      DetailPath: ownString(match[1]),
+      ItemCategory: ownString(categories.at(-1) || categories[0] || ''),
+      IconUrl: ownString(iconUrl)
     });
   }
   return entries;
@@ -69,7 +76,12 @@ export function extractLodestoneRecipeList(html) {
     );
     if (!match) continue;
     const job = stripHtml(row.match(/db-table__txt--type[^>]*>([\s\S]*?)<\/span>/i)?.[1]);
-    entries.push({ Name: normalizeLodestoneName(match[3]), RecipeKey: match[2], DetailPath: match[1], Job: job });
+    entries.push({
+      Name: ownString(normalizeLodestoneName(match[3])),
+      RecipeKey: ownString(match[2]),
+      DetailPath: ownString(match[1]),
+      Job: ownString(job)
+    });
   }
   return entries;
 }
