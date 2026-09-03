@@ -247,6 +247,9 @@ test("failed publication resumes after its last completed pipeline command", asy
       targetKey: "7.6||||",
       baseCommit: "base",
       completedCommands: ["lodestone-audit"],
+      failedPhase: "generation",
+      errorCode: "COMMAND_FAILED",
+      errorMessage: "old failure",
     })}\n`,
   );
   const calls = [];
@@ -277,6 +280,11 @@ test("failed publication resumes after its last completed pipeline command", asy
     calls.some((call) => call.includes("build-lodestone-candidate")),
     true,
   );
+  const saved = JSON.parse(fs.readFileSync(statePath, "utf8"));
+  assert.equal(saved.status, "published");
+  assert.equal("failedPhase" in saved, false);
+  assert.equal("errorCode" in saved, false);
+  assert.equal("errorMessage" in saved, false);
 });
 
 test("unexpected generated files stop publication, restore only approved files, and send a Japanese failure", async (t) => {

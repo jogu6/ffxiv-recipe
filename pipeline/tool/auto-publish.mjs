@@ -737,6 +737,9 @@ export async function runAutomaticPublication({
         status: "published",
         deploymentUrl: deployment.url,
         completedAt: jstTimestamp(),
+        failedPhase: undefined,
+        errorCode: undefined,
+        errorMessage: undefined,
       });
       await notifySafely({
         webhookUrl: config.discordWebhookUrl,
@@ -944,6 +947,9 @@ export async function runAutomaticPublication({
         status: "published",
         completedAt: jstTimestamp(),
         changedFiles,
+        failedPhase: undefined,
+        errorCode: undefined,
+        errorMessage: undefined,
       });
       await notifySafely({
         webhookUrl: config.discordWebhookUrl,
