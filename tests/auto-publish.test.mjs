@@ -9,6 +9,7 @@ import {
   buildFailureNotification,
   explainAutomationFailure,
   normalizeSettings,
+  npmCheckInvocation,
   notifySafely,
   parseChangedFiles,
   runAutomaticPublication,
@@ -45,6 +46,22 @@ test("background CPU priority is applied without making priority support fatal",
   assert.equal(applyBackgroundCpuPriority(123, (...args) => calls.push(args)), true);
   assert.deepEqual(calls, [[123, os.constants.priority.PRIORITY_BELOW_NORMAL]]);
   assert.equal(applyBackgroundCpuPriority(123, () => { throw new Error("unsupported"); }), false);
+});
+
+test("Windows validation invokes npm through Node instead of spawning npm.cmd", () => {
+  assert.deepEqual(npmCheckInvocation({
+    platform: "win32",
+    execPath: "C:\\Node\\node.exe",
+    npmExecPath: "C:\\Node\\npm-cli.js",
+    existsSync: (candidate) => candidate === "C:\\Node\\npm-cli.js",
+  }), {
+    command: "C:\\Node\\node.exe",
+    args: ["C:\\Node\\npm-cli.js", "run", "check"],
+  });
+  assert.deepEqual(npmCheckInvocation({ platform: "linux" }), {
+    command: "npm",
+    args: ["run", "check"],
+  });
 });
 
 test("authentication failures include fixed Japanese reauthentication advice", () => {

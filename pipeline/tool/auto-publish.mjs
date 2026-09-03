@@ -246,6 +246,27 @@ export function normalizeSettings(config = {}) {
   };
 }
 
+export function npmCheckInvocation({
+  platform = process.platform,
+  execPath = process.execPath,
+  npmExecPath = process.env.npm_execpath,
+  existsSync = fs.existsSync,
+} = {}) {
+  if (platform !== "win32") return { command: "npm", args: ["run", "check"] };
+  const npmCli = [
+    npmExecPath,
+    path.join(path.dirname(execPath), "node_modules", "npm", "bin", "npm-cli.js"),
+  ].find((candidate) => candidate && existsSync(candidate));
+  if (!npmCli) {
+    throw new AutomationError("npm本体を確認できませんでした", {
+      phase: "generation",
+      code: "COMMAND_NOT_FOUND",
+      detail: "npm-cli.js がNode.jsのインストール先にありません",
+    });
+  }
+  return { command: execPath, args: [npmCli, "run", "check"] };
+}
+
 function looksLikeAuthenticationFailure(value) {
   return /(?:authentication failed|bad credentials|could not read username|terminal prompts disabled|http\s*(?:401|403)|unauthorized|permission denied|token.*(?:expired|invalid)|not logged into|gh auth login)/iu.test(
     String(value || ""),
@@ -899,8 +920,8 @@ export async function runAutomaticPublication({
         completedCommands: [...state.completedCommands, commandName],
       });
     }
-    const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-    await run(npmCommand, ["run", "check"], {
+    const npmCheck = npmCheckInvocation();
+    await run(npmCheck.command, npmCheck.args, {
       cwd: repositoryRoot,
       logger,
       timeoutMs: 2 * 60 * 60 * 1000,
