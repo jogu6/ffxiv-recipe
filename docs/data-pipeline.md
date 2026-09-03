@@ -17,9 +17,15 @@ Every `IconFile` uses `{item-name-sha256-20}-{webp-content-sha256-12}.webp`, sha
 
 Items absent from the Lodestone item list are excluded. The regular target set consists of items with Lodestone recipes and all ingredients recursively reached by those recipes. Existing hand-maintained exchange data in `pipeline/input/token-items.csv` is preserved. Supplemental exchange currencies may remain without `SortOrder`.
 
-## Sequential access
+## Sequential access and bounded memory
 
-All external reads use one sequential request queue. Parallel requests are prohibited. The default interval is 100 milliseconds and can be changed in the pipeline GUI.
+All external reads use one sequential request queue. Parallel requests are prohibited. The default interval is 100 milliseconds and can be changed in the pipeline GUI. List pages are compressed as soon as they are captured, recipe rows are streamed from saved artifacts, and extracted strings do not retain their source HTML buffers. Generated-data child processes also run with a bounded Node.js heap and below-normal CPU priority.
+
+## Complete audit
+
+An automatic update starts with `lodestone-audit`. It creates a durable plan covering every item-list page, recipe-list page, and recipe-detail page, then fetches them sequentially. Completed resources are immutable and can be resumed after interruption. A new audit is promoted only after all planned resources, end-of-run consistency checks, comparisons, and hashes are complete. A version drift abandons the inconsistent audit instead of combining different Lodestone generations.
+
+The `DataGeneration` value is a deterministic SHA-256 digest of the current item order and canonical recipe contents. Repeating an audit with identical production data therefore produces the same generation and does not create an unnecessary public commit.
 
 ## Item-order cache
 
@@ -27,14 +33,14 @@ The first item in the descending Lodestone item list receives the total item cou
 
 Recipe-list metadata is checked separately. Candidate generation uses the saved recipe list and verified Lodestone recipe-detail cache.
 
-The snapshot step caches every recipe-detail page. During candidate generation, an item that is not present in the current public document is recognized as new and its Lodestone item-detail page is read to populate EX, equipment, and unconditional shop data. No alternate data source is used.
+The audit caches every recipe-detail page. During candidate generation, an item that is not present in the current public document is recognized as new and its Lodestone item-detail page is read to populate EX, equipment, and unconditional shop data. No alternate data source is used.
 
 ## GUI and CLI workflow
 
 `pipeline/tool/pipeline-ui-definition.mjs` is the single source of truth for GUI modules, nested setting groups, accordions, and action groups. The renderer builds those controls dynamically while progress, cancellation, and logs remain fixed application-level functions. The GUI exposes these four actions and the same sequence as a single combined run:
 
 ```powershell
-node pipeline/tool/pipeline-tool.mjs lodestone-snapshot --delay 100
+node pipeline/tool/pipeline-tool.mjs lodestone-audit --delay 100
 node pipeline/tool/pipeline-tool.mjs build-lodestone-candidate --delay 100
 node pipeline/tool/pipeline-tool.mjs lodestone-candidate-icons --delay 100 --quality 80 --size 80
 node pipeline/tool/pipeline-tool.mjs publish-lodestone-candidate
