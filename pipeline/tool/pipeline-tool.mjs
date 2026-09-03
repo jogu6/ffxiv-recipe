@@ -3870,7 +3870,7 @@ export function smokeTest({ root = fs.mkdtempSync(path.join(os.tmpdir(), 'ffxiv-
 }
 
 function gitOutput(args, options = {}) {
-  const result = spawnSync('git', args, { cwd: repositoryRoot, encoding: options.encoding ?? 'utf8', maxBuffer: options.maxBuffer ?? 1024 * 1024 * 10 });
+  const result = spawnSync('git', args, { cwd: repositoryRoot, encoding: options.encoding ?? 'utf8', maxBuffer: options.maxBuffer ?? 1024 * 1024 * 10, windowsHide: true });
   if (result.status !== 0) throw new Error(result.stderr.trim() || `git ${args.join(' ')} に失敗しました`);
   return result.stdout;
 }
@@ -3880,7 +3880,8 @@ function gitBatchObjectSizes(revisions) {
     cwd: repositoryRoot,
     encoding: 'utf8',
     input: `${revisions.join('\n')}\n`,
-    maxBuffer: 1024 * 1024 * 10
+    maxBuffer: 1024 * 1024 * 10,
+    windowsHide: true
   });
   if (result.status !== 0) throw new Error(result.stderr.trim() || 'git cat-file --batch-check に失敗しました');
   const sizes = new Map();

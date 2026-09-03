@@ -16,6 +16,12 @@ const defaultLogsRoot = path.join(defaultRepositoryRoot, "pipeline", "logs");
 const discordLimit = 1900;
 const backgroundCpuPriority = os.constants.priority.PRIORITY_BELOW_NORMAL;
 
+export const BACKGROUND_AUTH_ENV = Object.freeze({
+  GIT_TERMINAL_PROMPT: "0",
+  GCM_INTERACTIVE: "Never",
+  GH_PROMPT_DISABLED: "1",
+});
+
 export function applyBackgroundCpuPriority(
   pid = 0,
   setPriority = os.setPriority,
@@ -166,7 +172,7 @@ export function runProcess(
     logger?.write(`実行: ${path.basename(command)} ${args.join(" ")}`);
     const child = spawn(command, args, {
       cwd,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", ...env },
+      env: { ...process.env, ...BACKGROUND_AUTH_ENV, ...env },
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
     });

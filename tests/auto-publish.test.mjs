@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   AUTO_PUBLISH_FILES,
+  BACKGROUND_AUTH_ENV,
   applyBackgroundCpuPriority,
   buildFailureNotification,
   explainAutomationFailure,
@@ -46,6 +47,14 @@ test("background CPU priority is applied without making priority support fatal",
   assert.equal(applyBackgroundCpuPriority(123, (...args) => calls.push(args)), true);
   assert.deepEqual(calls, [[123, os.constants.priority.PRIORITY_BELOW_NORMAL]]);
   assert.equal(applyBackgroundCpuPriority(123, () => { throw new Error("unsupported"); }), false);
+});
+
+test("background authentication never opens an interactive prompt", () => {
+  assert.deepEqual(BACKGROUND_AUTH_ENV, {
+    GIT_TERMINAL_PROMPT: "0",
+    GCM_INTERACTIVE: "Never",
+    GH_PROMPT_DISABLED: "1",
+  });
 });
 
 test("Windows validation invokes npm through Node instead of spawning npm.cmd", () => {
