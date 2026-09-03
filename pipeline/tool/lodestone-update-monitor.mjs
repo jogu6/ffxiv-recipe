@@ -14,7 +14,7 @@ import {
   lodestoneOrderSignature
 } from './lodestone-source.mjs';
 import { archivePipelineLogs } from './log-archive.mjs';
-import { notifyMonitorFailure, runAutomaticPublication } from './auto-publish.mjs';
+import { applyBackgroundCpuPriority, notifyMonitorFailure, runAutomaticPublication } from './auto-publish.mjs';
 
 const repositoryRoot = path.resolve(import.meta.dirname, '..', '..');
 const pipelineRoot = path.join(repositoryRoot, 'pipeline');
@@ -176,6 +176,7 @@ export async function testNotification() {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.meta.filename)) {
+  if (!applyBackgroundCpuPriority()) log('警告: 監視処理のCPU優先度を低く設定できませんでした');
   const operation = process.argv.includes('--test-notification') ? testNotification() : runMonitor();
   operation.catch(error => {
     log(`エラー: ${String(error.message || error).replace(/https:\/\/[^\s]+/g, '[URL]')}`);

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { spawn } from "node:child_process";
@@ -13,6 +14,19 @@ const defaultStatePath = path.join(
 );
 const defaultLogsRoot = path.join(defaultRepositoryRoot, "pipeline", "logs");
 const discordLimit = 1900;
+const backgroundCpuPriority = os.constants.priority.PRIORITY_BELOW_NORMAL;
+
+export function applyBackgroundCpuPriority(
+  pid = 0,
+  setPriority = os.setPriority,
+) {
+  try {
+    setPriority(pid, backgroundCpuPriority);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export const AUTO_PUBLISH_FILES = Object.freeze([
   "site/app.js",
@@ -156,6 +170,12 @@ export function runProcess(
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
     });
+    if (!applyBackgroundCpuPriority(child.pid)) {
+      logger?.write(
+        `警告: ${path.basename(command)}のCPU優先度を低く設定できませんでした`,
+        "ERR",
+      );
+    }
     let stdout = "";
     let stderr = "";
     const timer = setTimeout(() => child.kill(), timeoutMs);

@@ -134,4 +134,4 @@ Webhookへのテスト通知は `node pipeline/tool/lodestone-update-monitor.mjs
 
 取得不能、HTML構造不整合、生成・検証失敗、想定外の差分、コミット・push・デプロイ失敗は日本語の原因と対応方法をDiscordへ通知して中止します。GitHub認証切れの場合は再認証コマンドも案内します。Discord Webhook自体が無効な場合は通知できないため、同じ日本語案内をローカルログへ保存します。
 
-タスクは `wscript.exe` の非表示実行からNode.jsを起動するため、ターミナルウィンドウを表示しません。状態、取得キャッシュ、ログはそれぞれ `pipeline/state/`、`pipeline/cache/`、`pipeline/logs/` に保存され、いずれもGitの追跡対象外です。自動公開はクリーンな`main`ブランチだけで開始し、コミット済み・push済みの途中状態を保存して次回の定期実行から安全に再開します。
+タスクは `wscript.exe` の非表示実行からNode.jsを起動するため、ターミナルウィンドウを表示しません。監視処理とその子プロセスはCPU優先度を「通常以下」に固定し、生成処理のNode.jsヒープにも上限を設けます。状態、取得キャッシュ、ログはそれぞれ `pipeline/state/`、`pipeline/cache/`、`pipeline/logs/` に保存され、いずれもGitの追跡対象外です。自動公開はクリーンな`main`ブランチだけで開始し、完了済み工程、コミット済み・push済みの途中状態を保存して次回の定期実行から安全に再開します。

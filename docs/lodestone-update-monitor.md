@@ -2,6 +2,8 @@
 
 The update monitor checks the Lodestone item and recipe list metadata every day. A successful check with no new data is silent. When a change is found, the monitor runs the existing data pipeline, updates the public data and service-worker cache identifiers, validates the repository, commits and pushes the allowed public files, and waits for the matching GitHub Pages workflow run. The automation uses Node.js, Git, and GitHub CLI only; it does not call Codex or any AI API.
 
+The monitor process and every child process run at below-normal CPU priority. Generated-data Node.js processes also use a bounded heap so the unattended background task does not compete aggressively with interactive work.
+
 ## Monitored values
 
 - Lodestone Version
