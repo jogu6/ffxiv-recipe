@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { buildMessage, diffLodestoneState, formatJstTimestamp } from '../pipeline/tool/lodestone-update-monitor.mjs';
 
 test('diffLodestoneState reports only changed Lodestone metadata', () => {
@@ -27,4 +29,9 @@ test('buildMessage describes Lodestone changes without exposing full signatures'
 
 test('formatJstTimestamp formats timestamps with the JST offset', () => {
   assert.equal(formatJstTimestamp(new Date('2026-08-08T00:00:00.123Z')), '2026-08-08T09:00:00.123+09:00');
+});
+
+test('legacy scheduled-task entry applies background CPU priority', () => {
+  const source = fs.readFileSync(path.resolve('pipeline/tool/xivapi-update-monitor.mjs'), 'utf8');
+  assert.match(source, /applyBackgroundCpuPriority\(\)/);
 });
