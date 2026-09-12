@@ -1,0 +1,68 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { createHash } from 'node:crypto';
+
+const repositoryRoot = path.resolve(import.meta.dirname, '..', '..');
+const siteRoot = path.join(repositoryRoot, 'site');
+const target = path.join(siteRoot, 'macro-app');
+if (path.dirname(target) !== siteRoot || path.basename(target) !== 'macro-app') {
+  throw new Error(`公開用マクロ配置先が不正です: ${target}`);
+}
+
+const webSource = path.join(repositoryRoot, 'macro-app', 'web');
+const engineSource = path.join(repositoryRoot, 'macro-app', 'build', 'engine');
+const publicFiles = [
+  ...[
+    'index.html',
+    'styles.css',
+    'app.js',
+    'bug-report.js',
+    'report-attachments.js',
+    'device-info.js',
+    'bug-report.css',
+    'data-loader.js',
+    'model.js',
+    'persistence.js',
+    'site-style-bridge.js',
+    'solver-worker.js',
+    'search-storage.js',
+    'worker-policy.js',
+    'profiling.js'
+  ].map(name => ({ source: path.join(webSource, name), destination: path.join('web', name) })),
+  {
+    source: path.join(webSource, 'assets', 'hq-mark-transparent.webp'),
+    destination: path.join('web', 'assets', 'hq-mark-transparent.webp')
+  },
+  {
+    source: path.join(repositoryRoot, 'macro-app', 'vendor', 'LICENSE-RAPHAEL'),
+    destination: path.join('vendor', 'licenses', 'raphael-apache-2.0.txt')
+  },
+  ...[
+    'xivca_macro_engine.js',
+    'xivca_macro_engine_bg.wasm'
+  ].map(name => ({ source: path.join(engineSource, name), destination: path.join('build', 'engine', name) }))
+];
+for (const file of publicFiles) {
+  if (!fs.existsSync(file.source)) throw new Error(`公開用マクロ成果物がありません: ${file.source}`);
+}
+
+fs.rmSync(target, { recursive: true, force: true });
+const wasmSha256 = createHash('sha256').update(fs.readFileSync(path.join(engineSource, 'xivca_macro_engine_bg.wasm'))).digest('hex');
+for (const file of publicFiles) {
+  const destination = path.join(target, file.destination);
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  fs.copyFileSync(file.source, destination);
+  if (path.basename(file.source) === 'solver-worker.js') {
+    fs.writeFileSync(destination, fs.readFileSync(destination, 'utf8').replace('__STAGED_WASM_SHA256__', wasmSha256));
+  }
+}
+
+const stagedFiles = fs.readdirSync(target, { recursive: true, withFileTypes: true })
+  .filter(entry => entry.isFile())
+  .map(entry => path.relative(target, path.join(entry.parentPath, entry.name)))
+  .sort();
+const expectedFiles = publicFiles.map(file => file.destination).sort();
+if (JSON.stringify(stagedFiles) !== JSON.stringify(expectedFiles)) {
+  throw new Error('公開用マクロ成果物に不足または余分なファイルがあります');
+}
+console.log(`マクロ生成機能の実行用${publicFiles.length}ファイルを公開領域へ配置しました: ${target}`);

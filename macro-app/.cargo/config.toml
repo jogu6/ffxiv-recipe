@@ -1,0 +1,9 @@
+[target.wasm32-unknown-unknown]
+rustflags = [
+  "-C", "target-feature=+bulk-memory,+simd128,-reference-types,-multivalue",
+  "-C", "link-arg=--max-memory=4294967296",
+  "-C", "link-arg=--import-memory"
+]
+
+[unstable]
+build-std = ["panic_abort", "std"]

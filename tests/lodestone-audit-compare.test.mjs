@@ -2,12 +2,29 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   canonicalLodestoneRecipeContent,
+  canonicalLodestoneMacroItemContent,
   compareInitialLodestoneAudit,
   compareLodestoneAudits,
   mergeLodestoneNameAliases
 } from '../pipeline/tool/lodestone-audit-compare.mjs';
 
-function detail({ amount = 1, ingredient = '素材A', ingredientKey = 'item-a', ingredientAmount = 2 } = {}) {
+test('macro item comparison keeps only item level and crafting effects', () => {
+  const html = `
+    <aside>監査対象外</aside>
+    <div class="db-view__item_level">ITEM LEVEL 684</div>
+    <h3 class="db-view__sub_title">Effects</h3><hr>
+    <div class="db-view__info_text">
+      <ul class="sys_nq_element"><li>CP +21% (上限73)</li><li>VIT +10% (上限20)</li></ul>
+      <ul class="sys_hq_element"><li>CP +26% (上限92)</li><li>加工精度 +5% (上限97)</li></ul>
+    </div>`;
+  assert.deepEqual(canonicalLodestoneMacroItemContent(html), {
+    ItemLevel: 684,
+    NQ: ['CP +21% (上限73)'],
+    HQ: ['CP +26% (上限92)', '加工精度 +5% (上限97)']
+  });
+});
+
+function detail({ amount = 1, ingredient = '素材A', ingredientKey = 'item-a', ingredientAmount = 2, difficulty = 6300 } = {}) {
   return `
     <aside>監査対象外の共通表示</aside>
     <main>
@@ -15,6 +32,11 @@ function detail({ amount = 1, ingredient = '素材A', ingredientKey = 'item-a', 
       <span class="db-view__item__text__level__num">90</span>
       <span class="js__complete_craft_count">${amount}</span>
       <p class="db-view__recipe__text__book_name">鍛冶秘伝書:第10巻</p>
+      <ul class="db-view__recipe__craftdata">
+        <li><span>必要工数</span>${difficulty}</li><li><span>耐久</span>80</li>
+        <li><span>品質最大値</span>11400</li><li><span>初期品質値</span>上限 50％</li>
+      </ul>
+      <dl class="db-view__recipe__crafting_conditions"><dd>作業精度 4131以上</dd><dd>加工精度 3900以上</dd></dl>
       <div data-num="${ingredientAmount}" data-name="${ingredient}" class="db-tree js__material" data-key="${ingredientKey}" data-depth="1"></div>
     </main>`;
 }
@@ -53,6 +75,10 @@ test('recipe comparison canonicalizes craft content and ignores unrelated page t
   );
   assert.notDeepEqual(
     canonicalLodestoneRecipeContent(detail({ ingredientAmount: 3 })),
+    canonicalLodestoneRecipeContent(detail())
+  );
+  assert.notDeepEqual(
+    canonicalLodestoneRecipeContent(detail({ difficulty: 6301 })),
     canonicalLodestoneRecipeContent(detail())
   );
 });

@@ -330,6 +330,48 @@ html[data-browser-support="blocked"] #loadingOverlay {
   height: 12px;
   accent-color: var(--accent);
 }
+#loadingProgress::-webkit-progress-value {
+  background-image: repeating-linear-gradient(
+    120deg,
+    var(--accent) 0,
+    var(--accent) 8px,
+    color-mix(in srgb, var(--accent) 68%, white) 8px,
+    color-mix(in srgb, var(--accent) 68%, white) 16px
+  );
+  background-size: 24px 100%;
+  animation: startup-progress-flow 700ms linear infinite;
+}
+#loadingProgress {
+  appearance: none;
+  -webkit-appearance: none;
+  overflow: hidden;
+  border: 0;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface) 78%, white);
+  animation: startup-progress-pulse 850ms ease-in-out infinite alternate;
+}
+#loadingProgress::-webkit-progress-bar {
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface) 78%, white);
+}
+#loadingProgress::-moz-progress-bar {
+  background-image: repeating-linear-gradient(
+    120deg,
+    var(--accent) 0,
+    var(--accent) 8px,
+    color-mix(in srgb, var(--accent) 68%, white) 8px,
+    color-mix(in srgb, var(--accent) 68%, white) 16px
+  );
+  background-size: 24px 100%;
+  animation: startup-progress-flow 700ms linear infinite;
+}
+@keyframes startup-progress-flow {
+  to { background-position: 24px 0; }
+}
+@keyframes startup-progress-pulse {
+  from { filter: brightness(0.92); }
+  to { filter: brightness(1.24); }
+}
 .loading-progress-percent {
   flex: 0 0 auto;
   min-width: 3.5ch;
@@ -1455,7 +1497,6 @@ li.reorder-drop-after {
   padding: 8px 10px;
   color: var(--soft-text);
   background: rgba(201, 170, 72, 0.08);
-  border-left: 3px solid var(--accent);
   line-height: 1.5;
 }
 
@@ -2463,7 +2504,8 @@ input[type="number"]::-webkit-outer-spin-button {
 .gathering-timer-btn,
 .shop-info-btn,
 .intermediate-prepared-btn,
-.intermediate-material-tree-btn {
+.intermediate-material-tree-btn,
+.macro-launch-btn {
   flex-shrink: 0;
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -2478,8 +2520,17 @@ input[type="number"]::-webkit-outer-spin-button {
 .gathering-timer-btn:hover,
 .shop-info-btn:hover,
 .intermediate-prepared-btn:hover,
-.intermediate-material-tree-btn:hover {
+.intermediate-material-tree-btn:hover,
+.macro-launch-btn:hover {
   border-color: var(--accent);
+}
+.macro-launch-btn:disabled,
+.macro-launch-btn.preparing {
+  border-color: var(--border);
+  color: var(--muted);
+  cursor: not-allowed;
+  filter: grayscale(1);
+  opacity: 0.45;
 }
 .intermediate-prepared-btn.active {
   border-color: var(--accent);
@@ -3429,6 +3480,7 @@ button.intermediate-prepared-btn.active {
   border-color: var(--accent);
   color: var(--accent);
 }
+.settings-inquiry { flex-basis: 100%; text-align: center; }
 .discord-icon {
   width: var(--discord-icon-size);
   height: var(--discord-icon-size);
@@ -3901,7 +3953,7 @@ button.intermediate-prepared-btn.active {
   color: var(--accent);
   margin-bottom: 12px;
 }
-#licenseText {
+:is(#licenseText, .privacy-document-content) {
   overflow-y: auto;
   color: var(--soft-text);
   font-family: "Yu Gothic", "Meiryo", sans-serif;
@@ -3913,27 +3965,34 @@ button.intermediate-prepared-btn.active {
   padding: 12px;
   margin-bottom: 14px;
 }
-#licenseText h2 {
+#licenseOverlay.privacy-policy :is(h1, h2, h3, h4, h5, h6) {
+  text-align: left;
+}
+#licenseOverlay.privacy-policy .settings-close {
+  border-top: 0;
+  padding-top: 0;
+}
+:is(#licenseText, .privacy-document-content) h2 {
   color: var(--accent);
   font-size: calc(14px * var(--font-size-scale));
   margin: 0 0 10px;
 }
-#licenseText h3 {
+:is(#licenseText, .privacy-document-content) h3 {
   color: var(--text);
   font-size: calc(13px * var(--font-size-scale));
   margin: 14px 0 6px;
 }
-#licenseText p {
+:is(#licenseText, .privacy-document-content) p {
   margin: 0 0 10px;
 }
-#licenseText ul {
+:is(#licenseText, .privacy-document-content) ul {
   margin: 0 0 10px 16.8px;
   padding: 0;
 }
-#licenseText li {
+:is(#licenseText, .privacy-document-content) li {
   margin-bottom: 4px;
 }
-#licenseText a {
+:is(#licenseText, .privacy-document-content) a {
   color: var(--accent);
 }
 

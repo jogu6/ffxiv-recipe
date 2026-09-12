@@ -31,6 +31,15 @@ function panel(name) {
   };
 }
 
+function eventTarget(extra = {}) {
+  const listeners = new Map();
+  return {
+    ...extra,
+    addEventListener(type, listener) { listeners.set(type, listener); },
+    dispatch(type, event) { listeners.get(type)?.(event); }
+  };
+}
+
 class FakeSwiper {
   constructor(element, options) {
     this.element = element;
@@ -54,8 +63,10 @@ class FakeSwiper {
 }
 
 function fixture(overrides = {}) {
-  const panels = { left: panel('left'), middle: panel('middle'), right: panel('right') };
-  const element = { panels: [panels.left, panels.middle, panels.right] };
+  const panels = {
+    left: panel('left'), middle: panel('middle'), right: panel('right'), macro: panel('macro')
+  };
+  const element = eventTarget({ panels: [panels.left, panels.middle, panels.right, panels.macro] });
   panels.left.before = candidate => {
     const index = element.panels.indexOf(panels.left);
     element.panels.splice(index, 0, candidate);
@@ -82,12 +93,24 @@ test('中央パネルがない場合は左と右だけを連続配置する', ()
   assert.deepEqual(availablePanelNames(false), ['left', 'right']);
   assert.deepEqual(availablePanelNames(true), ['left', 'middle', 'right']);
   assert.deepEqual(availablePanelNames(false, false), ['left']);
+  assert.deepEqual(availablePanelNames(true, true, true), ['left', 'middle', 'right', 'macro']);
 
   const { controller, element, panels } = fixture();
   controller.sync({ middleOpen: false });
   assert.deepEqual(element.swiper.slides, [panels.left, panels.right]);
   controller.sync({ middleOpen: true });
   assert.deepEqual(element.swiper.slides, [panels.left, panels.middle, panels.right]);
+});
+
+test('マクロ画面を4枚目のスライドとして追加する', () => {
+  const { controller, element, panels } = fixture();
+  controller.sync({ middleOpen: true, rightOpen: true, macroOpen: false });
+  assert.deepEqual(element.swiper.slides, [panels.left, panels.middle, panels.right]);
+  assert.equal(controller.show('macro', { macroOpen: false }), false);
+  controller.sync({ middleOpen: true, rightOpen: true, macroOpen: true });
+  assert.deepEqual(element.swiper.slides, [panels.left, panels.middle, panels.right, panels.macro]);
+  assert.equal(controller.show('macro'), true);
+  assert.equal(controller.current(), 'macro');
 });
 
 test('右パネルを無効化すると左だけを残し、再び有効化できる', () => {
@@ -145,4 +168,16 @@ test('指操作によるスライド変更を現在パネルへ反映する', ()
   assert.equal(state.interactions(), 1);
   assert.equal(state.controller.current(), 'right');
   assert.equal(state.changes.at(-1).detail.source, 'gesture');
+});
+
+test('ライブラリが反応しない実指タッチでも隣のパネルへ移動する', async () => {
+  const state = fixture();
+  state.controller.sync({ middleOpen: false, rightOpen: true });
+  state.element.dispatch('touchstart', { touches: [{ clientX: 320, clientY: 120 }] });
+  state.element.dispatch('touchend', { changedTouches: [{ clientX: 80, clientY: 125 }] });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(state.controller.current(), 'right');
+  assert.deepEqual(state.changes.at(-1), {
+    name: 'right', detail: { source: 'programmatic' }
+  });
 });

@@ -1,0 +1,16 @@
+{
+  "name": "xivca-macro-app",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "npm run check:js && npm run test:js && npm run test:engine",
+    "check:wasm": "npm run check && npm run build:wasm",
+    "check:js": "node --check pipeline/lodestone-parser.mjs && node --check tools/stage-site.mjs && node --check tools/prepare-wasm.mjs && node --check tools/analyze-profile.mjs && node --check web/app.js && node --check web/data-loader.js && node --check web/model.js && node --check web/persistence.js && node --check web/profiling.js && node --check web/site-style-bridge.js && node --check web/solver-worker.js && node --check web/search-storage.js && node --check web/worker-policy.js",
+    "test:js": "node --test tests/*.test.js",
+    "test:engine": "cargo test --manifest-path Cargo.toml",
+    "test:e2e": "playwright test --config playwright.config.js",
+    "build:wasm": "rustup run nightly-2026-05-10 wasm-pack build engine --target web --out-dir ../build/engine --release && node tools/prepare-wasm.mjs",
+    "build:wasm:dev": "rustup run nightly-2026-05-10 wasm-pack build engine --target web --out-dir ../build/engine --dev && node tools/prepare-wasm.mjs",
+    "stage:site": "node tools/stage-site.mjs"
+  }
+}

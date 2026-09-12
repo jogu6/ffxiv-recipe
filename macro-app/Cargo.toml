@@ -1,0 +1,16 @@
+[workspace]
+members = ["engine", "vendor/raphael-sim", "vendor/raphael-solver"]
+resolver = "2"
+
+[workspace.dependencies]
+raphael-sim = { path = "vendor/raphael-sim" }
+rayon = "=1.11.0"
+serde = { version = "=1.0.228", features = ["derive"] }
+log = { version = "=0.4.33", features = ["std"] }
+web-time = "=1.1.0"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"

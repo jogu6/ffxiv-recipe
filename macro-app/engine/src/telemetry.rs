@@ -1,0 +1,67 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SearchStage {
+    #[default]
+    Preparing,
+    FinishBound,
+    ResourceQualityBound,
+    StepLowerBound,
+    BestFirstSearch,
+    Complete,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchTelemetry {
+    pub search_popped_nodes: u64,
+    pub search_dropped_nodes: u64,
+    pub search_pareto_rejected_nodes: u64,
+    pub visited_capacity_bytes: u64,
+    pub queued_capacity_bytes: u64,
+    pub replay_ms: f64,
+    pub pareto_ms: f64,
+    pub expansion_ms: f64,
+    pub merge_ms: f64,
+    pub storage_resident_bytes: u64,
+    pub storage_allocated_bytes: u64,
+    pub storage_page_reads: u64,
+    pub storage_page_writes: u64,
+    pub storage_pressure_events: u64,
+    pub pareto_capacity_bytes: u64,
+    pub quality_bound_bytes: u64,
+    pub step_bound_bytes: u64,
+    pub candidate_capacity_bytes: u64,
+    pub stage: SearchStage,
+    pub duration_limit: u32,
+    pub work_units: u64,
+    pub finish_states: u64,
+    pub finish_memo_hits: u64,
+    pub finish_memo_replacements: u64,
+    pub resource_quality_states: u64,
+    pub resource_quality_memo_hits: u64,
+    pub resource_quality_memo_replacements: u64,
+    pub resource_quality_memo_capacity_misses: u64,
+    pub resource_quality_arena_capacity_misses: u64,
+    pub resource_quality_memo_entries: u64,
+    pub resource_quality_front_points: u64,
+    pub resource_quality_state_limit: u64,
+    pub resource_quality_point_limit: u64,
+    pub step_lower_bound_states: u64,
+    pub step_lower_bound_memo_hits: u64,
+    pub step_lower_bound_capacity_misses: u64,
+    pub step_lower_bound_memo_entries: u64,
+    pub step_lower_bound_front_points: u64,
+    pub duration_bound_states: u64,
+    pub duration_bound_memo_hits: u64,
+    pub duration_bound_memo_replacements: u64,
+    pub search_nodes: u64,
+    pub search_generated_nodes: u64,
+    pub search_queued_nodes: u64,
+    pub pruned_finish: u64,
+    pub pruned_resource_quality: u64,
+    pub pruned_duration_bound: u64,
+    pub pruned_dominance: u64,
+    pub maximum_depth: u32,
+}

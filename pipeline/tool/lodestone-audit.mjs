@@ -214,6 +214,51 @@ function auditResourceMap(store, auditId) {
   );
 }
 
+function itemDetailResourceMap(store, auditId) {
+  return new Map(
+    listLodestoneAuditResources(store, auditId, { kind: 'item-detail' })
+      .map(resource => [resource.key, resource])
+  );
+}
+
+function directRecipeIngredientNames(html) {
+  const names = new Set();
+  for (const match of String(html || '').matchAll(/<div\b[^>]*>/gi)) {
+    const attributes = Object.fromEntries(
+      [...match[0].matchAll(/([\w:-]+)\s*=\s*(["'])(.*?)\2/gs)]
+        .map(([, name, , value]) => [name.toLowerCase(), value])
+    );
+    const classes = String(attributes.class || '').split(/\s+/);
+    if (classes.includes('js__material') && classes.includes('db-tree') &&
+        Number(attributes['data-depth']) === 1 && attributes['data-name']) {
+      names.add(String(attributes['data-name']).replace(/&amp;/g, '&').replace(/&#39;|&apos;/g, "'")
+        .replace(/&quot;/g, '"').replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+        .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(Number.parseInt(code, 16))).trim());
+    }
+  }
+  return names;
+}
+
+function macroItemDetailEntries(items, recipes, recipeResources, readArtifact) {
+  const craftableNames = new Set(recipes.map(recipe => recipe.Name));
+  const requiredNames = new Set(items
+    .filter(item => item.ItemCategory === '調理品' || item.ItemCategory === '薬品')
+    .map(item => item.Name));
+  for (const recipe of recipes) {
+    const resource = recipeResources.get(recipe.AuditResourceKey);
+    if (!resource?.completed) throw new Error(`監査レシピ成果物がありません: ${recipe.AuditResourceKey}`);
+    for (const name of directRecipeIngredientNames(readArtifact(resource))) {
+      if (craftableNames.has(name)) requiredNames.add(name);
+    }
+  }
+  const byName = new Map(items.map(item => [item.Name, item]));
+  return [...requiredNames].sort((left, right) => left.localeCompare(right, 'ja')).map(name => {
+    const item = byName.get(name);
+    if (!item?.LodestoneKey || !item.DetailPath) throw new Error(`マクロ用アイテム詳細URLがありません: ${name}`);
+    return item;
+  });
+}
+
 export function loadLodestoneAuditSnapshot({ store, artifactRoot, audit }) {
   if (!audit || audit.status !== 'completed') throw new Error('完了済みのLodestone監査が必要です');
   const items = completedPageCatalog({
@@ -256,7 +301,8 @@ export function loadLodestoneAuditSnapshot({ store, artifactRoot, audit }) {
   snapshot.DataGeneration = lodestoneAuditDataGeneration(
     snapshot,
     recipeResources,
-    resource => readLodestoneAuditArtifact(artifactRoot, resource)
+    resource => readLodestoneAuditArtifact(artifactRoot, resource),
+    itemDetailResourceMap(store, audit.id)
   );
   return snapshot;
 }
@@ -400,6 +446,34 @@ export async function runLodestoneFullAudit({
     abandonLodestoneAudit(store, audit.id, { now: now() });
     throw new Error(`LodestoneのVersionが一覧間で一致しません: item=${items.version} recipe=${finalRecipes.version}`);
   }
+  const selectedRecipeResources = new Map(finalRecipes.entries.map(entry => {
+    const key = `${changedKeys.has(entry.RecipeKey) ? 'recheck' : 'recipe'}:${entry.RecipeKey}`;
+    return [key, getLodestoneAuditResource(store, audit.id, 'recipe-detail', key)];
+  }));
+  const readArtifact = resource => readLodestoneAuditArtifact(artifactRoot, resource);
+  const macroItems = macroItemDetailEntries(items.entries, finalRecipes.entries.map(entry => ({
+    ...entry,
+    AuditResourceKey: `${changedKeys.has(entry.RecipeKey) ? 'recheck' : 'recipe'}:${entry.RecipeKey}`
+  })), selectedRecipeResources, readArtifact);
+  const itemDetailPlans = macroItems.map(item => ({
+    kind: 'item-detail',
+    key: `item:${item.LodestoneKey}`,
+    url: `${LODESTONE_BASE_URL}${item.DetailPath}`
+  }));
+  if (itemDetailPlans.length > 0) {
+    const itemDetailResources = planLodestoneAuditResources(store, audit.id, itemDetailPlans, { now: now() });
+    for (const [index, resource] of itemDetailResources.entries()) {
+      if (!resource.completed) {
+        const text = await requestSequentially(resource.url);
+        completeLodestoneAuditResource(store, audit.id, {
+          kind: resource.kind,
+          key: resource.key,
+          ...writeLodestoneAuditArtifact(artifactRoot, audit.id, resource.kind, text)
+        }, { now: now() });
+      }
+      onProgress({ stage: 'item-detail', completed: index + 1, total: itemDetailResources.length });
+    }
+  }
   const orderedItems = applyDescendingSortOrder(items.entries, items.total);
   validateUnique(orderedItems, 'Name', 'Lodestoneアイテム名');
   const snapshot = {
@@ -420,8 +494,12 @@ export async function runLodestoneFullAudit({
     .find(resource => !resource.completed || !fs.existsSync(artifactPath(artifactRoot, resource.artifactKey)));
   if (missingArtifact) throw new Error(`監査成果物が完了していません: ${missingArtifact.kind}/${missingArtifact.key}`);
   const currentResources = auditResourceMap(store, audit.id);
-  const readArtifact = resource => readLodestoneAuditArtifact(artifactRoot, resource);
-  snapshot.DataGeneration = lodestoneAuditDataGeneration(snapshot, currentResources, readArtifact);
+  snapshot.DataGeneration = lodestoneAuditDataGeneration(
+    snapshot,
+    currentResources,
+    readArtifact,
+    itemDetailResourceMap(store, audit.id)
+  );
   const previousSnapshot = previousPromotedAudit
     ? loadLodestoneAuditSnapshot({ store, artifactRoot, audit: previousPromotedAudit })
     : null;

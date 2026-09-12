@@ -4,6 +4,10 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { spawn } from "node:child_process";
+import { AUTO_PUBLISH_FILES, snapshotPublicFiles, restorePublicFiles, preparePublicationFiles,
+  commitPublicationFiles, recoverPublicationCommit } from './auto-publish-files.mjs';
+export { AUTO_PUBLISH_FILES } from './auto-publish-files.mjs';
+import { matchesAppliedSource, readAppliedLodestoneState } from "./lodestone-applied-state.mjs";
 
 const defaultRepositoryRoot = path.resolve(import.meta.dirname, "..", "..");
 const defaultStatePath = path.join(
@@ -33,15 +37,6 @@ export function applyBackgroundCpuPriority(
     return false;
   }
 }
-
-export const AUTO_PUBLISH_FILES = Object.freeze([
-  "site/app.js",
-  "site/data/Item.json",
-  "site/data/item-icons.pack.gz",
-  "site/data/legacy-item-ids.json",
-  "site/item-icon-pack.js",
-  "site/sw.js",
-]);
 
 export class AutomationError extends Error {
   constructor(
@@ -325,7 +320,7 @@ export function explainAutomationFailure(
     return {
       reason: "自動処理を安全に開始できるGit状態ではありません。",
       advice:
-        "未コミット変更、現在のブランチ、リモートとの差分を確認してください。既存の作業内容は自動的に上書きしません。",
+        "未解決の競合、現在のブランチ、リモートとの差分を確認してください。既存の作業内容は自動的に上書きしません。",
     };
   }
   if (phase === "generation") {
@@ -525,48 +520,6 @@ async function commandText(run, command, args, options) {
   return (await run(command, args, options)).stdout.trim();
 }
 
-async function gitChangedFiles(run, repositoryRoot, logger) {
-  const tracked = parseChangedFiles(
-    await commandText(run, "git", ["diff", "--name-only"], {
-      cwd: repositoryRoot,
-      logger,
-    }),
-  );
-  const staged = parseChangedFiles(
-    await commandText(run, "git", ["diff", "--cached", "--name-only"], {
-      cwd: repositoryRoot,
-      logger,
-    }),
-  );
-  const untracked = parseChangedFiles(
-    await commandText(
-      run,
-      "git",
-      ["ls-files", "--others", "--exclude-standard"],
-      { cwd: repositoryRoot, logger },
-    ),
-  );
-  return [...new Set([...tracked, ...staged, ...untracked])].sort();
-}
-
-async function rollbackAllowedFiles(run, repositoryRoot, logger) {
-  try {
-    await run(
-      "git",
-      ["restore", "--staged", "--worktree", "--", ...AUTO_PUBLISH_FILES],
-      {
-        cwd: repositoryRoot,
-        logger,
-      },
-    );
-  } catch (error) {
-    logger?.write(
-      `自動生成ファイルの復元に失敗しました: ${sanitizeNotificationValue(error.message)}`,
-      "ERR",
-    );
-  }
-}
-
 function publicationState(statePath) {
   return readJson(statePath, { schemaVersion: 1, status: "idle" });
 }
@@ -670,6 +623,8 @@ export async function runAutomaticPublication({
   fetchImpl = fetch,
   lockPath = path.join(path.dirname(statePath), "auto-publish.lock"),
   lockHeld = false,
+  prepareFiles = preparePublicationFiles,
+  commitFiles = commitPublicationFiles,
 } = {}) {
   if (!lockHeld) {
     const releaseLock = acquireLock(lockPath);
@@ -685,6 +640,8 @@ export async function runAutomaticPublication({
         fetchImpl,
         lockPath,
         lockHeld: true,
+        prepareFiles,
+        commitFiles,
       });
     } finally {
       releaseLock();
@@ -695,7 +652,7 @@ export async function runAutomaticPublication({
     delayMs: Math.max(0, Number(config?.delayMs ?? 100) || 0),
   };
   const version = String(current?.Version || "").trim();
-  const targetKey = publicationKey(current);
+  let targetKey = publicationKey(current);
   if (!settings.enabled) return { status: "disabled", changedFiles: [] };
   if (!version)
     throw new AutomationError("Lodestone版がありません", {
@@ -703,8 +660,16 @@ export async function runAutomaticPublication({
       code: "SOURCE_INVALID",
     });
   let state = publicationState(statePath);
+  // The full audit resolves a deferred order signature after generation.
+  // Recovery must still finish the saved commit for that same source catalog.
+  if (state.deferredItemOrder && ["failed", "generating", "committed", "pushed"].includes(state.status)
+      && ["Version", "RecipeVersion", "ItemCount", "RecipeCount"]
+        .every(key => state.targetSource?.[key] === current?.[key])) {
+    targetKey = state.targetKey;
+  }
   let phase = "preflight";
   let generated = false;
+  let snapshotRoot = state.snapshotRoot || null;
   try {
     if (state.status === "published" && state.targetKey === targetKey) {
       return {
@@ -768,7 +733,7 @@ export async function runAutomaticPublication({
 
     if (state.status === "committed") {
       phase = "push";
-      await run("git", ["push", settings.remote, `HEAD:${settings.branch}`], {
+      await run("git", ["push", settings.remote, `${state.commitSha}:refs/heads/${settings.branch}`], {
         cwd: repositoryRoot,
         logger,
         timeoutMs: 10 * 60 * 1000,
@@ -788,7 +753,16 @@ export async function runAutomaticPublication({
         fetchImpl,
         lockPath,
         lockHeld: true,
+        prepareFiles,
+        commitFiles,
       });
+    }
+
+    if (state.status !== "generating" && matchesAppliedSource(
+      readAppliedLodestoneState({ repositoryRoot }), current,
+    )) {
+      logger?.write("検証済みのItem.jsonに反映済みのため、全更新を省略しました");
+      return { status: "already-applied", changedFiles: [] };
     }
 
     const branch = await commandText(run, "git", ["branch", "--show-current"], {
@@ -801,60 +775,16 @@ export async function runAutomaticPublication({
         { phase, code: "WRONG_BRANCH" },
       );
     if (state.status === "generating") {
-      const recoveryHead = await commandText(
-        run,
-        "git",
-        ["rev-parse", "HEAD"],
-        { cwd: repositoryRoot, logger },
-      );
-      if (state.baseCommit && recoveryHead !== state.baseCommit) {
-        const recoveredFiles = parseChangedFiles(
-          await commandText(
-            run,
-            "git",
-            ["diff", "--name-only", `${state.baseCommit}..${recoveryHead}`],
-            { cwd: repositoryRoot, logger },
-          ),
-        );
-        assertAllowedChanges(recoveredFiles);
-        state = savePublicationState(statePath, state, {
-          status: "committed",
-          commitSha: recoveryHead,
-          changedFiles: recoveredFiles,
-          recoveredAt: jstTimestamp(),
-        });
-        return runAutomaticPublication({
-          config,
-          current,
-          repositoryRoot,
-          statePath,
-          logger,
-          run,
-          delay,
-          fetchImpl,
-          lockPath,
-          lockHeld: true,
-        });
+      const recoveredCommit = snapshotRoot && await recoverPublicationCommit({ repositoryRoot, snapshotRoot, run, logger });
+      if (recoveredCommit) {
+        state = savePublicationState(statePath, state, { status: "committed", commitSha: recoveredCommit });
+        return runAutomaticPublication({ config, current, repositoryRoot, statePath, logger, run, delay, fetchImpl, lockPath, lockHeld: true, prepareFiles, commitFiles });
       }
-      const recoveryFiles = await gitChangedFiles(run, repositoryRoot, logger);
-      assertAllowedChanges(recoveryFiles);
-      if (recoveryFiles.length)
-        await rollbackAllowedFiles(run, repositoryRoot, logger);
-      state = savePublicationState(statePath, state, {
-        status: "failed",
-        recoveredAt: jstTimestamp(),
-      });
+      if (snapshotRoot) restorePublicFiles(repositoryRoot, snapshotRoot);
+      state = savePublicationState(statePath, state, { status: "failed", recoveredAt: jstTimestamp() });
     }
-    const status = await commandText(run, "git", ["status", "--porcelain"], {
-      cwd: repositoryRoot,
-      logger,
-    });
-    if (status)
-      throw new AutomationError("未コミット変更があります", {
-        phase,
-        code: "DIRTY_WORKTREE",
-        detail: status,
-      });
+    const conflicts = await commandText(run, "git", ["diff", "--name-only", "--diff-filter=U"], { cwd: repositoryRoot, logger });
+    if (conflicts) throw new AutomationError("未解決の競合があります", { phase, code: "UNMERGED_INDEX", detail: conflicts });
     await run("gh", ["auth", "status", "--hostname", "github.com"], {
       cwd: repositoryRoot,
       logger,
@@ -887,17 +817,24 @@ export async function runAutomaticPublication({
       state.baseCommit === localHead &&
       Array.isArray(state.completedCommands)
         ? state.completedCommands.filter((command) =>
-            pipelineCommands(settings).some(([name]) => name === command),
+            pipelineCommands(settings).some(([name]) => name === command) &&
+            !["publish-lodestone-candidate", "item-icon-validate", "app-cache-version"].includes(command),
           )
         : [];
 
     phase = "generation";
+    snapshotRoot = fs.mkdtempSync(path.join(path.dirname(statePath), "auto-publish-files-"));
+    snapshotPublicFiles(repositoryRoot, snapshotRoot);
     generated = true;
     state = savePublicationState(statePath, state, {
       status: "generating",
+      snapshotRoot,
       targetVersion: version,
       targetKey,
       startedAt: jstTimestamp(),
+      deferredItemOrder: Boolean(current?.DeferredItemOrder),
+      targetSource: Object.fromEntries(["Version", "RecipeVersion", "ItemCount", "RecipeCount"]
+        .map(key => [key, current?.[key]])),
       commitSha: null,
       baseCommit: localHead,
       deploymentUrl: null,
@@ -929,13 +866,14 @@ export async function runAutomaticPublication({
         completedCommands: [...state.completedCommands, commandName],
       });
     }
-    const npmCheck = npmCheckInvocation();
-    await run(npmCheck.command, npmCheck.args, {
-      cwd: repositoryRoot,
-      logger,
-      timeoutMs: 2 * 60 * 60 * 1000,
+    const prepared = await prepareFiles({ repositoryRoot, snapshotRoot, baseCommit: localHead, run, logger });
+    await run(process.execPath, [path.join(prepared.candidateRoot, "tools", "validate-site.mjs")], {
+      cwd: prepared.candidateRoot, logger, timeoutMs: 2 * 60 * 60 * 1000,
     });
-    const changedFiles = await gitChangedFiles(run, repositoryRoot, logger);
+    for (const file of ["site/app.js", "site/sw.js", "site/item-icon-pack.js"]) {
+      await run(process.execPath, ["--check", path.join(prepared.candidateRoot, file)], { cwd: prepared.candidateRoot, logger });
+    }
+    const { changedFiles } = prepared;
     assertAllowedChanges(changedFiles);
     if (
       changedFiles.length &&
@@ -977,30 +915,10 @@ export async function runAutomaticPublication({
     }
 
     phase = "commit";
-    await run("git", ["add", "--", ...changedFiles], {
-      cwd: repositoryRoot,
-      logger,
-    });
-    await run("git", ["diff", "--cached", "--check"], {
-      cwd: repositoryRoot,
-      logger,
-    });
-    await run(
-      "git",
-      [
-        "commit",
-        "-m",
-        `Update Lodestone data to ${version.replace(/[^A-Za-z0-9._-]/gu, "-")}`,
-      ],
-      {
-        cwd: repositoryRoot,
-        logger,
-        timeoutMs: 10 * 60 * 1000,
-      },
-    );
-    const commitSha = await commandText(run, "git", ["rev-parse", "HEAD"], {
-      cwd: repositoryRoot,
-      logger,
+    state = savePublicationState(statePath, state, { changedFiles });
+    const commitSha = await commitFiles({
+      repositoryRoot, snapshotRoot, baseCommit: localHead, branch: settings.branch, prepared, run, logger,
+      message: `Update Lodestone data to ${version.replace(/[^A-Za-z0-9._-]/gu, "-")}`,
     });
     state = savePublicationState(statePath, state, {
       status: "committed",
@@ -1020,6 +938,8 @@ export async function runAutomaticPublication({
       fetchImpl,
       lockPath,
       lockHeld: true,
+      prepareFiles,
+      commitFiles,
     });
   } catch (sourceError) {
     const error =
@@ -1030,8 +950,11 @@ export async function runAutomaticPublication({
             cause: sourceError,
           });
     error.phase = error.phase === "command" ? phase : error.phase || phase;
-    if (generated && !["committed", "pushed"].includes(state.status))
-      await rollbackAllowedFiles(run, repositoryRoot, logger);
+    if (generated && !["committed", "pushed"].includes(state.status)) {
+      const committed = snapshotRoot && await recoverPublicationCommit({ repositoryRoot, snapshotRoot, run, logger });
+      if (committed) state = { ...state, status: "committed", commitSha: committed };
+      else if (snapshotRoot) restorePublicFiles(repositoryRoot, snapshotRoot);
+    }
     savePublicationState(statePath, state, {
       status:
         state.status === "committed" || state.status === "pushed"

@@ -52,6 +52,7 @@ test('view state normalizes every persisted section with bounded enums', () => {
         checkedImageKeys: ['C', 1]
       },
       equipmentSearch: { open: true, slot: 'head', results: ['A', 1], parameterNames: ['A'] },
+      macro: { open: true, recipeId: 'macro-r1', scrollTop: '42' },
       scroll: { recipeList: '12', usesList: -4, treeContainer: 'bad', panelRight: 5.8 }
     },
     'current'
@@ -68,6 +69,7 @@ test('view state normalizes every persisted section with bounded enums', () => {
   assert.deepEqual(result.state.materials.preparedNames, ['P']);
   assert.deepEqual(result.state.materials.preparedCounts, { Q: 3 });
   assert.deepEqual(result.state.scroll, { recipeList: 12, usesList: 0, treeContainer: 0, panelRight: 5 });
+  assert.deepEqual(result.state.macro, { open: true, recipeId: 'macro-r1', scrollTop: 42 });
 });
 
 test('view state supplies stable defaults for missing or invalid optional values', () => {
@@ -89,6 +91,7 @@ test('view state supplies stable defaults for missing or invalid optional values
     favoriteListsOpen: false,
     favoriteListActionsId: ''
   });
+  assert.deepEqual(state.macro, { open: false, recipeId: '', scrollTop: 0 });
   assert.deepEqual(Object.keys(state.scroll), [...SCROLL_KEYS]);
 });
 

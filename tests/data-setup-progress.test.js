@@ -82,6 +82,27 @@ test('主スレッド停止でタイマーが遅れても実経過時間から�
   assert.equal(changes.at(-1).percent, 65);
 });
 
+test('ページ表示からの経過時間を引き継いで7秒時点に数値を表示する', () => {
+  let elapsed = 3000;
+  const changes = [];
+  const timers = [];
+  createProgressController({
+    enabled: true,
+    startedAt: 0,
+    now: () => elapsed,
+    onChange: value => changes.push(value),
+    setTimer: (callback, delay) => {
+      timers.push({ callback, delay });
+      return timers.at(-1);
+    },
+    clearTimer: () => {}
+  });
+  assert.equal(timers.find(timer => timer.delay === 4000)?.delay, 4000);
+  elapsed = 7000;
+  timers.find(timer => timer.delay === 4000).callback();
+  assert.equal(changes.at(-1).percentVisible, true);
+});
+
 test('表示した進捗バーは100%を描画後200ms維持してから閉じる', async () => {
   const state = fixture();
   state.timers.find(timer => timer.delay === 2000).callback();

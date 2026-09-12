@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'site/**'
+      - 'macro-app/**'
       - '.github/workflows/deploy-pages.yml'
   workflow_dispatch:
 
@@ -25,6 +26,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: dtolnay/rust-toolchain@nightly-2026-05-10
+        with:
+          components: rust-src
+          targets: wasm32-unknown-unknown
+      - uses: taiki-e/install-action@wasm-pack
+      - name: Build isolated macro engine
+        run: npm run build:wasm --prefix macro-app
+      - name: Stage isolated macro application
+        run: npm run stage:site --prefix macro-app
+      - name: Update application cache for built assets
+        run: npm run cache:app
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

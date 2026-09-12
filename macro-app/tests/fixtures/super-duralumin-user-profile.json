@@ -1,0 +1,27 @@
+{
+  "crafterLevel": 100,
+  "craftsmanship": 5635,
+  "control": 5494,
+  "maxCp": 776,
+  "maxDurability": 35,
+  "maxProgress": 5622,
+  "maxQuality": 14204,
+  "requiredCraftsmanship": 5620,
+  "requiredControl": 5080,
+  "recipeLevel": {
+    "jobLevel": 100,
+    "progressDivisor": 170,
+    "qualityDivisor": 150,
+    "progressModifier": 90,
+    "qualityModifier": 75
+  },
+  "materialQualityPercent": 50,
+  "ingredients": [],
+  "targetQuality": 14204,
+  "manipulationAvailable": true,
+  "heartAndSoulAvailable": false,
+  "quickInnovationAvailable": false,
+  "trainedEyeAvailable": false,
+  "adversarial": true,
+  "stellarSteadyHandCharges": 0
+}

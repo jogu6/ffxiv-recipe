@@ -5,15 +5,16 @@
 })(typeof globalThis === 'undefined' ? this : globalThis, function createMobilePanelSwipeApi() {
   'use strict';
 
-  const PANEL_ORDER = Object.freeze(['left', 'middle', 'right']);
+  const PANEL_ORDER = Object.freeze(['left', 'middle', 'right', 'macro']);
   const WRAPPER_CLASS = 'mobile-panel-track';
   const SLIDE_CLASS = 'mobile-panel-slide';
 
-  function availablePanelNames(middleAvailable, rightAvailable = true) {
+  function availablePanelNames(middleAvailable, rightAvailable = true, macroAvailable = false) {
     return PANEL_ORDER.filter(panelName =>
       panelName === 'left' ||
       (panelName === 'middle' && middleAvailable) ||
-      (panelName === 'right' && rightAvailable)
+      (panelName === 'right' && rightAvailable) ||
+      (panelName === 'macro' && macroAvailable)
     );
   }
 
@@ -37,15 +38,50 @@
     let currentPanel = 'left';
     let middleAvailable = false;
     let rightAvailable = true;
+    let macroAvailable = false;
     let requestedSource = 'gesture';
     let suppressSlideChange = false;
+    let fallbackTouch = null;
 
     const enabled = () => (typeof isEnabled === 'function' ? isEnabled() : true);
+
+    function availableNow() {
+      return availablePanelNames(middleAvailable, rightAvailable, macroAvailable);
+    }
+
+    function installNativeTouchFallback() {
+      element.addEventListener?.('touchstart', event => {
+        if (!enabled() || event.touches?.length !== 1) {
+          fallbackTouch = null;
+          return;
+        }
+        const touch = event.touches[0];
+        fallbackTouch = { x: touch.clientX, y: touch.clientY, panel: currentPanel };
+      }, { passive: true, capture: true });
+      element.addEventListener?.('touchend', event => {
+        const start = fallbackTouch;
+        fallbackTouch = null;
+        const touch = event.changedTouches?.[0];
+        if (!start || !touch) return;
+        const dx = touch.clientX - start.x;
+        const dy = touch.clientY - start.y;
+        if (Math.abs(dx) < 64 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+        setTimeout(() => {
+          if (!enabled() || currentPanel !== start.panel) return;
+          const available = availableNow();
+          const index = available.indexOf(start.panel);
+          const target = available[index + (dx < 0 ? 1 : -1)];
+          if (target) show(target, { animate: true });
+        }, 0);
+      }, { passive: true, capture: true });
+      element.addEventListener?.('touchcancel', () => { fallbackTouch = null; }, { passive: true, capture: true });
+    }
 
     function setAvailableSlideClasses() {
       panels.left.classList.add(SLIDE_CLASS);
       panels.right.classList.toggle(SLIDE_CLASS, rightAvailable);
       panels.middle.classList.toggle(SLIDE_CLASS, middleAvailable);
+      panels.macro.classList.toggle(SLIDE_CLASS, macroAvailable);
     }
 
     function removeSlideClasses() {
@@ -73,7 +109,8 @@
       setAvailableSlideClasses();
       swiper.update();
       swiper.allowSlidePrev = currentPanel !== 'left';
-      swiper.allowSlideNext = rightAvailable || middleAvailable;
+      const available = availablePanelNames(middleAvailable, rightAvailable, macroAvailable);
+      swiper.allowSlideNext = currentPanel !== available.at(-1);
       let targetIndex = swiper.slides.indexOf(currentElement);
       if (targetIndex < 0) {
         currentPanel = 'left';
@@ -94,11 +131,12 @@
         slidesPerGroup: 1,
         speed: 360,
         threshold: 5,
+        touchEventsTarget: 'container',
         simulateTouch: true,
         followFinger: true,
         resistanceRatio: 0.35,
         longSwipesRatio: 0.22,
-        initialSlide: Math.max(0, availablePanelNames(middleAvailable, rightAvailable).indexOf(currentPanel)),
+        initialSlide: Math.max(0, availablePanelNames(middleAvailable, rightAvailable, macroAvailable).indexOf(currentPanel)),
         on: {
           touchStart(instance, event) {
             requestedSource = 'gesture';
@@ -122,10 +160,12 @@
 
     function sync({
       middleOpen = middleAvailable,
-      rightOpen = rightAvailable
+      rightOpen = rightAvailable,
+      macroOpen = macroAvailable
     } = {}) {
       middleAvailable = Boolean(middleOpen);
       rightAvailable = Boolean(rightOpen);
+      macroAvailable = Boolean(macroOpen);
       if (!enabled()) {
         destroy();
         return;
@@ -136,11 +176,17 @@
 
     function show(
       panelName,
-      { animate = true, middleOpen = middleAvailable, rightOpen = rightAvailable } = {}
+      {
+        animate = true,
+        middleOpen = middleAvailable,
+        rightOpen = rightAvailable,
+        macroOpen = macroAvailable
+      } = {}
     ) {
       if (!PANEL_ORDER.includes(panelName)) return false;
       middleAvailable = Boolean(middleOpen);
       rightAvailable = Boolean(rightOpen);
+      macroAvailable = Boolean(macroOpen);
       if (!enabled()) return false;
       initialize();
       alignCurrentPanel();
@@ -165,6 +211,8 @@
       requestedSource = 'gesture';
       return true;
     }
+
+    installNativeTouchFallback();
 
     return Object.freeze({
       current: () => currentPanel,

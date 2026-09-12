@@ -5,7 +5,14 @@ import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
 import {
+  CRAFTING_MECHANICS_MASTER_COUNTS,
+  resolveCraftingMechanics
+} from '../pipeline/tool/crafting-mechanics-master.mjs';
+import {
   extractLodestoneCraftInfo,
+  extractLodestoneCraftingEffects,
+  extractLodestoneItemLevel,
+  extractLodestoneRecipeCraftingData,
   replaceDataCacheVersion,
   extractLodestoneEquipmentInfo,
   extractLodestoneIsEx,
@@ -37,6 +44,7 @@ import {
   resolveLodestoneShopCondition,
   resolveLodestoneItemDetail,
   enrichNewLodestoneCandidateItem,
+  runtimeFieldsFromExistingItem,
   ensureLodestoneCandidateIcons,
   cleanupItemIconAssets,
   cacheLodestoneRecipeDetails,
@@ -46,6 +54,7 @@ import {
   validateItemIconFileName,
   writeLodestoneShopCacheEntry
 } from '../pipeline/tool/pipeline-tool.mjs';
+import { assertLodestoneItemPreservation, publicItemMetadata, publicLodestoneDocument } from '../pipeline/tool/lodestone-preservation.mjs';
 import {
   completeLodestoneAuditResource,
   createLodestoneAudit,
@@ -70,6 +79,32 @@ function createPromotedTestAudit(store, id) {
   }, { now: 102 });
   promoteCompletedLodestoneAudit(store, id, { now: 110 });
 }
+
+test('candidate preservation keeps opaque data, false EX, material level, and vendor rank through a rename', () => {
+  const original = { Name: '旧名', SortOrder: 1, ItemCategory: '素材', IsEx: false, ItemLevel: 10,
+    ShopInfo: { price: 100, shops: [{ shopName: '店', requiredRank: 'ランク2' }] },
+    GatheringTimer: { hours: [0, 12] }, CraftingEffects: { NQ: { CP: 5 } },
+    IconFile: 'old.webp', Extension: { values: [1, null, false] }, Recipe: { RecipeKey: 'old' } };
+  const kept = runtimeFieldsFromExistingItem(original);
+  const candidate = { ...kept, Name: '新名', SortOrder: 2, ItemCategory: '素材' };
+  assert.deepEqual(kept.Extension, original.Extension);
+  assert.notEqual(kept.Extension, original.Extension);
+  assert.equal(kept.IsEx, false);
+  assert.equal(kept.Recipe, undefined);
+  assert.doesNotThrow(() => assertLodestoneItemPreservation([original], [candidate], { 旧名: '新名' }));
+  delete candidate.GatheringTimer;
+  assert.throws(() => assertLodestoneItemPreservation([original], [candidate], { 旧名: '新名' }), /GatheringTimer/);
+  assert.throws(() => assertLodestoneItemPreservation([original], []), /アイテム欠落/);
+  assert.doesNotThrow(() => assertLodestoneItemPreservation([original], [], {}, ['旧名']));
+});
+
+test('public item documents preserve additional metadata without leaking candidate state', () => {
+  const metadata = publicItemMetadata({ Version: 'old', Items: [], Extra: { a: false } });
+  assert.deepEqual(publicLodestoneDocument({ PublicMetadata: metadata, Version: 'new', DataGeneration: 'hash',
+    RetiredItemNames: ['old'], AuditId: 'audit', Items: [] }), {
+    Extra: { a: false }, Version: 'new', DataGeneration: 'hash', Items: []
+  });
+});
 
 test('data cache version replacement accepts an already current version', () => {
   const source = "const DATA_CACHE_VERSION = 'ff14recipe-data-7.55-current';\n";
@@ -222,6 +257,7 @@ test('candidate icon generation migrates existing files, protects manual input, 
   fs.writeFileSync(candidatePath, JSON.stringify({
     SchemaVersion: 3,
     AuditId: 'audit-icons',
+    AuditDataGeneration: 'generation-icons',
     DataGeneration: 'generation-icons',
     Version: 'test',
     Items: [
@@ -307,6 +343,7 @@ test('candidate lineage rejects legacy snapshots and mismatched audit generation
         candidate: {
           SchemaVersion: 3,
           AuditId: 'audit-current',
+          AuditDataGeneration: 'generation-old',
           DataGeneration: 'generation-old',
           Items: []
         },
@@ -713,6 +750,55 @@ test('extractLodestoneCraftInfo ignores masterbook menu entries', () => {
   });
 });
 
+test('extractLodestoneRecipeCraftingData reads solver values and conditions', () => {
+  const html = `
+    <ul class="db-view__recipe__craftdata">
+      <li><span>完成個数</span>3</li>
+      <li><span>必要工数</span> 6,600 </li>
+      <li><span>耐久</span>70</li>
+      <li><span>品質最大値</span>15,400</li>
+      <li><span>初期品質値</span>上限 50％</li>
+    </ul>
+    <dl class="db-view__recipe__crafting_conditions">
+      <dd>作業精度 4,200以上</dd><dd>加工精度 4,100以上</dd><dd>高難易度レシピ</dd>
+    </dl>`;
+  assert.deepEqual(extractLodestoneRecipeCraftingData(html), {
+    Difficulty: 6600,
+    Durability: 70,
+    MaxQuality: 15400,
+    MaterialQualityPercent: 50,
+    RequiredCraftsmanship: 4200,
+    RequiredControl: 4100,
+    HqAvailable: true,
+    Expert: true
+  });
+});
+
+test('extractLodestoneRecipeCraftingData records recipes that cannot be HQ', () => {
+  const html = `
+    <ul class="db-view__recipe__craftdata">
+      <li><span>必要工数</span>100</li><li><span>耐久</span>40</li>
+      <li><span>品質最大値</span>0</li><li><span>初期品質値</span>上限 0％</li>
+    </ul>
+    <dl class="db-view__recipe__crafting_conditions"><dd>HQアイテム製作不可</dd></dl>`;
+  assert.equal(extractLodestoneRecipeCraftingData(html).HqAvailable, false);
+});
+
+test('Lodestone item detail reads item level and NQ/HQ crafting effects', () => {
+  const html = `
+    <div class="db-view__item_level">ITEM LEVEL 684</div>
+    <h3 class="db-view__sub_title">Effects</h3><hr>
+    <div class="db-view__info_text">
+      <ul class="sys_nq_element"><li>CP +21% (上限73)</li><li>加工精度 +4% (上限77)</li></ul>
+      <ul class="sys_hq_element"><li>CP +26% (上限92)</li><li>加工精度 +5% (上限97)</li></ul>
+    </div>`;
+  assert.equal(extractLodestoneItemLevel(html), 684);
+  assert.deepEqual(extractLodestoneCraftingEffects(html), {
+    NQ: { CP: { Percent: 21, Max: 73 }, Control: { Percent: 4, Max: 77 } },
+    HQ: { CP: { Percent: 26, Max: 92 }, Control: { Percent: 5, Max: 97 } }
+  });
+});
+
 test('extractLodestoneRecipeData reads a Lodestone recipe variant and resolves ingredient keys', () => {
   const html = `
     <main>
@@ -720,6 +806,10 @@ test('extractLodestoneRecipeData reads a Lodestone recipe variant and resolves i
       <span class="db-view__item__text__level__num">15</span>
       <p class="db-view__recipe__text__book_name">木工秘伝書:ミラージュプリズム</p>
       <span class="js__complete_craft_count">1</span>
+      <ul class="db-view__recipe__craftdata">
+        <li><span>完成個数</span>1</li><li><span>必要工数</span>120</li><li><span>耐久</span>40</li>
+        <li><span>品質最大値</span>500</li><li><span>初期品質値</span>上限 50％</li>
+      </ul>
       <div data-name="クリアプリズム" class="js__material db-tree" data-depth="1" data-num="1" data-key="clear"></div>
       <div class="db-tree js__material" data-key="lumber" data-num="2" data-depth="1" data-name="ウォルナット材"></div>
       <div class="js__material db-tree" data-key="nested" data-num="3" data-depth="2" data-name="下位素材"></div>
@@ -736,6 +826,16 @@ test('extractLodestoneRecipeData reads a Lodestone recipe variant and resolves i
       RecipeID: '0e351054234',
       CraftType: '0',
       CraftInfo: { job: '木工師', level: 15, masterbook: '木工秘伝書:ミラージュプリズム' },
+      CraftingData: {
+        Difficulty: 120,
+        Durability: 40,
+        MaxQuality: 500,
+        MaterialQualityPercent: 50,
+        RequiredCraftsmanship: 0,
+        RequiredControl: 0,
+        HqAvailable: true,
+        Expert: false
+      },
       AmountResult: '1',
       Ingredients: [
         { ItemID: '7671', Name: 'クリアプリズム', Amount: '1' },
@@ -743,6 +843,28 @@ test('extractLodestoneRecipeData reads a Lodestone recipe variant and resolves i
       ]
     }
   );
+});
+
+test('independent crafting mechanics master resolves Lodestone values without item data', () => {
+  assert.deepEqual(CRAFTING_MECHANICS_MASTER_COUNTS, { recipeLevels: 148, factorTriples: 217 });
+  assert.deepEqual(resolveCraftingMechanics({
+    jobLevel: 99,
+    difficulty: 6300,
+    durability: 80,
+    maxQuality: 11400
+  }), {
+    JobLevel: 99,
+    ProgressDivisor: 167,
+    QualityDivisor: 147,
+    ProgressModifier: 100,
+    QualityModifier: 100
+  });
+  assert.throws(() => resolveCraftingMechanics({
+    jobLevel: 99,
+    difficulty: 6301,
+    durability: 80,
+    maxQuality: 11400
+  }), /固定計算値がありません/);
 });
 
 test('extractLodestoneIsEx reads EX only from the item header', () => {

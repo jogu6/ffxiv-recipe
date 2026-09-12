@@ -12,6 +12,7 @@
     clearTimer = globalThis.clearTimeout,
     requestFrame = callback => globalThis.requestAnimationFrame?.(callback) ?? setTimer(callback, 0),
     now = () => globalThis.performance?.now?.() ?? Date.now(),
+    startedAt: requestedStartedAt,
     progressDelayMs = 2000,
     percentDelayMs = 7000,
     completionHoldMs = 200,
@@ -24,7 +25,11 @@
     let percent = 0;
     let completed = false;
     let completionPromise = null;
-    const startedAt = now();
+    const hasRequestedStartedAt = Number.isFinite(Number(requestedStartedAt));
+    const startedAt = hasRequestedStartedAt ? Number(requestedStartedAt) : now();
+    const remainingDelay = delay => hasRequestedStartedAt
+      ? Math.max(0, delay - Math.max(0, now() - startedAt))
+      : delay;
     const publish = () => onChange({ detailVisible, progressVisible, percentVisible, phase, percent });
     const timers = [];
     const hide = () => {
@@ -51,14 +56,18 @@
         progressVisible = true;
         publish();
       };
-      if (progressDelayMs <= 0) showProgress();
-      else timers.push(setTimer(showProgress, progressDelayMs));
-      timers.push(setTimer(() => {
+      const progressRemaining = remainingDelay(progressDelayMs);
+      if (progressRemaining <= 0) showProgress();
+      else timers.push(setTimer(showProgress, progressRemaining));
+      const percentRemaining = remainingDelay(percentDelayMs);
+      const showPercent = () => {
         detailVisible = true;
         progressVisible = true;
         percentVisible = true;
         publish();
-      }, percentDelayMs));
+      };
+      if (percentRemaining <= 0) showPercent();
+      else timers.push(setTimer(showPercent, percentRemaining));
     }
 
     return Object.freeze({

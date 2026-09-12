@@ -1,0 +1,19 @@
+# Modified by XIVca: package metadata and dependency versions are fixed for bundled reproducible builds. The simulation source is unchanged.
+[package]
+name = "raphael-sim"
+version = "0.28.6-xivca.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+bitfield-struct = "=0.12.1"
+strum = "=0.27.2"
+strum_macros = "=0.27.2"
+serde = { workspace = true, optional = true }
+log = { workspace = true }
+
+[features]
+serde = ["dep:serde"]

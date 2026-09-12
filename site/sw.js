@@ -1,4 +1,4 @@
-const APP_CACHE_VERSION = 'ff14recipe-app-v3.24-356ec519b219';
+const APP_CACHE_VERSION = 'ff14recipe-app-v3.24-ee5cdfa1cd0b';
 const DATA_CACHE_VERSION = 'ff14recipe-data-7.56-3601f731';
 const VERIFIED_DATA_CACHE_VERSION = `ff14recipe-verified-data-${DATA_CACHE_VERSION.replace('ff14recipe-data-', '')}`;
 const CACHE_PREFIX = 'ff14recipe-';
@@ -11,6 +11,28 @@ const PRECACHE_FILES = [
   './calculation.js',
   './event-wiring.js',
   './floating-window.js',
+  './macro-launcher.js',
+  './macro-consumable-cache.js',
+  './macro-launcher.css',
+  './macro-app/web/index.html',
+  './macro-app/web/styles.css',
+  './macro-app/web/app.js',
+  './macro-app/web/bug-report.js',
+  './macro-app/web/report-attachments.js',
+  './macro-app/web/device-info.js',
+  './macro-app/web/bug-report.css',
+  './macro-app/web/assets/hq-mark-transparent.webp',
+  './macro-app/web/data-loader.js',
+  './macro-app/web/model.js',
+  './macro-app/web/persistence.js',
+  './macro-app/web/site-style-bridge.js',
+  './macro-app/web/solver-worker.js',
+  './macro-app/web/search-storage.js',
+  './macro-app/web/worker-policy.js',
+  './macro-app/web/profiling.js',
+  './macro-app/build/engine/xivca_macro_engine.js',
+  './macro-app/build/engine/xivca_macro_engine_bg.wasm',
+  './macro-app/vendor/licenses/raphael-apache-2.0.txt',
   './equipment-search-model.js',
   './favorite-store.js',
   './favorite-share-codec.js',
@@ -83,27 +105,40 @@ self.addEventListener('fetch', event => {
 
   // 緊急メッセージを常に最新にするため、tips.mdは一切キャッシュしない
   if (/\/data\/tips\.md$/.test(url.pathname)) {
-    event.respondWith(fetch(request, { cache: 'no-store' }));
+    event.respondWith(withIsolationHeaders(fetch(request, { cache: 'no-store' })));
     return;
   }
 
   if (/\/data\/item-icons\.pack\.gz$/.test(url.pathname)) {
-    event.respondWith(fetch(request, { cache: 'no-store' }));
+    event.respondWith(withIsolationHeaders(fetch(request, { cache: 'no-store' })));
     return;
   }
 
   if (request.mode === 'navigate') {
-    event.respondWith(networkFirstNavigation(request));
+    event.respondWith(withIsolationHeaders(networkFirstNavigation(request)));
     return;
   }
 
   if (CACHE_FIRST_PATTERNS.some(pattern => pattern.test(url.pathname))) {
-    event.respondWith(cacheFirst(request, DATA_CACHE_VERSION));
+    event.respondWith(withIsolationHeaders(cacheFirst(request, DATA_CACHE_VERSION)));
     return;
   }
 
-  event.respondWith(networkFirst(request, APP_CACHE_VERSION));
+  event.respondWith(withIsolationHeaders(networkFirst(request, APP_CACHE_VERSION)));
 });
+
+async function withIsolationHeaders(responsePromise) {
+  const response = await responsePromise;
+  const headers = new Headers(response.headers);
+  headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
+  headers.set('Cross-Origin-Opener-Policy', 'same-origin');
+  headers.set('Cross-Origin-Resource-Policy', 'same-origin');
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers
+  });
+}
 
 async function cacheFirst(request, cacheName) {
   let cache = null;

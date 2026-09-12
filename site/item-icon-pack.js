@@ -310,10 +310,11 @@
       : await decompressGzip(compressed, DecompressionStreamClass);
     onProgress('アイテム画像を検証しています', 65);
     const entries = await validatePack(buffer, files, cryptoApi, packVersion);
-    onProgress('アイテム画像をローカルへ保存しています', 78);
+    onProgress('アイテム画像を使用可能にしています', 78);
     if (cache) {
-      await cache.put(request, new Response(buffer, { headers: { 'Content-Type': 'application/octet-stream' } })).catch(() => {});
-      await cleanupCache(cache, request).catch(() => {});
+      void cache.put(request, new Response(buffer, { headers: { 'Content-Type': 'application/octet-stream' } }))
+        .then(() => cleanupCache(cache, request))
+        .catch(() => {});
     }
     return createPreparedPack(buffer, entries);
   }

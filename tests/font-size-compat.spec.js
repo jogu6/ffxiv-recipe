@@ -1,6 +1,79 @@
 const { expect, test } = require('@playwright/test');
 const { publishedPatchStatus } = require('./helpers/app.js');
 
+for (const width of [375, 900, 1440]) {
+  test(`マクロとお問い合わせの倍率変更で配置が崩れない ${width}px`, async ({ page }, testInfo) => {
+    test.setTimeout(90_000);
+    await page.setViewportSize({ width, height: 700 });
+    await page.goto('/');
+    await waitForAppLoaded(page);
+    await page.locator('#searchBox').fill('バスタードソード');
+    await page.locator('#recipeList').getByText('バスタードソード', { exact: true }).first().click();
+    const launch = page.locator('.result-root-summary .macro-launch-btn');
+    await expect(launch).toBeEnabled({ timeout: 30_000 });
+    await launch.click();
+    const macro = page.frameLocator('#macroFrame');
+    await expect(macro.locator('#recipeInfo')).toContainText('バスタードソード');
+    for (const level of [1, 3, 10]) {
+      await page.locator('html').evaluate((element, value) => { element.dataset.fontSizeLevel = String(value); }, level);
+      await expect(macro.locator('html')).toHaveAttribute('data-font-size-level', String(level));
+      await macro.locator('#jobToggle').evaluate(element => element.scrollIntoView({ block: 'center', behavior: 'instant' }));
+      await macro.locator('body').evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      await macro.locator('#jobToggle').click();
+      await expect(macro.locator('#jobToggle')).toHaveAttribute('aria-expanded', 'true');
+      const layout = await macro.locator('body').evaluate(() => {
+        const box = selector => document.querySelector(selector).getBoundingClientRect().toJSON();
+        const failures = [];
+        for (const element of document.querySelectorAll('#macroContent > *, .crafter-number-grid input, .crafter-option-grid label')) {
+          const rect = element.getBoundingClientRect();
+          if (!rect.width || !rect.height) continue;
+          if (rect.left < -1 || rect.right > innerWidth + 1) failures.push(`${element.id || element.className}:viewport`);
+        }
+        for (const element of document.querySelectorAll('.crafter-number-grid input')) {
+          const rect = element.getBoundingClientRect();
+          const parent = element.parentElement.getBoundingClientRect();
+          if (rect.left < parent.left - 1 || rect.right > parent.right + 1) failures.push(`${element.id}:column`);
+        }
+        return { failures, toggle: box('#jobToggle'), list: box('#jobChoices'), width: innerWidth, height: innerHeight, open: document.querySelector('#jobToggle').getAttribute('aria-expanded'), style: document.querySelector('#jobChoices').getAttribute('style') };
+      });
+      expect(layout.failures, `level ${level}`).toEqual([]);
+      expect(layout.list.left).toBeGreaterThanOrEqual(0);
+      expect(layout.list.right).toBeLessThanOrEqual(layout.width + 1);
+      expect(layout.list.top).toBeGreaterThanOrEqual(0);
+      expect(layout.list.bottom).toBeLessThanOrEqual(layout.height + 1);
+      expect(layout.list.left).toBeLessThan(layout.toggle.right);
+      expect(layout.list.right).toBeGreaterThan(layout.toggle.left);
+      await page.screenshot({ path: testInfo.outputPath(`macro-${level}.png`) });
+      expect(Math.min(Math.abs(layout.list.top - layout.toggle.bottom), Math.abs(layout.toggle.top - layout.list.bottom)), JSON.stringify(layout)).toBeLessThanOrEqual(5);
+      await page.locator('html').evaluate((element, value) => { element.dataset.fontSizeLevel = String(value); }, level === 10 ? 1 : 10);
+      await expect(macro.locator('#jobToggle')).toHaveAttribute('aria-expanded', 'false');
+      await page.locator('html').evaluate((element, value) => { element.dataset.fontSizeLevel = String(value); }, level);
+      await expect(macro.locator('html')).toHaveAttribute('data-font-size-level', String(level));
+      await macro.locator('#bugReportButton').click();
+      const report = page.locator('#bugReportDialog');
+      await expect(report).toBeVisible();
+      const reportLayout = await report.evaluate(dialog => {
+        const box = dialog.getBoundingClientRect();
+        const actions = dialog.querySelector('.bug-report-actions').getBoundingClientRect();
+        const content = dialog.querySelector('.bug-report-content');
+        return {
+          contained: box.left >= 0 && box.right <= innerWidth + 1 && box.top >= 0 && box.bottom <= innerHeight + 1,
+          actionsContained: actions.left >= box.left && actions.right <= box.right && actions.bottom <= box.bottom,
+          overflow: content.scrollWidth - content.clientWidth,
+        };
+      });
+      expect(reportLayout.contained).toBe(true);
+      expect(reportLayout.actionsContained).toBe(true);
+      expect(reportLayout.overflow).toBeLessThanOrEqual(1);
+      await page.locator('#bugReportText').fill('表示倍率変更時の配置確認');
+      await page.locator('#bugReportNext').click();
+      await expect(page.locator('#bugReportSubmit')).toBeInViewport();
+      await page.screenshot({ path: testInfo.outputPath(`inquiry-${level}.png`) });
+      await page.locator('[data-report-cancel]').click();
+    }
+  });
+}
+
 async function waitForAppLoaded(page) {
   await expect(page.locator('#loadStatus')).toHaveText(publishedPatchStatus, { timeout: 30_000 });
   await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/, { timeout: 30_000 });
@@ -242,7 +315,7 @@ test('scaled compact controls remain contained at every display size', async ({ 
       return layout.placement === 'below'
         ? Math.abs(layout.list.top - layout.trigger.bottom - 3)
         : Math.abs(layout.trigger.top - layout.list.bottom - 3);
-    }, { message: `history gap Level ${level}` }).toBeLessThan(2);
+    }, { message: `history gap Level ${level}: ${JSON.stringify(await readHistoryLayout())}` }).toBeLessThan(2);
     const historyLayout = await readHistoryLayout();
     expect(Math.abs(historyLayout.list.left - historyLayout.trigger.left), `history left Level ${level}`).toBeLessThan(1);
     expect(Math.abs(historyLayout.list.right - historyLayout.trigger.right), `history right Level ${level}`).toBeLessThan(1);

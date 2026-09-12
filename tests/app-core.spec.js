@@ -750,20 +750,38 @@ test('desktop material groups align their own columns while tree actions follow 
   expect(await preview.evaluate(row => row.scrollWidth <= row.clientWidth + 1)).toBe(true);
 });
 
-test('opens the license notice from settings', async ({ page }) => {
+test('opens Japanese license notice with working bundled license links from settings', async ({ page }) => {
   await openApp(page);
 
   await page.locator('#settingsBtn').click();
+  await expect(page.locator('#licenseBtn')).toHaveText('ライセンス');
   await page.locator('#licenseBtn').click();
 
   await expect(page.locator('#licenseOverlay')).toHaveClass(/open/);
+  await expect(page.locator('#licenseTitle')).toHaveText('ライセンス・権利表記');
   await expect(page.locator('#licenseText')).toContainText('SQUARE ENIX');
+  await expect(page.locator('#licenseText')).toContainText('MIT ライセンスの日本語参考訳');
+  await expect(page.locator('#licenseText')).toContainText('Swiper 14.0.5');
+
+  const licenseLinks = page.locator('#licenseText a[href*="/vendor/licenses/"]');
+  await expect(licenseLinks).toHaveCount(6);
+  for (const link of await licenseLinks.all()) {
+    await expect(link).toHaveAttribute('target', '_blank');
+    await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    const url = await link.getAttribute('href');
+    expect(new URL(url).pathname).toMatch(/^\/vendor\/licenses\/[^/]+\.txt$/);
+    const response = await page.request.get(url);
+    expect(response.ok(), url).toBe(true);
+    expect(await response.text()).toMatch(/Permission is hereby granted|Apache License/);
+  }
+  await expect(page.locator('#licenseText').getByRole('link', { name: 'ファイナルファンタジーXIV 著作物利用条件', exact: true }))
+    .toHaveAttribute('href', 'https://support.jp.square-enix.com/rule.php?id=5381&la=0&tag=authc');
 
   await page.locator('#licenseCloseBtn').click();
   await expect(page.locator('#licenseOverlay')).not.toHaveClass(/open/);
 });
 
-test('opens privacy policy and contact link from settings', async ({ page }) => {
+test('opens privacy policy from settings', async ({ page }) => {
   await openApp(page);
 
   await page.locator('#settingsBtn').click();
@@ -774,15 +792,6 @@ test('opens privacy policy and contact link from settings', async ({ page }) => 
   await expect(page.locator('#licenseText')).toContainText('Cloudflare Web Analytics');
 
   await page.locator('#licenseCloseBtn').click();
-  await page.evaluate(() => {
-    window.__contactUrl = '';
-    window.open = url => {
-      window.__contactUrl = url;
-      return null;
-    };
-  });
-  await page.locator('#contactBtn').click();
-  await expect.poll(() => page.evaluate(() => window.__contactUrl)).toBe('https://discord.gg/eZP5temK6e');
 });
 
 test('count step buttons adjust the selected recipe count', async ({ page }) => {

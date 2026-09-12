@@ -10,6 +10,7 @@
 <link rel="manifest" href="./manifest.webmanifest">
 <script>
   (() => {
+    window.ff14RecipeBootStartedAt ??= performance.now();
     const firefoxBrowser = /(?:Firefox\/|FxiOS\/)/i.test(navigator.userAgent || '');
     window.ff14RecipeBrowserSupported = !firefoxBrowser;
     document.documentElement.dataset.browserSupport = firefoxBrowser ? 'blocked' : 'supported';
@@ -111,6 +112,7 @@
 <script src="./font-size-settings.js"></script>
 <script src="./viewport-size.js"></script>
 <link rel="stylesheet" href="./styles.css">
+<link rel="stylesheet" href="./macro-launcher.css">
 </head>
 <body>
 
@@ -240,9 +242,36 @@
       <div class="tips-msg" id="tipsMsg"></div>
     </div>
   </div>
+  <div class="panel-macro" id="panelMacro" data-mobile-panel="macro" aria-label="マクロ(β)">
+    <button id="macroPanelCloseButton" class="macro-panel-close-button" type="button" title="マクロパネルを閉じる" aria-label="マクロパネルを閉じる">×</button>
+    <div id="macroPanelPreparing" class="macro-panel-preparing" role="status" hidden>マクロ画面を準備しています</div>
+    <iframe id="macroFrame" title="マクロ(β)" src="about:blank" allow="screen-wake-lock"></iframe>
+  </div>
   </div>
 </div>
 <div class="footer" data-app-content inert>© SQUARE ENIX / X: <a href="https://x.com/ff14_recipe" target="_blank" rel="noopener">@ff14_recipe</a></div>
+<div id="macroProgressOverlay" class="macro-progress-overlay" role="dialog" aria-modal="true" aria-label="マクロ生成進捗" hidden>
+  <div class="macro-progress-card">
+    <h2>マクロ生成中</h2>
+    <p class="macro-generation-note">デバイスの性能により、生成時間は大きく左右され、5 ～ 14 分以上かかる場合もあります。
+Android、iOS、iPadOS では、OS の管理により、他のアプリが休止する場合があります。
+マクロ生成中は、OS の制限により、消灯を防げない場合があります。
+画面消灯やアプリ切り替えで計算が一時停止した場合、ページが保持されていれば復帰後に計算を続行します。
+ページが破棄または再読み込みされた場合、計算結果は失われます。
+
+
+
+あまりにも長時間かかる場合は中断し、食事や薬品の使用もご検討ください。
+不具合を発見しましたら、画面最下部の「不具合・お問い合わせ」ボタンからご報告ください。検証に必要な情報は含まれた状態でご報告いただけます。</p>
+    <div class="loading-progress-row">
+      <progress id="macroProgress" class="loading-progress" max="100" value="0"></progress>
+      <output id="macroProgressPercent" class="loading-progress-percent">0%</output>
+    </div>
+    <div class="macro-generation-elapsed"><span>経過時間</span><output id="macroElapsedTime">00:00</output></div>
+    <div id="macroGenerationStatus" class="macro-generation-status">生成を準備しています</div>
+    <button id="macroCancelButton" class="confirm-btn no" type="button">中断</button>
+  </div>
+</div>
 <div id="loadingOverlay" class="open" role="status" aria-live="polite">
   <div class="loading-card">
     <div class="loading-title" id="loadingTitle">更新を確認しています...</div>
@@ -279,14 +308,8 @@
       <h2 id="settingsDialogTitle" class="visually-hidden">設定</h2>
       <span id="appVersion"></span>
       <div class="settings-top-actions">
-        <button class="settings-corner-btn" id="contactBtn" type="button" title="報告・お問い合わせ">
-          <span>報告・お問い合わせ</span>
-          <svg class="discord-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M19.4 4.9A16.1 16.1 0 0 0 15.5 3l-.2.4c1.4.3 2.1.8 2.1.8a13.7 13.7 0 0 0-10.8 0s.7-.5 2.2-.8L8.5 3a16.1 16.1 0 0 0-3.9 1.9C2.2 8.5 1.6 12 1.9 15.4c1.6 1.2 3.1 1.9 4.6 2.3l.9-1.5c-.5-.2-1-.4-1.5-.7l.4-.3c2.9 1.4 6 1.4 8.8 0l.4.3c-.5.3-1 .5-1.5.7l.9 1.5c1.5-.4 3.1-1.1 4.6-2.3.4-4-.6-7.5-2.1-10.5ZM8.8 13.4c-.8 0-1.5-.8-1.5-1.8s.7-1.8 1.5-1.8 1.5.8 1.5 1.8-.7 1.8-1.5 1.8Zm6.4 0c-.8 0-1.5-.8-1.5-1.8s.7-1.8 1.5-1.8 1.5.8 1.5 1.8-.7 1.8-1.5 1.8Z"/>
-          </svg>
-        </button>
-        <button class="settings-corner-btn" id="privacyBtn" type="button">プライバシー</button>
-        <button class="settings-corner-btn" id="licenseBtn" type="button">LICENSE</button>
+        <button class="settings-corner-btn" id="privacyBtn" type="button">プライバシー・ポリシー</button>
+        <button class="settings-corner-btn" id="licenseBtn" type="button">ライセンス</button>
       </div>
     </div>
     <div class="settings-tabs" role="tablist" aria-label="設定項目">
@@ -363,6 +386,7 @@
     </div>
     </div>
     <div class="settings-close">
+      <div class="settings-inquiry"><button class="settings-btn" id="inquiryBtn" type="button">不具合・お問い合わせ</button></div>
       <button class="confirm-btn no" id="settingsCloseBtn">閉じる</button>
     </div>
   </div>
@@ -408,7 +432,7 @@
 
 <div id="licenseOverlay">
   <div id="licenseDialog">
-    <h2 id="licenseTitle">LICENSE / NOTICE</h2>
+    <h2 id="licenseTitle">ライセンス・権利表記</h2>
     <div id="licenseText" class="document-text"></div>
     <div class="settings-close">
       <button class="confirm-btn no" id="licenseCloseBtn">閉じる</button>
@@ -534,6 +558,8 @@
 <script src="./ui-change-policy.js"></script>
 <script src="./view-state.js"></script>
 <script src="./panel-layout.js"></script>
+<script src="./macro-consumable-cache.js"></script>
+<script src="./macro-launcher.js"></script>
 <script src="./app.js"></script>
 <!-- Cloudflare Web Analytics -->
 <script>

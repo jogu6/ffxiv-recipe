@@ -38,6 +38,11 @@ function recipeDetailHtml({ amount = 1, ingredient = '素材', ingredientKey = '
       <span class="db-view__item__text__level__num">100</span>
       <span class="js__complete_craft_count">${amount}</span>
       <p class="db-view__recipe__text__book_name">鍛冶秘伝書:第12巻</p>
+      <ul class="db-view__recipe__craftdata">
+        <li><span>必要工数</span>6600</li><li><span>耐久</span>70</li>
+        <li><span>品質最大値</span>14040</li><li><span>初期品質値</span>上限 50％</li>
+      </ul>
+      <dl class="db-view__recipe__crafting_conditions"><dd>作業精度 4480以上</dd><dd>加工精度 4200以上</dd></dl>
       <div class="js__material db-tree" data-depth="1" data-key="${ingredientKey}" data-name="${ingredient}" data-num="${ingredientAmount}"></div>
     </main>`;
 }
@@ -108,6 +113,48 @@ test('full Lodestone audit fetches every source fresh in one sequential queue an
     assert.equal(resources.length, 4);
     assert.ok(resources.every(resource => resource.completed));
     assert.match(readLodestoneAuditArtifact(artifactRoot, resources.find(resource => resource.kind === 'recipe-detail')), /素材/);
+  });
+});
+
+test('full Lodestone audit caches craftable ingredient item details for candidate generation', async () => {
+  await withAudit(async ({ store, artifactRoot }) => {
+    const finalDetailUrl = `${RECIPE_LIST_URL}final/`;
+    const materialDetailUrl = `${RECIPE_LIST_URL}material/`;
+    const itemDetailUrl = `${ITEM_LIST_URL}materialitem/`;
+    const recipeList = listHtml([
+      recipeRow('完成品', 'final'),
+      recipeRow('中間素材', 'material')
+    ]);
+    const itemList = listHtml([
+      itemRow('完成品', 'finalitem'),
+      itemRow('中間素材', 'materialitem'),
+      itemRow('原料', 'rawitem')
+    ]);
+    const calls = [];
+    const request = async url => {
+      calls.push(url);
+      if (url === RECIPE_LIST_URL) return recipeList;
+      if (url === ITEM_LIST_URL) return itemList;
+      if (url === finalDetailUrl) return recipeDetailHtml({ ingredient: '中間素材', ingredientKey: 'materialitem' });
+      if (url === materialDetailUrl) return recipeDetailHtml({ ingredient: '原料', ingredientKey: 'rawitem' });
+      if (url === itemDetailUrl) return '<div class="db-view__item_level">ITEM LEVEL 10</div>';
+      throw new Error(`unexpected URL: ${url}`);
+    };
+
+    await runAudit({
+      store,
+      artifactRoot,
+      request,
+      delayMs: 0,
+      createAuditId: () => 'audit-item-detail',
+      now: () => 100
+    });
+
+    assert.equal(calls.filter(url => url === itemDetailUrl).length, 1);
+    const itemDetail = listLodestoneAuditResources(store, 'audit-item-detail', { kind: 'item-detail' });
+    assert.equal(itemDetail.length, 1);
+    assert.equal(itemDetail[0].key, 'item:materialitem');
+    assert.match(readLodestoneAuditArtifact(artifactRoot, itemDetail[0]), /ITEM LEVEL 10/);
   });
 });
 

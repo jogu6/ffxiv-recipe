@@ -8,9 +8,9 @@ export const LODESTONE_AUDIT_STATUS = Object.freeze({
   COMPLETED: 'completed',
   ABANDONED: 'abandoned'
 });
-export const LODESTONE_AUDIT_SCHEMA_VERSION = 1;
+export const LODESTONE_AUDIT_SCHEMA_VERSION = 2;
 
-const RESOURCE_KINDS = new Set(['item-list-page', 'recipe-list-page', 'recipe-detail']);
+const RESOURCE_KINDS = new Set(['item-list-page', 'recipe-list-page', 'recipe-detail', 'item-detail']);
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 
 function requiredText(value, label) {
@@ -136,8 +136,37 @@ export function openLodestoneAuditStore(file) {
       value TEXT NOT NULL
     ) WITHOUT ROWID;
 
-    PRAGMA user_version=1;
   `);
+
+  if (schemaVersion < 2) {
+    transaction(db, () => {
+      db.exec(`
+        DROP INDEX IF EXISTS resources_pending;
+        ALTER TABLE resources RENAME TO resources_v1;
+        CREATE TABLE resources (
+          audit_id TEXT NOT NULL REFERENCES audits(id) ON DELETE CASCADE,
+          kind TEXT NOT NULL CHECK (kind IN ('item-list-page', 'recipe-list-page', 'recipe-detail', 'item-detail')),
+          resource_key TEXT NOT NULL,
+          url TEXT NOT NULL,
+          completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
+          artifact_key TEXT,
+          content_sha256 TEXT,
+          raw_bytes INTEGER CHECK (raw_bytes IS NULL OR raw_bytes >= 0),
+          fetched_at INTEGER,
+          PRIMARY KEY (audit_id, kind, resource_key),
+          CHECK (
+            (completed = 0 AND artifact_key IS NULL AND content_sha256 IS NULL AND raw_bytes IS NULL AND fetched_at IS NULL)
+            OR
+            (completed = 1 AND artifact_key IS NOT NULL AND content_sha256 IS NOT NULL AND raw_bytes IS NOT NULL AND fetched_at IS NOT NULL)
+          )
+        ) WITHOUT ROWID;
+        INSERT INTO resources SELECT * FROM resources_v1;
+        DROP TABLE resources_v1;
+        CREATE INDEX resources_pending ON resources(audit_id, completed, kind, resource_key);
+        PRAGMA user_version=2;
+      `);
+    });
+  }
 
   const statements = {
     createAudit: db.prepare(`

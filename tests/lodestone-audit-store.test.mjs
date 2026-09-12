@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { DatabaseSync } from 'node:sqlite';
 import {
   abandonLodestoneAudit,
   completeLodestoneAuditResource,
@@ -30,6 +31,56 @@ function withStore(action) {
     fs.rmSync(root, { recursive: true, force: true });
   }
 }
+
+test('schema 1 audit database migrates without losing resources and accepts item details', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ffxiv-recipe-audit-v1-'));
+  const databasePath = path.join(root, 'lodestone-audits.sqlite');
+  const legacy = new DatabaseSync(databasePath);
+  try {
+    legacy.exec(`
+      PRAGMA user_version=1;
+      PRAGMA foreign_keys=ON;
+      CREATE TABLE audits (
+        id TEXT PRIMARY KEY,
+        status TEXT NOT NULL CHECK (status IN ('running', 'completed', 'abandoned')),
+        catalog_fingerprint TEXT, started_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+        completed_at INTEGER
+      ) WITHOUT ROWID;
+      CREATE TABLE resources (
+        audit_id TEXT NOT NULL REFERENCES audits(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK (kind IN ('item-list-page', 'recipe-list-page', 'recipe-detail')),
+        resource_key TEXT NOT NULL, url TEXT NOT NULL,
+        completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
+        artifact_key TEXT, content_sha256 TEXT, raw_bytes INTEGER, fetched_at INTEGER,
+        PRIMARY KEY (audit_id, kind, resource_key)
+      ) WITHOUT ROWID;
+      CREATE INDEX resources_pending ON resources(audit_id, completed, kind, resource_key);
+      CREATE TABLE state (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
+      INSERT INTO audits VALUES ('audit-1', 'running', 'catalog-a', 100, 100, NULL);
+      INSERT INTO resources VALUES (
+        'audit-1', 'recipe-detail', 'recipe-a', 'https://example.invalid/recipe/a',
+        0, NULL, NULL, NULL, NULL
+      );
+    `);
+  } finally {
+    legacy.close();
+  }
+  const store = openLodestoneAuditStore(databasePath);
+  try {
+    assert.equal(store.db.prepare('PRAGMA user_version').get().user_version, 2);
+    assert.deepEqual(listPendingLodestoneAuditResources(store, 'audit-1').map(row => row.key), ['recipe-a']);
+    planLodestoneAuditResource(store, 'audit-1', {
+      kind: 'item-detail', key: 'item-a', url: 'https://example.invalid/item/a'
+    });
+    assert.deepEqual(
+      listPendingLodestoneAuditResources(store, 'audit-1').map(row => row.key),
+      ['item-a', 'recipe-a']
+    );
+  } finally {
+    store.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('Lodestone audit persists resumable progress by catalog fingerprint', () => {
   withStore((store, databasePath) => {

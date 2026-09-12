@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ja" data-font-size-level="3">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>マクロ(β)</title>
+  <script src="./site-style-bridge.js"></script>
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./bug-report.css">
+</head>
+<body>
+  <div id="appShell">
+    <main id="macroContent">
+    <section class="card" aria-labelledby="recipeTitle">
+      <h2 id="recipeTitle">製作アイテム</h2>
+      <div id="recipeInfo" class="empty">製作アイテムが選択されていません</div>
+    </section>
+
+    <section class="card accordion open">
+      <button class="accordion-toggle" type="button" aria-expanded="true">中間素材</button>
+      <div class="accordion-clip"><div id="ingredientList" class="list empty">中間素材はありません</div></div>
+    </section>
+
+    <section id="crafterStatusSection" class="card accordion">
+      <button class="accordion-toggle" type="button" aria-expanded="false">製作ステータス</button>
+      <div class="accordion-clip">
+        <form id="statusForm" class="list crafter-status-form" novalidate>
+          <div class="crafter-status-job"><span>ジョブ</span>
+            <span id="jobPicker" class="settings-dropdown macro-job-picker">
+              <input id="job" type="hidden">
+              <button id="jobToggle" class="settings-dropdown-toggle macro-job-toggle" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+              <ul id="jobChoices" class="settings-dropdown-list macro-job-choices" role="listbox"></ul>
+            </span>
+          </div>
+          <div class="crafter-number-grid">
+            <label>ジョブレベル<input id="level" class="count-input crafter-number-input" type="number" inputmode="numeric" min="1"></label>
+            <label>作業精度<input id="craftsmanship" class="count-input crafter-number-input" type="number" inputmode="numeric" min="1"></label>
+            <label>加工精度<input id="control" class="count-input crafter-number-input" type="number" inputmode="numeric" min="1"></label>
+            <label>CP<input id="cp" class="count-input crafter-number-input" type="number" inputmode="numeric" min="1"></label>
+          </div>
+          <div class="crafter-option-grid">
+            <label class="check"><input id="manipulation" class="macro-checkbox" type="checkbox">マニピュレーションあり</label>
+            <label class="check"><input id="heartAndSoul" class="macro-checkbox" type="checkbox">一心不乱を使用する(生成時間倍化)</label>
+            <label class="check"><input id="quickInnovation" class="macro-checkbox" type="checkbox">クイックイノベーションを使用する(生成時間倍化)</label>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="card accordion">
+      <button class="accordion-toggle" type="button" aria-expanded="false">食事リスト</button>
+      <div class="current-consumable"><span>現在選択中</span><div id="foodCurrent" class="current-consumable-value">使用しない</div></div>
+      <div class="accordion-clip"><div id="foodList" class="list scroll-list"><button class="choice choice-list-btn selected" type="button">使用しない</button></div></div>
+    </section>
+
+    <section class="card accordion">
+      <button class="accordion-toggle" type="button" aria-expanded="false">薬品リスト</button>
+      <div class="current-consumable"><span>現在選択中</span><div id="medicineCurrent" class="current-consumable-value">使用しない</div></div>
+      <div class="accordion-clip"><div id="medicineList" class="list scroll-list"><button class="choice choice-list-btn selected" type="button">使用しない</button></div></div>
+    </section>
+
+    <button id="generateButton" class="confirm-btn yes generate" type="button" disabled>マクロ生成開始</button>
+    <div id="generationMessage" class="generation-message" role="status" hidden></div>
+
+    <section id="generatedStatusSection" class="card accordion" hidden>
+      <button class="accordion-toggle" type="button" aria-expanded="false">前回のマクロ生成日時とクラフターステータス</button>
+      <div id="generatedAtSection" class="generated-date" hidden><time id="generatedAt"></time></div>
+      <div class="accordion-clip"><div id="generatedStatus" class="list generated-status"></div></div>
+    </section>
+    <section id="macroSection" class="card accordion" hidden>
+      <div class="macro-output-header">
+        <button class="accordion-toggle" type="button" aria-expanded="false">マクロ</button>
+        <button id="copyMacroButton" class="macro-copy-button" type="button" title="マクロをコピー" aria-label="マクロをコピー">
+          <svg class="macro-copy-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7V4h11v13h-3M5 7h11v13H5z"/></svg>
+          <span class="macro-copy-success" aria-hidden="true">✓ コピー済み</span>
+        </button>
+      </div>
+      <div class="accordion-clip"><div class="list macro-output-body">
+        <textarea id="macroOutput" readonly spellcheck="false" aria-label="生成マクロ"></textarea>
+      </div></div>
+    </section>
+    <button id="bugReportButton" class="settings-btn" type="button">不具合・お問い合わせ</button>
+    </main>
+  </div>
+
+  <div id="statusWarningOverlay" class="status-warning-overlay" role="alertdialog" aria-modal="true" aria-labelledby="statusWarningTitle" hidden>
+    <div class="status-warning-card">
+      <h2 id="statusWarningTitle">製作ステータスが未設定です</h2>
+      <p>このレシピを製作するジョブのステータスを入力してください。</p>
+      <button id="statusWarningButton" class="confirm-btn yes" type="button">確認</button>
+    </div>
+  </div>
+
+  <div id="progressOverlay" class="progress-overlay" role="dialog" aria-modal="true" aria-label="マクロ生成進捗" hidden>
+    <div class="progress-card">
+      <h2>マクロ生成中</h2>
+      <p class="generation-note">デバイスの性能により、生成時間は大きく左右され、5 ～ 14 分以上かかる場合もあります。
+Android、iOS、iPadOS では、OS の管理により、他のアプリが休止する場合があります。
+マクロ生成中は、OS の制限により、消灯を防げない場合があります。
+画面消灯やアプリ切り替えで計算が一時停止した場合、ページが保持されていれば復帰後に計算を続行します。
+ページが破棄または再読み込みされた場合、計算結果は失われます。
+
+
+
+あまりにも長時間かかる場合は中断し、食事や薬品の使用もご検討ください。
+不具合を発見しましたら、画面最下部の「不具合・お問い合わせ」ボタンからご報告ください。検証に必要な情報は含まれた状態でご報告いただけます。</p>
+      <div class="loading-progress-row">
+        <progress id="progress" class="loading-progress" max="100" value="0"></progress>
+        <output id="progressPercent" class="loading-progress-percent">0%</output>
+      </div>
+      <div class="generation-elapsed"><span>経過時間</span><output id="elapsedTime">00:00</output></div>
+      <div id="generationStatus" class="generation-status">生成を準備しています</div>
+      <button id="cancelButton" class="confirm-btn no" type="button">中断</button>
+    </div>
+  </div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

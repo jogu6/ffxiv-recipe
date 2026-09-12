@@ -1,27 +1,51 @@
-# Notices
+# ライセンス・権利表記
 
-The MIT License applies only to the original application source code and project tooling in this repository.
+## アプリケーションのライセンス
 
-It does not grant rights to game images, game data, names, trademarks, or other third-party material stored or referenced by this project.
+XIVca 独自のアプリケーションコードとプロジェクト用ツールには、MIT ライセンスを適用します。著作権者は jogu6（2026年）です。
 
-- FINAL FANTASY XIV (C) SQUARE ENIX
-- FINAL FANTASY is a registered trademark of Square Enix Holdings Co., Ltd.
-- FINAL FANTASY XIV images, names, item and recipe data, trademarks, and other game-derived materials are owned by SQUARE ENIX.
-- Item and recipe data used by this application is derived from the official Lodestone.
+著作権表示と許諾文を保持することを条件に、使用、複製、改変、再配布、販売などを認めます。ソフトウェアは無保証で提供します。詳しい条件は [MIT ライセンス原文（英語）](LICENSE)をご確認ください。
 
-This project is unofficial and is not affiliated with, sponsored by, approved by, or endorsed by SQUARE ENIX.
+この許諾には、ゲーム由来の素材や第三者のライブラリは含まれません。それぞれの権利者が定める条件が適用されます。
 
-All third-party material remains subject to the rights and terms of its respective owner. Use of FINAL FANTASY XIV materials is intended to follow the FINAL FANTASY XIV Materials Usage License and related SQUARE ENIX rules and policies.
+## ゲーム由来の素材と非公式性
 
-If SQUARE ENIX requests correction, removal, suspension, or discontinuation of any material or service related to this project, the maintainer will respond promptly and comply. If necessary, distribution of the application may be suspended and affected materials or data may be removed.
+© SQUARE ENIX
 
-The project also respects actions or requirements from hosting providers such as GitHub. If the site, repository, assets, or related services are suspended, removed, restricted, or otherwise made unavailable with or without advance notice, the maintainer will respect that action and comply with any required follow-up. The maintainer will not attempt to bypass such measures and will make necessary corrections, removals, or service changes as appropriate.
+FINAL FANTASY は、株式会社スクウェア・エニックス・ホールディングスの登録商標です。FINAL FANTASY XIV の画像、名称、アイテム・レシピデータ、商標などのゲーム由来素材の権利は、SQUARE ENIX または各権利者に帰属します。
 
-## Bundled open source libraries
+本アプリのアイテム・レシピデータは、[公式サイト「The Lodestone」](https://jp.finalfantasyxiv.com/lodestone/)を取得元としています。ゲーム由来素材は、[ファイナルファンタジーXIV 著作物利用条件](https://support.jp.square-enix.com/rule.php?id=5381&la=0&tag=authc)および関連する規約に従って利用します。本アプリの MIT ライセンスによって、これらの素材の利用や再配布を独自に許諾するものではありません。
 
-The static site bundles the following open source JavaScript libraries:
+本アプリは非公式です。SQUARE ENIX による承認、提携、後援を示すものではありません。
 
-- marked, licensed under the MIT License, for Markdown parsing.
-- DOMPurify, used under the Apache License 2.0 option of its dual license, for HTML sanitizing.
+## 公開・提供に関する方針
 
-Copies of the bundled library license texts are included under `site/vendor/licenses/`.
+SQUARE ENIX から修正、削除、公開・提供の停止を求められた場合は、速やかに対応します。GitHub などのホスティング提供者による公開停止や制限にも従い、回避を試みず、必要な修正・削除・運用変更を行います。これらの対応に伴い、本アプリの公開・提供を停止する場合があります。
+
+## 同梱するオープンソースライブラリ
+
+各ライブラリのライセンス原文には、著作権表示、利用条件、免責事項を記載しています。
+
+| ライブラリ | 用途 | ライセンス原文 |
+| --- | --- | --- |
+| marked | Markdown 文書の表示 | [MIT ライセンス（英語）](site/vendor/licenses/marked-LICENSE.txt) |
+| DOMPurify | 表示する HTML の無害化 | [Apache ライセンス 2.0（英語）](site/vendor/licenses/dompurify-Apache-2.0-LICENSE.txt) |
+| html2canvas 1.4.1 | 画面内容の画像化 | [MIT ライセンス（英語）](site/vendor/licenses/html2canvas-MIT-LICENSE.txt) |
+| Swiper 14.0.5 | スワイプによるパネル切り替え | [MIT ライセンス（英語）](site/vendor/licenses/swiper-MIT-LICENSE.txt) |
+| Raphael v0.28.6 | 製作シミュレーションとマクロ生成 | [Apache ライセンス 2.0（英語）](site/vendor/licenses/raphael-Apache-2.0-LICENSE.txt) |
+
+DOMPurify はデュアルライセンスのうち、Apache ライセンス 2.0 を選択して利用しています。
+
+Raphael は KonaeAkira および貢献者が開発しています。XIVca は `raphael-sim` と `raphael-solver`（コミット `411168605989d573d89f2d71c01acac9f099e55a`）を利用し、ブラウザーへの組み込み、動作記録、メモリー管理に関する改変を加えています。
+
+## MIT ライセンスの日本語参考訳
+
+以下はアプリケーションに適用する MIT ライセンスの理解を助けるための参考訳です。適用する条件の原文は、上記リンク先の英語文書です。
+
+著作権 © 2026 jogu6
+
+本ソフトウェアおよび関連文書の複製物（以下「本ソフトウェア」）を取得するすべての人に対し、以下の条件に従うことを条件として、本ソフトウェアを制限なく取り扱うことを無償で許諾します。これには、本ソフトウェアの使用、複製、改変、結合、公開、配布、再許諾、複製物の販売、および本ソフトウェアの提供を受けた人にこれらの行為を認める権利が含まれますが、これらに限定されません。
+
+上記の著作権表示および本許諾文を、本ソフトウェアのすべての複製物または重要な部分に含めなければなりません。
+
+本ソフトウェアは「現状のまま」提供され、商品性、特定の目的への適合性および権利の非侵害に関する保証を含め、明示または黙示を問わず、いかなる保証もありません。著作者または著作権者は、契約、不法行為、その他のいずれに基づくかを問わず、本ソフトウェア、その使用、その他の取り扱いから、またはそれらに関連して生じる請求、損害、その他の責任について、一切の責任を負いません。

@@ -108,13 +108,13 @@ npm run test:pipeline:gui
 
 開発ツールの詳細は [docs/development.md](docs/development.md) を参照してください。
 
-## Rights and license
+## 権利とライセンス
 
-アプリケーションコードとプロジェクト用ツールには MIT License を適用します。
+独自のアプリケーションコードとプロジェクト用ツールには [MIT ライセンス](LICENSE)を適用します。[日本語の説明と参考訳](site/docs/license-notice.md)も掲載しています。
 
-FINAL FANTASY XIV の画像、名称、アイテム/レシピデータ、商標、その他ゲーム由来素材の権利は SQUARE ENIX に帰属します。本プロジェクトは非公式であり、SQUARE ENIX の承認、提携、後援を示すものではありません。
+FINAL FANTASY XIV の画像、名称、アイテム・レシピデータ、商標などのゲーム由来素材の権利は、SQUARE ENIX または各権利者に帰属します。ゲーム由来素材や第三者のライブラリには、それぞれの権利者が定める条件が適用されます。本プロジェクトは非公式であり、SQUARE ENIX の承認、提携、後援を示すものではありません。
 
-SQUARE ENIX から修正、削除、公開停止、提供停止などの指示があった場合は迅速に従います。また、GitHub等のホスティング提供者により、事前通知の有無にかかわらず公開停止、削除、制限、アクセス不能などの措置が行われた場合も、その措置に従い、必要な修正・削除・運用変更を行います。
+SQUARE ENIX やホスティング提供者からの要請・措置に従い、必要な修正、削除、公開・提供の停止を行います。
 
 詳細は [NOTICE.md](NOTICE.md) および [site/docs/license-notice.md](site/docs/license-notice.md) を参照してください。
 

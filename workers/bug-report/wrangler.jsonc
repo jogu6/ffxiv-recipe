@@ -1,0 +1,10 @@
+{
+  "name": "xivca-bug-report",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-09-01",
+  "observability": { "enabled": false },
+  "logpush": false,
+  "tail_consumers": [],
+  "vars": { "ALLOWED_ORIGINS": "https://jogu6.github.io,http://127.0.0.1:4173,http://localhost:4173" },
+  "ratelimits": [{ "name": "REPORT_LIMITER", "namespace_id": "14201", "simple": { "limit": 3, "period": 60 } }]
+}

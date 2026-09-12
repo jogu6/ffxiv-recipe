@@ -30,6 +30,17 @@ test('current display keeps level 3 while using the enlarged baseline', async ({
     .toBe('1.1');
 });
 
+test('recipe tree and material list start with one craft output quantity', async ({ page }) => {
+  await openApp(page);
+  await searchFor(page, 'ポーション');
+  await page.locator('#recipeList').getByText('ポーション', { exact: true }).first().click();
+  await expect(page.locator('#countInput')).toHaveValue('3');
+  await page.locator('#materialsViewBtn').click();
+  await expect(page.locator('#countInput')).toHaveValue('3');
+  await page.locator('#treeViewBtn').click();
+  await expect(page.locator('#countInput')).toHaveValue('3');
+});
+
 test('loading and image progress use the full width until their percentage appears', async ({ page }) => {
   await openApp(page);
   const metrics = await page.evaluate(() => {

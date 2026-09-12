@@ -19,8 +19,11 @@ playwright-report/
 # Rust / Tauri build outputs
 target/
 src-tauri/target/
+macro-app/build/
+site/macro-app/
 
 # Temporary files
+__pycache__/
 *.bak
 *.tmp
 *.temp
@@ -28,6 +31,7 @@ pipeline/logs/*.tmp
 *.local.json
 
 # Local data pipeline files
+pipeline/input/inquiry-worker-build/
 pipeline/input/*.csv
 pipeline/input/*.json
 pipeline/input/web-app/*.json
@@ -35,6 +39,7 @@ pipeline/input/manual-item-icons/
 pipeline/intermediate/*.json
 pipeline/reference/csv-headers/*.txt
 pipeline/reference/expected/*.json
+pipeline/reference/raphael-v0.28.6/
 pipeline/cache/
 pipeline/logs/*.txt
 pipeline/logs/runs/
@@ -42,6 +47,7 @@ pipeline/logs/latest.log
 pipeline/logs/archive/
 pipeline/state/*.json
 pipeline/state/*.lock
+pipeline/state/auto-publish-files-*/
 pipeline/reports/
 pipeline/config/*.local.json
 pipeline/legacy-powershell/

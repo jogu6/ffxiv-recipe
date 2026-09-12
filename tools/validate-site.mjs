@@ -25,6 +25,8 @@ for (const relativePath of [
   'pwa-update.js',
   'data-setup-progress.js',
   'item-icon-pack.js',
+  'macro-launcher.js',
+  'macro-launcher.css',
   'share-content-model.js',
   'share-coordinator.js',
   'share-png-store.js',

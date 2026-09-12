@@ -71,6 +71,7 @@
     const view = value.view || {};
     const favoriteMaterials = value.favoriteMaterials || {};
     const materials = value.materials || {};
+    const macro = value.macro || {};
     const equipmentSearch = value.equipmentSearch || {};
     const state = {
       input: {
@@ -88,7 +89,7 @@
         listMode: enumValue(view.listMode, ['none', 'search', 'fav', 'equipment'], 'none'),
         sourceMode: enumValue(view.sourceMode, ['recipe', 'favorite-materials'], 'recipe'),
         resultMode: enumValue(view.resultMode, ['tree', 'materials'], 'tree'),
-        mobilePanel: enumValue(view.mobilePanel, ['', 'left', 'middle', 'right'], ''),
+        mobilePanel: enumValue(view.mobilePanel, ['', 'left', 'middle', 'right', 'macro'], ''),
         favoriteListsOpen:
           view.favoriteListsOpen === undefined
             ? view.sourceMode === 'favorite-materials'
@@ -123,6 +124,11 @@
         slot: stringValue(equipmentSearch.slot, 'all'),
         results: stringArray(equipmentSearch.results),
         parameterNames: stringArray(equipmentSearch.parameterNames)
+      },
+      macro: {
+        open: macro.open === true,
+        recipeId: stringValue(macro.recipeId),
+        scrollTop: nonNegativeInteger(macro.scrollTop)
       },
       scroll: normalizeScroll(value.scroll)
     };

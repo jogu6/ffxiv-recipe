@@ -24,6 +24,29 @@ function tagAttributes(tag) {
   );
 }
 
+export function canonicalLodestoneMacroItemContent(html) {
+  const source = String(html || '');
+  const itemLevelText = normalizeText(source.match(
+    /<div\b[^>]*class=["'][^"']*\bdb-view__item_level\b[^"']*["'][^>]*>\s*ITEM\s+LEVEL\s+([0-9,]+)\s*<\/div>/i
+  )?.[1]);
+  const itemLevel = Number(itemLevelText.replace(/,/g, ''));
+  if (!Number.isSafeInteger(itemLevel) || itemLevel < 0) {
+    throw new Error('Lodestoneアイテム詳細からITEM LEVELを正規化できません');
+  }
+  const effectsBlock = source.match(
+    /<h3\b[^>]*class=["'][^"']*\bdb-view__sub_title\b[^"']*["'][^>]*>\s*Effects\s*<\/h3>[\s\S]*?<div\b[^>]*class=["'][^"']*\bdb-view__info_text\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i
+  )?.[1] || '';
+  const variant = className => {
+    const list = effectsBlock.match(
+      new RegExp(`<ul\\b[^>]*class=["'][^"']*\\b${className}\\b[^"']*["'][^>]*>([\\s\\S]*?)<\\/ul>`, 'i')
+    )?.[1] || '';
+    return [...list.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/gi)]
+      .map(match => normalizeText(match[1]))
+      .filter(value => /^(?:作業精度|加工精度|CP)\s*\+/i.test(value));
+  };
+  return { ItemLevel: itemLevel, NQ: variant('sys_nq_element'), HQ: variant('sys_hq_element') };
+}
+
 export function canonicalLodestoneRecipeContent(html) {
   const source = String(html || '');
   const job = normalizeText(source.match(
@@ -48,11 +71,41 @@ export function canonicalLodestoneRecipeContent(html) {
       Name: normalizeText(attributes['data-name']),
       Amount: Number(attributes['data-num'])
     }));
+  const craftBlock = source.match(
+    /<ul\b[^>]*class=["'][^"']*\bdb-view__recipe__craftdata\b[^"']*["'][^>]*>([\s\S]*?)<\/ul>/i
+  )?.[1] || '';
+  const craftValues = new Map([...craftBlock.matchAll(
+    /<li\b[^>]*>\s*<span\b[^>]*>([\s\S]*?)<\/span>([\s\S]*?)<\/li>/gi
+  )].map(match => [normalizeText(match[1]), normalizeText(match[2])]));
+  const integer = value => {
+    const digits = String(value || '').replace(/[^0-9]/g, '');
+    return digits ? Number(digits) : Number.NaN;
+  };
+  const conditions = [...source.matchAll(
+    /<dl\b[^>]*class=["'][^"']*\bdb-view__recipe__crafting_conditions\b[^"']*["'][^>]*>([\s\S]*?)<\/dl>/gi
+  )].flatMap(block => [...block[1].matchAll(/<dd\b[^>]*>([\s\S]*?)<\/dd>/gi)].map(match => normalizeText(match[1])));
+  const conditionText = conditions.join(' ');
+  const optionalCondition = label => integer(conditionText.match(new RegExp(`${label}[^0-9]*([0-9,]+)`))?.[1]) || 0;
+  const craftingData = {
+    Difficulty: integer(craftValues.get('必要工数')),
+    Durability: integer(craftValues.get('耐久')),
+    MaxQuality: integer(craftValues.get('品質最大値')),
+    MaterialQualityPercent: integer(craftValues.get('初期品質値')?.match(/上限\s*([0-9,]+)\s*％/)?.[1]),
+    RequiredCraftsmanship: optionalCondition('作業精度'),
+    RequiredControl: optionalCondition('加工精度'),
+    HqAvailable: !conditions.some(value => /HQ(?:アイテム)?製作不可/i.test(value)),
+    Expert: conditions.some(value => /高難易度|エキスパート/.test(value))
+  };
   if (!/^(?:木工師|鍛冶師|甲冑師|彫金師|革細工師|裁縫師|錬金術師|調理師)$/u.test(job) ||
       !Number.isInteger(level) || level <= 0 || !Number.isInteger(amount) || amount <= 0 ||
       ingredients.length === 0 ||
       ingredients.some(ingredient => !ingredient.LodestoneKey || !ingredient.Name ||
-        !Number.isInteger(ingredient.Amount) || ingredient.Amount <= 0)) {
+        !Number.isInteger(ingredient.Amount) || ingredient.Amount <= 0) ||
+      !Number.isInteger(craftingData.Difficulty) || craftingData.Difficulty <= 0 ||
+      !Number.isInteger(craftingData.Durability) || craftingData.Durability <= 0 ||
+      !Number.isInteger(craftingData.MaxQuality) || craftingData.MaxQuality < 0 ||
+      !Number.isInteger(craftingData.MaterialQualityPercent) || craftingData.MaterialQualityPercent < 0 ||
+      craftingData.MaterialQualityPercent > 100) {
     throw new Error('Lodestoneレシピ詳細を比較用に正規化できません');
   }
   return {
@@ -60,6 +113,7 @@ export function canonicalLodestoneRecipeContent(html) {
     Level: level,
     Masterbook: masterbook,
     AmountResult: amount,
+    CraftingData: craftingData,
     Ingredients: ingredients
   };
 }
@@ -108,6 +162,7 @@ function comparableAuditRecipeContent(content) {
   const normalized = normalizedRecipeContent(content);
   return {
     ...normalized,
+    CraftingData: content.CraftingData,
     Ingredients: (content.Ingredients || []).map(ingredient => ({
       LodestoneKey: ingredient.LodestoneKey,
       Amount: Number(ingredient.Amount)
@@ -227,7 +282,13 @@ export function compareInitialLodestoneAudit({
       })
     };
     const current = recipeContent(currentResources, currentRecipe, readCurrentArtifact);
-    const afterComparable = comparableAuditRecipeContent(current);
+    const afterComparable = {
+      ...normalizedRecipeContent(current),
+      Ingredients: (current.Ingredients || []).map(ingredient => ({
+        LodestoneKey: ingredient.LodestoneKey,
+        Amount: Number(ingredient.Amount)
+      }))
+    };
     if (sha256Json(beforeComparable) === sha256Json(afterComparable)) continue;
     contentChanged.push({
       RecipeKey: recipeKey,
@@ -258,7 +319,7 @@ export function compareInitialLodestoneAudit({
   };
 }
 
-export function lodestoneAuditDataGeneration(snapshot, resources, readArtifact) {
+export function lodestoneAuditDataGeneration(snapshot, resources, readArtifact, itemResources = new Map()) {
   const hash = crypto.createHash('sha256');
   const items = (snapshot.Items || []).map(item => [item.LodestoneKey, item.Name, item.SortOrder]);
   hash.update(`{"Version":${JSON.stringify(snapshot.Version)},"Items":${JSON.stringify(items)},"Recipes":[`);
@@ -270,6 +331,13 @@ export function lodestoneAuditDataGeneration(snapshot, resources, readArtifact) 
       recipe.Job,
       recipeContent(resources, recipe, readArtifact),
     ]));
+  }
+  hash.update('],"MacroItems":[');
+  let itemIndex = 0;
+  for (const [key, resource] of [...itemResources].sort(([left], [right]) => left.localeCompare(right))) {
+    if (itemIndex > 0) hash.update(',');
+    hash.update(JSON.stringify([key, canonicalLodestoneMacroItemContent(readArtifact(resource))]));
+    itemIndex += 1;
   }
   hash.update(']}');
   return hash.digest('hex');

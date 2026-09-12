@@ -3,8 +3,9 @@ const VERIFIED_DATA_CACHE_VERSION = `ff14recipe-verified-data-${DATA_CACHE_VERSI
 const DATA_FILE = `./data/Item.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 const LEGACY_ITEM_IDS_FILE = `./data/legacy-item-ids.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 const TIPS_FILE = './data/tips.md';
-const DEVELOPMENT_SITE_HOSTS = new Set(['127.0.0.1', 'localhost', '192.168.11.2']);
-const IS_DEVELOPMENT_APP = DEVELOPMENT_SITE_HOSTS.has(location.hostname) && location.port === '4173';
+const IS_DEVELOPMENT_HOST = location.hostname === 'localhost' || location.hostname === '[::1]' ||
+  /^(?:127\.|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.)/.test(location.hostname);
+const IS_DEVELOPMENT_APP = IS_DEVELOPMENT_HOST && location.port === '4173';
 const DEVELOPMENT_ABOUT_ORIGIN = `${location.protocol}//${location.hostname}:4174`;
 const ABOUT_URL = IS_DEVELOPMENT_APP
   ? `${DEVELOPMENT_ABOUT_ORIGIN}/`
@@ -35,7 +36,6 @@ const MIDDLE_PANEL_BASE_WIDTH = 280;
 const BASE_FONT_SIZE_SCALE = 1.1;
 const LICENSE_NOTICE_FILE = './docs/license-notice.md';
 const PRIVACY_POLICY_FILE = './docs/privacy-policy.md';
-const CONTACT_URL = 'https://discord.gg/eZP5temK6e';
 const REQUEST_COUNT_MAX = 999;
 const FIRST_LOADING_OVERLAY_MS = 2000;
 const minimumLoadingOverlayMs = localStorage.getItem(LS_SUCCESSFUL_BOOT) === '1'
@@ -140,6 +140,7 @@ const { createMobilePanelSwipe } = MobilePanelSwipe;
 const { resolvePanelLayout } = PanelLayout;
 const {
   ACKNOWLEDGED_VERSION_KEY,
+  createCrossOriginIsolationBootstrap,
   UPDATE_RELOAD_PENDING_KEY,
   createForegroundUpdateChecker,
   extractAppVersion,
@@ -199,6 +200,9 @@ const elements = {
   panelLeftResizeHandle: document.getElementById('panelLeftResizeHandle'),
   panelMiddle: document.getElementById('panelMiddle'),
   panelRight: document.getElementById('panelRight'),
+  panelMacro: document.getElementById('panelMacro'),
+  macroPanelCloseButton: document.getElementById('macroPanelCloseButton'),
+  macroPanelPreparing: document.getElementById('macroPanelPreparing'),
   resultHeader: document.querySelector('.result-header'),
   searchBox: document.getElementById('searchBox'),
   searchRow: document.querySelector('.search-row'),
@@ -243,6 +247,13 @@ const elements = {
   resultViewSwitch: document.getElementById('resultViewSwitch'),
   treeViewBtn: document.getElementById('treeViewBtn'),
   materialsViewBtn: document.getElementById('materialsViewBtn'),
+  macroFrame: document.getElementById('macroFrame'),
+  macroProgressOverlay: document.getElementById('macroProgressOverlay'),
+  macroProgress: document.getElementById('macroProgress'),
+  macroProgressPercent: document.getElementById('macroProgressPercent'),
+  macroElapsedTime: document.getElementById('macroElapsedTime'),
+  macroGenerationStatus: document.getElementById('macroGenerationStatus'),
+  macroCancelButton: document.getElementById('macroCancelButton'),
   usesBtn: document.getElementById('usesBtn'),
   treeContainer: document.getElementById('treeContainer'),
   tipsMsg: document.getElementById('tipsMsg'),
@@ -299,7 +310,7 @@ const elements = {
   shareTextFallbackReason: document.getElementById('shareTextFallbackReason'),
   shareTextFallbackContent: document.getElementById('shareTextFallbackContent'),
   shareTextFallbackCloseBtn: document.getElementById('shareTextFallbackCloseBtn'),
-  contactBtn: document.getElementById('contactBtn'),
+  inquiryBtn: document.getElementById('inquiryBtn'),
   privacyBtn: document.getElementById('privacyBtn'),
   licenseBtn: document.getElementById('licenseBtn'),
   licenseOverlay: document.getElementById('licenseOverlay'),
@@ -368,6 +379,38 @@ const floatingWindows = {
   shop: createFloatingWindow(elements.shopOverlay, floatingWindowOptions),
   textInput: createFloatingWindow(elements.textInputOverlay, floatingWindowOptions)
 };
+const macroLauncher = globalThis.MacroLauncher.create({
+  panel: elements.panelMacro,
+  frame: elements.macroFrame,
+  closeButton: elements.macroPanelCloseButton,
+  preparing: elements.macroPanelPreparing,
+  progressOverlay: elements.macroProgressOverlay,
+  progress: elements.macroProgress,
+  progressPercent: elements.macroProgressPercent,
+  elapsedTime: elements.macroElapsedTime,
+  generationStatus: elements.macroGenerationStatus,
+  cancelButton: elements.macroCancelButton,
+  resolveIconFile: iconFile => itemIconPack?.url(iconFile) || '',
+  onOpen: () => {
+    updatePanelLayout();
+    mobilePanelSwipeController?.sync(currentMobilePanelAvailability());
+    if (isMobile()) showMobilePanel('macro');
+    saveViewState();
+  },
+  onClose: () => {
+    pendingMacroRestore = null;
+    updatePanelLayout();
+    mobilePanelSwipeController?.sync(currentMobilePanelAvailability());
+    saveViewState();
+  },
+  onNavigate: direction => {
+    if (isMobile() && (direction === 'right' || direction === 'macro')) showMobilePanel(direction);
+  },
+  onScroll: () => {
+    updateMobileHeaderVisibility();
+    scheduleScrollStateSave();
+  }
+});
 
 // Application state and indexes
 let itemMaster = {};
@@ -443,6 +486,7 @@ let imageCheckRenderCounts = new Map();
 let searchInputTimerId = 0;
 let searchCompositionActive = false;
 let scrollStateSaveFrame = 0;
+let pendingMacroRestore = null;
 let viewScrollPositions = {
   recipeList: 0,
   usesList: 0,
@@ -461,6 +505,7 @@ let panelLayoutFrame = 0;
 let mobilePanelSwipeController = null;
 let mobilePanelName = 'left';
 let foregroundUpdateChecker = null;
+let crossOriginIsolationBootstrap = null;
 let headerInfoResizeObserver = null;
 let lastInteractedSharePanel = 'left';
 let selectedSharePanel = 'left';
@@ -833,6 +878,7 @@ function updatePanelLayout() {
 
   const metrics = measurePanelLayoutMetrics();
   const mainWidth = elements.main.clientWidth;
+  const macroOpen = elements.panelMacro.classList.contains('open');
   const layout = resolvePanelLayout({
     viewportWidth: mainWidth,
     handleWidth: elements.panelLeftResizeHandle.offsetWidth,
@@ -842,7 +888,7 @@ function updatePanelLayout() {
     middleOpen: elements.panelMiddle.classList.contains('open'),
     middlePreferredWidth: metrics.middlePreferredWidth,
     middleMinimumWidth: MIDDLE_PANEL_MINIMUM_WIDTH,
-    rightMinimumWidth: metrics.rightMinimumWidth
+    rightMinimumWidth: metrics.rightMinimumWidth * (macroOpen ? 2 : 1)
   });
 
   elements.panelLeft.style.setProperty('--panel-left-width', `${layout.leftWidth}px`);
@@ -1064,6 +1110,7 @@ function saveViewState() {
       results: listMode === 'equipment' ? equipmentSearchResults : [],
       parameterNames: listMode === 'equipment' ? [...equipmentParameterDisplayNames] : []
     },
+    macro: macroLauncher.getState(),
     scroll: { ...viewScrollPositions }
   });
 }
@@ -1143,6 +1190,7 @@ function restoreViewState() {
     const recipeId = activateRecipeVariant(recipe, state.selected?.recipeId || '')?.recipeId || '';
     const usesItem = usedIn[state.selected?.usesItem] ? state.selected.usesItem : '';
     const equipmentState = state.equipmentSearch;
+    pendingMacroRestore = state.macro.open && state.macro.recipeId ? state.macro : null;
     setCustomSelectValue(elements.equipmentJobSelect, equipmentState.job);
     updateEquipmentSlotOptions(equipmentState.slot);
     elements.equipmentLevelInput.value = equipmentState.equipLevel || String(maxEquipmentLevel);
@@ -1246,9 +1294,15 @@ function restoreViewState() {
 
     if (selectedUsesItem) showUsesPanel(selectedUsesItem, { record: false });
 
+    if (pendingMacroRestore) macroLauncher.showPending(
+      pendingMacroRestore.recipeId,
+      { scrollTop: pendingMacroRestore.scrollTop }
+    );
     if (isMobile()) {
       const panel = state.view.mobilePanel;
-      if (panel === 'right' && (selectedRecipe || resultSourceMode === 'favorite-materials')) {
+      if (panel === 'macro' && pendingMacroRestore) {
+        showMobilePanel('macro', { animate: false });
+      } else if (panel === 'right' && (selectedRecipe || resultSourceMode === 'favorite-materials')) {
         showMobilePanel('right', { animate: false });
       } else if (panel === 'middle' && selectedUsesItem) showMobilePanel('middle', { animate: false });
       else showMobilePanel('left', { animate: false });
@@ -3856,6 +3910,8 @@ function closeUsesPanel() {
   if (isMobile()) mobilePanelSwipeController?.sync({ middleOpen: false });
   resetDestinationPanelScroll('middle');
   selectedUsesItem = null;
+  elements.usesTitle.textContent = '';
+  elements.usesList.replaceChildren();
   updatePanelLayout();
   saveViewState();
 }
@@ -3889,11 +3945,12 @@ function showUsesPanel(ingredientName, options = {}) {
         selectedRecipeId !== (variant.recipeId || '') ||
         resultSourceMode === 'favorite-materials'
       ) {
-        resetCountInput();
+        resetCountInput(variant);
       }
       activateRecipeVariant(recipeName, variant.recipeId);
       selectedRecipe = recipeName;
       selectedRecipeId = variant.recipeId || '';
+      macroLauncher.syncRecipe(selectedRecipeId);
       leaveFavoriteMaterialsMode();
       resetRightPanelViewState();
       setResultViewMode('tree');
@@ -3942,10 +3999,11 @@ function selectRecipe(name, li, recipeId = '') {
     selectedRecipeId !== nextRecipeId ||
     resultSourceMode === 'favorite-materials'
   ) {
-    resetCountInput();
+    resetCountInput(variant);
   }
   selectedRecipe = name;
   selectedRecipeId = nextRecipeId;
+  macroLauncher.syncRecipe(selectedRecipeId);
   closeUsesPanel();
   leaveFavoriteMaterialsMode();
   resetRightPanelViewState();
@@ -3970,10 +4028,11 @@ function selectRecipeByName(name, recipeId = '') {
     selectedRecipeId !== nextRecipeId ||
     resultSourceMode === 'favorite-materials'
   ) {
-    resetCountInput();
+    resetCountInput(variant);
   }
   selectedRecipe = name;
   selectedRecipeId = nextRecipeId;
+  macroLauncher.syncRecipe(selectedRecipeId);
   closeUsesPanel();
   leaveFavoriteMaterialsMode();
   resetMaterialPurchasesForContext(materialPurchaseState, currentMaterialPurchaseContext());
@@ -4032,6 +4091,9 @@ function requestForegroundUpdateCheck() {
 function initializeForegroundUpdateChecks() {
   if (!('serviceWorker' in navigator)) return;
   hadServiceWorkerControllerAtBoot = Boolean(navigator.serviceWorker.controller);
+  crossOriginIsolationBootstrap = createCrossOriginIsolationBootstrap({
+    serviceWorkerContainer: navigator.serviceWorker
+  });
   foregroundUpdateChecker = createForegroundUpdateChecker({
     serviceWorkerContainer: navigator.serviceWorker
   });
@@ -4316,6 +4378,7 @@ function createApplicationDataProgress(enabled) {
   const controller = createDataSetupProgressController({
     enabled,
     progressDelayMs,
+    startedAt: window.ff14RecipeBootStartedAt,
     onChange: render
   });
   const removeUnshownPendingState = () => {
@@ -4460,7 +4523,7 @@ function showLoadError(error) {
   elements.treeContainer.replaceChildren(message);
 }
 
-function hideLoadingOverlay() {
+function hideLoadingOverlay(onHidden = null) {
   const overlay = elements.loadingOverlay;
   if (!overlay) return;
   const remaining = Math.max(0, minimumLoadingOverlayMs - (Date.now() - loadingOverlayStartedAt));
@@ -4469,7 +4532,26 @@ function hideLoadingOverlay() {
     if (!performance.getEntriesByName('application-startup-total').length) {
       performance.measure('application-startup-total', { start: 0, end: performance.now() });
     }
+    onHidden?.();
   }, remaining);
+}
+
+function scheduleMacroDataPreparation(itemDocument) {
+  const prepare = () => {
+    macroLauncher.prepare(itemDocument)
+      .then(() => {
+        const restored = pendingMacroRestore;
+        pendingMacroRestore = null;
+        if (restored) macroLauncher.open(restored.recipeId, { scrollTop: restored.scrollTop });
+      })
+      .catch(error => {
+        if (pendingMacroRestore) macroLauncher.showPreparationError();
+        pendingMacroRestore = null;
+        console.warn('[Macro] マクロ用アイテムデータを準備できませんでした:', error);
+      });
+  };
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(prepare, { timeout: 1500 });
+  else window.setTimeout(prepare, 0);
 }
 
 async function init(dataProgress, startupMetadataPromise) {
@@ -4568,8 +4650,10 @@ async function init(dataProgress, startupMetadataPromise) {
     scheduleApplicationDataCacheSave();
     if (!showPendingReleaseNotice()) {
       setReleaseNoticeBackgroundInert(false);
-      hideLoadingOverlay();
+      hideLoadingOverlay(() => scheduleMacroDataPreparation(rawList));
       window.setTimeout(showPendingRemovedFavoritesNotice, minimumLoadingOverlayMs);
+    } else {
+      scheduleMacroDataPreparation(rawList);
     }
   } catch (e) {
     dataProgress?.cancel();
@@ -4584,10 +4668,12 @@ function applyMobilePanelState(panelName) {
   elements.panelLeft.classList.toggle('mobile-visible', panelName === 'left');
   elements.panelMiddle.classList.toggle('mobile-visible', panelName === 'middle');
   elements.panelRight.classList.toggle('mobile-visible', panelName === 'right');
+  elements.panelMacro.classList.toggle('mobile-visible', panelName === 'macro');
   for (const [name, panel] of [
     ['left', elements.panelLeft],
     ['middle', elements.panelMiddle],
-    ['right', elements.panelRight]
+    ['right', elements.panelRight],
+    ['macro', elements.panelMacro]
   ]) {
     const active = name === panelName;
     panel.setAttribute('aria-hidden', String(!active));
@@ -4608,10 +4694,11 @@ function applyMobilePanelState(panelName) {
 
 function showMobilePanel(panelName, { animate = true } = {}) {
   if (!isMobile()) return;
-  const { middleOpen, rightOpen } = currentMobilePanelAvailability();
+  const { middleOpen, rightOpen, macroOpen } = currentMobilePanelAvailability();
   if (panelName === 'middle' && !middleOpen) panelName = 'left';
   if (panelName === 'right' && !rightOpen) panelName = 'left';
-  if (!mobilePanelSwipeController?.show(panelName, { animate, middleOpen, rightOpen })) {
+  if (panelName === 'macro' && !macroOpen) panelName = rightOpen ? 'right' : 'left';
+  if (!mobilePanelSwipeController?.show(panelName, { animate, middleOpen, rightOpen, macroOpen })) {
     rememberVisibleScrollPositions();
     applyMobilePanelState(panelName);
   }
@@ -4627,7 +4714,10 @@ function currentMobilePanelAvailability() {
   const hasDestination = hasLeftPanelDestination();
   return {
     middleOpen: hasDestination && elements.panelMiddle.classList.contains('open'),
-    rightOpen: hasDestination && Boolean(selectedRecipe || resultSourceMode === 'favorite-materials')
+    rightOpen: hasDestination && Boolean(selectedRecipe || resultSourceMode === 'favorite-materials'),
+    macroOpen: hasDestination
+      && Boolean(selectedRecipe || resultSourceMode === 'favorite-materials')
+      && elements.panelMacro.classList.contains('open')
   };
 }
 
@@ -4644,7 +4734,8 @@ function initializeMobilePanelSwipe() {
     panels: {
       left: elements.panelLeft,
       middle: elements.panelMiddle,
-      right: elements.panelRight
+      right: elements.panelRight,
+      macro: elements.panelMacro
     },
     SwiperClass: globalThis.Swiper,
     isEnabled: isMobile,
@@ -4665,12 +4756,15 @@ function activeMobileScrollContainer() {
       return elements.panelRight.scrollTop >= elements.treeContainer.scrollTop
         ? elements.panelRight
         : elements.treeContainer;
+    case 'macro':
+      return elements.panelMacro;
     default:
       return elements.recipeList;
   }
 }
 
 function activeMobileScrollTop() {
+  if (mobilePanelName === 'macro') return macroLauncher.getScrollState().scrollTop;
   return activeMobileScrollContainer().scrollTop;
 }
 
@@ -4691,7 +4785,9 @@ function updateMobileHeaderVisibility() {
   let nextTitleHidden = titleHidden;
   if (scrollTop === 0) nextTitleHidden = false;
   else if (scrollTop >= titleHideThreshold) {
-    const scrollContainer = activeMobileScrollContainer();
+    const scrollContainer = mobilePanelName === 'macro'
+      ? macroLauncher.getScrollState()
+      : activeMobileScrollContainer();
     const remainingScroll = scrollContainer.scrollHeight - scrollContainer.clientHeight;
     const stableAfterCollapse =
       titleHidden || remainingScroll >= titleHideThreshold + (header?.offsetHeight || 0);
@@ -4715,7 +4811,8 @@ function clearMobilePanels() {
   elements.panelLeft.classList.remove('mobile-visible');
   elements.panelMiddle.classList.remove('mobile-visible');
   elements.panelRight.classList.remove('mobile-visible');
-  for (const panel of [elements.panelLeft, elements.panelMiddle, elements.panelRight]) {
+  elements.panelMacro.classList.remove('mobile-visible');
+  for (const panel of [elements.panelLeft, elements.panelMiddle, elements.panelRight, elements.panelMacro]) {
     panel.removeAttribute('aria-hidden');
     panel.inert = false;
   }
@@ -4756,8 +4853,9 @@ function commitRequestedCountInput(input, render) {
   if (input.value !== previousValue || previousValue === '') render();
 }
 
-function resetCountInput() {
-  elements.countInput.value = '1';
+function resetCountInput(recipe = null) {
+  const initialCount = Math.min(REQUEST_COUNT_MAX, Math.max(1, Number(recipe?.yield) || 1));
+  elements.countInput.value = String(initialCount);
 }
 
 function clearRenderedTree() {
@@ -5443,7 +5541,10 @@ function selectRecipeMethod(name, recipeId, list = null) {
   } else {
     activateRecipeVariant(name, recipeId);
   }
-  if (name === selectedRecipe) selectedRecipeId = recipeId;
+  if (name === selectedRecipe) {
+    selectedRecipeId = recipeId;
+    macroLauncher.syncRecipe(selectedRecipeId);
+  }
   resetMaterialPurchasesForContext(materialPurchaseState, currentMaterialPurchaseContext());
   renderUiChange(UI_CHANGE.RECIPE_METHOD_CHANGED);
 }
@@ -5465,6 +5566,8 @@ function createRecipeMethodSelector(name, { list = null } = {}) {
   if (!selected) return null;
   const control = document.createElement('div');
   control.className = 'recipe-method-control';
+  control.dataset.itemName = name;
+  control.dataset.recipeId = selected.recipeId || '';
   control.addEventListener('click', event => event.stopPropagation());
 
   const details = document.createElement('div');
@@ -6411,7 +6514,8 @@ function renderMaterialsList() {
         }
       }),
       createGatheringTimerButton(row.name),
-      treeButton
+      treeButton,
+      createMacroLaunchButton(row.name, currentRecipeSelectionList())
     );
     li.appendChild(rowElement);
     const shareLines = [shareItemTextBlock(row.name, master, {
@@ -6660,7 +6764,8 @@ function renderMaterialTreeDialog({ preserveScroll = false } = {}) {
       count,
       'material-tree-root-summary',
       false,
-      currentRecipeSelectionList()
+      currentRecipeSelectionList(),
+      { showMacroButton: false }
     )
   );
   const recipe = recipes[materialTreeRecipe];
@@ -6673,7 +6778,8 @@ function renderMaterialTreeDialog({ preserveScroll = false } = {}) {
       `material-dialog:${materialTreeRecipe}`,
       shouldShowCraftBadgeOnlyAtRoot(materialTreeRecipe),
       false,
-      currentRecipeSelectionList()
+      currentRecipeSelectionList(),
+      false
     );
   }
   lockMaterialTreeContentHeight();
@@ -6687,7 +6793,7 @@ function createResultRootSummary(
   className = 'result-root-summary',
   showPin = false,
   selectionList = currentRecipeSelectionList(),
-  { hideEquipmentParameters = false } = {}
+  { hideEquipmentParameters = false, showMacroButton = true } = {}
 ) {
   const master = recipeVariantMaster(name);
   const recipe = recipes[name];
@@ -6724,7 +6830,8 @@ function createResultRootSummary(
   appendItemActionButtons(
     row,
     createShopInfoButton(name),
-    createGatheringTimerButton(name)
+    createGatheringTimerButton(name),
+    showMacroButton ? createMacroLaunchButton(name, selectionList) : null
   );
   const shareLines = [shareItemTextBlock(name, master, {
     quantity: producedQty,
@@ -6926,6 +7033,13 @@ function createShopInfoButton(
     showShopDialog(name, { allowIntermediatePurchase, intermediatePurchase, materialPurchase });
   });
   return button;
+}
+
+function createMacroLaunchButton(name, selectionList = null) {
+  const recipe = selectionList ? recipeVariantForList(name, selectionList) : activeRecipeVariant(name);
+  const method = recipe ? CRAFT_TYPE_NAME[recipe.craftType] : '';
+  if (!recipe?.recipeId || !CRAFT_JOBS_SET.has(method)) return null;
+  return macroLauncher.createButton(name, recipe.recipeId);
 }
 
 function appendItemActionButtons(parent, ...buttons) {
@@ -7282,7 +7396,8 @@ function appendRecipeChildren(
   pathKey,
   showCraftBadgeOnlyAtRoot,
   showPins,
-  selectionList = null
+  selectionList = null,
+  showMacroButtons = true
 ) {
   const isExchange = EXCHANGE_CRAFT_TYPES.has(recipe.craftType);
   const craftTimes = calculateCraft(neededQty, recipe.yield).craftTimes;
@@ -7303,7 +7418,8 @@ function appendRecipeChildren(
         isExchange ? craftTimes : null,
         showCraftBadgeOnlyAtRoot,
         showPins,
-        selectionList
+        selectionList,
+        showMacroButtons
       )
     );
   });
@@ -7318,7 +7434,8 @@ function buildNode(
   unitTimes = null,
   showCraftBadgeOnlyAtRoot = false,
   showPins = true,
-  selectionList = null
+  selectionList = null,
+  showMacroButtons = true
 ) {
   const recipe = recipes[name];
   const master = recipeVariantMaster(name, recipe) || { method: '', icon: '', craftType: '' };
@@ -7353,7 +7470,8 @@ function buildNode(
   appendItemActionButtons(
     row,
     createShopInfoButton(name),
-    createGatheringTimerButton(name)
+    createGatheringTimerButton(name),
+    showMacroButtons ? createMacroLaunchButton(name, selectionList) : null
   );
   if (selector) {
     node.classList.add('has-recipe-method');
@@ -7382,7 +7500,8 @@ function buildNode(
     pathKey,
     showCraftBadgeOnlyAtRoot,
     showPins,
-    selectionList
+    selectionList,
+    showMacroButtons
   );
 
   if (recipe.craftType === '9') {
@@ -7686,6 +7805,7 @@ function renderMarkdown(markdown, { breaks = false } = {}) {
 }
 
 function openMarkdownNotice(title, markdown) {
+  elements.licenseOverlay.classList.remove('privacy-policy');
   elements.licenseTitle.textContent = title;
   try {
     elements.licenseText.innerHTML = renderMarkdown(markdown);
@@ -7696,6 +7816,7 @@ function openMarkdownNotice(title, markdown) {
 }
 
 async function openDocumentNotice(title, path) {
+  elements.licenseOverlay.classList.toggle('privacy-policy', path === PRIVACY_POLICY_FILE);
   elements.licenseTitle.textContent = title;
   elements.licenseText.textContent = '読み込み中...';
   floatingWindows.license.open();
@@ -7705,13 +7826,19 @@ async function openDocumentNotice(title, path) {
     if (!response.ok) throw new Error(`Failed to load ${path}`);
     const markdown = (await response.text()).replace(/^# .*(?:\n+|$)/, '');
     elements.licenseText.innerHTML = renderMarkdown(markdown);
+    const documentUrl = new URL(path, document.baseURI);
+    for (const link of elements.licenseText.querySelectorAll('a[href]')) {
+      link.href = new URL(link.getAttribute('href'), documentUrl).href;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+    }
   } catch {
     elements.licenseText.textContent = '文書を読み込めませんでした。時間をおいて再度お試しください。';
   }
 }
 
 function openLicenseNotice() {
-  openDocumentNotice('LICENSE / NOTICE', LICENSE_NOTICE_FILE);
+  openDocumentNotice('ライセンス・権利表記', LICENSE_NOTICE_FILE);
 }
 
 function openPrivacyPolicy() {
@@ -7722,8 +7849,181 @@ function closeLicenseNotice() {
   floatingWindows.license.close();
 }
 
-function openContactLink() {
-  window.open(CONTACT_URL, '_blank', 'noopener,noreferrer');
+function captureInquiryDiagnostics() {
+  const macroOpen = elements.panelMacro.classList.contains('open');
+  const contentText = node => {
+    if (node.nodeType === Node.TEXT_NODE) return (node.textContent || '').replace(/\s+/g, ' ');
+    if (node.nodeType !== Node.ELEMENT_NODE || node === elements.tipsMsg) return '';
+    if (node.tagName === 'BR') return '\n';
+    if (node.tagName === 'PRE') return `\n${node.textContent}\n`;
+    if (node.dataset.shareTextBlock) {
+      const lines = [node.dataset.shareTextBlock];
+      const count = node.querySelector('input.count-input');
+      const checked = node.querySelector('input.favorite-anyone-checkbox');
+      if (count) lines.push(`  指定数量: ${count.value}`);
+      if (checked) lines.push(`  計算対象: ${checked.checked ? '選択' : '未選択'}`);
+      return `\n${lines.join('\n')}\n`;
+    }
+    const text = [...node.childNodes].map(contentText).filter(Boolean).join(' ');
+    const block = /^(DIV|P|LI|UL|OL|SECTION|ARTICLE|H[1-6]|TABLE|TR|DL|DT|DD)$/.test(node.tagName);
+    return block ? `\n${text}\n` : text;
+  };
+  const panelInfo = (panel, content) => {
+    const text = contentText(content).replace(/[ \t]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n+/g, '\n').trim();
+    return {
+      表示内容: text.slice(0, 4000),
+      表示内容省略あり: text.length > 4000,
+      幅: panel.clientWidth, 高さ: panel.clientHeight,
+      スクロール位置: content.scrollTop
+    };
+  };
+  const itemRows = content => [...content.children].filter(node => node.matches('.item-cell-row'));
+  const rowItems = rows => rows.slice(0, 200).map(row => ({
+    アイテム: row.title,
+    ...(row.dataset.recipeId ? { レシピID: row.dataset.recipeId } : {}),
+    選択中: row.classList.contains('selected')
+  }));
+  const calculationMode = (mode, lists = false) => mode === 'any-one'
+    ? (lists ? 'どれか1リスト' : 'どれか1アイテム') : mode === 'counts' ? '個数指定' : '合算';
+  const favoriteInfo = list => {
+    const counts = getFavoriteCountState(list);
+    const specifyCounts = counts.enabled && favoriteMaterialCalcMode === 'counts';
+    const chooseOne = counts.enabled && favoriteMaterialCalcMode === 'any-one';
+    return {
+      リスト名: list.name,
+      アイテム数: list.itemIds.length,
+      複数リスト計算のチェック: Boolean(list.materialSelected),
+      個数指定: specifyCounts,
+      どれか1アイテム: chooseOne,
+      計算モード: calculationMode(favoriteMaterialCalcMode),
+      アイテム: list.itemIds.slice(0, 200).map(id => ({
+        名前: itemNameForId(id) || id,
+        ...(specifyCounts ? { 指定数量: favoriteItemCount(id, list) } : {}),
+        計算対象: chooseOne ? favoriteAnyOneTarget(id, list) : !specifyCounts || favoriteItemCount(id, list) > 0,
+        ...(chooseOne ? { どれか1アイテムの選択: favoriteAnyOneTarget(id, list) } : {}),
+        ...(list.recipeSelections?.[id] ? { レシピID: list.recipeSelections[id] } : {})
+      })),
+      製作方法の指定: list.recipeSelections || {},
+      装備性能を表示するアイテム: list.equipmentParameterNames || [],
+      アイテム省略あり: list.itemIds.length > 200
+    };
+  };
+  const equipmentConditions = (job, level, itemLevel, slot) => ({
+    ジョブ: customSelectOptionLabel(elements.equipmentJobSelect, job) || job,
+    装備レベル: level,
+    アイテムレベル: itemLevel,
+    部位: customSelectOptionLabel(elements.equipmentSlotSelect, slot) || slot
+  });
+  const snapshot = {
+    取得日時: new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().replace('Z', '+09:00'),
+    アプリ情報: {
+      データ版: DATA_CACHE_VERSION,
+      表示サイズ: document.documentElement.dataset.fontSizeLevel,
+      表示倍率: `${Math.round(fontSizeSettings.scaleForLevel(document.documentElement.dataset.fontSizeLevel) * 100)}%`,
+      モバイル表示: isMobile(), 表示中のモバイルパネル: currentMobilePanel()
+    },
+    報告時の実行環境: { 幅: window.innerWidth, 高さ: window.innerHeight, ピクセル比: window.devicePixelRatio }
+  };
+  if (macroOpen || listMode !== 'none' || equipmentSearchOpen || elements.searchBox.value.trim()) {
+    const rows = itemRows(elements.recipeList);
+    const displayedFavorite = getDisplayedFavoriteList();
+    const selectedFavorites = getMaterialSelectedFavoriteLists();
+    snapshot.左パネル = {
+      ...panelInfo(elements.panelLeft, elements.recipeList),
+      表示種別: listMode, 検索語: elements.searchBox.value,
+      ...(listMode === 'search' ? { 検索結果の検索語: searchResultQuery } : {}),
+      ...(listMode === 'fav'
+        ? { 表示アイテム数: rows.length, 表示アイテム: rowItems(rows) }
+        : { 検索結果数: rows.length, 検索結果: rowItems(rows) }),
+      一覧省略あり: rows.length > 200,
+      ...(displayedFavorite ? { お気に入り: favoriteInfo(displayedFavorite), お気に入り操作: {
+        並び替え: favoriteItemReorderEnabled, 拡張機能を表示: expandedFavoriteMaterialActions,
+        数量操作を展開したアイテム: [...expandedFavoriteCountRows],
+        計算モード: calculationMode(favoriteMaterialCalcMode)
+      } } : {}),
+      ...(selectedFavorites.length ? { 素材計算対象リスト: selectedFavorites.map(favoriteInfo),
+        合算方法: calculationMode(checkedFavoriteMaterialCalcMode, true) } : {}),
+      ...(equipmentSearchOpen || listMode === 'equipment' ? { 装備検索: {
+        入力中の条件: equipmentConditions(customSelectValue(elements.equipmentJobSelect),
+          elements.equipmentLevelInput.value, customSelectValue(elements.equipmentItemLevelSelect),
+          customSelectValue(elements.equipmentSlotSelect)),
+        ...(listMode === 'equipment' && equipmentSearchResultSignature ? {
+          結果の検索条件: equipmentConditions(...equipmentSearchResultSignature.split('\u001f'))
+        } : {}),
+        装備性能を表示するアイテム: [...equipmentParameterDisplayNames],
+        同じ部位の候補: [...equipmentDuplicateSlots]
+      } } : {})
+    };
+  }
+  if (selectedUsesItem || elements.usesList.children.length > 0 || elements.panelMiddle.classList.contains('open')) {
+    const rows = itemRows(elements.usesList);
+    snapshot.中央パネル = { ...panelInfo(elements.panelMiddle, elements.usesList), 対象アイテム: selectedUsesItem,
+      使用先数: rows.length, 使用先: rowItems(rows), 一覧省略あり: rows.length > 200 };
+  }
+  if (macroOpen || selectedRecipe || resultSourceMode === 'favorite-materials') {
+    snapshot.右パネル = {
+      ...panelInfo(elements.panelRight, elements.treeContainer),
+      対象アイテム: selectedRecipe, レシピID: selectedRecipeId,
+      表示種別: resultViewMode, 素材リスト種別: resultSourceMode, 製作数: elements.countInput.value,
+      数量の単位: elements.countLabel.textContent, 数量指定が有効: !elements.countInput.disabled,
+      素材セクション: Object.fromEntries(materialSectionState),
+      ピン留め: Object.fromEntries([...treePinMap].flatMap(([name, buttons]) => {
+        const visible = [...buttons].filter(button => elements.treeContainer.contains(button));
+        return visible.length ? [[name, visible.some(button => !button.classList.contains('inactive'))]] : [];
+      })),
+      製作方法の選択: [...elements.treeContainer.querySelectorAll('.recipe-method-control')].map(control => ({
+        アイテム: control.dataset.itemName, レシピID: control.dataset.recipeId,
+        候補を表示: control.classList.contains('open')
+      })),
+      レシピツリーの開閉: [...elements.treeContainer.querySelectorAll('.tree-node')].flatMap(node => {
+        const children = node.querySelector(':scope > .node-children');
+        if (!children) return [];
+        return [{ アイテム: node.querySelector(':scope > .node-row')?.dataset.shareTextBlock?.split('\n')[0] || '',
+          展開中: !children.classList.contains('collapsed') }];
+      }),
+      交換ツリーの開閉: Object.fromEntries(exchangeTreeState),
+      チェック済み: [...checkedImageKeys].slice(0, 200),
+      購入済み中間素材: [...purchasedIntermediateNames].slice(0, 200),
+      購入済み素材: [...purchasedMaterialNames].slice(0, 200),
+      準備済み中間素材: Object.fromEntries([...preparedIntermediateCounts].slice(0, 200)),
+      ...(resultSourceMode === 'favorite-materials' ? {
+        お気に入りリスト: getActiveFavoriteMaterialLists().map(favoriteInfo),
+        合算方法: calculationMode(favoriteMaterialCalcMode),
+        チェック対象計算: calculationMode(checkedFavoriteMaterialCalcMode, true),
+        指輪の個数: favoriteMaterialsRingCounts,
+        製作内容の展開: { アイテム: favoriteAnyItemProductionExpanded,
+          リスト: favoriteAnyListProductionExpanded,
+          リスト別: Object.fromEntries(getActiveFavoriteMaterialLists().map(list =>
+            [list.name, Boolean(favoriteListProductionExpanded[list.id])])) }
+      } : {}),
+      ...(floatingWindows.materialTree.isOpen() ? { 中間素材の詳細: {
+        対象アイテム: materialTreeRecipe,
+        ...panelInfo(elements.materialTreeContent, elements.materialTreeContent)
+      } } : {}),
+      ...(floatingWindows.preparedCount.isOpen() ? { 準備済み個数の入力: {
+        対象アイテム: preparedCountTargetName, 入力値: elements.preparedCountInput.value,
+        上限: preparedCountMaximum
+      } } : {})
+    };
+  }
+  if (macroOpen) {
+    const capture = elements.macroFrame.contentWindow?.captureInquiryDiagnostics;
+    snapshot.マクロパネル = typeof capture === 'function' ? capture() : { 状態: '準備中' };
+  }
+  return snapshot;
+}
+
+let inquiryControllerPromise;
+async function openAppReport(trigger = elements.inquiryBtn) {
+  try {
+    inquiryControllerPromise ||= import('./macro-app/web/bug-report.js').then(({ installBugReport }) =>
+      installBugReport({ document, button: null, capture: captureInquiryDiagnostics }));
+    const controller = await inquiryControllerPromise;
+    controller.open(trigger);
+  } catch {
+    inquiryControllerPromise = null;
+    openMarkdownNotice('お問い合わせ', 'お問い合わせ画面を読み込めませんでした。時間をおいて再度お試しいただくか、[@ff14_recipe](https://x.com/ff14_recipe)へご連絡ください。');
+  }
 }
 
 function sharePanelAvailability() {
@@ -8737,7 +9037,8 @@ function bindEvents() {
   elements.usesBackBtn.addEventListener('click', returnToList);
   elements.backBtn.addEventListener('click', goBack);
   elements.mobileBackBtn.addEventListener('click', () => {
-    if (elements.mobileBackBtn.dataset.panel === 'middle') returnToList();
+    if (elements.mobileBackBtn.dataset.panel === 'macro') showMobilePanel('right');
+    else if (elements.mobileBackBtn.dataset.panel === 'middle') returnToList();
     else goBack();
   });
   bindStepButtons(
@@ -8833,6 +9134,15 @@ function bindEvents() {
   });
   window.addEventListener('resize', updateViewportDependentLayout);
   window.addEventListener('appviewportchange', updateViewportDependentLayout);
+  if (typeof ResizeObserver === 'function') {
+    const floatingListContainerObserver = new ResizeObserver(() => {
+      positionSearchHistory();
+      document.querySelectorAll('.custom-select.open').forEach(positionCustomSelectOptions);
+    });
+    document.querySelectorAll('header, .panel-left-header').forEach(element => {
+      floatingListContainerObserver.observe(element);
+    });
+  }
   elements.settingsSharePanel.addEventListener('scroll', () => {
     if (elements.exportListChoices.classList.contains('open')) {
       positionFloatingList(elements.exportListToggle, elements.exportListChoices, { maxHeight: 370, gap: 4 });
@@ -8891,7 +9201,7 @@ function bindEvents() {
     if (elements.shareTextFallbackOverlay.classList.contains('open')) closeShareTextFallback();
     else if (elements.contentShareOverlay.classList.contains('open')) closeContentShare();
   });
-  elements.contactBtn.addEventListener('click', openContactLink);
+  elements.inquiryBtn.addEventListener('click', () => void openAppReport(elements.inquiryBtn));
   elements.privacyBtn.addEventListener('click', openPrivacyPolicy);
   elements.licenseBtn.addEventListener('click', openLicenseNotice);
   bindOverlayDismissal(elements.licenseOverlay, closeLicenseNotice, elements.licenseCloseBtn);
@@ -8942,6 +9252,7 @@ function bindEvents() {
     itemIconPack?.close();
   });
   window.addEventListener('beforeunload', () => {
+    crossOriginIsolationBootstrap?.close();
     foregroundUpdateChecker?.close();
     shareCoordinator?.close();
     void sharePngStore?.close();

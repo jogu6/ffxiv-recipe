@@ -139,6 +139,7 @@ test('破損キャッシュを破棄しgzipをno-storeで再取得して展開�
   });
   assert.equal(prepared.has('a.webp'), true);
   assert.deepEqual(calls, [{ url: './data/item-icons.pack.gz', options: { cache: 'no-store' } }]);
+  await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual([...responses.keys()], [requestUrl]);
   assert.equal((await responses.get(requestUrl).arrayBuffer()).byteLength, packed.length);
   prepared.close();

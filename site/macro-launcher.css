@@ -1,0 +1,159 @@
+.panel-macro {
+  position: relative;
+  display: none;
+  flex: 1 1 0;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.macro-panel-close-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: calc(30px * var(--font-size-scale));
+  height: calc(30px * var(--font-size-scale));
+  padding: 0;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: calc(22px * var(--font-size-scale));
+  line-height: 1;
+}
+
+.macro-panel-close-button:hover,
+.macro-panel-close-button:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.panel-macro.open {
+  display: flex;
+}
+
+.panel-right:has(+ .panel-macro.open) {
+  flex: 1 1 0;
+}
+
+#macroFrame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: var(--bg);
+}
+
+#macroFrame[hidden] {
+  display: none;
+}
+
+.macro-panel-preparing {
+  flex: 1 1 auto;
+  place-content: center;
+  padding: 16px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.macro-panel-preparing:not([hidden]) {
+  display: grid;
+}
+
+.macro-progress-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--overlay-bg);
+}
+
+.macro-progress-overlay[hidden] {
+  display: none;
+}
+
+.macro-progress-card {
+  display: grid;
+  gap: 12px;
+  width: min(420px, calc(100vw - 32px));
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.5);
+}
+
+.macro-progress-card h2 {
+  margin: 0;
+  color: var(--accent);
+  text-align: center;
+}
+
+.macro-generation-note { white-space: pre-wrap; }
+.macro-generation-note,
+.macro-generation-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: calc(12px * var(--font-size-scale));
+  line-height: 1.55;
+}
+
+.macro-progress-card .loading-progress-row {
+  width: 100%;
+  margin-top: 0;
+}
+
+.macro-progress-card #macroCancelButton {
+  width: 100%;
+}
+
+.macro-generation-elapsed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .6em;
+  color: var(--muted);
+}
+
+.macro-generation-elapsed output {
+  min-width: 5ch;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+body.macro-generation-busy {
+  overflow: hidden;
+}
+
+@media (max-width: 600px) {
+  .macro-panel-close-button {
+    display: none;
+  }
+
+  .panel-right:has(+ .panel-macro.open) {
+    flex: 0 0 100%;
+  }
+
+  .panel-macro {
+    display: none;
+    flex: 0 0 100%;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    border-left: 0;
+    transition-property: transform;
+  }
+
+  .panel-macro.mobile-panel-slide {
+    display: flex;
+  }
+}
