@@ -1,0 +1,29 @@
+name: Safari storage experiment
+
+on:
+  push:
+    branches: [codex/safari-storage-experiment]
+    paths:
+      - '.github/workflows/safari-storage-experiment.yml'
+      - 'tools/run-safari-storage.mjs'
+      - 'tests/safari-storage-worker.mjs'
+      - 'macro-app/web/opfs-search-storage.js'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  safari-storage:
+    if: github.event.repository.private == false
+    runs-on: macos-15
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Enable Apple Safari automation
+        run: sudo /usr/bin/safaridriver --enable
+      - name: Verify OPFS reservation and all 3 GiB in Safari
+        run: node tools/run-safari-storage.mjs
