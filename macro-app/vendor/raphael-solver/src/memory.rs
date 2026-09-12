@@ -1,6 +1,6 @@
 //! Keep search data in RAM while allocations succeed. Spill losslessly only
 //! after allocation pressure, or under an explicitly configured test budget.
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 const PAGE_BYTES: usize = 4096;
 static CACHE_BYTES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -9,7 +9,41 @@ static STORE_SERIAL: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicU
 pub fn set_storage_cache_bytes(bytes: usize) {
     CACHE_BYTES.store(bytes, std::sync::atomic::Ordering::Relaxed);
 }
-pub type SharedStore = Arc<Mutex<PageStore>>;
+pub type SharedStore = Arc<StoreMutex>;
+thread_local! {
+    static STORE_LOCK_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+pub struct StoreMutex { inner: Mutex<PageStore> }
+pub struct StoreGuard<'a> { inner: MutexGuard<'a, PageStore> }
+impl StoreMutex {
+    pub fn lock(&self) -> Result<StoreGuard<'_>, &'static str> {
+        let inner = self.inner.lock().map_err(|_| "探索用メモリーのロックが破損しました")?;
+        STORE_LOCK_DEPTH.with(|depth| depth.set(depth.get() + 1));
+        Ok(StoreGuard { inner })
+    }
+}
+impl std::ops::Deref for StoreGuard<'_> {
+    type Target = PageStore;
+    fn deref(&self) -> &PageStore { &self.inner }
+}
+impl std::ops::DerefMut for StoreGuard<'_> {
+    fn deref_mut(&mut self) -> &mut PageStore { &mut self.inner }
+}
+impl Drop for StoreGuard<'_> {
+    fn drop(&mut self) { STORE_LOCK_DEPTH.with(|depth| depth.set(depth.get() - 1)); }
+}
+#[cfg(target_arch = "wasm32")]
+static ACTIVE_STORE: Mutex<Option<std::sync::Weak<StoreMutex>>> = Mutex::new(None);
+
+// Called by the WASM allocator after an actual allocation failure, including
+// ordinary Vec/HashMap scratch allocations. Never re-enter a store lock held
+// by this thread: those paths already use fallible allocation and local recovery.
+#[cfg(target_arch = "wasm32")]
+pub fn recover_memory() -> bool {
+    if STORE_LOCK_DEPTH.with(|depth| depth.get() != 0) { return false; }
+    let store = ACTIVE_STORE.lock().ok().and_then(|active| active.as_ref().and_then(std::sync::Weak::upgrade));
+    store.is_some_and(|store| store.lock().is_ok_and(|mut store| store.recover_allocation() > 0))
+}
 struct PageSlot { page: Option<Page>, next_free: Option<u64> }
 struct Page { bytes: Box<[u8; PAGE_BYTES]>, dirty: bool, referenced: bool }
 
@@ -41,7 +75,7 @@ impl PageStore {
             let file = std::fs::OpenOptions::new().read(true).write(true).create_new(true).open(&path).unwrap();
             (file, path)
         };
-        Arc::new(Mutex::new(Self {
+        let store = Arc::new(StoreMutex { inner: Mutex::new(Self {
             pages: Vec::new(), clock: 0, free: None, resident: 0,
             limit: if cache_bytes == 0 { usize::MAX / PAGE_BYTES } else { (cache_bytes / PAGE_BYTES).max(2) },
             pressure_events: 0, reads: 0, writes: 0,
@@ -50,7 +84,10 @@ impl PageStore {
             namespace: STORE_SERIAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             #[cfg(not(target_arch = "wasm32"))] file: Some(file),
             #[cfg(not(target_arch = "wasm32"))] path,
-        }))
+        }) });
+        #[cfg(target_arch = "wasm32")]
+        { *ACTIVE_STORE.lock().unwrap() = Some(Arc::downgrade(&store)); }
+        store
     }
     fn evict(&mut self) -> Box<[u8; PAGE_BYTES]> {
         assert!(self.resident > 0, "探索を続けるためのメモリーを確保できません");
@@ -414,6 +451,33 @@ mod tests {
         assert_eq!(store.writes, 0);
         assert_eq!(store.pressure_events, 0);
         for i in 0..1024u64 { assert_eq!(&store.page(i).bytes[..8], &i.to_le_bytes()); }
+    }
+
+    #[test]
+    fn parallel_allocation_failure_recovers_and_preserves_all_records() {
+        use rayon::prelude::*;
+        let store = PageStore::new(0);
+        store.lock().unwrap().fail_page_allocation_after = Some(16);
+        let threads = rayon::ThreadPoolBuilder::new().num_threads(4).build().unwrap();
+        let lists = threads.install(|| (0..8u16).into_par_iter().map(|owner| {
+            let mut values = PagedVec::new(store.clone());
+            for i in 0..10000u16 { values.push(ParetoValue::new(i, owner)); }
+            values
+        }).collect::<Vec<_>>());
+        threads.install(|| lists.par_iter().enumerate().for_each(|(owner, values)| {
+            for i in (0..10000usize).rev() {
+                assert_eq!(values.get(i), ParetoValue::new(i as u16, owner as u16));
+            }
+        }));
+        let state = store.lock().unwrap();
+        assert!(state.pressure_events > 0);
+        assert!(state.reads > 0 && state.writes > 0);
+        assert!(state.resident_bytes() <= 16 * PAGE_BYTES);
+        let path = state.path.clone();
+        drop(state);
+        drop(lists);
+        drop(store);
+        assert!(!path.exists());
     }
 
     #[test]

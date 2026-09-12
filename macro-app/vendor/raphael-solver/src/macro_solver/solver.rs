@@ -1,6 +1,6 @@
 use crate::memory::FrontPool as BumpPool;
 use raphael_sim::*;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(any(not(target_arch = "wasm32"), feature = "parallel"))]
 use rayon::prelude::*;
 
 use super::search_queue::{SearchQueueStats, SearchScore};
@@ -205,13 +205,13 @@ impl<'a> MacroSolver<'a> {
             };
 
             let expansion_started = web_time::Instant::now();
-            #[cfg(target_arch = "wasm32")]
+            #[cfg(all(target_arch = "wasm32", not(feature = "parallel")))]
             let worker_results = vec![batch.into_iter().try_fold(create_worker_data(),
                 |mut worker_data, (state, backtrack_id)| -> Result<_, SolverException> {
                     worker_data.process_state(state, score, backtrack_id)?;
                     Ok(worker_data)
                 })?];
-            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(any(not(target_arch = "wasm32"), feature = "parallel"))]
             let worker_results = batch
                 .into_par_iter()
                 .try_fold(

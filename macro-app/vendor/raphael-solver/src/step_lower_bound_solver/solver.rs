@@ -9,9 +9,9 @@ use crate::{
 
 use crate::memory::{FrontPool as BumpPool, FrontPoolGuard as BumpPoolGuard, FrontRef};
 use raphael_sim::*;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(any(not(target_arch = "wasm32"), feature = "parallel"))]
 use rayon::prelude::*;
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", not(feature = "parallel")))]
 use crate::sequential::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 

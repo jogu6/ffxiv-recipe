@@ -1,4 +1,4 @@
-const APP_CACHE_VERSION = 'ff14recipe-app-v4.01-190f3e0d6b5c';
+const APP_CACHE_VERSION = 'ff14recipe-app-v4.01-bcaba8262bb1';
 const DATA_CACHE_VERSION = 'ff14recipe-data-7.56-3601f731';
 const VERIFIED_DATA_CACHE_VERSION = `ff14recipe-verified-data-${DATA_CACHE_VERSION.replace('ff14recipe-data-', '')}`;
 const CACHE_PREFIX = 'ff14recipe-';
@@ -21,18 +21,24 @@ const PRECACHE_FILES = [
   './macro-app/web/report-attachments.js',
   './macro-app/web/device-info.js',
   './macro-app/web/bug-report.css',
-  './macro-app/web/assets/hq-mark-transparent.webp',
   './macro-app/web/data-loader.js',
   './macro-app/web/model.js',
   './macro-app/web/persistence.js',
   './macro-app/web/site-style-bridge.js',
   './macro-app/web/solver-worker.js',
+  './macro-app/web/solver-host.js',
+  './macro-app/web/shared-search-storage.js',
+  './macro-app/web/storage-worker.js',
   './macro-app/web/search-storage.js',
   './macro-app/web/worker-policy.js',
   './macro-app/web/profiling.js',
+  './macro-app/web/assets/hq-mark-transparent.webp',
+  './macro-app/vendor/licenses/raphael-apache-2.0.txt',
   './macro-app/build/engine/xivca_macro_engine.js',
   './macro-app/build/engine/xivca_macro_engine_bg.wasm',
-  './macro-app/vendor/licenses/raphael-apache-2.0.txt',
+  './macro-app/build/engine-parallel/xivca_macro_engine.js',
+  './macro-app/build/engine-parallel/xivca_macro_engine_bg.wasm',
+  './macro-app/build/engine-parallel/snippets/wasm-bindgen-rayon-38edf6e439f6d70d/src/workerHelpers.no-bundler.js',
   './equipment-search-model.js',
   './favorite-store.js',
   './favorite-share-codec.js',

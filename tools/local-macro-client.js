@@ -8,7 +8,7 @@
   globalThis.Worker = class extends OriginalWorker {
     constructor(url, options) {
       const resolved = new URL(url, location.href);
-      if (resolved.pathname.endsWith('/solver-worker.js')) {
+      if (resolved.pathname.endsWith('/solver-worker.js') || resolved.pathname.endsWith('/solver-host.js')) {
         globalThis.__localMobileApplied = limits();
         globalThis.__localMobileMode = limits().enabled;
         if (globalThis.__localMobileMode) resolved.searchParams.set('localMobile', '1');

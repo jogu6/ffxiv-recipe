@@ -15,3 +15,10 @@ wasm-bindgen = "0.2"
 js-sys = "0.3"
 raphael-sim = { workspace = true }
 raphael-solver = { path = "../vendor/raphael-solver" }
+rayon = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-rayon = { version = "=1.3.0", features = ["no-bundler"], optional = true }
+
+[features]
+parallel = ["dep:wasm-bindgen-rayon", "raphael-solver/parallel"]

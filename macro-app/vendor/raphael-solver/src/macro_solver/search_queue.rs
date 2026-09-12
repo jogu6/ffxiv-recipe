@@ -1,9 +1,9 @@
 use std::collections::{BTreeSet, hash_map::Entry};
 
 use raphael_sim::SimulationState;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(any(not(target_arch = "wasm32"), feature = "parallel"))]
 use rayon::prelude::*;
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", not(feature = "parallel")))]
 use crate::sequential::*;
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
@@ -122,7 +122,6 @@ pub struct SearchQueue {
 }
 
 impl SearchQueue {
-    pub fn recover_allocation(&self) { self.store.lock().unwrap().recover_allocation(); }
     pub fn store(&self) -> &SharedStore { &self.store }
     pub fn new(settings: SolverSettings, initial_state: SimulationState, bound_store: SharedStore) -> Self {
         let store = bound_store.clone();
@@ -236,9 +235,9 @@ impl SearchQueue {
                     state = use_action_combo(&self.settings, state, search_node.action()).unwrap();
                     (search_node, state)
                 });
-            #[cfg(target_arch = "wasm32")]
+            #[cfg(all(target_arch = "wasm32", not(feature = "parallel")))]
             decoded.extend(reconstructed);
-            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(any(not(target_arch = "wasm32"), feature = "parallel"))]
             reconstructed.collect_into_vec(&mut decoded);
             // Filter out Pareto-dominated nodes.
             self.observation.replay_ms += replay_started.elapsed().as_secs_f64() * 1000.0;
@@ -263,6 +262,9 @@ impl SearchQueue {
         let mut store = self.store.lock().unwrap();
         while idx > 0 {
             let search_node = self.visited_nodes.get_in(&mut store, idx);
+            while actions.try_reserve(1).is_err() {
+                assert!(store.recover_allocation() > 0, "マクロ復元用の作業メモリーを確保できません");
+            }
             actions.push(search_node.action());
             idx = search_node.parent_idx();
         }

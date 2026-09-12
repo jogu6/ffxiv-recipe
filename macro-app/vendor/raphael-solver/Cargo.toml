@@ -26,6 +26,7 @@ bump-scope = "=2.2.0"
 wasm-bindgen = "0.2"
 
 [features]
+parallel = []
 serde = ["dep:serde", "raphael-sim/serde"]
 
 [dev-dependencies]

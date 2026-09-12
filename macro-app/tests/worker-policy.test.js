@@ -3,8 +3,8 @@ import test from 'node:test';
 
 import { selectSolverWorkerCount } from '../web/worker-policy.js';
 
-test('端末や論理プロセッサ数によらずページ退避を所有する1スレッドで実行する', () => {
-  for (const hardwareConcurrency of [undefined, 2, 4, 8, 16, 32]) {
-    assert.equal(selectSolverWorkerCount({ hardwareConcurrency }), 1);
+test('Raphaelと同じ論理プロセッサ数の半分、最小2・最大8を選ぶ', () => {
+  for (const [hardwareConcurrency, expected] of [[undefined, 2], [NaN, 2], [0, 2], [1, 2], [2, 2], [4, 2], [6, 3], [8, 4], [15, 7], [16, 8], [32, 8]]) {
+    assert.equal(selectSolverWorkerCount({ hardwareConcurrency }), expected);
   }
 });

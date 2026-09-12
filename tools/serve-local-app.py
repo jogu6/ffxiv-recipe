@@ -53,7 +53,7 @@ class LocalAppHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:
         request = urlsplit(self.path)
-        if request.path in ('/macro-app/web/app.js', '/macro-app/web/solver-worker.js'):
+        if request.path in ('/macro-app/web/app.js', '/macro-app/web/solver-worker.js', '/macro-app/web/solver-host.js'):
             source = (Path(self.directory) / request.path.lstrip('/')).read_text(encoding='utf-8')
             if request.path.endswith('/app.js'):
                 source = source.replace('async function ensureSolverWorkers(signal) {',
@@ -61,7 +61,10 @@ class LocalAppHandler(SimpleHTTPRequestHandler):
                     '  if (globalThis.__localMobileMode !== globalThis.__localMobileLimits?.().enabled) terminateSolverWorkers();')
                 source = source.replace('profiler.start(input, {',
                     'profiler.start(input, {\n    localResourceTest: globalThis.__localMobileApplied,')
-            elif parse_qs(request.query).get('localMobile') == ['1']:
+            elif request.path.endswith('/solver-host.js') and parse_qs(request.query).get('localMobile') == ['1']:
+                source = source.replace('const parallel = globalThis.crossOriginIsolated', 'const parallel = false && globalThis.crossOriginIsolated')
+                source = source.replace("new Worker('./solver-worker.js',", "new Worker('./solver-worker.js?localMobile=1',")
+            elif request.path.endswith('/solver-worker.js') and parse_qs(request.query).get('localMobile') == ['1']:
                 source = Path(__file__).with_name('local-mobile-worker.js').read_text(encoding='utf-8') + '\n' + source
                 source = source.replace('await openIndexedSearchStore()', 'globalThis.__localMobileTrackStore(await openIndexedSearchStore())')
                 source = source.replace('snapshot: { ...JSON.parse(json),',

@@ -2,9 +2,11 @@
 // Crafting transitions, bound calculations and score comparisons retain Raphael semantics.
 mod actions;
 mod memory;
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", not(feature = "parallel")))]
 mod sequential;
 pub use memory::set_storage_cache_bytes;
+#[cfg(target_arch = "wasm32")]
+pub use memory::recover_memory;
 
 mod finish_solver;
 use finish_solver::FinishSolver;

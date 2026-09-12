@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  startup-regression:
+  runtime-regression:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,15 +29,18 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install chromium
-      - name: Stage macro browser source for startup tests
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Path site/macro-app -Force | Out-Null
-          Copy-Item -LiteralPath macro-app/web -Destination site/macro-app/web -Recurse
-      - name: Verify startup runs once after worker installation and updates
-        run: npm run test:e2e -- tests/app-startup-progress.spec.js --project chromium
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-05-10
+          components: rust-src
+          targets: wasm32-unknown-unknown
+      - uses: taiki-e/install-action@wasm-pack
+      - name: Build and stage macro engines
+        run: npm run build:wasm --prefix macro-app && npm run stage:site --prefix macro-app
+      - name: Verify one startup, parallel search, and allocation recovery
+        run: npm run test:e2e -- tests/app-startup-progress.spec.js tests/macro-parallel-storage.spec.js --project chromium
   deploy:
-    needs: startup-regression
+    needs: runtime-regression
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

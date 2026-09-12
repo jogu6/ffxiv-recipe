@@ -13,7 +13,7 @@ import { createProfiler } from './profiling.js';
 
 const STORAGE_KEY = 'xivca.macro.crafter-status.v1';
 // Raphael のバージョンに内部リビジョンを付加し、生成エンジンの変更時に末尾を増やす。
-const ENGINE_VERSION = '0.28.6.1';
+const ENGINE_VERSION = '0.28.6.2';
 const COMPLETION_HOLD_MS = 200;
 const HQ_MARK_PATH = './assets/hq-mark-transparent.webp';
 const CRAFTER_JOB_ICON_FILES = Object.freeze({
@@ -774,7 +774,7 @@ function requestSolverWorker(worker, type, payload = {}, { signal = null, onTele
   });
 }
 
-function updateSolverRuntime(threadCount, threadError = '') {
+function updateSolverRuntime(threadCount, threadError = '', activeThreadCount = threadCount) {
   const logicalProcessors = Math.floor(Number(navigator.hardwareConcurrency));
   const deviceMemory = Number(navigator.deviceMemory);
   globalThis.__xivcaMacroRuntime = {
@@ -782,6 +782,7 @@ function updateSolverRuntime(threadCount, threadError = '') {
     deviceMemoryGiB: Number.isFinite(deviceMemory) ? deviceMemory : null,
     workerCount: 1,
     threadCount,
+    activeThreadCount,
     threadError
   };
 }
@@ -789,11 +790,11 @@ function updateSolverRuntime(threadCount, threadError = '') {
 async function prepareSolverWorkers(signal = null) {
   terminateSolverWorkers();
   const desiredCount = selectSolverWorkerCount(navigator);
-  const first = new Worker('./solver-worker.js', { type: 'module' });
+  const first = new Worker('./solver-host.js', { type: 'module' });
   try {
     const ready = await requestSolverWorker(first, 'prepare', { threadCount: desiredCount }, { signal });
     solverWorkers.push(first);
-    updateSolverRuntime(ready.threadCount || 1, ready.threadError || '');
+    updateSolverRuntime(ready.threadCount || 1, ready.threadError || '', ready.activeThreadCount || 1);
   } catch (error) {
     first.terminate();
     throw error;

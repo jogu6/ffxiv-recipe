@@ -6,6 +6,19 @@ pub fn configure_storage_cache(bytes: u32) {
     raphael_solver::set_storage_cache_bytes(bytes as usize);
 }
 
+#[wasm_bindgen]
+pub fn solver_thread_count() -> u32 {
+    rayon::current_num_threads() as u32
+}
+
+#[wasm_bindgen]
+pub fn solver_active_thread_count() -> u32 {
+    rayon::broadcast(|context| context.index())
+        .into_iter()
+        .fold(0_u32, |mask, index| mask | (1_u32 << index))
+        .count_ones()
+}
+
 use crate::{
     Action, IngredientQuality, RaphaelSolveGoal, RaphaelSolveSettings, RaphaelSolveStage,
     RecipeLevelModifiers, SearchStage, SearchTelemetry, base_increases, initial_quality,

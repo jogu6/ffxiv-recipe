@@ -93,6 +93,7 @@ input, button { user-select: auto; -webkit-user-select: auto; }
 .macro-output-header { display: flex; align-items: center; justify-content: space-between; gap: calc(8px * var(--font-size-scale)); }
 .macro-output-header h2 { margin: 0; }
 .macro-output-body { position: relative; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: calc(6px * var(--font-size-scale)); margin-top: calc(8px * var(--font-size-scale)); }
+.accordion:not(.open) .macro-output-body { margin-top: 0; }
 .macro-output-body textarea { min-width: 0; margin: 0; overflow: hidden; }
 .macro-line-numbers, .macro-line-measure { font: calc(13px * var(--font-size-scale))/1.5 ui-monospace, "Yu Gothic", "Meiryo", monospace; }
 .macro-line-numbers { min-width: 2ch; padding-top: calc(10px * var(--font-size-scale) + 1px); color: var(--muted); text-align: right; user-select: none; }
