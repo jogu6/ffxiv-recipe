@@ -133,7 +133,10 @@ async function waitForServer(child, timeoutMs = 15_000) {
       throw new Error(`E2E用サーバーが起動前に終了しました: ${child.exitCode}`);
     }
     try {
-      const response = await fetch(`http://127.0.0.1:${managedPort}/`, { signal: AbortSignal.timeout(1_000) });
+      const response = await fetch(`http://127.0.0.1:${managedPort}/`, {
+        method: 'HEAD',
+        signal: AbortSignal.timeout(1_000),
+      });
       if (response.ok) return;
     } catch {
       // 起動完了まで短時間だけ再試行する。

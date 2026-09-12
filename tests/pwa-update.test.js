@@ -73,7 +73,7 @@ test("extracts the published app version, preceding notices, and only its releas
     extractReleaseMarkdown(tips, "v3.0"),
     "**重要なお知らせ**\n\n---\n\n## v3.0 リリース\n\n- 今回の変更",
   );
-  assert.equal(extractReleaseMarkdown(tips, "v9.9"), "");
+  assert.equal(extractReleaseMarkdown(tips, "v9.9"), extractReleaseMarkdown(tips, "v3.0"));
 
   const compactHeadingTips = `**重要なお知らせ**
 
@@ -86,6 +86,13 @@ test("extracts the published app version, preceding notices, and only its releas
     extractReleaseMarkdown(compactHeadingTips, "v3.01"),
     "**重要なお知らせ**\n\n---\n\n## v3.01リリース\n\n- 空白なし見出しの変更",
   );
+});
+
+test("uses the latest published release when the new app version has no notes", () => {
+  const tips = '## v4.0 リリース\r\n\r\n掲載済みの最新情報\r\n\r\n---\r\n\r\n## v3.24 リリース\r\n\r\n古い情報';
+  assert.equal(extractReleaseMarkdown(tips, 'v4.01'), '## v4.0 リリース\n\n掲載済みの最新情報');
+  assert.equal(extractReleaseMarkdown('通常のお知らせだけ', 'v4.01'), '');
+  assert.equal(extractReleaseMarkdown('', 'v4.01'), '');
 });
 
 test("shows a release only for an existing installation or an update reload", () => {

@@ -2,26 +2,35 @@ const { expect, test } = require('@playwright/test');
 const { publishedAppVersion } = require('./helpers/app.js');
 
 for (const tipsAvailable of [true, false]) {
-  test(`更新時に${tipsAvailable ? 'リリース追記のないtipsでも起動できる' : 'tipsの通信失敗を追記なしと誤認しない'}`, async ({ page }) => {
+  test(`更新時に${tipsAvailable ? '該当バージョンの追記がなければ最新の掲載情報を表示する' : 'tipsの通信失敗を追記なしと誤認しない'}`, async ({ page }) => {
     await page.addInitScript(() => {
-      localStorage.setItem('ff14_acknowledged_release_version', 'v0.0');
-      sessionStorage.setItem('ff14_update_reload_pending', '1');
+      if (!localStorage.getItem('ff14_acknowledged_release_version')) {
+        localStorage.setItem('ff14_acknowledged_release_version', 'v0.0');
+        sessionStorage.setItem('ff14_update_reload_pending', '1');
+      }
     });
     await page.route('**/data/tips.md*', route => route.fulfill({
       status: tipsAvailable ? 200 : 503,
       contentType: 'text/markdown; charset=utf-8',
-      body: tipsAvailable ? '## v0.0 リリース\n\n以前から掲載しているお知らせ' : 'unavailable',
+      body: tipsAvailable ? '## v4.0 リリース\n\n最新の掲載情報\n\n---\n\n## v3.24 リリース\n\n古い情報' : 'unavailable',
     }));
     await page.goto('/');
     await expect(page.locator('html')).toHaveAttribute('data-app-ready', 'true');
-    await expect(page.locator('#releaseNoticeOverlay')).not.toHaveClass(/open/);
     if (tipsAvailable) {
       await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
-      await expect(page.locator('#tipsMsg')).toContainText('以前から掲載しているお知らせ');
+      await expect(page.locator('#releaseNoticeOverlay')).toHaveClass(/open/);
+      await expect(page.locator('#releaseNoticeContent')).toContainText('v4.0 リリース');
+      await expect(page.locator('#releaseNoticeContent')).toContainText('最新の掲載情報');
+      await expect(page.locator('#releaseNoticeContent')).not.toContainText('古い情報');
+      await page.locator('#releaseNoticeOkBtn').click();
       await expect(page.locator('#searchBox')).toBeEditable();
       expect(await page.evaluate(() => localStorage.getItem('ff14_acknowledged_release_version'))).toBe(publishedAppVersion);
       expect(await page.evaluate(() => sessionStorage.getItem('ff14_update_reload_pending'))).toBe(null);
+      await page.reload();
+      await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
+      await expect(page.locator('#releaseNoticeOverlay')).not.toHaveClass(/open/);
     } else {
+      await expect(page.locator('#releaseNoticeOverlay')).not.toHaveClass(/open/);
       await expect(page.locator('#loadingTitle')).toHaveText('更新内容を読み込めませんでした');
       expect(await page.evaluate(() => localStorage.getItem('ff14_acknowledged_release_version'))).toBe('v0.0');
     }

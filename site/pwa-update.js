@@ -29,7 +29,8 @@
         `^##[ \\t]+${escapeRegularExpression(version)}[ \\t]*リリース[ \\t]*$`,
         "m",
       );
-      const heading = headingPattern.exec(normalized);
+      const heading = headingPattern.exec(normalized)
+        || /^##[ \t]+v\d+(?:\.\d+)*[ \t]*リリース[ \t]*$/m.exec(normalized);
       if (!heading) return "";
 
       const remainder = normalized.slice(heading.index);
