@@ -9,7 +9,6 @@
 
     const ACKNOWLEDGED_VERSION_KEY = "ff14_acknowledged_release_version";
     const UPDATE_RELOAD_PENDING_KEY = "ff14_update_reload_pending";
-    const ISOLATION_RELOAD_KEY = "ff14_cross_origin_isolation_reload_v1";
     const TERMINAL_WORKER_STATES = new Set(["activated", "redundant"]);
 
     function extractAppVersion(workerSource) {
@@ -154,53 +153,9 @@
       return Object.freeze({ close, schedule });
     }
 
-    function createCrossOriginIsolationBootstrap({
-      serviceWorkerContainer,
-      storage = globalThis.sessionStorage,
-      isIsolated = () => globalThis.crossOriginIsolated === true,
-      reload = () => globalThis.location.reload(),
-      logger = globalThis.console,
-    } = {}) {
-      if (!serviceWorkerContainer) return Object.freeze({ close: () => {} });
-      let closed = false;
-
-      const attempt = () => {
-        if (closed) return false;
-        if (isIsolated()) {
-          try { storage?.removeItem?.(ISOLATION_RELOAD_KEY); } catch {}
-          return false;
-        }
-        if (!serviceWorkerContainer.controller) return false;
-        try {
-          if (storage?.getItem?.(ISOLATION_RELOAD_KEY) === "1") return false;
-          storage?.setItem?.(ISOLATION_RELOAD_KEY, "1");
-        } catch (error) {
-          logger?.warn?.("[SW] 分離ヘッダー再読込状態を保存できませんでした:", error);
-          return false;
-        }
-        reload();
-        return true;
-      };
-
-      const handleControllerChange = () => attempt();
-      serviceWorkerContainer.addEventListener("controllerchange", handleControllerChange);
-      Promise.resolve(serviceWorkerContainer.ready).then(attempt).catch(error => {
-        logger?.warn?.("[SW] 分離ヘッダー準備の確認に失敗しました:", error);
-      });
-
-      const close = () => {
-        if (closed) return;
-        closed = true;
-        serviceWorkerContainer.removeEventListener("controllerchange", handleControllerChange);
-      };
-      return Object.freeze({ close });
-    }
-
     return Object.freeze({
       ACKNOWLEDGED_VERSION_KEY,
-      ISOLATION_RELOAD_KEY,
       UPDATE_RELOAD_PENDING_KEY,
-      createCrossOriginIsolationBootstrap,
       extractAppVersion,
       extractReleaseMarkdown,
       createForegroundUpdateChecker,

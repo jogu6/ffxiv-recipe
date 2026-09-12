@@ -92,6 +92,11 @@ textarea { box-sizing: border-box; width: 100%; margin: calc(8px * var(--font-si
 input, button { user-select: auto; -webkit-user-select: auto; }
 .macro-output-header { display: flex; align-items: center; justify-content: space-between; gap: calc(8px * var(--font-size-scale)); }
 .macro-output-header h2 { margin: 0; }
+.macro-output-body { position: relative; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: calc(6px * var(--font-size-scale)); margin-top: calc(8px * var(--font-size-scale)); }
+.macro-output-body textarea { min-width: 0; margin: 0; overflow: hidden; }
+.macro-line-numbers, .macro-line-measure { font: calc(13px * var(--font-size-scale))/1.5 ui-monospace, "Yu Gothic", "Meiryo", monospace; }
+.macro-line-numbers { min-width: 2ch; padding-top: calc(10px * var(--font-size-scale) + 1px); color: var(--muted); text-align: right; user-select: none; }
+.macro-line-measure { position: absolute; visibility: hidden; pointer-events: none; box-sizing: border-box; padding: calc(10px * var(--font-size-scale)); border: 1px solid transparent; white-space: pre-wrap; overflow-wrap: break-word; }
 .macro-copy-button { display: grid; place-items: center; flex: 0 0 auto; width: calc(30px * var(--font-size-scale)); height: calc(30px * var(--font-size-scale)); padding: calc(5px * var(--font-size-scale)); color: var(--text); background: var(--button-bg, #252525); border: 1px solid var(--border); border-radius: 4px; }
 .macro-copy-button:hover, .macro-copy-button:focus-visible { color: var(--accent); border-color: var(--accent); }
 .macro-copy-button.copied { color: var(--accent); background: var(--active-bg); }

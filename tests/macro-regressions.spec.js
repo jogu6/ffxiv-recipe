@@ -20,14 +20,82 @@ const savedResult = {
   macro: '/ac "確信" <wait.3>\n/ac "下地作業" <wait.3>'
 };
 
-async function restoreSavedMacro(page) {
+async function restoreSavedMacro(page, result = savedResult) {
   await page.addInitScript(result => {
     localStorage.setItem('xivca.macro.crafter-status.v1', JSON.stringify({ 調理師: result.crafter }));
     localStorage.setItem(`xivca.macro.result.v1.${result.recipeId}`, JSON.stringify(result));
-  }, savedResult);
+  }, result);
   await page.goto('/macro-app/web/index.html?siteRoot=../..&recipe=b5cc569f3e4');
-  await expect(page.locator('#macroOutput')).toHaveValue(savedResult.macro);
+  await expect(page.locator('#macroOutput')).toHaveValue(result.macro);
 }
+
+for (const width of [390, 1280]) {
+  test(`マクロ行番号を枠外で折り返しと表示倍率に合わせる（幅${width}）`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 844 });
+    const macro = Array.from({ length: 16 }, () => '/ac "コンテンツアクション2" <wait.2>').join('\n');
+    await restoreSavedMacro(page, { ...savedResult, macro });
+    const numbers = page.locator('#macroLineNumbers > div');
+    await expect(numbers).toHaveText(Array.from({ length: 16 }, (_, index) => String(index + 1)));
+    await expect(page.locator('#macroLineNumbers')).toHaveAttribute('aria-hidden', 'true');
+    for (const level of [1, 5, 10]) {
+      await page.evaluate(level => document.documentElement.setAttribute('data-font-size-level', String(level)), level);
+      await expect.poll(() => page.evaluate(() => {
+        const output = document.querySelector('#macroOutput');
+        const gutter = document.querySelector('#macroLineNumbers');
+        const rect = output.getBoundingClientRect();
+        const style = getComputedStyle(output);
+        const first = gutter.firstElementChild.getBoundingClientRect();
+        const last = gutter.lastElementChild.getBoundingClientRect();
+        return {
+          outside: gutter.getBoundingClientRect().right < rect.left,
+          aligned: Math.abs(first.top - rect.top - parseFloat(style.paddingTop) - parseFloat(style.borderTopWidth)) < 1,
+          fits: last.bottom <= rect.bottom - parseFloat(style.paddingBottom) + 1,
+          noClipping: output.scrollHeight <= output.clientHeight + 1,
+          noOverflow: document.querySelector('#macroContent').scrollWidth <= document.querySelector('#macroContent').clientWidth,
+        };
+      })).toEqual({ outside: true, aligned: true, fits: true, noClipping: true, noOverflow: true });
+      await expect(page.locator('#macroOutput')).toHaveValue(macro);
+    }
+    await page.evaluate(() => {
+      const content = document.querySelector('#macroContent');
+      content.scrollTop += document.querySelector('#macroSection').getBoundingClientRect().top - content.getBoundingClientRect().top;
+    });
+    await page.screenshot({ path: testInfo.outputPath('macro-line-numbers.png') });
+  });
+}
+
+test('分離ヘッダーなしでもマクロWASMを準備できる', async ({ page }) => {
+  await page.route('**/*', async route => {
+    if (!route.request().isNavigationRequest()) return route.continue();
+    const response = await route.fetch();
+    const headers = { ...response.headers() };
+    delete headers['cross-origin-embedder-policy'];
+    delete headers['cross-origin-opener-policy'];
+    await route.fulfill({ response, headers });
+  });
+  await restoreSavedMacro(page);
+  expect(await page.evaluate(() => crossOriginIsolated)).toBe(false);
+  const result = await page.evaluate(async () => {
+    const worker = new Worker('./solver-worker.js', { type: 'module' });
+    let timeout;
+    try {
+      return await new Promise((resolve, reject) => {
+        timeout = setTimeout(() => reject(new Error('WASM preparation timed out')), 15000);
+        worker.addEventListener('error', event => reject(new Error(event.message)));
+        worker.addEventListener('message', event => {
+          if (event.data.type === 'error') reject(new Error(event.data.message));
+          if (event.data.type === 'ready') resolve(event.data);
+        });
+        worker.postMessage({ type: 'prepare', requestId: 'non-isolated-wasm' });
+      });
+    } finally {
+      clearTimeout(timeout);
+      worker.terminate();
+    }
+  });
+  expect(result.threadCount).toBe(1);
+  expect(result.threadError).toBe('');
+});
 
 for (const outcome of ['success', 'failure', 'error', 'cancel']) {
   test(`マクロ欄を生成結果に応じて開閉する（${outcome}）`, async ({ page }) => {
@@ -53,6 +121,7 @@ for (const outcome of ['success', 'failure', 'error', 'cancel']) {
     if (outcome === 'cancel') await page.locator('#cancelButton').click();
     await expect(page.locator('#progressOverlay')).toBeHidden();
     await expect(toggle).toHaveAttribute('aria-expanded', outcome === 'success' ? 'true' : 'false');
+    if (outcome === 'success') await expect(page.locator('#macroLineNumbers > div')).toHaveText(['1']);
     if (outcome !== 'success') {
       await expect.poll(() => page.locator('#macroSection .accordion-clip').evaluate(el => el.getBoundingClientRect().height)).toBe(0);
     }
@@ -124,6 +193,7 @@ for (const mode of ['通常', 'APIなし', 'API拒否']) {
   test(`マクロコピーで表示欄を全選択せず全文をコピーする（${mode}）`, async ({ page, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     await restoreSavedMacro(page);
+    await expect(page.locator('#macroLineNumbers > div')).toHaveText(['1', '2']);
     await page.evaluate(mode => {
       globalThis.__readClipboard = navigator.clipboard.readText.bind(navigator.clipboard);
       if (mode !== '通常') Object.defineProperty(navigator, 'clipboard', {

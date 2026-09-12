@@ -19,7 +19,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  startup-regression:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install chromium
+      - name: Stage macro browser source for startup tests
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path site/macro-app -Force | Out-Null
+          Copy-Item -LiteralPath macro-app/web -Destination site/macro-app/web -Recurse
+      - name: Verify startup runs once after worker installation and updates
+        run: npm run test:e2e -- tests/app-startup-progress.spec.js --project chromium
   deploy:
+    needs: startup-regression
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

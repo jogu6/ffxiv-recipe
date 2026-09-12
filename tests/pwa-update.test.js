@@ -1,8 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
-  ISOLATION_RELOAD_KEY,
-  createCrossOriginIsolationBootstrap,
   createForegroundUpdateChecker,
   extractAppVersion,
   extractReleaseMarkdown,
@@ -224,49 +222,23 @@ test("foreground checker does not reload for the first service-worker installati
   checker.close();
 });
 
-test("isolation bootstrap reloads once after the service worker controls the page", async () => {
-  const registration = new FakeRegistration();
-  const container = new FakeServiceWorkerContainer({ registration });
-  const values = new Map();
-  const storage = {
-    getItem: key => values.get(key) || null,
-    setItem: (key, value) => values.set(key, value),
-    removeItem: key => values.delete(key),
-  };
-  let reloads = 0;
-  const bootstrap = createCrossOriginIsolationBootstrap({
-    serviceWorkerContainer: container,
-    storage,
-    isIsolated: () => false,
-    reload: () => { reloads += 1; },
-  });
-
-  await Promise.resolve();
-  assert.equal(reloads, 0);
-  container.controller = {};
-  container.dispatchEvent(new Event("controllerchange"));
-  container.dispatchEvent(new Event("controllerchange"));
-  assert.equal(reloads, 1);
-  assert.equal(values.get(ISOLATION_RELOAD_KEY), "1");
-  bootstrap.close();
-});
-
-test("isolation bootstrap clears its guard after isolation is active", async () => {
-  const registration = new FakeRegistration();
+test("worker activation and controllerchange report one applied update without forcing activation", async () => {
+  const worker = new FakeWorker();
+  const registration = new FakeRegistration({ installing: worker });
   const container = new FakeServiceWorkerContainer({ controller: {}, registration });
-  const values = new Map([[ISOLATION_RELOAD_KEY, "1"]]);
-  const bootstrap = createCrossOriginIsolationBootstrap({
+  let applied = 0;
+  const checker = createForegroundUpdateChecker({
     serviceWorkerContainer: container,
-    storage: {
-      getItem: key => values.get(key) || null,
-      setItem: (key, value) => values.set(key, value),
-      removeItem: key => values.delete(key),
-    },
-    isIsolated: () => true,
-    reload: () => assert.fail("isolated pages must not reload"),
+    onUpdateApplied: () => { applied += 1; },
   });
-
-  await Promise.resolve();
-  assert.equal(values.has(ISOLATION_RELOAD_KEY), false);
-  bootstrap.close();
+  checker.schedule();
+  await new Promise(resolve => setTimeout(resolve, 10));
+  worker.transition("installed");
+  assert.equal(applied, 0);
+  worker.transition("activated");
+  container.dispatchEvent(new Event("controllerchange"));
+  container.dispatchEvent(new Event("controllerchange"));
+  assert.equal(applied, 1);
+  assert.deepEqual(worker.messages, []);
+  checker.close();
 });

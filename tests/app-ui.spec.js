@@ -389,7 +389,15 @@ test('tips groups releases before v3.0 in a collapsed accordion', async ({ page 
   await expect.poll(() => summary.evaluate(element => getComputedStyle(element, '::before').content)).toContain('▼');
 });
 
+async function routeCurrentReleaseNotice(page) {
+  await page.context().route('**/data/tips.md*', route => route.fulfill({
+    contentType: 'text/markdown; charset=utf-8',
+    body: `## ${publishedAppVersion} リリース\n\nアイテム画像はクリック/タップで ✔ を On/Off\n\n---\n\n## v2.98 リリース\n\n以前のお知らせ`,
+  }));
+}
+
 test('updated app blocks use until the current release notice is accepted', async ({ page }) => {
+  await routeCurrentReleaseNotice(page);
   await openApp(page);
   await searchFor(page, 'バスタードソード');
   await page.getByText('バスタードソード', { exact: true }).first().click();
@@ -441,6 +449,7 @@ test('updated app blocks use until the current release notice is accepted', asyn
 });
 
 test('small popup reads the current release heading without a load error', async ({ page }) => {
+  await routeCurrentReleaseNotice(page);
   await openApp(page);
   await page.evaluate(previousVersion => {
     localStorage.setItem('ff14_acknowledged_release_version', previousVersion);

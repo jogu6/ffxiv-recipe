@@ -140,7 +140,6 @@ const { createMobilePanelSwipe } = MobilePanelSwipe;
 const { resolvePanelLayout } = PanelLayout;
 const {
   ACKNOWLEDGED_VERSION_KEY,
-  createCrossOriginIsolationBootstrap,
   UPDATE_RELOAD_PENDING_KEY,
   createForegroundUpdateChecker,
   extractAppVersion,
@@ -505,7 +504,6 @@ let panelLayoutFrame = 0;
 let mobilePanelSwipeController = null;
 let mobilePanelName = 'left';
 let foregroundUpdateChecker = null;
-let crossOriginIsolationBootstrap = null;
 let headerInfoResizeObserver = null;
 let lastInteractedSharePanel = 'left';
 let selectedSharePanel = 'left';
@@ -3607,8 +3605,11 @@ function showPendingReleaseNotice() {
 
   const releaseMarkdown = extractReleaseMarkdown(tipsMarkdown, currentAppVersion);
   if (!releaseMarkdown) {
-    console.warn(`[Release] ${currentAppVersion} のリリース内容を取得できませんでした`);
-    return showReleaseLoadError();
+    if (!tipsMarkdown.trim()) return showReleaseLoadError();
+    // A release may intentionally keep the existing notices unchanged.
+    localStorage.setItem(ACKNOWLEDGED_VERSION_KEY, currentAppVersion);
+    sessionStorage.removeItem(UPDATE_RELOAD_PENDING_KEY);
+    return false;
   }
   openReleaseNotice(releaseMarkdown);
   return true;
@@ -4091,9 +4092,6 @@ function requestForegroundUpdateCheck() {
 function initializeForegroundUpdateChecks() {
   if (!('serviceWorker' in navigator)) return;
   hadServiceWorkerControllerAtBoot = Boolean(navigator.serviceWorker.controller);
-  crossOriginIsolationBootstrap = createCrossOriginIsolationBootstrap({
-    serviceWorkerContainer: navigator.serviceWorker
-  });
   foregroundUpdateChecker = createForegroundUpdateChecker({
     serviceWorkerContainer: navigator.serviceWorker
   });
@@ -9252,7 +9250,6 @@ function bindEvents() {
     itemIconPack?.close();
   });
   window.addEventListener('beforeunload', () => {
-    crossOriginIsolationBootstrap?.close();
     foregroundUpdateChecker?.close();
     shareCoordinator?.close();
     void sharePngStore?.close();

@@ -555,6 +555,37 @@ function hideGeneratedResult() {
   elements.macroSection.hidden = true;
 }
 
+let macroLineLayoutKey = '';
+function syncMacroLineNumbers() {
+  const output = elements.macroOutput;
+  if (!output.clientWidth || elements.macroSection.hidden) return;
+  const style = getComputedStyle(output);
+  const key = `${output.clientWidth}:${style.font}:${output.value}`;
+  if (key === macroLineLayoutKey) return;
+  const lines = output.value.split('\n');
+  const measure = elements.macroLineMeasure;
+  measure.style.width = `${output.getBoundingClientRect().width}px`;
+  measure.replaceChildren(...lines.map(line => createText('div', '', line || '\u00a0')));
+  const numbers = lines.map((_, index) => createText('div', '', String(index + 1)));
+  elements.macroLineNumbers.replaceChildren(...numbers);
+  // The gutter can gain a digit and reduce the available text width.
+  measure.style.width = `${output.getBoundingClientRect().width}px`;
+  numbers.forEach((number, index) => {
+    number.style.height = `${measure.children[index].getBoundingClientRect().height}px`;
+  });
+  const minimumHeight = 4 * parseFloat(style.lineHeight)
+    + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
+    + parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
+  output.style.height = `${Math.max(minimumHeight, measure.getBoundingClientRect().height)}px`;
+  macroLineLayoutKey = `${output.clientWidth}:${style.font}:${output.value}`;
+}
+
+const macroOutputResizeObserver = new ResizeObserver(syncMacroLineNumbers);
+macroOutputResizeObserver.observe(elements.macroOutput);
+const macroOutputFontObserver = new MutationObserver(syncMacroLineNumbers);
+macroOutputFontObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-font-size-level'] });
+document.fonts?.ready.then(syncMacroLineNumbers);
+
 function renderGeneratedStatus(result) {
   const status = result.crafter;
   const food = state.data.foods.find(item => item.id === result.selection.foodId);
@@ -611,6 +642,7 @@ function showGeneratedResult(result) {
   elements.generatedStatusSection.hidden = false;
   elements.macroSection.hidden = false;
   setAccordionExpanded(elements.macroSection, true);
+  syncMacroLineNumbers();
 }
 
 function scrollToGeneratedMacro() {

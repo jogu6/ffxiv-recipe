@@ -11,7 +11,7 @@ const siteRoot = path.join(repositoryRoot, 'site');
 const applicationName = 'FinalFantasy XIV® Crafting Assistant XIVca(シヴカ)';
 const applicationWindowTitle = 'XIVca | FinalFantasy XIV® Crafting Assistant';
 const require = createRequire(import.meta.url);
-const { extractAppVersion, extractReleaseMarkdown } = require('../site/pwa-update.js');
+const { extractAppVersion } = require('../site/pwa-update.js');
 
 function requireFile(relativePath) {
   const absolutePath = path.join(siteRoot, relativePath);
@@ -78,9 +78,8 @@ if (declaredAppCacheVersion !== expectedCacheVersion) {
   throw new Error(`APP_CACHE_VERSION is stale. Run npm run cache:app (${expectedCacheVersion}).`);
 }
 const currentAppVersion = extractAppVersion(serviceWorkerSource);
-if (!currentAppVersion || !extractReleaseMarkdown(tipsMarkdown, currentAppVersion)) {
-  throw new Error(`tips.md does not contain the current release section: ${currentAppVersion || 'unknown'}`);
-}
+if (!currentAppVersion) throw new Error('APP_CACHE_VERSION must contain the published app version.');
+if (!tipsMarkdown.trim()) throw new Error('tips.md must not be empty.');
 const indexHtml = fs.readFileSync(requireFile('index.html'), 'utf8');
 const manifest = JSON.parse(fs.readFileSync(requireFile('manifest.webmanifest'), 'utf8'));
 if (!indexHtml.includes(`<title>${applicationWindowTitle}</title>`) || !indexHtml.includes(`alt="${applicationName}"`)) {
