@@ -67,7 +67,17 @@ async function run() {
       await store.close();
     }
     assert((await ownFiles(root, prefix)).length === 0, 'Temporary files remain after close');
-    results.push({ ...metrics, cleanedUp: true, afterCleanup: await navigator.storage.estimate() });
+    const cleanupSamples = [];
+    for (const waitMs of [0, 1000, 5000]) {
+      if (waitMs) await new Promise(resolve => setTimeout(resolve, waitMs));
+      const entries = [];
+      for await (const [name, handle] of root.entries()) {
+        entries.push({ name, kind: handle.kind, bytes: handle.kind === 'file' ? (await handle.getFile()).size : null });
+      }
+      assert(entries.length === 0, 'The isolated test origin contains leftover OPFS entries');
+      cleanupSamples.push({ waitMs, entries, estimate: await navigator.storage.estimate() });
+    }
+    results.push({ ...metrics, cleanedUp: true, cleanupSamples });
     report('round-complete', results.at(-1));
   }
   report('complete', { results });
