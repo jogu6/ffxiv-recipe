@@ -27,7 +27,7 @@ async function run() {
       await store.reserve(TOTAL);
       assert(store.metrics.storageReservedBytes === TOTAL, 'Reservation must cover exactly 3 GiB');
       assert(store.metrics.storageReserveTransactions === 1, 'Repeated reserve must not allocate again');
-      assert(store.metrics.storageSegmentCount === 48, 'Expected 48 segments of 64 MiB');
+      assert(store.metrics.storageSegmentCount === 49, 'Expected 49 page-aligned segments below WebKit rounding boundaries');
       report('reserved', { round, metrics: { ...store.metrics } });
 
       // A sparse truncate alone cannot prove that all disk blocks can be written.
@@ -80,6 +80,24 @@ async function run() {
     results.push({ ...metrics, cleanedUp: true, cleanupSamples });
     report('round-complete', results.at(-1));
   }
+  // A stale estimate must not reject an allocation that the browser permits.
+  const originalEstimate = navigator.storage.estimate.bind(navigator.storage);
+  navigator.storage.estimate = async () => ({ quota: TOTAL, usage: TOTAL });
+  const staleStore = await openOpfsSearchStore();
+  const stalePrefix = staleStore.databaseName.slice(5);
+  try {
+    await staleStore.reserve(TOTAL);
+    const value = new Uint8Array([17, 34, 51, 68]);
+    staleStore.write(TOTAL - value.length, value);
+    const actual = new Uint8Array(value.length);
+    staleStore.read(TOTAL - actual.length, actual);
+    assert(actual.every((byte, index) => byte === value[index]), 'Stale-estimate allocation failed');
+  } finally {
+    await staleStore.close();
+    navigator.storage.estimate = originalEstimate;
+  }
+  assert((await ownFiles(root, stalePrefix)).length === 0, 'Stale-estimate test did not clean up');
+  report('stale-estimate-complete', { accepted: true, cleanedUp: true });
   report('complete', { results });
 }
 

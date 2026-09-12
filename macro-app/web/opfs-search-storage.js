@@ -1,4 +1,6 @@
-const SEGMENT_BYTES = 64 * 1024 * 1024;
+// WebKit rounds an exact power-of-two capacity up to the NEXT power of two.
+// Stay one 4 KiB page below that boundary to avoid charging 6 GiB for 3 GiB.
+const SEGMENT_BYTES = 64 * 1024 * 1024 - 4096;
 const REPORT_BYTES = 512 * 1024;
 const FLUSH_BYTES = 8 * 1024 * 1024;
 
@@ -78,7 +80,8 @@ export async function openOpfsSearchStore({ onActivity = () => {} } = {}) {
       if (metrics.storageReservedBytes) throw new Error('探索中は一時保存領域を拡張できません');
       const started = performance.now();
       try {
-        if (metrics.storageQuotaBytes > 0 && bytes > metrics.storageAvailableBytes) throw capacityError();
+        // estimate().usage can retain already deleted reservations in Safari.
+        // Let the real truncate/write operations decide; estimates are telemetry.
         const count = Math.max(1, Math.ceil(bytes / SEGMENT_BYTES));
         while (segments.length < count) await addSegment();
         for (let index = 0; index < count; index++) {
