@@ -13,7 +13,19 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-05-10
+          components: rust-src
+          targets: wasm32-unknown-unknown
+      - uses: taiki-e/install-action@wasm-pack
+      - name: Build isolated macro engine
+        run: npm run build:wasm --prefix macro-app
+      - name: Stage isolated macro application
+        run: npm run stage:site --prefix macro-app
+      - name: Update application cache for built assets
+        run: npm run cache:app
       - name: Check JavaScript syntax
         shell: pwsh
         run: |

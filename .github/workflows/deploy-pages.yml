@@ -29,8 +29,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - uses: dtolnay/rust-toolchain@nightly-2026-05-10
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: nightly-2026-05-10
           components: rust-src
           targets: wasm32-unknown-unknown
       - uses: taiki-e/install-action@wasm-pack
@@ -40,6 +41,8 @@ jobs:
         run: npm run stage:site --prefix macro-app
       - name: Update application cache for built assets
         run: npm run cache:app
+      - name: Validate built site assets
+        run: node tools/validate-site.mjs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
