@@ -14,7 +14,7 @@ function replaceOnce(before, after) {
 const imports = [...source.matchAll(/(__wbg_(?:read|write)_[0-9a-f]+): function/g)].map(match => './xivca_macro_engine_bg.js.' + match[1]);
 if (imports.length !== 2) throw new Error('Expected exactly two storage imports');
 const candidates = [process.env.WASM_OPT, 'wasm-opt'];
-for (const root of [path.join(process.env.LOCALAPPDATA || os.homedir(), '.wasm-pack'), path.join(os.homedir(), '.cache/.wasm-pack'), path.join(os.homedir(), '.wasm-pack')]) {
+for (const root of [path.join(process.env.LOCALAPPDATA || os.homedir(), '.wasm-pack'), path.join(os.homedir(), '.cache/.wasm-pack'), path.join(os.homedir(), '.wasm-pack'), path.join(os.homedir(), 'Library/Caches/.wasm-pack')]) {
   if (fs.existsSync(root)) for (const name of fs.readdirSync(root)) {
     if (name.startsWith('wasm-opt-')) candidates.push(path.join(root, name, 'bin', process.platform === 'win32' ? 'wasm-opt.exe' : 'wasm-opt'));
   }
