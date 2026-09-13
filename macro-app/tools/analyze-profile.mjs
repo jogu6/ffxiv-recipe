@@ -10,6 +10,9 @@ const columns = ['elapsedMs', 'workerElapsedMs', 'stage', 'searchNodes', 'search
   'wasmMemoryBytes', 'visitedCapacityBytes', 'queuedCapacityBytes', 'replayMs', 'paretoMs', 'expansionMs', 'mergeMs',
   'storageResidentBytes', 'storageAllocatedBytes', 'storagePageReads', 'storagePageWrites',
   'storageReadTransactions', 'storageWriteTransactions', 'storageReadMs', 'storageWriteMs',
+  'storageBackend', 'storageReservationMode', 'storageReservedBytes', 'storageDiskUsedBytes',
+  'storageDiskHighWaterBytes', 'storageDiskCapacityBytes', 'storageWrittenBytes', 'storageReadBytes',
+  'storageReserveMs', 'storageSegmentCount', 'storageQuotaBytes', 'storageUsageBytes', 'storagePressureEvents',
   'paretoCapacityBytes', 'qualityBoundBytes', 'stepBoundBytes', 'candidateCapacityBytes', 'localSimulatedSleepMs'];
 const csv = [columns.join(','), ...samples.map(sample => columns.map(key => JSON.stringify(sample[key] ?? '')).join(','))].join('\n');
 fs.writeFileSync(`${file}.csv`, csv);
@@ -27,6 +30,8 @@ for (const sample of samples) {
   start = sample;
 }
 const summary = { status: profile.status, metadata: profile.metadata, elapsedMs: profile.elapsedMs,
+  storage: profile.storage, storageEvents: profile.storageEvents, memoryMeaning: profile.memoryMeaning,
+  error: profile.error, errorName: profile.errorName, errorDetails: profile.errorDetails,
   samples: samples.length, maximumNodes: Math.max(0, ...samples.map(s => s.searchNodes || 0)),
   peakWasmMiB: Math.max(0, ...samples.map(s => s.wasmMemoryBytes || 0)) / 1048576,
   last, intervals, unavailable: profile.unavailable };

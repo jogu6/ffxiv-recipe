@@ -87,9 +87,14 @@ impl<'alloc> QualityUbSolver<'alloc> {
         let min_solved_cp = self.min_solved_cp();
         for (state, pareto_front) in new_solved_states {
             let key = TemplateData::new(state.effects, state.compressed_unreliable_quality);
+            if !self.templates.contains_key(&key) {
+                crate::memory::reserve_map(&self.context.allocator.store(), &mut self.templates, 1);
+            }
             let slots = &mut self.templates.entry(key).or_default().slots;
             let index = usize::from((state.cp - min_solved_cp) / 2);
             if slots.len() <= index {
+                let additional = index + 1 - slots.len();
+                crate::memory::reserve_vec(&self.context.allocator.store(), slots, additional);
                 slots.resize_with(index + 1, Default::default);
             }
             if slots[index].is_none() {
@@ -196,6 +201,9 @@ impl<'alloc> QualityUbSolver<'alloc> {
         // This is the reason why states with HeartAndSoul and QuickInnovation available must be computed separately.
         // HeartAndSoul enables the use of TricksOfTrade, which restores CP.
         // QuickInnovation requires no CP (and no durability, so durability cost in terms of CP is 0).
+        let progress_total = 12 * (min_solved_cp..=self.context.settings.max_cp()).step_by(2).count();
+        let mut progress_completed = 0;
+        crate::report_work(6, 0, progress_total);
         for (heart_and_soul, quick_innovation) in
             [(false, false), (false, true), (true, false), (true, true)]
         {
@@ -261,6 +269,8 @@ impl<'alloc> QualityUbSolver<'alloc> {
                         slots[index] = Some(length_checked);
                         self.stats.values += pareto_front.len();
                     }
+                    progress_completed += 1;
+                    crate::report_work(6, progress_completed, progress_total);
                 }
                 for template in templates {
                     if let Some(required_cp) = template.required_cp_for_max_progress_and_quality {
@@ -399,9 +409,8 @@ impl<'main, 'alloc> QualityUbSolverShard<'main, 'alloc> {
                 ));
             }
         };
-        let i = pareto_front.partition_point(|value| value.progress < required_progress);
         let quality = pareto_front
-            .get(i)
+            .at_progress(required_progress)
             .map_or(0, |value| state.quality.saturating_add(value.quality));
         Ok(std::cmp::min(self.context.settings.max_quality(), quality))
     }
@@ -463,6 +472,9 @@ impl<'main, 'alloc> QualityUbSolverShard<'main, 'alloc> {
             }
         }
         let pareto_front = allocator.save(pareto_front_builder.result_as_slice())?;
+        if !self.local_states.contains_key(&state) {
+            crate::memory::reserve_map(&self.context.allocator.store(), &mut self.local_states, 1);
+        }
         self.local_states.insert(state, pareto_front);
         Ok(())
     }
@@ -553,4 +565,3 @@ impl Template {
         })
     }
 }
-

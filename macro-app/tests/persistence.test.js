@@ -3,13 +3,36 @@ import test from 'node:test';
 
 import {
   formatJapaneseDateTime, japaneseIsoDateTime, loadDraftSelection, loadRestorableResult,
-  saveDraftSelection, saveGeneratedResult
+  saveDraftSelection, saveGeneratedResult, savePanelView, loadPanelView, sameSelection
 } from '../web/persistence.js';
 
 function memoryStorage() {
   const values = new Map();
   return { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
 }
+
+test('選択の一致はHQ素材の順序に依存せず食事と薬品も比較する', () => {
+  const selection = { foodId: 'food', medicineId: null, hqIngredientIds: ['a', 'b'] };
+  assert.equal(sameSelection(selection, { ...selection, hqIngredientIds: ['b', 'a'] }), true);
+  for (const change of [{ foodId: null }, { medicineId: 'medicine' }, { hqIngredientIds: ['a'] }]) {
+    assert.equal(sameSelection(selection, { ...selection, ...change }), false);
+  }
+  const storage = memoryStorage();
+  saveGeneratedResult(storage, { recipeId: 'r', dataVersion: 'd', crafter, selection,
+    macro: 'macro', generatedAt: '2026-09-13T00:00:00+09:00' });
+  assert.equal(loadRestorableResult(storage, { recipeId: 'r', dataVersion: 'd', crafter,
+    selection: { ...selection, foodId: null } }), null);
+});
+
+test('パネル表示はレシピ別に保存し破損データを無視する', () => {
+  const storage = memoryStorage();
+  const view = { job: '木工師', expanded: { macroSection: false }, listScroll: { foodList: 120 } };
+  savePanelView(storage, 'r/1', view);
+  assert.deepEqual(loadPanelView(storage, 'r/1'), view);
+  assert.equal(loadPanelView(storage, 'r/2'), null);
+  storage.setItem('xivca.macro.view.v1.r%2F1', '{');
+  assert.equal(loadPanelView(storage, 'r/1'), null);
+});
 
 const crafter = {
   level: 100, craftsmanship: 5000, control: 4800, cp: 600,

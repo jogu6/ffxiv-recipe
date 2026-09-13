@@ -71,8 +71,8 @@ test('macro launcher disables every launch button until post-startup data prepar
     }
   });
   const progressOverlay = { hidden: true };
-  const progress = { value: 0 };
-  const progressPercent = { value: '', textContent: '' };
+  const progress = { value: 0, removeAttribute(name) { if (name === 'value') delete this.value; } };
+  const progressPercent = { value: '', textContent: '', hidden: false };
   const elapsedTime = { textContent: '' };
   const generationStatus = { textContent: '' };
   let cancelFocused = false;
@@ -157,7 +157,7 @@ test('macro launcher disables every launch button until post-startup data prepar
       data: { source: 'xivca-macro', type: 'busy' }
     });
     assert.equal(progressOverlay.hidden, false);
-    assert.equal(progressPercent.textContent, '1%');
+    assert.equal(progressPercent.hidden, true);
     assert.equal(elapsedTime.textContent, '00:00');
     assert.equal(appContent.inert, true);
     assert.equal(cancelFocused, true);
@@ -172,16 +172,18 @@ test('macro launcher disables every launch button until post-startup data prepar
       source: frameWindow,
       data: { source: 'xivca-macro', type: 'progress', percent: 37 }
     });
-    assert.equal(progress.value, 37);
-    assert.equal(progressPercent.textContent, '37%');
+    assert.equal(Object.hasOwn(progress, 'value'), false);
+    assert.equal(progressPercent.hidden, true);
     for (const count of ['50,000', '100,000']) {
       windowListeners.get('message')({
         origin: global.location.origin,
         source: frameWindow,
-        data: { source: 'xivca-macro', type: 'progress', percent: 52, detail: `マクロを探索中：${count}件確認` }
+        data: { source: 'xivca-macro', type: 'progress',
+          detail: `作り方の組み合わせを調べています\n確認した候補：${count}件` }
       });
-      assert.equal(progressPercent.textContent, '52%');
-      assert.equal(generationStatus.textContent, `マクロを探索中：${count}件確認`);
+      assert.equal(progressPercent.hidden, true);
+      assert.equal(generationStatus.textContent,
+        `作り方の組み合わせを調べています\n確認した候補：${count}件`);
     }
     cancelButton.dispatch('click');
     assert.deepEqual(postedMessages.at(-1), {

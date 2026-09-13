@@ -104,6 +104,7 @@
   font-size: calc(12px * var(--font-size-scale));
   line-height: 1.55;
 }
+.macro-generation-status { white-space: pre-line; }
 
 .macro-progress-card .loading-progress-row {
   width: 100%;

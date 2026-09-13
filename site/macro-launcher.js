@@ -41,6 +41,7 @@
     onClose = () => {},
     onNavigate = () => {},
     onScroll = () => {},
+    onNotice = () => {},
     prepareData = defaultPrepareData
   }) {
     if (!panel || !frame || !closeButton || !preparing || !progressOverlay || !progress || !progressPercent || !elapsedTime || !cancelButton) {
@@ -164,11 +165,9 @@
       if (generating) cancelButton.focus();
     }
 
-    function setProgress(value, detail = '') {
-      const percent = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
-      progress.value = percent;
-      progressPercent.value = `${percent}%`;
-      progressPercent.textContent = `${percent}%`;
+    function setProgress(_value, detail = '') {
+      progress.removeAttribute?.('value');
+      progressPercent.hidden = true;
       if (generationStatus) generationStatus.textContent = detail || '生成を準備しています';
     }
 
@@ -283,6 +282,13 @@
       }
       if (event.data.type === 'progress') setProgress(event.data.percent, event.data.detail);
       if (event.data.type === 'idle') setGenerating(false);
+      if (event.data.type === 'notice' && typeof event.data.message === 'string') {
+        const source = event.source;
+        const noticeId = event.data.noticeId;
+        onNotice(event.data.message, () => source?.postMessage({
+          source: 'xivca-host', type: 'notice-closed', noticeId
+        }, location.origin));
+      }
       if (event.data.type === 'swipe') onNavigate(event.data.direction);
       if (event.data.type === 'scroll') {
         scrollState = {

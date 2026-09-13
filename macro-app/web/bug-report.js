@@ -1,5 +1,94 @@
 import { collectDeviceInfo, collectScreenInfo } from './device-info.js';
 import { MAX_SCREENSHOTS, validateScreenshots, prepareScreenshot, screenshotName } from './report-attachments.js';
+import { measuredSnapshot } from './profiling.js';
+
+// Called only while exporting a report. Never mutates the recorded profile,
+// requests device information, or adds work to the running solver callbacks.
+export function profileForReport(profile) {
+  if (!profile) return { summary: '未記録', samples: [], storage: {}, storageEvents: [], estimates: [], development: null };
+  const samples = profile.samples || [];
+  const estimateKeys = ['storageQuotaBytes', 'storageUsageBytes', 'storageAvailableBytes'];
+  const withoutEstimates = value => Object.fromEntries(Object.entries(value || {})
+    .filter(([key]) => !estimateKeys.includes(key) && key !== 'localSimulatedSleepMs'));
+  const clean = sample => ({ ...withoutEstimates(measuredSnapshot(sample)), elapsedMs: sample.elapsedMs,
+    nodesPerSecond: sample.nodesPerSecond ?? null });
+  const trendKeys = ['searchNodes', 'searchQueuedNodes', 'wasmMemoryBytes', 'storageResidentBytes',
+    'storageDiskUsedBytes', 'storageDiskHighWaterBytes', 'storagePageReads', 'storagePageWrites'];
+  const point = sample => ({ 段階: sample.stage, 経過時間ms: sample.elapsedMs,
+    ...Object.fromEntries(trendKeys.filter(key => Number.isFinite(sample[key])).map(key => [key, sample[key]])) });
+  const stages = [];
+  const peaks = {};
+  let previous, maxGap = null;
+  for (const sample of samples) {
+    if (previous && Number.isFinite(sample.elapsedMs) && Number.isFinite(previous.elapsedMs)) {
+      const gap = sample.elapsedMs - previous.elapsedMs;
+      if (!maxGap || gap > maxGap.間隔ms) maxGap = { 間隔ms: gap,
+        開始ms: previous.elapsedMs, 終了ms: sample.elapsedMs, 開始段階: previous.stage, 終了段階: sample.stage };
+    }
+    let stage = stages.at(-1);
+    if (!stage || stage.段階 !== sample.stage) {
+      if (stage) stage.次段階の初回観測ms = sample.elapsedMs;
+      stage = { 段階: sample.stage, 初回観測ms: sample.elapsedMs, 最終観測ms: sample.elapsedMs, 記録数: 0 };
+      stages.push(stage);
+    }
+    stage.最終観測ms = sample.elapsedMs;
+    stage.記録数++;
+    for (const key of trendKeys) {
+      if (Number.isFinite(sample[key]) && (!peaks[key] || sample[key] > peaks[key].値)) {
+        peaks[key] = { 値: sample[key], 経過時間ms: sample.elapsedMs, 段階: sample.stage };
+      }
+    }
+    previous = sample;
+  }
+  // Keep the report bounded even when the existing recorder holds 2,400 entries.
+  // Full-history extrema and gaps above are computed before selecting 32 points.
+  const indices = new Set();
+  for (let i = 0; i < Math.min(32, samples.length); i++) {
+    indices.add(Math.round(i * (samples.length - 1) / Math.max(1, Math.min(32, samples.length) - 1)));
+  }
+  const estimates = (profile.storageEvents || []).filter(event =>
+    estimateKeys.some(key => Number.isFinite(event[key]))).map(event => ({
+    取得元: '一時保存バックエンド', 記録イベント: event.operation, 記録時点ms: event.elapsedMs,
+    容量推計の取得時点: '保存領域を開く際の予約前。記録イベントごとの再取得ではありません',
+    storageQuotaBytes: event.storageQuotaBytes > 0 ? event.storageQuotaBytes : '取得不可・未取得',
+    storageUsageBytes: event.storageQuotaBytes > 0 ? event.storageUsageBytes : '取得不可・未取得',
+    storageAvailableBytes: event.storageQuotaBytes > 0 ? event.storageAvailableBytes : '取得不可・未取得',
+    整合性: event.storageUsageBytes > event.storageQuotaBytes && event.storageQuotaBytes > 0
+      ? '使用量推計が上限推計を超過。実際の空き容量・予約可否の判定には使えません' : 'ブラウザー推計値'
+  }));
+  return {
+    samples: samples.slice(-10).map(clean),
+    storage: withoutEstimates(profile.storage),
+    storageEvents: (profile.storageEvents || []).map(withoutEstimates),
+    estimates,
+    development: profile.metadata?.localResourceTest || samples.some(sample => 'localSimulatedSleepMs' in sample)
+      ? { 記録元: '開発試験でのみ付与された設定・計測',
+        試験設定: profile.metadata?.localResourceTest ? structuredClone(profile.metadata.localResourceTest) : null,
+        過去の試験用待機計測: samples.filter(sample => 'localSimulatedSleepMs' in sample).slice(-10)
+          .map(sample => ({ elapsedMs: sample.elapsedMs, localSimulatedSleepMs: sample.localSimulatedSleepMs })) }
+      : null,
+    summary: {
+      記録元: '本番共通：アプリ内の既存生成記録',
+      保存済み計測数: samples.length, 記録時の間引き数: profile.decimatedSamples || 0,
+      初回計測ms: samples[0]?.elapsedMs ?? null, 最終計測ms: samples.at(-1)?.elapsedMs ?? null,
+      観測範囲の注意: '各時刻は通知の受信時点です。段階の厳密な開始・終了時刻、CPU停止時間ではありません。',
+      段階別: stages.map(stage => ({ ...stage,
+        初回観測から次段階までms: Number.isFinite(stage.次段階の初回観測ms)
+          ? stage.次段階の初回観測ms - stage.初回観測ms : null })),
+      保存済み計測間の最長間隔: maxGap,
+      最長間隔の注意: profile.decimatedSamples > 0
+        ? '記録が間引かれているため、通知自体の最長間隔は復元できません'
+        : '詳細計測の間隔です。その間も候補数や作業進捗が通知される場合があり、停止の証拠ではありません',
+      観測値の最大: peaks,
+      全期間の推移: [...indices].map(index => point(samples[index])),
+      推移の出力上限: 32,
+      永続保存の失敗: Boolean(profile.storageUnavailable),
+      作業進捗の取得状態: profile.workProgress ? '取得済み'
+        : samples.at(-1)?.wasmEngineKind === 'parallel' ? '対象外：並列エンジンはこの通知を生成しません' : '未記録',
+      計測時間の意味: profile.timingMeaning || '未記録'
+    }
+  };
+}
 export const REPORT_ENDPOINT = 'https://xivca-bug-report.jun1-ogu6.workers.dev/';
 export const MAX_REPORT_LENGTH = 1000;
 export function reportLength(text) { return Array.from(text).length; }
@@ -151,6 +240,12 @@ export function installBugReport({ capture, document: doc = document, fetch: sen
     close.className = 'confirm-btn no';
     close.textContent = '閉じる';
     close.addEventListener('click', () => policy.close());
+    policy.addEventListener('click', event => {
+      if (event.target !== policy) return;
+      const bounds = policy.getBoundingClientRect();
+      if (event.clientX < bounds.left || event.clientX > bounds.right
+        || event.clientY < bounds.top || event.clientY > bounds.bottom) policy.close();
+    });
     const cleanup = () => policy.remove();
     view?.addEventListener('pagehide', cleanup, { once: true });
     policy.addEventListener('close', () => {

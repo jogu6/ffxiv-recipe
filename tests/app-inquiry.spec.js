@@ -486,3 +486,19 @@ test('WebP書き出し非対応でも画像を添付でき、不正画像は既�
   await sendReport(page);
   expect(reports[0].files[0].type).toBe('image/png');
 });
+
+
+test('閉じるだけのポリシー閲覧は外側で閉じ、問い合わせの入力を保持する', async ({ page }) => {
+  await openApp(page);
+  await settingsInquiry(page);
+  await page.locator('#bugReportText').fill('入力を保持');
+  await page.locator('#bugReportPrivacyLink').click();
+  const policy = page.locator('.bug-report-policy');
+  await expect(policy).toBeVisible();
+  await policy.getByRole('heading', { name: 'プライバシー・ポリシー', exact: true }).click();
+  await expect(policy).toBeVisible();
+  await page.mouse.click(2, 2);
+  await expect(policy).toHaveCount(0);
+  await expect(page.locator('#bugReportDialog')).toBeVisible();
+  await expect(page.locator('#bugReportText')).toHaveValue('入力を保持');
+});

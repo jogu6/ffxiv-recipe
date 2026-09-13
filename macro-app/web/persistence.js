@@ -1,5 +1,17 @@
 const RESULT_PREFIX = 'xivca.macro.result.v1.';
 const DRAFT_PREFIX = 'xivca.macro.selection.v1.';
+const VIEW_PREFIX = 'xivca.macro.view.v1.';
+
+export function savePanelView(storage, recipeId, view) {
+  storage.setItem(`${VIEW_PREFIX}${encodeURIComponent(String(recipeId))}`, JSON.stringify(view));
+}
+
+export function loadPanelView(storage, recipeId) {
+  try {
+    const value = JSON.parse(storage.getItem(`${VIEW_PREFIX}${encodeURIComponent(String(recipeId))}`) || 'null');
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+  } catch { return null; }
+}
 
 function resultKey(recipeId) {
   return `${RESULT_PREFIX}${encodeURIComponent(String(recipeId))}`;
@@ -45,6 +57,15 @@ function sameValue(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+export function sameSelection(left, right) {
+  const canonical = value => {
+    const selection = normalizedSelection(value);
+    selection.hqIngredientIds = [...new Set(selection.hqIngredientIds)].sort();
+    return selection;
+  };
+  return sameValue(canonical(left), canonical(right));
+}
+
 export function saveGeneratedResult(storage, result) {
   storage.setItem(resultKey(result.recipeId), JSON.stringify(result));
 }
@@ -62,6 +83,7 @@ export function loadRestorableResult(storage, context) {
     || !sameValue(result.crafter, context.crafter)
     || !result.selection
     || !Array.isArray(result.selection.hqIngredientIds)
+    || (context.selection && !sameSelection(result.selection, context.selection))
     || typeof result.macro !== 'string'
     || !Number.isFinite(Date.parse(result.generatedAt))) {
     return null;

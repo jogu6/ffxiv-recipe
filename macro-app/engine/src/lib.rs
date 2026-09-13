@@ -6,8 +6,8 @@ mod mechanics;
 mod raphael_bridge;
 mod telemetry;
 mod wasm_api;
-#[cfg(target_arch = "wasm32")]
-mod allocator;
+#[cfg(any(target_arch = "wasm32", test))]
+mod wasm_allocator;
 
 #[cfg(all(target_arch = "wasm32", feature = "parallel"))]
 pub use wasm_bindgen_rayon::init_thread_pool;

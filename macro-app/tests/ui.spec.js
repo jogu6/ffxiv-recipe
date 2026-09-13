@@ -240,11 +240,11 @@ test('独立画面でステータスを直接編集しオフライン生成ま�
   await page.evaluate(() => {
     const timing = { completedAt: 0, hiddenAt: 0 };
     globalThis.__macroCompletionTiming = timing;
-    const percent = document.querySelector('#progressPercent');
+    const status = document.querySelector('#generationStatus');
     const overlay = document.querySelector('#progressOverlay');
     new MutationObserver(() => {
-      if (percent.textContent === '100%' && !timing.completedAt) timing.completedAt = performance.now();
-    }).observe(percent, { childList: true, characterData: true, subtree: true });
+      if (status.textContent.includes('探索が完了しました') && !timing.completedAt) timing.completedAt = performance.now();
+    }).observe(status, { childList: true, characterData: true, subtree: true });
     new MutationObserver(() => {
       if (overlay.hidden && timing.completedAt && !timing.hiddenAt) timing.hiddenAt = performance.now();
     }).observe(overlay, { attributes: true, attributeFilter: ['hidden'] });
@@ -412,8 +412,8 @@ test('フィルバートブラシ受入条件でRaphaelと同じ25アクショ�
 
 test('スマホ・タブレット相当でも共有WASMを端末性能に応じたスレッド数で初期化する', async ({ browser }) => {
   for (const device of [
-    { name: 'smartphone', width: 390, height: 844, logicalProcessors: 4, expectedThreads: 2 },
-    { name: 'tablet', width: 820, height: 1180, logicalProcessors: 8, expectedThreads: 4 }
+    { name: 'smartphone', width: 390, height: 844, logicalProcessors: 4, expectedThreads: 3 },
+    { name: 'tablet', width: 820, height: 1180, logicalProcessors: 8, expectedThreads: 5 }
   ]) {
     const context = await browser.newContext({ viewport: { width: device.width, height: device.height } });
     await context.addInitScript(logicalProcessors => {

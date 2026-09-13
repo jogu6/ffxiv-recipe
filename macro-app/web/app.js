@@ -1,4 +1,4 @@
-import { installBugReport, reportElapsed } from './bug-report.js';
+import { installBugReport, reportElapsed, profileForReport } from './bug-report.js';
 import { collectDeviceInfo, collectScreenInfo } from './device-info.js';
 import { loadMacroData, recipeFromLocation } from './data-loader.js';
 import {
@@ -6,14 +6,16 @@ import {
   isCompleteCrafterStatus, recipeParameterFailure, sortConsumables
 } from './model.js';
 import {
-  formatJapaneseDateTime, japaneseIsoDateTime, loadRestorableResult, saveGeneratedResult
+  formatJapaneseDateTime, japaneseIsoDateTime, loadRestorableResult, saveGeneratedResult,
+  loadDraftSelection, saveDraftSelection, loadPanelView, savePanelView
 } from './persistence.js';
 import { selectSolverWorkerCount } from './worker-policy.js';
 import { createProfiler } from './profiling.js';
 
 const STORAGE_KEY = 'xivca.macro.crafter-status.v1';
 // Raphael のバージョンに内部リビジョンを付加し、生成エンジンの変更時に末尾を増やす。
-const ENGINE_VERSION = '0.28.6.2';
+const ENGINE_VERSION = '0.28.6.7';
+const REPORT_BUILD_ID = '__REPORT_BUILD_ID__';
 const COMPLETION_HOLD_MS = 200;
 const HQ_MARK_PATH = './assets/hq-mark-transparent.webp';
 const CRAFTER_JOB_ICON_FILES = Object.freeze({
@@ -36,9 +38,14 @@ let solverRequestSerial = 0;
 let wakeLockSentinel = null;
 let generationStartedAt = 0;
 let elapsedTimer = 0;
-let lastGenerationProgress = 0;
 let lastEngineWorkUnits = 0;
+let generationActivity = null;
+let generationNotice = null;
 let solverWorkerCleanup = null;
+let restoringPanel = true;
+const panelSections = Object.fromEntries([
+  'ingredientList', 'crafterStatusSection', 'foodList', 'medicineList', 'generatedStatusSection', 'macroSection'
+].map(key => [key, elements[key].closest('.accordion')]));
 const profiler = createProfiler(localStorage);
 Object.defineProperty(globalThis, '__xivcaMacroProfile', { get: () => profiler.current });
 
@@ -49,6 +56,11 @@ function siteAssetUrl(path) {
 function isHostedPanel() {
   return window.parent !== window && requestedSiteRoot === '../..';
 }
+
+// Standalone previews use the same controller and CSS as the main application.
+if (!isHostedPanel()) await import(siteAssetUrl('floating-window.js'));
+const generationMessageWindow = isHostedPanel() ? null
+  : globalThis.FloatingWindow.createFloatingWindow(elements.confirmOverlay);
 
 function notifyHost(type, detail = {}) {
   if (window.parent === window) return;
@@ -64,6 +76,7 @@ function formatElapsed(milliseconds) {
 
 function updateElapsedTime() {
   elements.elapsedTime.textContent = formatElapsed(Date.now() - generationStartedAt);
+  renderGenerationActivity();
 }
 
 function startGenerationClock() {
@@ -78,46 +91,88 @@ function stopGenerationClock() {
   elapsedTimer = 0;
 }
 
-function setGenerationProgress(value, detail = '') {
-  const percent = Math.max(lastGenerationProgress, Math.min(100, Math.round(Number(value) || 0)));
-  lastGenerationProgress = percent;
-  elements.progress.value = percent;
-  elements.progressPercent.value = `${percent}%`;
-  elements.progressPercent.textContent = `${percent}%`;
-  if (detail || percent <= 3 || percent === 100) {
-    elements.generationStatus.textContent = detail || (percent === 100 ? '生成が完了しました' : '生成を準備しています');
-  }
-  notifyHost('progress', { percent, detail: elements.generationStatus.textContent });
+function formatActivityBytes(value) {
+  const bytes = Math.max(0, Number(value) || 0);
+  if (bytes === 0) return '0MB';
+  if (bytes >= 1024 ** 3) return `${(bytes / (1024 ** 3)).toFixed(2)}GB`;
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024)).toLocaleString('ja-JP')}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
-function telemetryProgress(snapshot = {}) {
-  const stage = String(snapshot.stage || 'preparing');
-  if (stage === 'finishBound') {
-    return 5 + Math.min(9, Math.floor(Math.log2(Math.max(1, Number(snapshot.finishStates) || 0))));
+function activityAgeText(milliseconds) {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+  if (seconds < 5) return 'たった今';
+  if (seconds < 60) return `${seconds}秒前`;
+  return `${Math.floor(seconds / 60)}分前`;
+}
+
+function renderGenerationActivity() {
+  if (!generationActivity) return;
+  const now = Date.now();
+  const age = generationActivity.lastAdvanceAt ? now - generationActivity.lastAdvanceAt : 0;
+  const stageText = {
+    preparing: '生成の準備をしています',
+    finishBound: '完成できる手順を調べています',
+    resourceQualityBound: '品質を上げられる組み合わせを調べています',
+    stepLowerBound: '必要な手数を調べています',
+    bestFirstSearch: '作り方の組み合わせを調べています',
+    complete: '探索が完了しました'
+  }[generationActivity.engineStage || generationActivity.stage] || '生成の準備をしています';
+  const lines = [stageText];
+  if (generationActivity.searchNodes > 0) {
+    lines.push(`確認した候補：${generationActivity.searchNodes.toLocaleString('ja-JP')}件`);
   }
-  if (stage === 'resourceQualityBound') {
-    const stateRatio = (Number(snapshot.resourceQualityMemoEntries) || 0)
-      / Math.max(1, Number(snapshot.resourceQualityStateLimit) || 1);
-    const pointRatio = (Number(snapshot.resourceQualityFrontPoints) || 0)
-      / Math.max(1, Number(snapshot.resourceQualityPointLimit) || 1);
-    return 15 + Math.floor(Math.min(1, Math.max(stateRatio, pointRatio)) * 34);
+  if (generationActivity.work && generationActivity.engineStage !== 'complete') {
+    const { completed, total } = generationActivity.work;
+    lines.push(`今回の作業の進み具合：${Math.floor(completed * 1000 / total) / 10}%`);
   }
-  if (stage === 'stepLowerBound') return 40;
-  if (stage === 'bestFirstSearch') {
-    const processed = Number(snapshot.searchNodes) || 0;
-    const queued = Number(snapshot.searchQueuedNodes) || 0;
-    const known = processed + queued;
-    return 50 + Math.floor((known > 0 ? processed / known : 0) * 48);
+  if (generationActivity.reservedBytes > 0) {
+    const used = Number.isFinite(generationActivity.diskUsedBytes)
+      ? formatActivityBytes(generationActivity.diskUsedBytes) : '確認中';
+    lines.push(`端末への一時保存：${used}／${formatActivityBytes(generationActivity.reservedBytes)}`);
   }
-  if (stage === 'complete') return 99;
-  return 3;
+  if (globalThis.__xivcaDevelopment === true && generationActivity.readBytes > 0) {
+    lines.push(`一時保存からの読み込み：${formatActivityBytes(generationActivity.readBytes)} 完了`);
+  }
+  if (globalThis.__xivcaDevelopment === true && generationActivity.lastAdvanceAt) {
+    lines.push(`最後に処理の進行を確認：${activityAgeText(age)}`);
+  }
+  const detail = lines.join('\n');
+  if (elements.generationStatus.textContent === detail) return;
+  elements.generationStatus.textContent = detail;
+  notifyHost('progress', { detail });
+}
+
+function setGenerationProgress(value) {
+  elements.progress.removeAttribute?.('value');
+  elements.progressPercent.hidden = true;
+  const percent = Math.min(100, Math.round(Number(value) || 0));
+  if (percent === 100 && generationActivity) {
+    generationActivity.stage = 'complete';
+    generationActivity.engineStage = 'complete';
+    generationActivity.lastAdvanceAt = Date.now();
+  }
+  renderGenerationActivity();
 }
 
 function observeEngineTelemetry(snapshot = {}, context = {}) {
   const now = Date.now();
   const workUnits = Math.max(0, Number(snapshot.workUnits) || 0);
-  const advancing = workUnits > lastEngineWorkUnits;
+  const stage = String(snapshot.stage || 'preparing');
+  const searchNodes = Math.max(0, Number(snapshot.searchNodes) || 0);
+  const previousStage = generationActivity?.engineStage;
+  const advancing = workUnits > lastEngineWorkUnits || searchNodes > (generationActivity?.searchNodes || 0)
+    || (stage !== 'preparing' && stage !== previousStage);
   if (advancing) lastEngineWorkUnits = workUnits;
+  generationActivity ||= { stage: 'preparing', engineStage: 'preparing', searchNodes: 0,
+    writtenBytes: 0, readBytes: 0, lastAdvanceAt: 0 };
+  generationActivity.stage = stage;
+  generationActivity.engineStage = stage;
+  generationActivity.searchNodes = Math.max(generationActivity.searchNodes, searchNodes);
+  if (Number.isFinite(snapshot.storageDiskUsedBytes) && snapshot.storageDiskCapacityBytes > 0) {
+    generationActivity.diskUsedBytes = snapshot.storageDiskUsedBytes;
+  }
+  if (advancing) generationActivity.lastAdvanceAt = now;
   globalThis.__xivcaMacroEngineStatus = {
     running: Boolean(generationController),
     advancing,
@@ -128,15 +183,56 @@ function observeEngineTelemetry(snapshot = {}, context = {}) {
     ...context,
     telemetry: { ...snapshot }
   };
-  const detail = snapshot.stage === 'bestFirstSearch'
-    ? `マクロを探索中：${Math.max(0, Number(snapshot.searchNodes) || 0).toLocaleString('ja-JP')}件確認`
-    : {
-      finishBound: '完成できる手順を確認しています',
-      resourceQualityBound: '到達できる品質を計算しています',
-      stepLowerBound: '必要な手数を計算しています',
-      complete: '探索が完了しました'
-    }[snapshot.stage] || '生成を準備しています';
-  setGenerationProgress(telemetryProgress(snapshot), detail);
+  setGenerationProgress(stage === 'complete' ? 100 : 0);
+}
+
+function observeLiveSearchProgress(progress = {}) {
+  const searchNodes = Number(progress.searchNodes);
+  const activityCount = Math.max(0, Number(progress.activityCount) || 0);
+  if (!Number.isSafeInteger(searchNodes) || !generationActivity || generationActivity.stage === 'complete'
+    || (searchNodes <= generationActivity.searchNodes && activityCount <= (generationActivity.activityCount || 0))) return;
+  const now = Date.now();
+  generationActivity.searchNodes = Math.max(generationActivity.searchNodes, searchNodes);
+  generationActivity.activityCount = Math.max(generationActivity.activityCount || 0, activityCount);
+  generationActivity.lastAdvanceAt = now;
+  generationActivity.stage = generationActivity.engineStage = 'bestFirstSearch';
+  globalThis.__xivcaMacroEngineStatus = { ...globalThis.__xivcaMacroEngineStatus,
+    advancing: true, lastAdvanceAt: now, liveProgress: { searchNodes, activityCount, receivedAt: now } };
+  profiler.liveProgress(progress);
+  renderGenerationActivity();
+}
+
+function observeWorkProgress(work = {}) {
+  const { workId, phase, completed, total } = work;
+  if (![workId, phase, completed, total].every(Number.isSafeInteger)
+    || total <= 0 || completed < 0 || completed > total || phase < 1 || phase > 7
+    || generationActivity?.engineStage === 'complete') return;
+  const previous = generationActivity?.work;
+  if (previous && (workId < previous.workId || (workId === previous.workId && completed <= previous.completed))) return;
+  generationActivity ||= { stage: 'preparing', engineStage: 'preparing', searchNodes: 0,
+    writtenBytes: 0, readBytes: 0, lastAdvanceAt: 0 };
+  generationActivity.work = { workId, phase, completed, total };
+  generationActivity.lastAdvanceAt = Date.now();
+  profiler.workProgress(generationActivity.work);
+  globalThis.__xivcaMacroEngineStatus = { ...globalThis.__xivcaMacroEngineStatus,
+    advancing: true, lastAdvanceAt: generationActivity.lastAdvanceAt, workProgress: generationActivity.work };
+  renderGenerationActivity();
+}
+
+function observeStorageProgress(metrics = {}) {
+  profiler.storage(metrics);
+  generationActivity ||= { stage: 'preparing', engineStage: 'preparing', searchNodes: 0,
+    writtenBytes: 0, readBytes: 0, lastAdvanceAt: 0 };
+  const writtenBytes = Math.max(0, Number(metrics.storageWrittenBytes) || 0);
+  const readBytes = Math.max(0, Number(metrics.storageReadBytes) || 0);
+  const reservedBytes = Math.max(0, Number(metrics.storageReservedBytes) || 0);
+  const advancing = writtenBytes > generationActivity.writtenBytes || readBytes > generationActivity.readBytes
+    || reservedBytes > (generationActivity.reservedBytes || 0);
+  generationActivity.writtenBytes = Math.max(generationActivity.writtenBytes, writtenBytes);
+  generationActivity.readBytes = Math.max(generationActivity.readBytes, readBytes);
+  generationActivity.reservedBytes = Math.max(generationActivity.reservedBytes || 0, reservedBytes);
+  if (advancing) generationActivity.lastAdvanceAt = Date.now();
+  renderGenerationActivity();
 }
 
 async function requestGenerationWakeLock() {
@@ -166,7 +262,7 @@ function releaseGenerationWakeLock() {
 }
 
 function reportHostedScroll() {
-  if (!isHostedPanel()) return;
+  if (!isHostedPanel() || restoringPanel) return;
   notifyHost('scroll', {
     scrollTop: elements.macroContent.scrollTop,
     scrollHeight: elements.macroContent.scrollHeight,
@@ -210,6 +306,27 @@ function currentSelection() {
     medicineId: state.medicine?.id || null,
     hqIngredientIds: [...state.hqIngredientIds]
   };
+}
+
+function savePanelState() {
+  if (restoringPanel || generationController || !state.recipe) return;
+  try {
+    savePanelView(localStorage, state.recipe.id, {
+      job: elements.job.value,
+      expanded: Object.fromEntries(Object.entries(panelSections).map(([key, section]) => [key, section.classList.contains('open')])),
+      listScroll: { foodList: elements.foodList.scrollTop, medicineList: elements.medicineList.scrollTop }
+    });
+  } catch { /* A full or unavailable store must not prevent panel interaction. */ }
+}
+
+function selectionEdited() {
+  try {
+    saveDraftSelection(localStorage, {
+      recipeId: state.recipe.id, dataVersion: state.data.dataVersion, selection: currentSelection()
+    });
+  } catch { /* Keep the current in-memory selection usable. */ }
+  restoreGeneratedResult();
+  savePanelState();
 }
 
 function setCrafterStatusExpanded(open) {
@@ -305,6 +422,7 @@ function selectJob(job) {
   loadSelectedJob();
   closeJobPicker();
   if (state.recipe?.job === job) restoreGeneratedResult();
+  savePanelState();
 }
 
 function initializeJobPicker() {
@@ -467,7 +585,7 @@ function renderIngredients() {
       icon?.classList.toggle('is-hq', hqSelected);
       hq.setAttribute('aria-pressed', String(hqSelected));
       nq.setAttribute('aria-pressed', String(!hqSelected));
-      hideGeneratedResult();
+      selectionEdited();
     };
     hq.addEventListener('click', () => chooseQuality(true));
     nq.addEventListener('click', () => chooseQuality(false));
@@ -528,8 +646,8 @@ function renderConsumables(container, items, kind) {
     }
     renderCurrentConsumable(elements[`${kind}Current`], item);
     if (userInitiated) {
-      hideGeneratedResult();
       setAccordionExpanded(container.closest('.accordion'), false);
+      selectionEdited();
     }
   };
   none.dataset.id = '';
@@ -660,7 +778,7 @@ function restoreGeneratedResult() {
   if (!isCompleteCrafterStatus(status, state.data.maxCrafterLevel)) return;
   const result = loadRestorableResult(localStorage, {
     recipeId: state.recipe.id, dataVersion: state.data.dataVersion,
-    crafter: status
+    crafter: status, selection: currentSelection()
   });
   if (!result) return;
   showGeneratedResult(result);
@@ -673,12 +791,49 @@ function cancelSolverWorkerCleanup() {
   solverWorkerCleanup = null;
 }
 
+function deleteSearchStorage(name) {
+  if (!name) return;
+  if (name.startsWith('opfs:')) {
+    const fileName = name.slice(5);
+    void (async () => {
+      const root = await navigator.storage?.getDirectory?.();
+      if (!root) return;
+      for (const delay of [0, 100, 500]) {
+        if (delay) await new Promise(resolve => window.setTimeout(resolve, delay));
+        let failed = false;
+        try {
+          for await (const name of root.keys()) {
+            if (name !== fileName && !name.startsWith(`${fileName}-`)) continue;
+            try { await root.removeEntry(name); } catch { failed = true; }
+          }
+          if (!failed) return;
+        } catch {}
+      }
+    })().catch(() => {});
+    return;
+  }
+  indexedDB.deleteDatabase(name);
+}
+
 function terminateSolverWorkers() {
   cancelSolverWorkerCleanup();
   solverWorkers.forEach(worker => {
-    worker.terminate();
-    if (worker.searchDatabaseName) indexedDB.deleteDatabase(worker.searchDatabaseName);
-
+    let stopped = false;
+    const finish = () => {
+      if (stopped) return;
+      stopped = true;
+      clearTimeout(timeout);
+      worker.removeEventListener('message', onDispose);
+      worker.terminate();
+      deleteSearchStorage(worker.searchDatabaseName);
+    };
+    const onDispose = ({ data }) => {
+      if (data.type === 'storage-created' || data.type === 'storage-open') worker.searchDatabaseName = data.databaseName;
+      if (data.type === 'disposed') finish();
+    };
+    const timeout = setTimeout(finish, 5000);
+    worker.addEventListener('message', onDispose);
+    worker.postMessage({ type: 'dispose' });
   });
   solverWorkers = [];
 }
@@ -722,12 +877,57 @@ function stopGeneration({ deferWorkerCleanup = false } = {}) {
   notifyHost('idle');
 }
 
-function showGenerationMessage(message) {
-  elements.generationMessage.textContent = message;
-  elements.generationMessage.hidden = !message;
+function generationFailureMessage(error) {
+  const message = String(error?.message || error || '');
+  if (!message) return '';
+  if (/\bNoSolution\b/.test(message)) {
+    return '現在の製作ステータスと設定では、完成に必要な工数・品質を満たす手順が見つかりませんでした。\n食事・薬品の使用や、製作ステータス・HQ素材の設定を見直してください。';
+  }
+  if (/out of memory|memory allocation.*failed|failed to allocate|could not allocate memory|unable to grow.*memory|メモリーを確保できません/i.test(message)) {
+    return '計算に必要なメモリーを確保できなかったため、マクロを生成できませんでした。\nほかのアプリやタブを閉じてから、もう一度お試しください。';
+  }
+  if (error?.name === 'QuotaExceededError' || /quota.*exceed/i.test(message)) {
+    return '端末の一時保存領域が不足しているため、マクロを生成できませんでした。\n空き容量を増やしてから、もう一度お試しください。';
+  }
+  if (/SearchQueueCapacityExceeded/.test(message)) {
+    return '調べられる候補数の上限に達したため、マクロを生成できませんでした。\n食事・薬品やHQ素材の設定を見直してください。';
+  }
+  if (/一時保存|メモリー|不足|製作|完成保証/.test(message)) return message;
+  if (['reserve', 'read', 'write', 'close'].includes(error?.diagnostics?.phase)) {
+    return '途中経過の一時保存を処理できなかったため、マクロを生成できませんでした。\n再度失敗する場合は「不具合・お問い合わせ」からご報告ください。';
+  }
+  if (/^[\x00-\x7f]*$/.test(message) || /unreachable|RuntimeError|InternalError/.test(message)) {
+    return 'マクロの計算処理でエラーが発生しました。原因を特定できなかったため、「不具合・お問い合わせ」からご報告ください。';
+  }
+  return message;
 }
 
-function requestSolverWorker(worker, type, payload = {}, { signal = null, onTelemetry = () => {} } = {}) {
+function closeGenerationMessage() {
+  generationMessageWindow?.close();
+  if (generationNotice) generationNotice.visible = false;
+  if (!elements.generateButton.disabled) elements.generateButton.focus({ preventScroll: true });
+}
+
+function showGenerationMessage(message, { dialog = true } = {}) {
+  const originalMessage = String(message?.message || message || '');
+  const text = generationFailureMessage(message);
+  elements.confirmMsg.textContent = text;
+  elements.confirmMsg.hidden = !text;
+  generationNotice = text ? { at: japaneseIsoDateTime(), originalMessage, dialog,
+    id: crypto.randomUUID(), visible: dialog } : null;
+  if (text && dialog) {
+    if (isHostedPanel()) {
+      notifyHost('notice', { message: text, noticeId: generationNotice.id });
+    } else {
+      generationMessageWindow.open();
+      elements.confirmNo.focus({ preventScroll: true });
+    }
+  } else generationMessageWindow?.close();
+}
+
+function requestSolverWorker(worker, type, payload = {}, {
+  signal = null, onTelemetry = () => {}, onStorageProgress = () => {}, onSearchProgress = () => {}, onWorkProgress = () => {}
+} = {}) {
   solverRequestSerial += 1;
   const requestId = globalThis.crypto?.randomUUID?.()
     || `solver-${Date.now()}-${solverRequestSerial}`;
@@ -742,18 +942,36 @@ function requestSolverWorker(worker, type, payload = {}, { signal = null, onTele
     };
     const onMessage = event => {
       if (event.data?.requestId !== requestId) return;
-      if (event.data.type === 'storage-open') {
+      if (event.data.type === 'storage-open' || event.data.type === 'storage-created') {
         worker.searchDatabaseName = event.data.databaseName;
+        if (event.data.metrics) onStorageProgress({ ...event.data.metrics, operation: 'open' });
+        return;
+      }
+      if (event.data.type === 'search-progress') {
+        onSearchProgress(event.data);
+        return;
+      }
+      if (event.data.type === 'work-progress') {
+        onWorkProgress(event.data);
         return;
       }
       if (event.data.type === 'telemetry') {
         onTelemetry(event.data.snapshot);
         return;
       }
+      if (event.data.type === 'storage-progress') {
+        onStorageProgress(event.data.metrics);
+        return;
+      }
       if (event.data.type !== expectedType && event.data.type !== 'error') return;
       cleanup();
       if (event.data.type === expectedType) resolve(event.data);
-      else reject(new Error(event.data.message || 'マクロ生成エンジンを準備できません'));
+      else {
+        const error = new Error(event.data.message || 'マクロ生成エンジンを準備できません');
+        error.name = event.data.errorName || 'Error';
+        error.diagnostics = event.data.diagnostics;
+        reject(error);
+      }
     };
     const onError = event => {
       cleanup();
@@ -826,6 +1044,9 @@ async function runSolver(input, signal) {
     { input },
     {
       signal,
+      onStorageProgress: observeStorageProgress,
+      onSearchProgress: observeLiveSearchProgress,
+      onWorkProgress: observeWorkProgress,
       onTelemetry: snapshot => {
         profiler.sample(snapshot);
         const context = {
@@ -859,9 +1080,17 @@ for (const key of ['manipulation', 'heartAndSoul', 'quickInnovation']) {
 document.querySelectorAll('.accordion-toggle').forEach(button => button.addEventListener('click', () => {
   const section = button.closest('.accordion');
   setAccordionExpanded(section, !section.classList.contains('open'));
+  savePanelState();
 }));
 
 elements.cancelButton.addEventListener('click', stopGeneration);
+elements.confirmNo.addEventListener('click', closeGenerationMessage);
+elements.confirmOverlay.addEventListener('click', event => {
+  if (event.target === elements.confirmOverlay) closeGenerationMessage();
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && generationMessageWindow?.isOpen()) closeGenerationMessage();
+});
 elements.statusWarningButton.addEventListener('click', () => {
   elements.statusWarningOverlay.hidden = true;
   elements.appShell.inert = false;
@@ -908,6 +1137,7 @@ elements.copyMacroButton.addEventListener('click', async () => {
   }, 1500);
 });
 document.addEventListener('visibilitychange', () => {
+  if (document.hidden) savePanelState();
   if (!document.hidden && generationController) void requestGenerationWakeLock();
 });
 window.addEventListener('pageshow', event => {
@@ -919,6 +1149,8 @@ window.addEventListener('pageshow', event => {
 window.addEventListener('message', event => {
   if (event.origin !== location.origin || event.source !== window.parent) return;
   if (event.data?.source === 'xivca-host' && event.data.type === 'cancel') stopGeneration();
+  if (event.data?.source === 'xivca-host' && event.data.type === 'notice-closed'
+    && event.data.noticeId === generationNotice?.id) closeGenerationMessage();
 });
 elements.generateButton.addEventListener('click', async () => {
   const status = readStatuses()[state.recipe.job];
@@ -929,7 +1161,7 @@ elements.generateButton.addEventListener('click', async () => {
     updateSelectedJobVisual();
     fillStatus(status);
     setCrafterStatusExpanded(true);
-    showGenerationMessage('製作ステータスを入力してください。');
+    showGenerationMessage('製作ステータスを入力してください。', { dialog: false });
     elements.statusWarningOverlay.hidden = false;
     elements.appShell.inert = true;
     elements.statusWarningButton.focus();
@@ -958,8 +1190,11 @@ elements.generateButton.addEventListener('click', async () => {
     showGenerationMessage(`完成保証マクロを生成できません。${statusFailure}`);
     return;
   }
-  lastGenerationProgress = 0;
   lastEngineWorkUnits = 0;
+  generationActivity = {
+    stage: 'preparing', engineStage: 'preparing', searchNodes: 0,
+    writtenBytes: 0, readBytes: 0, lastAdvanceAt: 0
+  };
   globalThis.__xivcaMacroEngineStatus = {
     running: true,
     advancing: false,
@@ -968,9 +1203,8 @@ elements.generateButton.addEventListener('click', async () => {
     lastUpdateAt: Date.now(),
     lastAdvanceAt: Date.now()
   };
-  elements.progress.value = 1;
-  elements.progressPercent.value = '1%';
-  elements.progressPercent.textContent = '1%';
+  elements.progress.removeAttribute('value');
+  elements.progressPercent.hidden = true;
   if (isHostedPanel()) {
     elements.progressOverlay.hidden = true;
   } else {
@@ -1006,13 +1240,14 @@ elements.generateButton.addEventListener('click', async () => {
       scrollToGeneratedMacro();
     } else {
       stopGeneration();
-      showGenerationMessage('現在の製作ステータスと設定では、完成保証マクロを生成できません。');
+      showGenerationMessage('NoSolution');
     }
   } catch (error) {
-    if (error?.name === 'AbortError') return;
-    profiler.finish('error', { error: String(error?.message || error) });
+    if (error?.name === 'AbortError' && controller.signal.aborted) return;
+    profiler.finish('error', { error: String(error?.message || error),
+      errorName: error?.name || 'Error', errorDetails: error?.diagnostics || null });
     stopGeneration();
-    showGenerationMessage(error?.message || 'マクロ生成中にエラーが発生しました。');
+    showGenerationMessage(error || 'マクロ生成中にエラーが発生しました。');
   }
 });
 
@@ -1073,6 +1308,7 @@ elements.macroContent.addEventListener('scroll', reportHostedScroll, { passive: 
 if (typeof ResizeObserver === 'function') new ResizeObserver(reportHostedScroll).observe(elements.macroContent);
 
 window.addEventListener('pagehide', event => {
+  savePanelState();
   if (event.persisted) return;
   stopGeneration();
 });
@@ -1084,7 +1320,21 @@ async function initialize() {
     elements.level.max = String(state.data.maxCrafterLevel);
     state.recipe = recipeFromLocation(state.data);
     if (!state.recipe) throw new Error('選択された製作レシピが見つかりません');
-    elements.job.value = state.recipe.job;
+    const view = loadPanelView(localStorage, state.recipe.id);
+    const context = { recipeId: state.recipe.id, dataVersion: state.data.dataVersion,
+      crafter: readStatuses()[state.recipe.job] };
+    // Existing installations may have a result but no separately saved selection.
+    const selection = loadDraftSelection(localStorage, context)
+      || loadRestorableResult(localStorage, context)?.selection;
+    state.food = state.data.foods.find(item => item.id === selection?.foodId) || null;
+    state.medicine = state.data.medicines.find(item => item.id === selection?.medicineId) || null;
+    state.hqIngredientIds = new Set(state.recipe.ingredients
+      .filter(item => selection?.hqIngredientIds.includes(String(item.id))).map(item => String(item.id)));
+    try {
+      saveDraftSelection(localStorage, { ...context, selection: currentSelection() });
+    } catch { /* Restoration must also work when storage is unavailable. */ }
+    document.documentElement.classList.add('restoring-panel');
+    elements.job.value = CRAFTER_JOBS.includes(view?.job) ? view.job : state.recipe.job;
     loadSelectedJob();
     renderRecipe(state.recipe);
     renderIngredients();
@@ -1092,13 +1342,28 @@ async function initialize() {
     renderConsumables(elements.medicineList, state.data.medicines, 'medicine');
     setCrafterStatusExpanded(!isCompleteCrafterStatus(readStatuses()[state.recipe.job], state.data.maxCrafterLevel));
     restoreGeneratedResult();
+    for (const [key, section] of Object.entries(panelSections)) {
+      if (typeof view?.expanded?.[key] === 'boolean') setAccordionExpanded(section, view.expanded[key]);
+    }
     const restoredScrollTop = Math.max(0, Math.floor(Number(new URLSearchParams(location.search).get('scrollTop')) || 0));
-    if (restoredScrollTop > 0) requestAnimationFrame(() => {
+    // New/different recipes start at the top; saved-view restoration supplies
+    // an explicit position. Reopening the same recipe keeps this document.
+    await document.fonts?.ready;
+    requestAnimationFrame(() => {
+      syncMacroLineNumbers();
+      for (const key of ['foodList', 'medicineList']) {
+        elements[key].scrollTop = Math.max(0, Number(view?.listScroll?.[key]) || 0);
+      }
       elements.macroContent.scrollTop = restoredScrollTop;
-      requestAnimationFrame(reportHostedScroll);
+      // Apply the complete layout without opening/closing animations before scrolling.
+      elements.macroContent.getBoundingClientRect();
+      document.documentElement.classList.remove('restoring-panel');
+      restoringPanel = false;
+      reportHostedScroll();
     });
-    requestAnimationFrame(reportHostedScroll);
   } catch (error) {
+    document.documentElement.classList.remove('restoring-panel');
+    restoringPanel = false;
     elements.recipeInfo.className = 'empty';
     elements.recipeInfo.textContent = String(error?.message || error);
     return;
@@ -1108,7 +1373,7 @@ async function initialize() {
     await prepareSolverWorkers();
     elements.generateButton.disabled = false;
   } catch (error) {
-    showGenerationMessage(error?.message || 'マクロ生成エンジンを準備できませんでした。');
+    showGenerationMessage(error || 'マクロ生成エンジンを準備できませんでした。');
   }
 }
 
@@ -1144,12 +1409,12 @@ function captureBugReport() {
   } : '使用しない';
   const profile = profiler.current;
   const relevant = profile?.metadata?.recipeId === state.recipe?.id ? profile : null;
-  const numericSamples = relevant?.samples?.slice(-10).map(sample => Object.fromEntries(
-    Object.entries(sample).filter(([key, value]) => typeof value === 'number'
-      || key === 'stage' || key === 'wasmSha256')
-  )) || [];
+  const reportProfile = profileForReport(relevant);
   return {
     取得日時: japaneseIsoDateTime(),
+    出力元JavaScript識別子: REPORT_BUILD_ID,
+    実行区分: globalThis.__xivcaDevelopment === true ? '開発環境' : '通常配信（開発用コードなし）',
+    記録の区分: '本番共通のアプリ内記録。開発サーバーの監視ログ・送信ログ・試験結果ファイルは参照しません',
     製作アイテム: readable(elements.recipeInfo),
     レシピ情報: state.recipe ? {
       ID: state.recipe.id, ジョブ: state.recipe.job, レベル: state.recipe.level,
@@ -1164,7 +1429,13 @@ function captureBugReport() {
     前回のマクロ生成日時とクラフターステータス: elements.generatedStatusSection.hidden
       ? '表示なし' : `生成日時：${elements.generatedAt.textContent}（日本標準時）\n\n${readable(elements.generatedStatus).replace(/ \/ /g, '\n')}`,
     マクロ: elements.macroSection.hidden ? '表示なし' : elements.macroOutput.value,
-    画面の通知: elements.generationMessage.hidden ? '' : elements.generationMessage.textContent,
+    画面の通知: elements.confirmMsg.hidden ? '' : elements.confirmMsg.textContent,
+    通知の詳細: generationNotice ? {
+      通知日時: generationNotice.at,
+      表示先: generationNotice.dialog ? 'フローティングウィンドウ' : '製作ステータスの警告',
+      表示中: generationNotice.dialog ? generationNotice.visible : !elements.statusWarningOverlay.hidden,
+      元の内容: generationNotice.originalMessage.replace(/https?:\/\/[^\s)]+/g, '[URL省略]')
+    } : null,
     現在の生成状況: { 実行中: Boolean(generationController),
       表示: generationController ? elements.generationStatus.textContent : '生成していません' },
     直近の生成記録: {
@@ -1177,7 +1448,26 @@ function captureBugReport() {
         開発用制限: relevant?.metadata?.localResourceTest
           ? structuredClone(relevant.metadata.localResourceTest) : '未記録' },
     生成エラー: String(relevant?.error || '').replace(/https?:\/\/[^\s)]+/g, '[URL省略]'),
-    直近の探索計測: numericSamples,
+    生成エラー詳細: JSON.parse(JSON.stringify({ 種類: relevant?.errorName || null, ...relevant?.errorDetails },
+      (_key, value) => typeof value === 'string' ? value.replace(/https?:\/\/[^\s)]+/g, '[URL省略]') : value)),
+    一時保存の計測: reportProfile.storage,
+    一時保存の準備と終了: reportProfile.storageEvents,
+    ブラウザー容量推計: reportProfile.estimates,
+    容量推計の注意: '探索側の共有領域にある未更新の0とは混在させません。端末全体の空きディスク容量ではありません。',
+    生成全体の記録: reportProfile.summary,
+    開発時だけの記録: reportProfile.development || 'なし',
+    計測値の意味: (relevant?.memoryMeaning || '未記録').replace(/。(?=[^\r\n])/gu, '。\n'),
+    処理の進行確認: relevant ? {
+      最後の探索計測からの経過時間ms: Math.max(0, (generationController
+        ? Date.now() - Date.parse(relevant.startedAt) : relevant.elapsedMs) - (relevant.samples.at(-1)?.elapsedMs || 0)),
+      最後の進行確認からの経過時間ms: generationController && generationActivity?.lastAdvanceAt
+        ? Math.max(0, Date.now() - generationActivity.lastAdvanceAt) : null
+    } : null,
+    直近の探索計測: reportProfile.samples,
+    メモリー拡張の記録: relevant?.memoryEvents || [],
+    直近の作業進捗: relevant?.workProgress || null,
+    作業進捗と保存待ちの意味: '作業進捗は今回の処理範囲の実作業量で、全生成の完了率や確認した候補数ではありません。\nstorageReadMs／storageWriteMsは保存APIの処理時間、storageFlushMsはOPFSの書込反映時間です。\nstorageSolverWaitMsは単独エンジンが非同期保存の完了を待って計算を中断した時間で、通知の空白時間やOSのCPU待機時間ではありません。\nstorageSolverWaitCountは待機回数、storageSolverMaxWaitMsは1回の最長待機時間です。\n保存APIの処理時間と待機時間には重複があるため加算しません。',
+    メモリー拡張の記録の意味: '最大64件。ページ単位は64KiB。\nrequestedPagesは追加要求、currentPagesは要求前の確保量、maximumPagesは設定上限。\noutcomeは0＝既知の上限超過を事前回避、1＝実際の拡張失敗、2＝拡張成功。\nstageは0＝初期化、1＝準備、2＝完成条件、3＝品質上限、4＝必要手数、5＝候補探索、6＝完了。\nphaseは0＝準備、1＝候補復元、2＝候補比較、3＝候補展開、4＝結果統合。\n失敗後の成功・退避量・候補数と合わせて確認します。',
     報告時の実行環境: captureEnvironment()
   };
 }

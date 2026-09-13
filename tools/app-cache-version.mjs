@@ -26,7 +26,22 @@ export function expectedAppCacheVersion({ siteRoot, serviceWorkerSource }) {
   return `ff14recipe-app-${release}-${hash.digest('hex').slice(0, 12)}`;
 }
 
+// Build-time report identifiers; no runtime hashing or additional requests.
+export function updateReportBuildIds({ siteRoot }) {
+  for (const relative of ['app.js', 'macro-app/web/app.js']) {
+    const file = path.join(siteRoot, relative);
+    if (!fs.existsSync(file)) continue;
+    const source = fs.readFileSync(file, 'utf8');
+    const pattern = /const REPORT_BUILD_ID = '[^']*';/u;
+    if (!pattern.test(source)) continue;
+    const normalized = source.replace(pattern, "const REPORT_BUILD_ID = '__REPORT_BUILD_ID__';").replaceAll('\r\n', '\n');
+    const id = 'sha256:' + crypto.createHash('sha256').update(normalized).digest('hex');
+    fs.writeFileSync(file, source.replace(pattern, `const REPORT_BUILD_ID = '${id}';`), 'utf8');
+  }
+}
+
 export function updateAppCacheVersion({ siteRoot, serviceWorkerPath }) {
+  updateReportBuildIds({ siteRoot });
   const source = fs.readFileSync(serviceWorkerPath, 'utf8');
   const version = expectedAppCacheVersion({ siteRoot, serviceWorkerSource: source });
   const next = source.replace(

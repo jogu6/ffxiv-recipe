@@ -1,6 +1,13 @@
 const { test, expect } = require('@playwright/test');
 const fs = require('node:fs');
 const path = require('node:path');
+test.beforeEach(async ({ page }) => {
+  await page.route('**/opfs-search-storage.js', async route => {
+    const url = new URL(route.request().url());
+    const response = await route.fetch({ url: `http://127.0.0.1:4173${url.pathname}` });
+    await route.fulfill({ response, body: 'globalThis.__xivcaDisableOpfs = true; globalThis.__xivcaSearchCapacityBytes = 64 * 1024 * 1024;\n' + await response.text() });
+  });
+});
 const bravePath = 'C:/Program Files/BraveSoftware/Brave-Browser/Application/brave.exe';
 if (fs.existsSync(bravePath)) test.use({ launchOptions: { executablePath: bravePath } });
 
@@ -17,7 +24,7 @@ for (const backend of ['localhost', 'lan']) {
     await page.route('**/solver-worker.js*', async route => {
       const url = new URL(route.request().url());
       const response = await route.fetch({ url: `http://127.0.0.1:4173${url.pathname}${url.search}` });
-      await route.fulfill({ response, body: `WebAssembly.Suspending = undefined; WebAssembly.promising = undefined; globalThis.__xivcaStorageCacheBytes = 8192;\n` + await response.text() });
+      await route.fulfill({ response, body: `WebAssembly.Suspending = undefined; WebAssembly.promising = undefined; globalThis.__xivcaDisableOpfs = true; globalThis.__xivcaStorageCacheBytes = 8192;\n` + await response.text() });
     });
     // Force real transactions rather than satisfying every fault from JS buffers.
     await page.route('**/search-storage.js', async route => {
@@ -65,7 +72,7 @@ for (const operation of ['read', 'write']) {
     test.setTimeout(60000);
     await page.route('**/solver-worker.js*', async route => {
       const response = await route.fetch();
-      await route.fulfill({ response, body: 'globalThis.__xivcaStorageCacheBytes = 8192;\n' + await response.text() });
+      await route.fulfill({ response, body: 'globalThis.__xivcaDisableOpfs = true; globalThis.__xivcaStorageCacheBytes = 8192;\n' + await response.text() });
     });
     await page.route('**/search-storage.js', async route => {
       const response = await route.fetch();
@@ -82,7 +89,8 @@ for (const operation of ['read', 'write']) {
           worker.onerror = event => reject(new Error(event.message));
           worker.onmessage = ({ data }) => {
             if (data.type === 'storage-open') databaseName = data.databaseName;
-            if (data.type === 'error') resolve({ message: data.message, databaseName });
+            if (data.type === 'error') resolve({ message: data.message, databaseName,
+              diagnostics: data.diagnostics, errorName: data.errorName });
             if (data.type === 'search-result') reject(new Error('保存失敗を成功扱いにしました'));
           };
           worker.postMessage({ type: 'solve', input: {
@@ -97,6 +105,10 @@ for (const operation of ['read', 'write']) {
       } finally { worker.terminate(); }
     });
     expect(result.message).toContain('計測用の保存失敗');
+    expect(result.diagnostics.phase).toBe('solve');
+    expect(result.diagnostics.storage.storageBackend).toBe('indexeddb');
+    expect(result.diagnostics.storage.storageReservationMode).toBe('indexeddb-logical-limit');
+    expect(result.errorName).toBe('Error');
     expect(result.databaseName).toBeTruthy();
     expect(await page.evaluate(async name => (await indexedDB.databases()).some(db => db.name === name), result.databaseName)).toBe(false);
   });

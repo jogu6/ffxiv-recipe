@@ -3054,6 +3054,17 @@ button.intermediate-prepared-btn.active {
   display: flex;
   flex-direction: column;
 }
+#confirmTitle {
+  margin: 0 0 12px;
+  color: var(--accent);
+  font-size: calc(16px * var(--font-size-scale));
+}
+#confirmOverlay.macro-generation-notice #confirmDialog {
+  border-color: var(--accent);
+}
+#confirmOverlay.macro-generation-notice #confirmMsg {
+  text-align: left;
+}
 #confirmOverlay.recipe-resolution-info #confirmDialog {
   width: max-content;
   min-width: min(300px, calc(100vw - 24px));

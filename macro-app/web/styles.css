@@ -49,6 +49,7 @@ main { display: grid; flex: 1 1 auto; grid-auto-rows: max-content; align-content
 .hq-quality-choice:last-child { margin-left: -1px; border-radius: 0 4px 4px 0; }
 .hq-quality-choice[aria-pressed="true"] { position: relative; z-index: 1; color: var(--accent); border-color: var(--accent); background: var(--active-bg); }
 .accordion { padding: 0; overflow: hidden; }
+.restoring-panel .accordion-clip, .restoring-panel .accordion-clip > .list { transition: none; }
 .accordion-toggle { width: 100%; display: flex; align-items: center; justify-content: flex-start; gap: .45em; border: 0; border-radius: 0; padding: calc(10px * var(--font-size-scale)); background: transparent; color: var(--accent); font-weight: 700; text-align: left; font-size: calc(13px * var(--font-size-scale)); }
 .accordion-toggle::before { content: "▼"; flex: 0 0 auto; }
 .accordion:not(.open) .accordion-toggle::before { content: "▶"; }
@@ -87,7 +88,6 @@ main { display: grid; flex: 1 1 auto; grid-auto-rows: max-content; align-content
 .consumable-choice { display: flex; }
 .choice.selected { color: var(--accent); border-color: var(--accent); }
 .generate { width: 100%; padding: calc(10px * var(--font-size-scale)); font-weight: 700; background: var(--active-bg); border-color: var(--accent); }
-.generation-message { padding: calc(8px * var(--font-size-scale)) calc(10px * var(--font-size-scale)); color: var(--accent); background: var(--active-bg); border: 1px solid var(--border); border-radius: 5px; }
 textarea { box-sizing: border-box; width: 100%; margin: calc(8px * var(--font-size-scale)) 0 0; padding: calc(10px * var(--font-size-scale)); resize: none; white-space: pre-wrap; user-select: text; -webkit-user-select: text; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; font: calc(13px * var(--font-size-scale))/1.5 ui-monospace, "Yu Gothic", "Meiryo", monospace; }
 input, button { user-select: auto; -webkit-user-select: auto; }
 .macro-output-header { display: flex; align-items: center; justify-content: space-between; gap: calc(8px * var(--font-size-scale)); }
@@ -127,6 +127,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .progress-card { width: min(calc(420px * var(--font-size-scale)), calc(100vw - 32px)); display: grid; gap: calc(10px * var(--font-size-scale)); padding: calc(16px * var(--font-size-scale)); background: var(--panel); border: 1px solid var(--border); border-radius: 6px; }
 .progress-card h2 { text-align: center; }
 .generation-note, .generation-status { margin: 0; color: var(--muted); font-size: calc(12px * var(--font-size-scale)); line-height: 1.55; }
+.generation-status { white-space: pre-line; }
 .generation-note { white-space: pre-wrap; }
 .loading-progress-row { display: flex; align-items: center; gap: calc(6px * var(--font-size-scale)); width: min(calc(280px * var(--font-size-scale)), calc(100vw - 64px)); margin: auto; }
 .loading-progress { display: block; flex: 1 1 auto; min-width: 0; width: 100%; height: 12px; accent-color: var(--accent); }

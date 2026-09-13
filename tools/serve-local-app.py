@@ -66,9 +66,6 @@ class LocalAppHandler(SimpleHTTPRequestHandler):
                 source = source.replace("new Worker('./solver-worker.js',", "new Worker('./solver-worker.js?localMobile=1',")
             elif request.path.endswith('/solver-worker.js') and parse_qs(request.query).get('localMobile') == ['1']:
                 source = Path(__file__).with_name('local-mobile-worker.js').read_text(encoding='utf-8') + '\n' + source
-                source = source.replace('await openIndexedSearchStore()', 'globalThis.__localMobileTrackStore(await openIndexedSearchStore())')
-                source = source.replace('snapshot: { ...JSON.parse(json),',
-                    'snapshot: { ...JSON.parse(json), localSimulatedSleepMs: globalThis.__localMobileSleepMs,')
             content = source.encode('utf-8')
             self.send_response(200)
             self.send_header('Content-Type', 'text/javascript; charset=utf-8')

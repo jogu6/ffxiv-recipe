@@ -1,0 +1,37 @@
+name: Safari generation verification
+on:
+  push:
+    branches: [codex/safari-generation-verification]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  safari:
+    if: github.event.repository.private == false
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-05-10
+          components: rust-src
+          targets: wasm32-unknown-unknown
+      - uses: taiki-e/install-action@wasm-pack
+      - name: Build the engines under test
+        run: npm run build:wasm --prefix macro-app
+      - name: Enable real Safari automation
+        run: sudo /usr/bin/safaridriver --enable
+      - name: Verify all 3 GiB can be written, read and released
+        run: node tools/run-safari-storage.mjs
+      - name: Measure generation, background continuation and allocation recovery
+        run: node tools/run-safari-generation.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: safari-generation
+          path: pipeline/reports/safari-generation/
+          retention-days: 7

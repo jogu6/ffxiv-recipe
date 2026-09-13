@@ -97,7 +97,7 @@ test('分離ヘッダーなしでもマクロWASMを準備できる', async ({ p
   expect(result.threadError).toBe('');
 });
 
-for (const outcome of ['success', 'failure', 'error', 'cancel']) {
+for (const outcome of ['success', 'failure', 'error', 'noSolution', 'memory', 'quota', 'cancel']) {
   test(`マクロ欄を生成結果に応じて開閉する（${outcome}）`, async ({ page }) => {
     await page.addInitScript(outcome => {
       window.Worker = class extends EventTarget {
@@ -109,6 +109,9 @@ for (const outcome of ['success', 'failure', 'error', 'cancel']) {
           else if (outcome === 'success') send({ type: 'search-result', result: { actions: ['basicSynthesis'], duration: 3 } });
           else if (outcome === 'failure') send({ type: 'search-result', result: { actions: null } });
           else if (outcome === 'error') send({ type: 'error', message: '試験用エラー' });
+          else if (outcome === 'noSolution') send({ type: 'error', message: 'マクロを生成できません: NoSolution' });
+          else if (outcome === 'memory') send({ type: 'error', message: 'memory allocation of 1048576 bytes failed' });
+          else if (outcome === 'quota') send({ type: 'error', errorName: 'QuotaExceededError', message: 'Quota exceeded' });
         }
         terminate() {}
       };
@@ -125,6 +128,39 @@ for (const outcome of ['success', 'failure', 'error', 'cancel']) {
     if (outcome !== 'success') {
       await expect.poll(() => page.locator('#macroSection .accordion-clip').evaluate(el => el.getBoundingClientRect().height)).toBe(0);
     }
+    const dialog = page.locator('#confirmOverlay');
+    if (['failure', 'error', 'noSolution', 'memory', 'quota'].includes(outcome)) {
+      await expect(dialog).toBeVisible();
+      await expect(dialog.locator('#confirmMsg')).toBeVisible();
+      await expect(page.locator('#confirmNo')).toBeFocused();
+      if (outcome === 'memory') await expect(dialog).toContainText('計算に必要なメモリーを確保できなかったため');
+      if (outcome === 'quota') await expect(dialog).toContainText('端末の一時保存領域が不足しているため');
+      if (outcome === 'noSolution') {
+        await expect(dialog).toContainText('現在の製作ステータスと設定では、完成に必要な工数・品質を満たす手順が見つかりませんでした。');
+        await expect(dialog).not.toContainText('NoSolution');
+        for (const width of [390, 1280]) {
+          await page.setViewportSize({ width, height: 720 });
+          await page.evaluate(() => document.documentElement.setAttribute('data-font-size-level', '10'));
+          const box = await dialog.boundingBox();
+          expect(box.x).toBeGreaterThanOrEqual(0);
+          expect(box.x + box.width).toBeLessThanOrEqual(width);
+        }
+        const report = await page.evaluate(() => captureInquiryDiagnostics());
+        expect(report['画面の通知']).not.toContain('NoSolution');
+        expect(report['生成エラー']).toContain('NoSolution');
+        expect(report['通知の詳細']['元の内容']).toContain('NoSolution');
+        expect(report['通知の詳細']['表示中']).toBe(true);
+      }
+      if (outcome === 'noSolution') {
+        await page.locator('#confirmMsg').click();
+        await expect(dialog).toBeVisible();
+        await dialog.click({ position: { x: 2, y: 2 } });
+      } else await page.locator('#confirmNo').click();
+      await expect(dialog).toBeHidden();
+      await expect(page.locator('#generateButton')).toBeFocused();
+      const report = await page.evaluate(() => captureInquiryDiagnostics());
+      expect(report['通知の詳細']['表示中']).toBe(false);
+    } else await expect(dialog).toBeHidden();
   });
 }
 
@@ -136,8 +172,9 @@ test('必要作業精度と必要加工精度が不足していれば理由を�
   await page.goto('/macro-app/web/index.html?siteRoot=../..&recipe=b5cc569f3e4');
   await expect(page.locator('#generateButton')).toBeEnabled({ timeout: 30000 });
   await page.locator('#generateButton').click();
-  await expect(page.locator('#generationMessage')).toContainText('作業精度が不足しています（現在 5000 / 必要 5380）');
-  await expect(page.locator('#generationMessage')).toContainText('加工精度が不足しています（現在 4500 / 必要 4650）');
+  await expect(page.locator('#confirmMsg')).toContainText('作業精度が不足しています（現在 5000 / 必要 5380）');
+  await expect(page.locator('#confirmMsg')).toContainText('加工精度が不足しています（現在 4500 / 必要 4650）');
+  await expect(page.locator('#confirmOverlay')).toBeVisible();
   await expect(page.locator('#progressOverlay')).toBeHidden();
   expect(await page.evaluate(() => globalThis.__xivcaMacroEngineStatus?.running === true)).toBe(false);
 });
@@ -271,7 +308,7 @@ async function generateAripebre({ page, context }, { lan = false } = {}) {
       stage: globalThis.__xivcaMacroEngineStatus?.stage,
       nodes: globalThis.__xivcaMacroEngineStatus?.workUnits,
       percent: document.querySelector('#progressPercent').textContent,
-      error: document.querySelector('#generationMessage').textContent
+      error: document.querySelector('#confirmMsg').textContent
     }));
     expect(status.error).toBe('');
     if (status.stage !== previousStage) console.log(JSON.stringify(status));

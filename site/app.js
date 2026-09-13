@@ -1,4 +1,5 @@
 const DATA_CACHE_VERSION = 'ff14recipe-data-7.56-3601f731';
+const REPORT_BUILD_ID = 'sha256:44a8296e79188ae68025ea862b198697cb9db4c6cb331899d293ec5aefc452cd';
 const VERIFIED_DATA_CACHE_VERSION = `ff14recipe-verified-data-${DATA_CACHE_VERSION.replace('ff14recipe-data-', '')}`;
 const DATA_FILE = `./data/Item.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 const LEGACY_ITEM_IDS_FILE = `./data/legacy-item-ids.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
@@ -262,6 +263,7 @@ const elements = {
   releaseNoticeOkBtn: document.getElementById('releaseNoticeOkBtn'),
   confirmOverlay: document.getElementById('confirmOverlay'),
   confirmMsg: document.getElementById('confirmMsg'),
+  confirmTitle: document.getElementById('confirmTitle'),
   confirmYes: document.getElementById('confirmYes'),
   confirmNo: document.getElementById('confirmNo'),
   settingsOverlay: document.getElementById('settingsOverlay'),
@@ -389,6 +391,7 @@ const macroLauncher = globalThis.MacroLauncher.create({
   elapsedTime: elements.macroElapsedTime,
   generationStatus: elements.macroGenerationStatus,
   cancelButton: elements.macroCancelButton,
+  onNotice: showMacroGenerationNotice,
   resolveIconFile: iconFile => itemIconPack?.url(iconFile) || '',
   onOpen: () => {
     updatePanelLayout();
@@ -451,6 +454,7 @@ let maxEquipmentLevel = 1;
 let favoriteMaterialsRingCounts = {};
 let favoriteItemCountStore = { version: 1, lists: {} };
 let pendingConfirmAction = null;
+let pendingInfoCloseAction = null;
 let pendingFavoriteMigration = { renamed: [], removed: [], conflicts: [] };
 let pendingTextInputAction = null;
 let selectedExportListId = null;
@@ -2212,6 +2216,7 @@ function saveEquipmentSearchAsFavorite() {
 }
 
 function showConfirm(msg, onYes) {
+  finishInfoNotification();
   elements.confirmOverlay.classList.remove('favorite-list-file-dialog');
   elements.confirmOverlay.classList.remove('favorite-list-file-final-confirm');
   elements.confirmOverlay.classList.remove('recipe-resolution-info');
@@ -2227,6 +2232,7 @@ function showConfirm(msg, onYes) {
 }
 
 function showConfirmContent(content, onYes) {
+  finishInfoNotification();
   elements.confirmOverlay.classList.remove('favorite-list-file-dialog');
   elements.confirmOverlay.classList.remove('favorite-list-file-final-confirm');
   elements.confirmOverlay.classList.remove('recipe-resolution-info');
@@ -2241,7 +2247,25 @@ function showConfirmContent(content, onYes) {
   floatingWindows.confirm.open();
 }
 
-function showInfo(msg, { markdown = false } = {}) {
+function showMacroGenerationNotice(message, onClose = null) {
+  showInfo(message, { onClose, title: 'マクロを生成できませんでした' });
+  elements.confirmOverlay.classList.add('macro-generation-notice');
+}
+
+function finishInfoNotification() {
+  elements.confirmOverlay.classList.remove('macro-generation-notice');
+  elements.confirmTitle.hidden = true;
+  elements.confirmTitle.textContent = '';
+  const onClose = pendingInfoCloseAction;
+  pendingInfoCloseAction = null;
+  onClose?.();
+}
+
+function showInfo(msg, { markdown = false, onClose = null, title = '' } = {}) {
+  finishInfoNotification();
+  pendingInfoCloseAction = onClose;
+  elements.confirmTitle.textContent = title;
+  elements.confirmTitle.hidden = !title;
   elements.confirmOverlay.classList.remove('favorite-list-file-dialog');
   elements.confirmOverlay.classList.remove('favorite-list-file-final-confirm');
   elements.confirmOverlay.classList.remove('recipe-resolution-info');
@@ -2256,6 +2280,7 @@ function showInfo(msg, { markdown = false } = {}) {
 }
 
 function showRecipeResolutionInfo(content) {
+  finishInfoNotification();
   elements.confirmOverlay.classList.remove('favorite-list-file-dialog');
   elements.confirmOverlay.classList.remove('favorite-list-file-final-confirm');
   elements.confirmMsg.classList.remove('markdown-content');
@@ -2269,6 +2294,7 @@ function showRecipeResolutionInfo(content) {
 
 function closeConfirm() {
   floatingWindows.confirm.close();
+  finishInfoNotification();
   elements.confirmOverlay.classList.remove('info');
   elements.confirmOverlay.classList.remove('recipe-resolution-info');
   elements.confirmOverlay.classList.remove('favorite-list-file-dialog');
@@ -7915,6 +7941,8 @@ function captureInquiryDiagnostics() {
   const snapshot = {
     取得日時: new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().replace('Z', '+09:00'),
     アプリ情報: {
+      出力元JavaScript識別子: REPORT_BUILD_ID,
+      配信区分: location.hostname.endsWith('.github.io') ? 'GitHub Pages' : 'その他の配信先',
       データ版: DATA_CACHE_VERSION,
       表示サイズ: document.documentElement.dataset.fontSizeLevel,
       表示倍率: `${Math.round(fontSizeSettings.scaleForLevel(document.documentElement.dataset.fontSizeLevel) * 100)}%`,
@@ -9154,7 +9182,8 @@ function bindEvents() {
   elements.confirmOverlay.addEventListener('click', event => {
     if (
       event.target === elements.confirmOverlay &&
-      elements.confirmOverlay.classList.contains('favorite-list-file-dialog')
+      (elements.confirmOverlay.classList.contains('favorite-list-file-dialog') ||
+        elements.confirmOverlay.classList.contains('info'))
     ) {
       closeConfirm();
     }

@@ -3,8 +3,8 @@ import test from 'node:test';
 
 import { selectSolverWorkerCount } from '../web/worker-policy.js';
 
-test('Raphaelと同じ論理プロセッサ数の半分、最小2・最大8を選ぶ', () => {
-  for (const [hardwareConcurrency, expected] of [[undefined, 2], [NaN, 2], [0, 2], [1, 2], [2, 2], [4, 2], [6, 3], [8, 4], [15, 7], [16, 8], [32, 8]]) {
+test('論理プロセッサ数の半分に1を加え、総数未満に収める', () => {
+  for (const [hardwareConcurrency, expected] of [[undefined, 1], [NaN, 1], [Infinity, 1], [-1, 1], [0, 1], [1, 1], [2, 1], [3, 2], [4, 3], [6, 4], [8, 5], [15, 8], [16, 9], [32, 17]]) {
     assert.equal(selectSolverWorkerCount({ hardwareConcurrency }), expected);
   }
 });

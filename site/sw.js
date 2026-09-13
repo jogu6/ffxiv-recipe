@@ -1,4 +1,4 @@
-const APP_CACHE_VERSION = 'ff14recipe-app-v4.01-bcaba8262bb1';
+const APP_CACHE_VERSION = 'ff14recipe-app-v4.02-751b972ebe53';
 const DATA_CACHE_VERSION = 'ff14recipe-data-7.56-3601f731';
 const VERIFIED_DATA_CACHE_VERSION = `ff14recipe-verified-data-${DATA_CACHE_VERSION.replace('ff14recipe-data-', '')}`;
 const CACHE_PREFIX = 'ff14recipe-';
@@ -30,6 +30,7 @@ const PRECACHE_FILES = [
   './macro-app/web/shared-search-storage.js',
   './macro-app/web/storage-worker.js',
   './macro-app/web/search-storage.js',
+  './macro-app/web/opfs-search-storage.js',
   './macro-app/web/worker-policy.js',
   './macro-app/web/profiling.js',
   './macro-app/web/assets/hq-mark-transparent.webp',

@@ -14,7 +14,7 @@ function replaceOnce(before, after) {
 const imports = [...source.matchAll(/(__wbg_(?:read|write)_[0-9a-f]+): function/g)].map(match => './xivca_macro_engine_bg.js.' + match[1]);
 if (imports.length !== 2) throw new Error('Expected exactly two storage imports');
 const candidates = [process.env.WASM_OPT, 'wasm-opt'];
-for (const root of [path.join(process.env.LOCALAPPDATA || os.homedir(), '.wasm-pack'), path.join(os.homedir(), '.cache/.wasm-pack'), path.join(os.homedir(), '.wasm-pack')]) {
+for (const root of [path.join(process.env.LOCALAPPDATA || os.homedir(), '.wasm-pack'), path.join(os.homedir(), '.cache/.wasm-pack'), path.join(os.homedir(), '.wasm-pack'), path.join(os.homedir(), 'Library/Caches/.wasm-pack')]) {
   if (fs.existsSync(root)) for (const name of fs.readdirSync(root)) {
     if (name.startsWith('wasm-opt-')) candidates.push(path.join(root, name, 'bin', process.platform === 'win32' ? 'wasm-opt.exe' : 'wasm-opt'));
   }
@@ -56,6 +56,10 @@ function storageImport(operation) {
   }
 }
 async function runStoredSolve(solve, args) {
+  const metrics = globalThis.__xivcaSearchStore.metrics;
+  metrics.storageSolverWaitMs = 0;
+  metrics.storageSolverWaitCount = 0;
+  metrics.storageSolverMaxWaitMs = 0;
   const bytes = 1024 * 1024 + 8;
   const data = wasm.__wbindgen_malloc(bytes, 4);
   asyncifyData = data;
@@ -66,7 +70,12 @@ async function runStoredSolve(solve, args) {
     let result = solve(...args);
     while (wasm.asyncify_get_state() === 1) {
       wasm.asyncify_stop_unwind();
+      const waitingStarted = performance.now();
       await asyncifyPending;
+      const waitingMs = performance.now() - waitingStarted;
+      metrics.storageSolverWaitMs += waitingMs;
+      metrics.storageSolverWaitCount++;
+      metrics.storageSolverMaxWaitMs = Math.max(metrics.storageSolverMaxWaitMs, waitingMs);
       wasm.asyncify_start_rewind(data);
       result = solve(...args);
     }

@@ -22,7 +22,7 @@ test('ページ再読込なしで幅を変えた次の生成から制限を適�
   await expect(page.getByRole('button', { name: /計測ログを保存/ })).toHaveCount(0);
 });
 
-test('通常ブラウザーの600px境界で開発用の休止制御とWASM上限だけが切り替わる', async ({ browser }) => {
+test('通常ブラウザーの600px境界でWASM上限を切り替え、人工的な休止は行わない', async ({ browser }) => {
   test.setTimeout(120000);
   const results = [];
   for (const { width, lan } of [{ width: 601 }, { width: 600 }, { width: 390 }, { width: 600, lan: true }]) {
@@ -68,7 +68,7 @@ test('通常ブラウザーの600px境界で開発用の休止制御とWASM上�
         worker.postMessage({ type: 'prepare', threadCount: 1 });
       }));
       expect(result.exceededGiB).toBe(width > 600);
-      expect(result.sleepMs > 0).toBe(width <= 600);
+      expect(result.sleepMs).toBe(0);
       results.push({ width, origin: lan ? 'lan' : 'localhost', ...result });
     } finally { await context.close(); }
   }
@@ -78,8 +78,6 @@ test('通常ブラウザーの600px境界で開発用の休止制御とWASM上�
   for (const result of results.slice(1)) result.measuredSlowdown = median(result.times) / median(results[0].times);
   fs.writeFileSync(path.join(directory, 'mobile-resource-calibration.json'), JSON.stringify(results, null, 2));
   console.log(JSON.stringify(results));
-  for (const result of results.slice(1)) expect(result.measuredSlowdown).toBeGreaterThan(2);
-  for (const result of results.slice(1)) expect(result.measuredSlowdown).toBeLessThan(6);
   const published = fs.readFileSync(path.resolve(__dirname, '../site/macro-app/web/solver-worker.js'), 'utf8');
   expect(published).not.toContain('__localMobile');
   expect(published).not.toContain('Atomics.wait');

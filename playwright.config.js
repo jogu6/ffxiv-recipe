@@ -23,9 +23,12 @@ module.exports = defineConfig({
   // サーバーの所有と終了保証は tools/run-e2e.mjs だけが担う。
   webServer: undefined,
   projects: [
+    { name: 'macro-continuation-chromium', testMatch: '**/macro-continuation.spec.js',
+      use: { ...devices['Desktop Chrome'], headless: false } },
     {
       name: 'chromium',
       testIgnore: [
+        '**/macro-continuation.spec.js',
         '**/app-share-pwa.spec.js',
         '**/app-share-responsive.spec.js',
         unsupportedBrowserTestMatch,
@@ -46,6 +49,11 @@ module.exports = defineConfig({
       name: 'iphone-webkit-font-size',
       testMatch: ['**/font-size-compat.spec.js', '**/app-share-responsive.spec.js', '**/viewport-size.spec.js'],
       use: { ...devices['iPhone 13'] },
+    },
+    {
+      name: 'macro-storage-webkit',
+      testMatch: ['**/macro-opfs-storage.spec.js', '**/macro-progress.spec.js'],
+      use: { ...devices['Desktop Safari'] },
     },
     {
       name: 'ipad-webkit-viewport',

@@ -1,8 +1,9 @@
 // Served and injected only by serve-local-app.py; never staged into site/.
 (() => {
+  globalThis.__xivcaDevelopment = true;
   const token = document.currentScript.dataset.token;
   const limits = () => ({ enabled: window.top.innerWidth <= 600, width: window.top.innerWidth,
-    cpuMode: 'cooperative-worker-budget', slowdownTarget: 4, wasmMaximumBytes: 1073741824, threadCount: 1 });
+    wasmMaximumBytes: 1073741824, threadCount: 1 });
   globalThis.__localMobileLimits = limits;
   const OriginalWorker = globalThis.Worker;
   globalThis.Worker = class extends OriginalWorker {
@@ -24,7 +25,7 @@
       document.getElementById('generateButton')?.before(label);
     }
     label.textContent = limits().enabled
-      ? '開発試験：次の生成は1スレッド・WASM上限1GiB・探索区間ごとの休止で約4倍の所要時間を目標（実CPU・OSメモリー制限ではありません）'
+      ? '開発試験：次の生成は1スレッド・WASM上限1GiB・RAMページキャッシュ上限512MiB'
       : '開発試験：次の生成は通常設定（画面幅600px以下で制限）';
   }
   document.addEventListener('DOMContentLoaded', showLimits);
@@ -54,9 +55,6 @@
     header.metadata = { ...header.metadata, localResourceTest: {
       ...(profile.metadata.localResourceTest || { enabled: null, unknown: true }), widthAtUpload: window.top.innerWidth
     } };
-    header.localResourceMeasurement = {
-      simulatedSleepMs: globalThis.__xivcaMacroEngineStatus?.telemetry?.localSimulatedSleepMs ?? 0
-    };
     const payload = {
       runId: currentRun.id, sequence: ++currentRun.sequence, profile: header,
       samples: samples.filter(sample => sample.elapsedMs > currentRun.acknowledgedTime),

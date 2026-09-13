@@ -262,8 +262,8 @@ Android、iOS、iPadOS では、OS の管理により、他のアプリが休止
 あまりにも長時間かかる場合は中断し、食事や薬品の使用もご検討ください。
 不具合を発見しましたら、画面最下部の「不具合・お問い合わせ」ボタンからご報告ください。検証に必要な情報は含まれた状態でご報告いただけます。</p>
     <div class="loading-progress-row">
-      <progress id="macroProgress" class="loading-progress" max="100" value="0"></progress>
-      <output id="macroProgressPercent" class="loading-progress-percent">0%</output>
+      <progress id="macroProgress" class="loading-progress" max="100"></progress>
+      <output id="macroProgressPercent" class="loading-progress-percent" hidden></output>
     </div>
     <div class="macro-generation-elapsed"><span>経過時間</span><output id="macroElapsedTime">00:00</output></div>
     <div id="macroGenerationStatus" class="macro-generation-status">生成を準備しています</div>
@@ -292,6 +292,7 @@ Android、iOS、iPadOS では、OS の管理により、他のアプリが休止
 
 <div id="confirmOverlay">
   <div id="confirmDialog">
+    <h2 id="confirmTitle" hidden></h2>
     <div id="confirmMsg"></div>
     <div class="confirm-btns">
       <button class="confirm-btn yes" id="confirmYes">はい</button>
