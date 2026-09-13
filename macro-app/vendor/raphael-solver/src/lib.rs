@@ -1,12 +1,36 @@
-// Modified by XIVca: telemetry, bounded expansion batches and lossless paged storage.
+// Modified by XIVca: telemetry, whole-score comparison batches and lossless paged storage.
 // Crafting transitions, bound calculations and score comparisons retain Raphael semantics.
+// Observation only: a supervisor can read completed expansions while the main
+// solver is inside one whole-score batch. This counter never affects pruning.
+static LIVE_SEARCH_NODES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static LIVE_SEARCH_ACTIVITY: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+// Observation only, updated at batch boundaries: replay, comparison, expansion, merge.
+pub static MEMORY_PHASE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+pub fn live_search_activity_address() -> usize { LIVE_SEARCH_ACTIVITY.as_ptr() as usize }
+pub fn live_search_nodes_address() -> usize { LIVE_SEARCH_NODES.as_ptr() as usize }
+
+// Serial workers cannot be observed through shared memory. Report completed
+// loop work in bounded intervals; this never yields or changes search batches.
+#[inline]
+pub(crate) fn report_work(phase: u32, completed: usize, total: usize) {
+    #[cfg(all(target_arch = "wasm32", not(feature = "parallel")))]
+    if phase == 6 || (total >= 4096 && (completed == 0 || completed == total || completed % 4096 == 0)) {
+        #[wasm_bindgen::prelude::wasm_bindgen]
+        extern "C" {
+            #[wasm_bindgen(catch, js_namespace = globalThis, js_name = __xivcaWorkProgress)]
+            fn notify(phase: u32, completed: usize, total: usize) -> Result<(), wasm_bindgen::JsValue>;
+        }
+        let _ = notify(phase, completed, total);
+    }
+    #[cfg(not(all(target_arch = "wasm32", not(feature = "parallel"))))]
+    let _ = (phase, completed, total);
+}
+
 mod actions;
 mod memory;
 #[cfg(all(target_arch = "wasm32", not(feature = "parallel")))]
 mod sequential;
-pub use memory::set_storage_cache_bytes;
-#[cfg(target_arch = "wasm32")]
-pub use memory::recover_memory;
+pub use memory::{set_storage_cache_bytes, bound_query_stats};
 
 mod finish_solver;
 use finish_solver::FinishSolver;
@@ -34,7 +58,8 @@ pub enum SolverException {
     /// The `SearchQueueCapacityExceeded` error is raised when there are no more valid
     /// indices for the already visited nodes in the search queue.
     ///
-    /// Backtracking indices are encoded in 64-bit records on all targets.
+    /// Backtracking indices retain every WASM pointer bit in five-byte records;
+    /// native 64-bit targets use eight-byte records.
     SearchQueueCapacityExceeded,
     InternalError(String),
 }

@@ -7,7 +7,7 @@ export function createSharedSearchStore(buffer) {
   const page = new Uint8Array(buffer, 64);
   function checkFailure() {
     if (Atomics.load(control, 3)) {
-      throw new Error(new TextDecoder().decode(page.subarray(0, control[7])) || '探索用の一時保存を継続できません');
+      throw new Error(new TextDecoder().decode(page.slice(0, control[7])) || '探索用の一時保存を継続できません');
     }
   }
   function transfer(command, at, bytes) {
@@ -39,7 +39,11 @@ export function createSharedSearchStore(buffer) {
     write: (at, bytes) => transfer(2, at, bytes),
     get metrics() {
       return { storageReadTransactions: Atomics.load(control, 8), storageWriteTransactions: Atomics.load(control, 9),
-        storageReadMs: Atomics.load(control, 10), storageWriteMs: Atomics.load(control, 11) };
+        storageReadMs: Atomics.load(control, 10), storageWriteMs: Atomics.load(control, 11),
+        storageReadBytes: Atomics.load(control, 12) * 4096,
+        storageWrittenBytes: Atomics.load(control, 13) * 4096,
+        storageQuotaBytes: Atomics.load(control, 14) * 1048576,
+        storageUsageBytes: Atomics.load(control, 15) * 1048576 };
     }
   };
 }

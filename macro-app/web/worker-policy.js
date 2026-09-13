@@ -1,5 +1,6 @@
 export function selectSolverWorkerCount(device = globalThis.navigator) {
-  // Raphael v0.28.6 default_thread_count (src/thread_pool.rs).
+  // Use half plus one, while leaving at least one logical processor available.
   const logicalProcessors = Math.floor(Number(device?.hardwareConcurrency));
-  return Math.min(8, Math.max(2, Number.isFinite(logicalProcessors) ? Math.floor(logicalProcessors / 2) : 2));
+  if (!Number.isFinite(logicalProcessors) || logicalProcessors <= 1) return 1;
+  return Math.min(Math.floor(logicalProcessors / 2) + 1, logicalProcessors - 1);
 }

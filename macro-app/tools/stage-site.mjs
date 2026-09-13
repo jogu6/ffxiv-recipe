@@ -30,6 +30,7 @@ const publicFiles = [
     'shared-search-storage.js',
     'storage-worker.js',
     'search-storage.js',
+    'opfs-search-storage.js',
     'worker-policy.js',
     'profiling.js'
   ].map(name => ({ source: path.join(webSource, name), destination: path.join('web', name) })),

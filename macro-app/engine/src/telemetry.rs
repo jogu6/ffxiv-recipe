@@ -15,6 +15,8 @@ pub enum SearchStage {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchTelemetry {
+    pub bound_query_cache_hits: u64,
+    pub bound_query_cache_misses: u64,
     pub search_popped_nodes: u64,
     pub search_dropped_nodes: u64,
     pub search_pareto_rejected_nodes: u64,
@@ -22,10 +24,15 @@ pub struct SearchTelemetry {
     pub queued_capacity_bytes: u64,
     pub replay_ms: f64,
     pub pareto_ms: f64,
+    pub pareto_grouping_ms: f64,
+    pub pareto_comparison_ms: f64,
     pub expansion_ms: f64,
     pub merge_ms: f64,
     pub storage_resident_bytes: u64,
     pub storage_allocated_bytes: u64,
+    pub storage_disk_used_bytes: u64,
+    pub storage_disk_high_water_bytes: u64,
+    pub storage_disk_capacity_bytes: u64,
     pub storage_page_reads: u64,
     pub storage_page_writes: u64,
     pub storage_pressure_events: u64,

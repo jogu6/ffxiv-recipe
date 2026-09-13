@@ -30,6 +30,7 @@ pub enum MacroSolverStage {
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MacroSolverProgress {
+    pub live_only: bool,
     pub inserted_nodes: usize,
     pub processed_nodes: usize,
     pub queue: SearchQueueStats,
@@ -115,6 +116,10 @@ impl<'a> MacroSolver<'a> {
         );
 
         self.last_solve_runtime_stats = MacroSolverStats::default();
+        crate::memory::reset_bound_query_stats();
+        crate::MEMORY_PHASE.store(0, std::sync::atomic::Ordering::Relaxed);
+        crate::LIVE_SEARCH_NODES.store(0, std::sync::atomic::Ordering::Relaxed);
+        crate::LIVE_SEARCH_ACTIVITY.store(0, std::sync::atomic::Ordering::Relaxed);
         let allocator = BumpPool::default();
         let mut quality_ub_solver =
             QualityUbSolver::new(self.settings, self.interrupt_signal.clone(), &allocator);
@@ -186,7 +191,7 @@ impl<'a> MacroSolver<'a> {
         while let Some(Batch {
             score,
             nodes: batch,
-        }) = search_queue.pop_batch()
+        }) = search_queue.pop_batch(&self.interrupt_signal)?
             && score >= min_accepted_score
         {
             if self.interrupt_signal.is_set() {
@@ -201,28 +206,46 @@ impl<'a> MacroSolver<'a> {
                 search_queue: &search_queue,
                 min_accepted_score,
                 candidate_states: CandidateBuffer::new(),
+                unreported_nodes: 0,
                 best_intermediate_solution: None,
             };
 
+            let interrupt = &self.interrupt_signal;
+            crate::MEMORY_PHASE.store(3, std::sync::atomic::Ordering::Relaxed);
             let expansion_started = web_time::Instant::now();
+            crate::report_work(5, 0, batch.len());
             #[cfg(all(target_arch = "wasm32", not(feature = "parallel")))]
-            let worker_results = vec![batch.into_iter().try_fold(create_worker_data(),
-                |mut worker_data, (state, backtrack_id)| -> Result<_, SolverException> {
+            let mut next_live = crate::LIVE_SEARCH_NODES.load(std::sync::atomic::Ordering::Relaxed) + 16384;
+            #[cfg(all(target_arch = "wasm32", not(feature = "parallel")))]
+            let worker_results = vec![(0..batch.len()).map(|index| batch.get(index)).enumerate().try_fold(create_worker_data(),
+                |mut worker_data, (index, (state, backtrack_id))| -> Result<_, SolverException> {
+                    if interrupt.is_set() { return Err(SolverException::Interrupted); }
                     worker_data.process_state(state, score, backtrack_id)?;
+                    crate::report_work(5, index + 1, batch.len());
+                    let completed = crate::LIVE_SEARCH_NODES.load(std::sync::atomic::Ordering::Relaxed);
+                    if completed >= next_live {
+                        next_live = completed + 16384;
+                        (self.detailed_progress_callback)(MacroSolverProgress {
+                            live_only: true, processed_nodes: completed, ..MacroSolverProgress::default()
+                        });
+                    }
                     Ok(worker_data)
                 })?];
             #[cfg(any(not(target_arch = "wasm32"), feature = "parallel"))]
-            let worker_results = batch
+            let worker_results = (0..batch.len())
                 .into_par_iter()
+                .map(|index| batch.get(index))
                 .try_fold(
                     create_worker_data,
                     |mut worker_data, (state, backtrack_id)| {
+                        if interrupt.is_set() { return Err(SolverException::Interrupted); }
                         worker_data.process_state(state, score, backtrack_id)?;
                         Ok(worker_data)
                     },
                 )
                 .collect::<Result<Vec<_>, SolverException>>()?;
             expansion_ms += expansion_started.elapsed().as_secs_f64() * 1000.0;
+            crate::MEMORY_PHASE.store(4, std::sync::atomic::Ordering::Relaxed);
             let merge_started = web_time::Instant::now();
 
             // Finalize the workers to drop all shared references to `self` to satisfy the borrow checker.
@@ -253,10 +276,13 @@ impl<'a> MacroSolver<'a> {
 
             // Add all eligible candidate states to the search queue.
             for worker_data in &worker_results {
-                for (score, action, parent_id) in worker_data.candidate_states.iter() {
+                let total = worker_data.candidate_states.len();
+                crate::report_work(4, 0, total);
+                for (index, (score, action, parent_id)) in worker_data.candidate_states.iter().enumerate() {
                     if score >= min_accepted_score {
                         search_queue.push(score, action, parent_id)?;
                     }
+                    crate::report_work(4, index + 1, total);
                 }
             }
 
@@ -277,6 +303,7 @@ impl<'a> MacroSolver<'a> {
             merge_ms += merge_started.elapsed().as_secs_f64() * 1000.0;
             (self.progress_callback)(runtime_stats.processed_nodes);
             (self.detailed_progress_callback)(MacroSolverProgress {
+                live_only: false,
                 inserted_nodes: runtime_stats.inserted_nodes,
                 processed_nodes: runtime_stats.processed_nodes,
                 queue: runtime_stats,
@@ -326,11 +353,14 @@ struct WorkerData<'main, 'alloc> {
     search_queue: &'main SearchQueue,
     min_accepted_score: SearchScore,
     candidate_states: CandidateBuffer,
+    unreported_nodes: usize,
     best_intermediate_solution: Option<Solution>,
 }
 
 impl<'main, 'alloc> WorkerData<'main, 'alloc> {
     fn finalize(self) -> WorkerResult<'alloc> {
+        crate::LIVE_SEARCH_NODES.fetch_add(self.unreported_nodes, std::sync::atomic::Ordering::Relaxed);
+        crate::LIVE_SEARCH_ACTIVITY.fetch_add(self.unreported_nodes, std::sync::atomic::Ordering::Relaxed);
         WorkerResult {
             quality_ub_states: self.quality_ub_solver_shard.solved_states(),
             step_lb_states: self.step_lb_solver_shard.solved_states(),
@@ -441,6 +471,12 @@ impl<'main, 'alloc> WorkerData<'main, 'alloc> {
                 }
             }
         }
+        self.unreported_nodes += 1;
+        if self.unreported_nodes == 256 {
+            crate::LIVE_SEARCH_NODES.fetch_add(256, std::sync::atomic::Ordering::Relaxed);
+            crate::LIVE_SEARCH_ACTIVITY.fetch_add(256, std::sync::atomic::Ordering::Relaxed);
+            self.unreported_nodes = 0;
+        }
         Ok(())
     }
 }
@@ -473,6 +509,9 @@ enum CandidateBuffer {
 }
 impl CandidateBuffer {
     fn new() -> Self { Self::Resident(Vec::new()) }
+    fn len(&self) -> usize {
+        match self { Self::Resident(values) => values.len(), Self::Stored(values) => values.len() }
+    }
     fn spill(&mut self, store: &crate::memory::SharedStore) {
         if let Self::Resident(values) = self {
             let stored = crate::memory::PagedVec::from_slice(store.clone(), values);
@@ -485,7 +524,6 @@ impl CandidateBuffer {
                 values.push(item);
                 return;
             }
-            store.lock().unwrap().recover_allocation();
             self.spill(store);
         }
         if let Self::Stored(values) = self { values.push(item); }
@@ -535,7 +573,7 @@ mod candidate_memory_tests {
         buffer.spill(&store);
         for &item in &expected[5000..] { buffer.push(item, &store); }
         assert_eq!(buffer.iter().collect::<Vec<_>>(), expected);
-        assert!(store.lock().unwrap().writes > 0);
-        assert!(store.lock().unwrap().reads > 0);
+        assert!(store.write().unwrap().writes > 0);
+        assert!(store.write().unwrap().reads > 0);
     }
 }

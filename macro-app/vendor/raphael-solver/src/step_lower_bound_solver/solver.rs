@@ -84,6 +84,7 @@ impl<'alloc> StepLbSolver<'alloc> {
 
     pub fn extend_solved_states(&mut self, new_solved_states: SolvedStates<'alloc>) {
         let len_before = self.solved_states.len();
+        crate::memory::reserve_map(&self.context.allocator.store(), &mut self.solved_states, new_solved_states.len());
         self.solved_states.extend(new_solved_states);
         let len_after = self.solved_states.len();
         self.num_states_solved_on_shards += len_after - len_before;
@@ -140,8 +141,7 @@ impl<'alloc> StepLbSolver<'alloc> {
         } else {
             solve_state_parallel(reduced_state, &self.context, &mut self.solved_states)?
         };
-        let idx = pareto_front.partition_point(|value| value.progress < required_progress);
-        let quality_ub = pareto_front.get(idx).map(|v| state.quality + v.quality);
+        let quality_ub = pareto_front.at_progress(required_progress).map(|v| state.quality + v.quality);
         Ok(quality_ub)
     }
 
@@ -212,9 +212,8 @@ impl<'main, 'alloc> StepLbSolverShard<'main, 'alloc> {
                 &mut self.pf_builder,
             )?
         };
-        let idx = pareto_front.partition_point(|value| value.progress < required_progress);
         let quality_ub = pareto_front
-            .get(idx)
+            .at_progress(required_progress)
             .map(|value| state.quality.saturating_add(value.quality));
         Ok(quality_ub)
     }
@@ -316,6 +315,9 @@ fn solve_state_sequential<'alloc>(
             };
             construct_solution(state, context, pf_builder, get_solution, &allocator)?
         };
+        if !local_states.contains_key(&state) {
+            crate::memory::reserve_map(&context.allocator.store(), local_states, 1);
+        }
         local_states.insert(state, solution);
     }
     local_states.get(&seed_state).copied().ok_or_else(|| {
@@ -337,6 +339,7 @@ fn solve_state_parallel<'alloc>(
         discover_unsolved_states(seed_state, &context.settings, has_solution)
     };
     unsolved_states.par_sort_unstable_by_key(|state| state.steps_budget);
+    crate::report_work(7, 0, unsolved_states.len());
     let mut idx_begin = 0;
     let mut idx_end = 0;
     while idx_begin < unsolved_states.len() {
@@ -351,9 +354,10 @@ fn solve_state_parallel<'alloc>(
             let get_solution = |state| solved_states.get(&state).copied();
             current_batch
                 .par_iter()
+                .enumerate()
                 .map_init(
                     || (ParetoFrontBuilder::new(), context.allocator.get()),
-                    |(pf_builder, allocator), state| -> Result<_, SolverException> {
+                    |(pf_builder, allocator), (index, state)| -> Result<_, SolverException> {
                         let solution = construct_solution(
                             *state,
                             context,
@@ -361,11 +365,13 @@ fn solve_state_parallel<'alloc>(
                             get_solution,
                             allocator,
                         )?;
+                        crate::report_work(7, idx_begin + index + 1, unsolved_states.len());
                         Ok((*state, solution))
                     },
                 )
                 .collect::<Result<Vec<_>, SolverException>>()?
         };
+        crate::memory::reserve_map(&context.allocator.store(), solved_states, current_batch_solutions.len());
         solved_states.extend(current_batch_solutions);
         idx_begin = idx_end;
     }
@@ -377,4 +383,3 @@ fn solve_state_parallel<'alloc>(
         )
     })
 }
-

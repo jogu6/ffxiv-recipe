@@ -56,6 +56,10 @@ function storageImport(operation) {
   }
 }
 async function runStoredSolve(solve, args) {
+  const metrics = globalThis.__xivcaSearchStore.metrics;
+  metrics.storageSolverWaitMs = 0;
+  metrics.storageSolverWaitCount = 0;
+  metrics.storageSolverMaxWaitMs = 0;
   const bytes = 1024 * 1024 + 8;
   const data = wasm.__wbindgen_malloc(bytes, 4);
   asyncifyData = data;
@@ -66,7 +70,12 @@ async function runStoredSolve(solve, args) {
     let result = solve(...args);
     while (wasm.asyncify_get_state() === 1) {
       wasm.asyncify_stop_unwind();
+      const waitingStarted = performance.now();
       await asyncifyPending;
+      const waitingMs = performance.now() - waitingStarted;
+      metrics.storageSolverWaitMs += waitingMs;
+      metrics.storageSolverWaitCount++;
+      metrics.storageSolverMaxWaitMs = Math.max(metrics.storageSolverMaxWaitMs, waitingMs);
       wasm.asyncify_start_rewind(data);
       result = solve(...args);
     }

@@ -7,6 +7,16 @@ pub fn configure_storage_cache(bytes: u32) {
 }
 
 #[wasm_bindgen]
+pub fn live_search_activity_address() -> usize {
+    raphael_solver::live_search_activity_address()
+}
+
+#[wasm_bindgen]
+pub fn live_search_nodes_address() -> usize {
+    raphael_solver::live_search_nodes_address()
+}
+
+#[wasm_bindgen]
 pub fn solver_thread_count() -> u32 {
     rayon::current_num_threads() as u32
 }
@@ -124,12 +134,15 @@ pub fn solve_exact_observed_json(
     let input = parse_input(value)?;
     let (settings, initial, goal) = input.prepare().map_err(JsValue::from_str)?;
     let latest = Cell::new(SearchTelemetry::default());
-    let next_search_emit = Cell::new(50_000_u64);
+    let next_search_emit = Cell::new(10_000_u64);
     let emit = |stage: SearchStage| {
-        let snapshot = SearchTelemetry {
+        let mut snapshot = SearchTelemetry {
             stage,
             ..latest.get()
         };
+        if stage == SearchStage::Complete {
+            (snapshot.bound_query_cache_hits, snapshot.bound_query_cache_misses) = raphael_solver::bound_query_stats();
+        }
         if let Ok(json) = serde_json::to_string(&snapshot) {
             let _ = observer.call1(&JsValue::NULL, &JsValue::from_str(&json));
         }
@@ -141,6 +154,11 @@ pub fn solve_exact_observed_json(
         |_| {},
         |progress| {
             let nodes = progress.processed_nodes as u64;
+            if progress.live_only {
+                let json = format!("{{\"liveSearchNodes\":{nodes}}}");
+                let _ = observer.call1(&JsValue::NULL, &JsValue::from_str(&json));
+                return;
+            }
             let snapshot = SearchTelemetry {
                 stage: SearchStage::BestFirstSearch,
                 work_units: nodes,
@@ -154,10 +172,15 @@ pub fn solve_exact_observed_json(
                 queued_capacity_bytes: progress.queue.queued_capacity_bytes,
                 replay_ms: progress.queue.replay_ms,
                 pareto_ms: progress.queue.pareto_ms,
+                pareto_grouping_ms: progress.queue.pareto_grouping_ms,
+                pareto_comparison_ms: progress.queue.pareto_comparison_ms,
                 expansion_ms: progress.expansion_ms,
                 merge_ms: progress.merge_ms,
                 storage_resident_bytes: progress.queue.storage_resident_bytes,
                 storage_allocated_bytes: progress.queue.storage_allocated_bytes,
+                storage_disk_used_bytes: progress.queue.storage_disk_used_bytes,
+                storage_disk_high_water_bytes: progress.queue.storage_disk_high_water_bytes,
+                storage_disk_capacity_bytes: progress.queue.storage_disk_capacity_bytes,
                 storage_page_reads: progress.queue.storage_page_reads,
                 storage_page_writes: progress.queue.storage_page_writes,
                 storage_pressure_events: progress.queue.storage_pressure_events,
@@ -171,7 +194,7 @@ pub fn solve_exact_observed_json(
             if nodes < next_search_emit.get() {
                 return;
             }
-            next_search_emit.set(nodes.saturating_add(50_000));
+            next_search_emit.set(nodes.saturating_add(10_000));
             if let Ok(json) = serde_json::to_string(&snapshot) {
                 let _ = observer.call1(&JsValue::NULL, &JsValue::from_str(&json));
             }

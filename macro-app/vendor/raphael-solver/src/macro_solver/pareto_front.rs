@@ -1,5 +1,5 @@
 use std::sync::Mutex;
-use crate::memory::{SharedStore, PagedVec, Record};
+use crate::memory::{SharedStore, PagedVec, Record, SpillVec, reserve_vec, reserve_map};
 
 use raphael_sim::{Effects, SimulationState};
 #[cfg(any(not(target_arch = "wasm32"), feature = "parallel"))]
@@ -59,7 +59,9 @@ impl Value {
     /// `A` dominates `B` if every member of `A` is geq the corresponding member in `B`.
     fn dominates(&self, other: &Self) -> bool {
         let guarded_value = Self::GUARD | self.0;
-        (guarded_value - other.0) & Self::GUARD == Self::GUARD
+        // Keep the comparison in SIMD registers. wide's WASM PartialEq
+        // otherwise emits an out-of-line call with a spill/reload per value.
+        ((guarded_value - other.0) & Self::GUARD).simd_eq(Self::GUARD).all()
     }
 
     fn cp(&self) -> u16 {
@@ -101,6 +103,45 @@ struct LeafNode {
     range_min: u16,
     range_max: u16,
     values: PagedVec<Value>,
+    cache: Option<Vec<Value>>,
+    cache_attempted: bool,
+    cache_dirty: bool,
+}
+
+impl LeafNode {
+    fn prepare_cache(&mut self) {
+        if self.cache_attempted { return; }
+        self.cache_attempted = true;
+        #[cfg(test)]
+        if self.values.store().read().unwrap().force_paged_scratch { return; }
+        let mut values = Vec::new();
+        // One attempt per leaf/key group. Failure retains the paged path.
+        if values.try_reserve_exact(self.values.len().max(256)).is_err() { return; }
+        self.values.append_range(0, self.values.len(), &mut values, |value| value);
+        self.cache = Some(values);
+    }
+    fn flush_cache(&mut self) {
+        if let Some(values) = self.cache.take() && self.cache_dirty { self.values.replace_from_slice(&values); }
+        self.cache_attempted = false;
+        self.cache_dirty = false;
+    }
+    fn len(&self) -> usize { self.cache.as_ref().map_or_else(|| self.values.len(), Vec::len) }
+    fn insert(&mut self, value: Value, cache_allowed: bool) -> bool {
+        if cache_allowed { self.prepare_cache(); }
+        if let Some(values) = &mut self.cache {
+            if values.iter().any(|previous| previous.dominates(&value)) { return false; }
+            self.cache_dirty = true;
+            values.retain(|previous| !value.dominates(previous));
+            if values.len() < values.capacity() || values.try_reserve(1).is_ok() {
+                values.push(value);
+                return true;
+            }
+            // Persist every retained value before using the recovery-capable store.
+            self.flush_cache();
+            self.cache_attempted = true;
+        }
+        self.values.insert_non_dominated(value, |a, b| a.dominates(&b))
+    }
 }
 
 enum TreeNode {
@@ -109,11 +150,18 @@ enum TreeNode {
 }
 
 impl TreeNode {
+    fn flush_caches(&mut self) {
+        match self {
+            Self::Leaf(leaf) => leaf.flush_cache(),
+            Self::Intermediate(branch) => { branch.lhs.flush_caches(); branch.rhs.flush_caches(); }
+        }
+    }
     fn new(store: SharedStore) -> Self {
         Self::Leaf(LeafNode {
             range_min: u16::MIN,
             range_max: u16::MAX,
             values: PagedVec::new(store),
+            cache: None, cache_attempted: false, cache_dirty: false,
         })
     }
 }
@@ -121,10 +169,12 @@ impl TreeNode {
 pub struct ParetoFront {
     store: SharedStore,
     buckets: FxHashMap<Key, Mutex<TreeNode>>,
+    pub grouping_ms: f64,
+    pub comparison_ms: f64,
 }
 
 impl ParetoFront {
-    pub fn new(store: SharedStore) -> Self { Self { store, buckets: FxHashMap::default() } }
+    pub fn new(store: SharedStore) -> Self { Self { store, buckets: FxHashMap::default(), grouping_ms: 0.0, comparison_ms: 0.0 } }
     pub fn allocated_bytes(&self) -> usize {
         fn tree_bytes(node: &TreeNode) -> usize {
             match node {
@@ -138,70 +188,104 @@ impl ParetoFront {
     }
     /// Inserts all non-dominated elements into the pareto front while also removing dominated values
     /// from the pareto front. Returns an iterator over elements that were inserted.
-    pub fn insert_batch<T: Clone + Send + Sync>(
+    pub fn insert_batch<T: Record + Send + Sync>(
         &mut self,
         mut elements: Vec<T>,
         to_state: impl Fn(&T) -> &SimulationState + Sync,
-    ) -> impl Iterator<Item = T> {
-        // Group elements by their key to avoid contention in the hashmap.
-        let elements_by_key: Vec<(Key, &[T])> = {
-            let mut result = Vec::new();
-            elements.par_sort_unstable_by_key(|element| Key::from(to_state(element)));
-            let mut elements_slice = elements.as_slice();
-            for idx in (1..elements_slice.len()).rev() {
-                let lhs_key = Key::from(to_state(&elements_slice[idx - 1]));
-                let rhs_key = Key::from(to_state(&elements_slice[idx]));
-                if lhs_key != rhs_key {
-                    let rhs_slice = elements_slice.split_off(idx..).unwrap();
-                    self.store.lock().unwrap().reserve_vec(&mut result, 1);
-                    result.push((rhs_key, rhs_slice));
-                }
-            }
-            if !elements_slice.is_empty() {
-                let key = Key::from(to_state(elements_slice.first().unwrap()));
-                self.store.lock().unwrap().reserve_vec(&mut result, 1);
-                result.push((key, elements_slice));
-            }
-            result
-        };
-        // Make sure all keys exist in the hashmap.
-        let missing = elements_by_key.iter().filter(|(key, _)| !self.buckets.contains_key(key)).count();
-        while self.buckets.try_reserve(missing).is_err() {
-            assert!(self.store.lock().unwrap().recover_allocation() > 0, "比較用の索引メモリーを確保できません");
+        interrupt: &crate::AtomicFlag,
+    ) -> Result<Vec<SpillVec<T>>, crate::SolverException> {
+        // Preserve Raphael's whole-score grouping, then descending weight
+        // within each key. Storage allocation failures never split that group.
+        let grouping_started = web_time::Instant::now();
+        elements.par_sort_unstable_by_key(|element| Key::from(to_state(element)));
+        let mut groups = Vec::new();
+        let mut end = elements.len();
+        while end > 0 {
+            let key = Key::from(to_state(&elements[end - 1]));
+            let mut start = end - 1;
+            while start > 0 && Key::from(to_state(&elements[start - 1])) == key { start -= 1; }
+            reserve_vec(&self.store, &mut groups, 1);
+            groups.push((key, start, end));
+            end = start;
         }
-        for (key, _elements) in &elements_by_key {
+        let missing = groups.iter().filter(|(key, _, _)| !self.buckets.contains_key(key)).count();
+        reserve_map(&self.store, &mut self.buckets, missing);
+        for (key, _, _) in &groups {
             self.buckets.entry(*key).or_insert_with(|| Mutex::new(TreeNode::new(self.store.clone())));
         }
-        // Update pareto front and return non-dominated elements.
-        let non_dominated_elements = elements_by_key
-            .into_par_iter()
-            .with_max_len(1)
-            .map(|(key, elements)| {
-                // Copy elements into own Vec to prevent false sharing.
-                let mut copied = Vec::new();
-                self.store.lock().unwrap().reserve_vec(&mut copied, elements.len());
-                copied.extend_from_slice(elements);
-                let mut elements = copied;
-                // Sort elements in a way that ensures an element cannot be dominated
-                // by another element that comes later in the list.
-                elements.sort_unstable_by_key(|element| {
-                    let state = to_state(element);
-                    let weight = u64::from(state.cp)
-                        + u64::from(state.durability)
-                        + u64::from(state.quality)
-                        + u64::from(state.unreliable_quality)
-                        + state.effects.into_bits();
-                    std::cmp::Reverse(weight)
-                });
-                let mut root_node = self.buckets.get(&key).unwrap().lock().unwrap();
-                elements.retain(|element| Self::insert(to_state(element), &mut root_node));
-                elements
-            })
-            .collect::<Vec<_>>();
-        non_dominated_elements.into_iter().flatten()
+        let mut results = Vec::new();
+        reserve_vec(&self.store, &mut results, groups.len());
+        self.grouping_ms += grouping_started.elapsed().as_secs_f64() * 1000.0;
+        let comparison_started = web_time::Instant::now();
+        #[cfg(all(target_arch = "wasm32", not(feature = "parallel")))]
+        let comparison_completed = std::cell::Cell::new(0_usize);
+        crate::report_work(3, 0, elements.len());
+        let computed = groups.into_par_iter().with_max_len(1).map(|(key, start, end)| {
+            let mut copied = SpillVec::with_capacity(self.store.clone(), end - start);
+            for &element in &elements[start..end] { copied.push(element, &self.store); }
+            copied.sort_by_key(|element| std::cmp::Reverse(Self::weight(to_state(element))), interrupt)?;
+            let mut root = self.buckets.get(&key).unwrap().lock().unwrap();
+            let mut kept = 0;
+            let compared = copied.len();
+            crate::report_work(3, 0, compared);
+            for index in 0..copied.len() {
+                if interrupt.is_set() { return Err(crate::SolverException::Interrupted); }
+                let element = copied.get(index);
+                if Self::insert(to_state(&element), &mut root, true) {
+                    copied.set(kept, element);
+                    kept += 1;
+                }
+                if index % 256 == 255 { crate::LIVE_SEARCH_ACTIVITY.fetch_add(256, std::sync::atomic::Ordering::Relaxed); }
+                crate::report_work(3, index + 1, compared);
+            }
+            crate::LIVE_SEARCH_ACTIVITY.fetch_add(compared % 256, std::sync::atomic::Ordering::Relaxed);
+            #[cfg(all(target_arch = "wasm32", not(feature = "parallel")))]
+            {
+                let previous = comparison_completed.get();
+                let completed = previous + compared;
+                comparison_completed.set(completed);
+                if completed == elements.len() || completed / 4096 != previous / 4096 {
+                    crate::report_work(3, if completed == elements.len() { completed } else { completed / 4096 * 4096 }, elements.len());
+                }
+            }
+            root.flush_caches();
+            match &mut copied {
+                SpillVec::Resident(values) => values.truncate(kept),
+                SpillVec::Stored(values) => values.truncate(kept),
+            }
+            Ok(copied)
+        });
+        #[cfg(any(not(target_arch = "wasm32"), feature = "parallel"))]
+        computed.collect_into_vec(&mut results);
+        #[cfg(all(target_arch = "wasm32", not(feature = "parallel")))]
+        results.extend(computed);
+        self.comparison_ms += comparison_started.elapsed().as_secs_f64() * 1000.0;
+        let mut output = Vec::new();
+        reserve_vec(&self.store, &mut output, results.len());
+        for result in results { output.push(result?); }
+        Ok(output)
     }
 
-    fn insert(state: &SimulationState, mut node: &mut TreeNode) -> bool {
+    fn weight(state: &SimulationState) -> u64 {
+        u64::from(state.cp) + u64::from(state.durability) + u64::from(state.quality)
+            + u64::from(state.unreliable_quality) + state.effects.into_bits()
+    }
+    pub(super) fn sort_key(state: &SimulationState) -> impl Ord + Send + use<> {
+        // The same comparison order as insert_batch, including descending keys.
+        (std::cmp::Reverse(Key::from(state)), std::cmp::Reverse(Self::weight(state)))
+    }
+    pub(super) fn insert_sorted(&mut self, state: &SimulationState) -> bool {
+        let key = Key::from(state);
+        if !self.buckets.contains_key(&key) {
+            reserve_map(&self.store, &mut self.buckets, 1);
+        }
+        let root = self.buckets.entry(key).or_insert_with(|| Mutex::new(TreeNode::new(self.store.clone())));
+        let inserted = Self::insert(state, root.get_mut().unwrap(), false);
+        crate::LIVE_SEARCH_ACTIVITY.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        inserted
+    }
+
+    fn insert(state: &SimulationState, mut node: &mut TreeNode, cache_allowed: bool) -> bool {
         const MAX_LEAF_SIZE: usize = 200;
         let new_value = Value::from(state);
         while let TreeNode::Intermediate(intermediate) = node {
@@ -212,15 +296,9 @@ impl ParetoFront {
             }
         }
         if let TreeNode::Leaf(leaf) = node {
-            let mut values = leaf.values.to_vec();
-            let is_dominated = values.iter().any(|value| value.dominates(&new_value));
-            if !is_dominated {
-                values.retain(|value| !new_value.dominates(value));
-                leaf.values.store().lock().unwrap().reserve_vec(&mut values, 1);
-                values.push(new_value);
-                leaf.values.replace(&values);
-            }
-            if leaf.values.len() > MAX_LEAF_SIZE && leaf.range_min + 1 != leaf.range_max {
+            let inserted = leaf.insert(new_value, cache_allowed);
+            if leaf.len() > MAX_LEAF_SIZE && leaf.range_min + 1 != leaf.range_max {
+                let mut values = leaf.cache.take().unwrap_or_else(|| leaf.values.to_vec());
                 values.sort_unstable_by_key(Value::cp);
                 let (lhs_values, rhs_values) = values.split_at(MAX_LEAF_SIZE / 2);
                 let store = leaf.values.store();
@@ -231,17 +309,115 @@ impl ParetoFront {
                         range_min: leaf.range_min,
                         range_max: partition_point,
                         values: PagedVec::from_slice(store.clone(), lhs_values),
+                        cache: None, cache_attempted: false, cache_dirty: false,
                     })),
                     rhs: Box::new(TreeNode::Leaf(LeafNode {
                         range_min: partition_point,
                         range_max: leaf.range_max,
                         values: PagedVec::from_slice(store.clone(), rhs_values),
+                        cache: None, cache_attempted: false, cache_dirty: false,
                     })),
                 });
             }
-            !is_dominated
+            inserted
         } else {
             unreachable!()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::memory::PageStore;
+
+    #[test]
+    fn simd_dominance_matches_each_original_guarded_lane() {
+        let mut seed = 0x92d68ca2u32;
+        let mut next = || { seed = seed.wrapping_mul(1664525).wrapping_add(1013904223); seed };
+        for _ in 0..10000 {
+            let a = Value(wide::u32x4::new(std::array::from_fn(|_| next())));
+            let b = Value(wide::u32x4::new(std::array::from_fn(|_| next())));
+            let expected = (0..4).all(|i| {
+                let guard = Value::GUARD.as_array()[i];
+                (a.0.as_array()[i] | guard).wrapping_sub(b.0.as_array()[i]) & guard == guard
+            });
+            assert_eq!(a.dominates(&b), expected);
+        }
+    }
+
+    #[test]
+    fn later_stronger_candidate_is_compared_before_any_weaker_candidate_is_returned() {
+        let weak = SimulationState { cp: 100, durability: 40, progress: 100,
+            quality: 100, unreliable_quality: 0, effects: Effects::new() };
+        let strong = SimulationState { cp: 101, quality: 101, ..weak };
+        let mut input = vec![weak; 65536];
+        input.push(strong);
+        let flag = crate::AtomicFlag::new();
+        let store = PageStore::new(0);
+        let mut front = ParetoFront::new(store);
+        let result = front.insert_batch(input, |state| state, &flag).unwrap();
+        let states: Vec<_> = result.iter().flat_map(|group| (0..group.len()).map(|i| group.get(i))).collect();
+        assert_eq!(states, [strong]);
+    }
+
+    #[test]
+    fn scoped_cache_flush_preserves_split_fronts_across_batches() {
+        let state = |i: u16| SimulationState { cp: 100 + i, durability: 40, progress: 100,
+            quality: 3000 - i * 2, unreliable_quality: 0, effects: Effects::new() };
+        let flag = crate::AtomicFlag::new();
+        for cached in [true, false] {
+            let store = PageStore::new(8192);
+            store.write().unwrap().force_paged_scratch = !cached;
+            let mut front = ParetoFront::new(store);
+            let mut seen = Vec::<SimulationState>::new();
+            for input in [(0..400).map(state).collect::<Vec<_>>(), (200..600).map(state).collect(),
+                (100..800).map(state).collect(), vec![SimulationState { cp: 3000, quality: 4000, ..state(0) }],
+                (0..800).map(state).collect()] {
+                let mut ordered = input.clone();
+                ordered.sort_unstable_by_key(ParetoFront::sort_key);
+                let mut expected = Vec::new();
+                for value in ordered {
+                    if !seen.iter().any(|previous| Value::from(previous).dominates(&Value::from(&value))) {
+                        seen.retain(|previous| !Value::from(&value).dominates(&Value::from(previous)));
+                        seen.push(value); expected.push(value);
+                    }
+                }
+                let groups = front.insert_batch(input, |state| state, &flag).unwrap();
+                let actual: Vec<_> = groups.iter().flat_map(|group| (0..group.len()).map(|i| group.get(i))).collect();
+                assert_eq!(actual, expected);
+                fn flushed(node: &TreeNode) -> bool {
+                    match node {
+                        TreeNode::Leaf(leaf) => leaf.cache.is_none(),
+                        TreeNode::Intermediate(branch) => flushed(&branch.lhs) && flushed(&branch.rhs),
+                    }
+                }
+                assert!(front.buckets.values().all(|root| flushed(&root.lock().unwrap())));
+            }
+        }
+    }
+
+    #[test]
+    fn ram_and_spilled_comparisons_match_a_direct_dominance_reference() {
+        let input: Vec<_> = (0..600u16).map(|i| SimulationState {
+            cp: 100 + i % 41, durability: 40 + i % 3, progress: i % 7,
+            quality: (i * 83) % 997, unreliable_quality: i % 5, effects: Effects::new(),
+        }).collect();
+        let mut ordered = input.clone();
+        ordered.sort_unstable_by_key(ParetoFront::sort_key);
+        let mut expected = Vec::<SimulationState>::new();
+        for state in ordered {
+            if !expected.iter().any(|previous| Key::from(previous) == Key::from(&state)
+                && Value::from(previous).dominates(&Value::from(&state))) { expected.push(state); }
+        }
+        let flag = crate::AtomicFlag::new();
+        for paged in [false, true] {
+            let store = PageStore::new(if paged { 8192 } else { 0 });
+            store.write().unwrap().force_paged_scratch = paged;
+            let mut front = ParetoFront::new(store.clone());
+            let groups = front.insert_batch(input.clone(), |state| state, &flag).unwrap();
+            let actual: Vec<_> = groups.iter().flat_map(|group| (0..group.len()).map(|i| group.get(i))).collect();
+            assert_eq!(actual, expected);
         }
     }
 }
