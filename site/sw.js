@@ -1,4 +1,4 @@
-const APP_CACHE_VERSION = 'ff14recipe-app-v4.02-751b972ebe53';
+const APP_CACHE_VERSION = 'ff14recipe-app-v4.03-05804e97dfdd';
 const DATA_CACHE_VERSION = 'ff14recipe-data-7.56-3601f731';
 const VERIFIED_DATA_CACHE_VERSION = `ff14recipe-verified-data-${DATA_CACHE_VERSION.replace('ff14recipe-data-', '')}`;
 const CACHE_PREFIX = 'ff14recipe-';
@@ -68,6 +68,21 @@ const PRECACHE_FILES = [
   './ui-change-policy.js',
   './view-state.js',
   './app.js',
+  './vendor/licenses/dompurify-Apache-2.0-LICENSE.txt',
+  './vendor/licenses/html2canvas-MIT-LICENSE.txt',
+  './vendor/licenses/marked-LICENSE.txt',
+  './vendor/licenses/raphael-Apache-2.0-LICENSE.txt',
+  './vendor/licenses/rust-COPYRIGHT-library.html',
+  './vendor/licenses/swiper-MIT-LICENSE.txt',
+  './vendor/licenses/third-party-NOTICES.txt',
+  './vendor/licenses/xivca-MIT-LICENSE.txt',
+  './vendor/licenses/dompurify-Apache-2.0-LICENSE.html',
+  './vendor/licenses/html2canvas-MIT-LICENSE.html',
+  './vendor/licenses/marked-LICENSE.html',
+  './vendor/licenses/raphael-Apache-2.0-LICENSE.html',
+  './vendor/licenses/swiper-MIT-LICENSE.html',
+  './vendor/licenses/third-party-NOTICES.html',
+  './vendor/licenses/xivca-MIT-LICENSE.html',
   './docs/license-notice.md',
   './docs/privacy-policy.md',
   './assets/app-icons/favicon.png',

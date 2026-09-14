@@ -1,3 +1,4 @@
+// Modified by XIVca: browser execution and search storage integration.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ParetoValue {
     pub progress: u16,

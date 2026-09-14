@@ -36,7 +36,15 @@ SQUARE ENIX から修正、削除、公開・提供の停止を求められた�
 
 DOMPurify はデュアルライセンスのうち、Apache ライセンス 2.0 を選択して利用しています。
 
-Raphael は KonaeAkira および貢献者が開発しています。XIVca は `raphael-sim` と `raphael-solver`（コミット `411168605989d573d89f2d71c01acac9f099e55a`）を利用し、ブラウザーへの組み込み、動作記録、メモリー管理に関する改変を加えています。
+Raphael は KonaeAkira および貢献者が開発しています。XIVca は `raphael-sim` と `raphael-solver`（コミット `411168605989d573d89f2d71c01acac9f099e55a`）を利用し、ブラウザーへの組み込み、動作記録、メモリー・保存領域の管理、並列処理に関する改変を加えています。
+
+本アプリには、画像生成やマクロ生成を支える関連ライブラリ、Rust標準ライブラリ、コンパイラー補助コード、およびUnicodeの文字データも含まれます。名称、バージョン、適用ライセンス、著作権表示と許諾文は、[第三者ソフトウェアのライセンス・権利表記](site/vendor/licenses/third-party-NOTICES.txt)をご参照ください。
+
+Rustの配布元が提供する[標準ライブラリの権利表記（英語）](site/vendor/licenses/rust-COPYRIGHT-library.html)も同梱しています。この文書には、他の実行環境向けの構成要素の情報も含まれます。
+
+wasm-bindgen-rayonの並列処理用JavaScriptには、共有ストレージの利用とエラー通知に関する改変を加えています。
+
+このページの説明や日本語参考訳は、各ライセンス原文の条件を変更するものではありません。
 
 ## MIT ライセンスの日本語参考訳
 

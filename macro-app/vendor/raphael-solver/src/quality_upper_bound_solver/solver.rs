@@ -1,3 +1,4 @@
+// Modified by XIVca: browser execution and search storage integration.
 use crate::{
     SolverException, SolverSettings,
     actions::FULL_SEARCH_ACTIONS,

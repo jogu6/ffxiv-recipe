@@ -13,6 +13,80 @@ const maximumCrafterLevel = Math.max(
     .map(recipe => Number(recipe?.CraftInfo?.level) || 0)
 );
 
+for (const width of [390, 1200]) test(`マクロ末尾のボタンとフッターの間に余白を確保する（幅${width}）`, async ({ page }) => {
+  await openApp(page, width, 700);
+  await searchFor(page, 'アリペブレ');
+  await page.locator('#recipeList').getByText('アリペブレ', { exact: true }).first().click();
+  await page.locator('.result-root-summary .macro-launch-btn').click();
+  const macro = page.frameLocator('#macroFrame');
+  await expect(macro.locator('#recipeInfo')).toContainText('アリペブレ');
+  for (const level of ['1', '10']) {
+    await page.locator('html').evaluate((root, value) => { root.dataset.fontSizeLevel = value; }, level);
+    await expect(macro.locator('html')).toHaveAttribute('data-font-size-level', level);
+    await expect.poll(() => page.evaluate(() => {
+      const frame = document.querySelector('#macroFrame');
+      const doc = frame.contentDocument;
+      const content = doc.querySelector('#macroContent');
+      content.scrollTop = content.scrollHeight;
+      const last = doc.querySelector('#bugReportButton').getBoundingClientRect();
+      const footer = document.querySelector('.footer').getBoundingClientRect();
+      return footer.top - (frame.getBoundingClientRect().top + last.bottom);
+    })).toBeGreaterThanOrEqual(4);
+    await expect(macro.locator('#bugReportButton')).toBeInViewport();
+  }
+});
+
+for (const width of [390, 601, 1200]) test(`右パネルの全面更新でマクロを閉じ、部分更新では保持する（幅${width}）`, async ({ page }) => {
+  await openApp(page, width, 800);
+  await searchFor(page, 'バスタードソード');
+  await page.locator('#recipeList').getByText('バスタードソード', { exact: true }).first().click();
+  const macro = page.frameLocator('#macroFrame');
+  const showPanel = async panel => {
+    if (width <= 600) await page.evaluate(name => showMobilePanel(name, { animate: false }), panel);
+  };
+  const openMacro = async () => {
+    await showPanel('right');
+    await page.locator('#panelRight .macro-launch-btn').first().click();
+    await expect(page.locator('#panelMacro')).toHaveClass(/open/);
+    await expect(macro.locator('#recipeInfo')).toBeVisible();
+  };
+  const expectClosed = async () => {
+    await expect(page.locator('#panelMacro')).not.toHaveClass(/open/);
+    await expect(page.locator('#macroFrame')).toHaveAttribute('src', 'about:blank');
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ff14_view_state_v1'))?.macro?.open ?? false)).toBe(false);
+  };
+  await openMacro();
+  await macro.locator('body').evaluate(() => { window.__partialUpdateIdentity = 'retained'; });
+  await showPanel('right');
+  await page.locator('#countIncrease5Btn').click();
+  await expect(page.locator('#panelMacro')).toHaveClass(/open/);
+  expect(await macro.locator('body').evaluate(() => window.__partialUpdateIdentity)).toBe('retained');
+  await showPanel('left');
+  await searchFor(page, 'アリペブレ');
+  await expect(page.locator('#panelMacro')).toHaveClass(/open/);
+  await page.locator('#recipeList').getByText('アリペブレ', { exact: true }).first().click();
+  await expectClosed();
+
+  await openMacro();
+  await showPanel('right');
+  await page.locator('#materialsViewBtn').click();
+  await expectClosed();
+  await openMacro();
+  await showPanel('right');
+  await page.locator('#treeViewBtn').click();
+  await expectClosed();
+
+  await openMacro();
+  await showPanel('left');
+  await page.locator('#favBtn').click();
+  await page.locator('#favoriteLists').getByText('検索履歴', { exact: true }).click();
+  await expectClosed();
+  await page.locator('#recipeList').getByText('アリペブレ', { exact: true }).first().click();
+  await openMacro();
+  await page.locator('#appTitle').click();
+  await expectClosed();
+});
+
 test('開いたマクロは設定倍率に即時追従し入力と画面を保持する', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('ff14_font_size_level_v2', '1'));
   await openApp(page, 1200, 900);

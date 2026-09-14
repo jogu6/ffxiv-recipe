@@ -24,4 +24,4 @@ replaceOnce('      worker.postMessage(workerInit);', `      worker.addEventListe
         globalThis.__xivcaThreadFailurePort.postMessage({ message: event.message });
       });
       worker.postMessage(workerInit);`);
-fs.writeFileSync(file, source);
+fs.writeFileSync(file, "// Modified by XIVca: added shared search storage and worker failure reporting.\n" + source);

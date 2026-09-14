@@ -15,6 +15,7 @@ button, select, input { font: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: .55; }
 main { display: grid; flex: 1 1 auto; grid-auto-rows: max-content; align-content: start; gap: calc(10px * var(--font-size-scale)); width: 100%; min-height: 0; padding: calc(14px * var(--font-size-scale)); margin: 0; overflow-y: auto; overscroll-behavior: contain; }
+#macroContent { padding-bottom: calc(14px * var(--font-size-scale) + var(--footer-space, 22px)); }
 .card { padding: calc(10px * var(--font-size-scale)); background: var(--panel); border: 1px solid var(--border); border-radius: 5px; }
 .empty { color: var(--muted); }
 .recipe-summary, .item-row, .consumable-choice { display: flex; align-items: center; gap: calc(8px * var(--font-size-scale)); }

@@ -1,3 +1,4 @@
+// Added by XIVca: browser integration and search storage support.
 //! Browser execution stays on one worker. Keep the iterator operations direct
 //! instead of scheduling Rayon jobs through function pointers before page faults.
 pub trait IntoParallelIterator: IntoIterator + Sized {

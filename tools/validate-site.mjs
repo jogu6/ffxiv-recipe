@@ -5,6 +5,7 @@ import process from 'node:process';
 import zlib from 'node:zlib';
 import { JOB_ICON_PACK_NAMES, validateItemIconPack } from '../pipeline/tool/item-icon-pack.mjs';
 import { expectedAppCacheVersion } from './app-cache-version.mjs';
+import { validateLicenses } from './validate-licenses.mjs';
 
 const repositoryRoot = path.resolve(import.meta.dirname, '..');
 const siteRoot = path.join(repositoryRoot, 'site');
@@ -12,6 +13,8 @@ const applicationName = 'FinalFantasy XIV® Crafting Assistant XIVca(シヴカ)'
 const applicationWindowTitle = 'XIVca | FinalFantasy XIV® Crafting Assistant';
 const require = createRequire(import.meta.url);
 const { extractAppVersion } = require('../site/pwa-update.js');
+
+validateLicenses({ repositoryRoot });
 
 function requireFile(relativePath) {
   const absolutePath = path.join(siteRoot, relativePath);

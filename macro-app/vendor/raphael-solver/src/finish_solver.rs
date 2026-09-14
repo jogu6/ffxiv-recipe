@@ -1,3 +1,4 @@
+// Modified by XIVca: browser execution and search storage integration.
 use raphael_sim::*;
 #[cfg(any(not(target_arch = "wasm32"), feature = "parallel"))]
 use rayon::prelude::*;

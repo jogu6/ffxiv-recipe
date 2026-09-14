@@ -1,3 +1,4 @@
+// Added by XIVca: browser integration and search storage support.
 use std::{time::Instant, hint::black_box};
 fn shuffle(input: &[u8], output: &mut [u8], delta: bool) {
  for lane in 0..8 { for row in 0..512 { let i=row*8+lane; output[lane*512+row]=if delta && row>0 { input[i].wrapping_sub(input[i-8]) } else { input[i] }; } }

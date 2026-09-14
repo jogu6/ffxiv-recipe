@@ -1,5 +1,6 @@
 # Modified by XIVca: package metadata and dependency versions are fixed for bundled reproducible builds.
 [package]
+license = "Apache-2.0"
 name = "raphael-solver"
 version = "0.28.6-xivca.0"
 edition = "2024"

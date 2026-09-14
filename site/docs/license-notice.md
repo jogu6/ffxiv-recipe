@@ -4,7 +4,7 @@
 
 XIVca 独自のアプリケーションコードとプロジェクト用ツールには、MIT ライセンスを適用します。著作権者は jogu6（2026年）です。
 
-著作権表示と許諾文を保持することを条件に、使用、複製、改変、再配布、販売などを認めます。ソフトウェアは無保証で提供します。詳しい条件は [MIT ライセンス原文（英語）](../vendor/licenses/xivca-MIT-LICENSE.txt)をご確認ください。
+著作権表示と許諾文を保持することを条件に、使用、複製、改変、再配布、販売などを認めます。ソフトウェアは無保証で提供します。詳しい条件は [MIT ライセンス原文（英語）](../vendor/licenses/xivca-MIT-LICENSE.html)をご確認ください。
 
 この許諾には、ゲーム由来の素材や第三者のライブラリは含まれません。それぞれの権利者が定める条件が適用されます。
 
@@ -28,15 +28,23 @@ SQUARE ENIX から修正、削除、公開・提供の停止を求められた�
 
 | ライブラリ | 用途 | ライセンス原文 |
 | --- | --- | --- |
-| marked | Markdown 文書の表示 | [MIT ライセンス（英語）](../vendor/licenses/marked-LICENSE.txt) |
-| DOMPurify | 表示する HTML の無害化 | [Apache ライセンス 2.0（英語）](../vendor/licenses/dompurify-Apache-2.0-LICENSE.txt) |
-| html2canvas 1.4.1 | 画面内容の画像化 | [MIT ライセンス（英語）](../vendor/licenses/html2canvas-MIT-LICENSE.txt) |
-| Swiper 14.0.5 | スワイプによるパネル切り替え | [MIT ライセンス（英語）](../vendor/licenses/swiper-MIT-LICENSE.txt) |
-| Raphael v0.28.6 | 製作シミュレーションとマクロ生成 | [Apache ライセンス 2.0（英語）](../vendor/licenses/raphael-Apache-2.0-LICENSE.txt) |
+| marked | Markdown 文書の表示 | [MIT ライセンス（英語）](../vendor/licenses/marked-LICENSE.html) |
+| DOMPurify | 表示する HTML の無害化 | [Apache ライセンス 2.0（英語）](../vendor/licenses/dompurify-Apache-2.0-LICENSE.html) |
+| html2canvas 1.4.1 | 画面内容の画像化 | [MIT ライセンス（英語）](../vendor/licenses/html2canvas-MIT-LICENSE.html) |
+| Swiper 14.0.5 | スワイプによるパネル切り替え | [MIT ライセンス（英語）](../vendor/licenses/swiper-MIT-LICENSE.html) |
+| Raphael v0.28.6 | 製作シミュレーションとマクロ生成 | [Apache ライセンス 2.0（英語）](../vendor/licenses/raphael-Apache-2.0-LICENSE.html) |
 
 DOMPurify はデュアルライセンスのうち、Apache ライセンス 2.0 を選択して利用しています。
 
-Raphael は KonaeAkira および貢献者が開発しています。XIVca は `raphael-sim` と `raphael-solver`（コミット `411168605989d573d89f2d71c01acac9f099e55a`）を利用し、ブラウザーへの組み込み、動作記録、メモリー管理に関する改変を加えています。
+Raphael は KonaeAkira および貢献者が開発しています。XIVca は `raphael-sim` と `raphael-solver`（コミット `411168605989d573d89f2d71c01acac9f099e55a`）を利用し、ブラウザーへの組み込み、動作記録、メモリー・保存領域の管理、並列処理に関する改変を加えています。
+
+本アプリには、画像生成やマクロ生成を支える関連ライブラリ、Rust標準ライブラリ、コンパイラー補助コード、およびUnicodeの文字データも含まれます。名称、バージョン、適用ライセンス、著作権表示と許諾文は、[第三者ソフトウェアのライセンス・権利表記](../vendor/licenses/third-party-NOTICES.html)をご参照ください。
+
+Rustの配布元が提供する[標準ライブラリの権利表記（英語）](../vendor/licenses/rust-COPYRIGHT-library.html)も同梱しています。この文書には、他の実行環境向けの構成要素の情報も含まれます。
+
+wasm-bindgen-rayonの並列処理用JavaScriptには、共有ストレージの利用とエラー通知に関する改変を加えています。
+
+このページの説明や日本語参考訳は、各ライセンス原文の条件を変更するものではありません。
 
 ## MIT ライセンスの日本語参考訳
 

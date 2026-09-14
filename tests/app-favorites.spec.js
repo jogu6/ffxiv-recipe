@@ -827,7 +827,100 @@ test('mobile favorite ring controls keep the count toggle on one right-aligned r
   expect(toggleBox.y).toBeLessThan(nameBox.y + nameBox.height);
 });
 
-test('mobile pin turns active after adding to a favorite list', async ({ page }) => {
+test('search pins always offer a favorite destination even for registered items', async ({ page }) => {
+  await seedAppStorage(page, {
+    favoritesV3: favoriteStore({ selectedListId: 'pin-a', lists: [
+      favoriteList({ id: 'pin-a', name: '登録先A', itemIds: ['バスタードソード'] }),
+      favoriteList({ id: 'pin-b', name: '登録先B' })
+    ] })
+  });
+  await openApp(page);
+  await page.locator('#favBtn').click();
+  await page.locator('#favoriteLists').getByText('登録先A', { exact: true }).click();
+  await dismissInfoDialog(page);
+  await page.locator('#recipeList .fav-item-row').click();
+  const pin = page.locator('.result-root-summary .pin-btn').first();
+  await expect(pin).not.toHaveClass(/inactive/);
+
+  await searchFor(page, 'バスタードソード');
+  await page.locator('#recipeList .list-name').getByText('バスタードソード', { exact: true }).click();
+  await expect(pin).toHaveClass(/inactive/);
+  await expect(pin).toHaveAttribute('title', 'お気に入りに追加');
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await pin.click();
+    await expect(page.locator('#favoriteTargetChoices .choice-list-btn')).toHaveText(['登録先A', '登録先B']);
+    await page.locator('#favoriteTargetChoices').getByText('登録先B', { exact: true }).click();
+    await expect(page.locator('#favoriteTargetOverlay')).not.toHaveClass(/open/);
+    await expect(pin).toHaveClass(/inactive/);
+  }
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ff14_favorite_lists_v3')).lists
+    .filter(list => ['pin-a', 'pin-b'].includes(list.id)).map(list => list.itemIds)))
+    .toEqual([['バスタードソード'], ['バスタードソード']]);
+
+  await pin.click();
+  await page.locator('#favoriteTargetCreate').getByText('新規作成').click();
+  await page.locator('#textInputField').fill('登録先C');
+  await page.locator('#textInputOkBtn').click();
+  await expect(page.locator('#searchBox')).toHaveValue('バスタードソード');
+  await expect(pin).toHaveClass(/inactive/);
+  await pin.click();
+  await expect(page.locator('#favoriteTargetChoices .choice-list-btn')).toHaveText(['登録先A', '登録先B', '登録先C']);
+});
+
+test('favorite pins remove only the displayed list and allow choosing a destination again', async ({ page }) => {
+  await seedAppStorage(page, {
+    favoritesV3: favoriteStore({ selectedListId: 'pin-a', lists: [
+      favoriteList({ id: 'pin-a', name: '登録先A', itemIds: ['バスタードソード', 'ブロンズインゴット'] }),
+      favoriteList({ id: 'pin-b', name: '登録先B', itemIds: ['バスタードソード'] })
+    ] })
+  });
+  await openApp(page);
+  await page.locator('#favBtn').click();
+  await page.locator('#favoriteLists').getByText('登録先A', { exact: true }).click();
+  await dismissInfoDialog(page);
+  const swordRow = page.locator('#recipeList .fav-item-row').filter({ hasText: 'バスタードソード' });
+  await swordRow.click();
+  const pin = page.locator('.result-root-summary .pin-btn').first();
+  const bronzePin = page.locator('.tree-node > .node-row').filter({ has: page.locator('.node-name', { hasText: /^ブロンズインゴット$/ }) })
+    .locator(':scope > .item-cell-leading > .pin-btn');
+  await expect(pin).not.toHaveClass(/inactive/);
+  await swordRow.locator('.pin-btn').click();
+  await expect(page.locator('#confirmMsg')).toContainText('「登録先A」から削除しますか？');
+  await page.locator('#confirmNo').click();
+  await expect(pin).not.toHaveClass(/inactive/);
+  await swordRow.locator('.pin-btn').click();
+  await page.locator('#confirmYes').click();
+  await expect(swordRow).toHaveCount(0);
+  await expect(pin).toHaveClass(/inactive/);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ff14_favorite_lists_v3')).lists
+    .find(list => list.id === 'pin-b').itemIds)).toEqual(['バスタードソード']);
+
+  await pin.click();
+  await expect(page.locator('#favoriteTargetChoices .choice-list-btn')).toHaveText(['登録先A', '登録先B']);
+  await page.locator('#favoriteTargetChoices').getByText('登録先B', { exact: true }).click();
+  await expect(pin).toHaveClass(/inactive/);
+  await expect(swordRow).toHaveCount(0);
+  await pin.click();
+  await page.locator('#favoriteTargetChoices').getByText('登録先A', { exact: true }).click();
+  await expect(pin).not.toHaveClass(/inactive/);
+  await expect(swordRow).toHaveCount(1);
+
+  await pin.click();
+  await page.locator('#confirmYes').click();
+  await expect(pin).toHaveClass(/inactive/);
+  await expect(bronzePin).not.toHaveClass(/inactive/);
+  await pin.click();
+  await page.locator('#favoriteTargetCreate').getByText('新規作成').click();
+  await page.locator('#textInputField').fill('登録先C');
+  await page.locator('#textInputOkBtn').click();
+  await expect(page.locator('#favBtn')).toContainText('登録先C');
+  await expect(pin).not.toHaveClass(/inactive/);
+  await expect(bronzePin).toHaveClass(/inactive/);
+  await bronzePin.click();
+  await expect(page.locator('#favoriteTargetChoices .choice-list-btn')).toHaveText(['登録先A', '登録先B', '登録先C']);
+});
+
+test('mobile search pin keeps offering a favorite destination after registration', async ({ page }) => {
   await openApp(page, 600, 700);
   await searchFor(page, 'バスタードソード');
   await page.getByText('バスタードソード', { exact: true }).first().click();
@@ -847,7 +940,10 @@ test('mobile pin turns active after adding to a favorite list', async ({ page })
   await page.locator('#textInputField').fill('スマホ確認');
   await page.locator('#textInputOkBtn').click();
 
-  await expect(pin).not.toHaveClass(/inactive/);
+  await expect(pin).toHaveClass(/inactive/);
+  await pin.click();
+  await expect(page.locator('#favoriteTargetChoices')).toContainText('スマホ確認');
+  await page.locator('#favoriteTargetCancelBtn').click();
 
   await page.locator('#appTitle').click();
   await searchFor(page, 'アリペブレ');
@@ -870,7 +966,9 @@ test('mobile pin turns active after adding to a favorite list', async ({ page })
 
   await page.locator('#favoriteTargetChoices').getByText('スマホ確認').click();
   await page.locator('#confirmYes').click();
-  await expect(secondPin).not.toHaveClass(/inactive/);
+  await expect(secondPin).toHaveClass(/inactive/);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ff14_favorite_lists_v3')).lists
+    .find(list => list.name === 'スマホ確認').itemIds)).toEqual(['バスタードソード', 'アリペブレ']);
 
   await page.locator('#panelRight').evaluate(panel => {
     panel.scrollTop = 100;

@@ -1,3 +1,4 @@
+// Modified by XIVca: browser execution and search storage integration.
 use std::num::{NonZero, NonZeroU8};
 
 use crate::{

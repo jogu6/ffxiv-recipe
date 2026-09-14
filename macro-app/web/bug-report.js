@@ -163,7 +163,7 @@ export function installBugReport({ capture, document: doc = document, fetch: sen
       <div class="bug-report-card">
         <h2 id="bugReportTitle">不具合・その他お問い合わせ</h2>
         <div class="bug-report-content">
-        <p id="bugReportIntroduction">返信が必要な場合はご連絡先も入力してください。動作確認のための情報を添えて送信します。詳しくは<a id="bugReportPrivacyLink" href="${new URL('../../docs/privacy-policy.md', import.meta.url).href}" target="_blank" rel="noopener">プライバシー・ポリシー</a>をご覧ください。内容は暗号化して送信します。連絡先：<a href="https://x.com/ff14_recipe" target="_blank" rel="noopener noreferrer">@ff14_recipe</a></p>
+        <p id="bugReportIntroduction">返信が必要な場合は、ご連絡先も入力してください。動作確認のための情報を添え、内容を暗号化して送信します。<a id="bugReportPrivacyLink" href="${new URL('../../docs/privacy-policy.md', import.meta.url).href}" target="_blank" rel="noopener">プライバシー・ポリシー</a>をご確認の上、記載された情報の取り扱いに同意いただける場合に送信してください。連絡先：<a href="https://x.com/ff14_recipe" target="_blank" rel="noopener noreferrer">@ff14_recipe</a></p>
         <div id="bugReportEditor">
           <label for="bugReportText">お問い合わせ内容</label>
           <textarea id="bugReportText" class="settings-input" rows="7" required aria-describedby="bugReportCount" placeholder="不具合・その他お問い合わせ内容を入力してください（1,000文字以内）"></textarea>
@@ -180,7 +180,7 @@ export function installBugReport({ capture, document: doc = document, fetch: sen
           <div id="bugReportFileList"></div>
         </div>
         <div id="bugReportConfirmation" hidden>
-          <p>この内容で送信してもよろしいですか？</p>
+          <p>この内容で送信しますか？</p>
           <pre id="bugReportPreview" aria-label="入力したお問い合わせ内容"></pre>
         </div>
         <p id="bugReportStatus" role="status"></p>
@@ -220,7 +220,7 @@ export function installBugReport({ capture, document: doc = document, fetch: sen
   const closeButtons = dialog.querySelectorAll('[data-report-cancel]');
   // Hosted panels display the modal in the main page, centered over the whole app.
   const view = doc.defaultView;
-  doc.getElementById('bugReportPrivacyLink')?.addEventListener('click', async event => {
+  const openPolicy = async event => {
     event.preventDefault();
     const host = dialog.ownerDocument;
     const policy = host.createElement('dialog');
@@ -271,7 +271,8 @@ export function installBugReport({ capture, document: doc = document, fetch: sen
     } catch {
       content.textContent = '文書を読み込めませんでした。閉じてから再度お試しください。';
     }
-  });
+  };
+  doc.getElementById('bugReportPrivacyLink')?.addEventListener('click', openPolicy);
   if (view && view.parent !== view) {
     const host = view.parent.document;
     if (!host.querySelector('link[data-macro-bug-report-style]')) {
@@ -345,6 +346,7 @@ export function installBugReport({ capture, document: doc = document, fetch: sen
     input.setAttribute('aria-invalid', String(reportLength(input.value) > MAX_REPORT_LENGTH));
   };
   const edit = () => {
+    introduction.hidden = false;
     next.hidden = false;
     back.hidden = true;
     submit.hidden = true;
@@ -431,6 +433,7 @@ export function installBugReport({ capture, document: doc = document, fetch: sen
     if (checkingFiles || !validReport(input.value)) return;
     confirmedText = input.value;
     preview.textContent = confirmedText;
+    introduction.hidden = true;
     next.hidden = true;
     back.hidden = false;
     submit.hidden = false;
@@ -487,10 +490,11 @@ export function installBugReport({ capture, document: doc = document, fetch: sen
           413: '添付画像または診断情報の容量が送信上限を超えています。',
           415: '送信先がこの送信形式に対応していないため、送信できませんでした。',
           429: '送信が集中しています。しばらく待ってからお試しください。',
-          502: 'Discordへの送信に失敗しました。',
+          502: 'お問い合わせの送信に失敗しました。',
           503: '送信先の設定に問題があります。'
         };
-        const code = /^[a-z_]+$/.test(result.code || '') ? ` / ${result.code}` : '';
+        const displayCode = result.code === 'discord_rejected' ? 'delivery_rejected' : result.code;
+        const code = /^[a-z_]+$/.test(displayCode || '') ? ` / ${displayCode}` : '';
         const error = new Error(`${messages[response.status] || '送信できませんでした。'}（HTTP ${response.status}${code}）`);
         error.confirmedRejection = [400, 403, 413, 415, 429, 503].includes(response.status) || result.code === 'discord_rejected';
         throw error;

@@ -64,6 +64,72 @@ async function sendReport(page, text = '表示についての問い合わせ') {
   await expect(page.locator('#bugReportStatus')).toContainText('送信が完了しました');
 }
 
+for (const width of [390, 1200]) test(`入力画面で同意の案内とポリシーを確認し、送信確定まで問い合わせを送らない（幅${width}）`, async ({ page }, testInfo) => {
+  const reports = await interceptReports(page);
+  await openApp(page, width, 844);
+  await settingsInquiry(page);
+  await expect(page.locator('#bugReportIntroduction')).toBeVisible();
+  await expect(page.locator('#bugReportIntroduction')).toContainText('プライバシー・ポリシーをご確認の上、記載された情報の取り扱いに同意いただける場合に送信してください。');
+  await page.locator('#bugReportText').fill('送信前に確認する本文');
+  await expect(page.locator('#bugReportDialog').getByRole('link', { name: 'プライバシー・ポリシー', exact: true })).toHaveCount(1);
+  const pages = page.context().pages().length;
+  await page.locator('#bugReportPrivacyLink').click();
+  const policy = page.locator('.bug-report-policy');
+  await expect(policy).toBeVisible();
+  await expect(policy).toContainText('保存と削除');
+  await policy.getByRole('button', { name: '閉じる', exact: true }).click();
+  await expect(page.locator('#bugReportText')).toHaveValue('送信前に確認する本文');
+  expect(page.context().pages()).toHaveLength(pages);
+  expect(reports).toHaveLength(0);
+  await page.locator('#bugReportDialog').screenshot({ path: testInfo.outputPath('inquiry-editor.png') });
+  await page.locator('#bugReportNext').click();
+  await expect(page.locator('#bugReportConfirmation > p')).toHaveText('この内容で送信しますか？');
+  await expect(page.locator('#bugReportConfirmation').getByRole('link')).toHaveCount(0);
+  await expect(page.locator('#bugReportSubmit')).toHaveText('送信する');
+  await expect(page.locator('#bugReportIntroduction')).toBeHidden();
+  await expect(page.locator('#bugReportPreview')).toHaveText('送信前に確認する本文');
+  expect(reports).toHaveLength(0);
+  await page.locator('#bugReportBack').click();
+  await expect(page.locator('#bugReportIntroduction')).toBeVisible();
+  await expect(page.locator('#bugReportText')).toHaveValue('送信前に確認する本文');
+  await page.locator('#bugReportNext').click();
+  await page.locator('[data-report-cancel]').click();
+  expect(reports).toHaveLength(0);
+  await page.locator('#inquiryBtn').click();
+  await page.locator('#bugReportText').fill('同意して送信する本文');
+  await page.locator('#bugReportNext').click();
+  await page.locator('#bugReportDialog').screenshot({ path: testInfo.outputPath('consent-mobile.png') });
+  await page.locator('#bugReportSubmit').click();
+  await expect(page.locator('#bugReportStatus')).toContainText('送信が完了しました');
+  expect(reports).toHaveLength(1);
+  expect(reports[0].description).toBe('同意して送信する本文');
+});
+
+for (const code of ['discord_rejected', 'delivery_unconfirmed']) {
+  test(`HTTP 502を一般的な送信エラーで表示し結果の確実性を保持する: ${code}`, async ({ page }) => {
+    let posts = 0;
+    await page.route('https://xivca-bug-report.jun1-ogu6.workers.dev/**', async route => {
+      if (route.request().method() === 'POST') posts++;
+      await route.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ ok: false, code }),
+        headers: { 'Access-Control-Allow-Origin': '*' } });
+    });
+    await openApp(page);
+    await settingsInquiry(page);
+    await page.locator('#bugReportText').fill('送信に失敗しても保持する本文');
+    await page.locator('#bugReportNext').click();
+    await page.locator('#bugReportSubmit').click();
+    const status = page.locator('#bugReportStatus');
+    await expect(status).toContainText('お問い合わせの送信に失敗しました。');
+    await expect(status).not.toContainText(/discord/i);
+    await expect(status).toContainText(code === 'discord_rejected' ? 'delivery_rejected' : 'delivery_unconfirmed');
+    if (code === 'discord_rejected') await expect(status).not.toContainText('届いている可能性');
+    else await expect(status).toContainText('届いている可能性');
+    await page.locator('#bugReportBack').click();
+    await expect(page.locator('#bugReportText')).toHaveValue('送信に失敗しても保持する本文');
+    expect(posts).toBe(1);
+  });
+}
+
 test('設定からマクロを開かず問い合わせでき、未使用パネルと保存済みマクロを送らない', async ({ page }, testInfo) => {
   const reports = await interceptReports(page);
   await page.addInitScript(() => localStorage.setItem('xivca.macro.result.v1.test', '保存済みマクロの識別用文字列'));

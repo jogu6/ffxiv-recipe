@@ -1,3 +1,4 @@
+// Modified by XIVca: browser execution and search storage integration.
 use std::sync::Mutex;
 use crate::memory::{SharedStore, PagedVec, Record, SpillVec, reserve_vec, reserve_map};
 

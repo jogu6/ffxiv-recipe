@@ -1,8 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { validateLicenses } from '../../tools/validate-licenses.mjs';
 
 const repositoryRoot = path.resolve(import.meta.dirname, '..', '..');
+validateLicenses({ repositoryRoot, checkArtifacts: false });
 const siteRoot = path.join(repositoryRoot, 'site');
 const target = path.join(siteRoot, 'macro-app');
 if (path.dirname(target) !== siteRoot || path.basename(target) !== 'macro-app') {
@@ -81,3 +83,4 @@ const swPath = path.join(siteRoot, 'sw.js');
 const sw = fs.readFileSync(swPath, 'utf8');
 const macroEntries = publicFiles.map(file => `  './macro-app/${file.destination.replaceAll('\\', '/')}',`).join('\n');
 fs.writeFileSync(swPath, sw.replace(/  '\.\/macro-app\/[^']+',\r?\n(?:  '\.\/macro-app\/[^']+',\r?\n)*/u, macroEntries + '\n'));
+validateLicenses({ repositoryRoot });

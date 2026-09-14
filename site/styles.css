@@ -2592,6 +2592,12 @@ button.intermediate-prepared-btn.active {
     grid-template-columns: max-content minmax(0, max-content) max-content;
     justify-content: start;
   }
+  #recipeList .item-cell-row {
+    grid-template-columns: max-content minmax(0, 1fr) max-content;
+  }
+  #recipeList .item-cell-row > .item-action-buttons {
+    justify-self: end;
+  }
   .materials-list .item-cell-row[data-material-column-group] {
     grid-template-columns:
       var(--material-leading-column-width, max-content)
@@ -3978,6 +3984,23 @@ button.intermediate-prepared-btn.active {
 }
 #licenseOverlay.privacy-policy :is(h1, h2, h3, h4, h5, h6) {
   text-align: left;
+}
+#licenseText.license-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+#licenseText .license-detail-back {
+  align-self: flex-start;
+  flex-shrink: 0;
+}
+#licenseText .license-detail-frame {
+  display: block;
+  width: 100%;
+  height: min(680px, calc(var(--app-viewport-height) - 190px));
+  min-height: 120px;
+  border: 0;
 }
 #licenseOverlay.privacy-policy .settings-close {
   border-top: 0;

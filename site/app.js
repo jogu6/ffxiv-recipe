@@ -1,5 +1,5 @@
 const DATA_CACHE_VERSION = 'ff14recipe-data-7.56-3601f731';
-const REPORT_BUILD_ID = 'sha256:44a8296e79188ae68025ea862b198697cb9db4c6cb331899d293ec5aefc452cd';
+const REPORT_BUILD_ID = 'sha256:d09776bd304527b2a2b405c36c945f6d40ef0b550f0a2b7869ed7036f84b6e5d';
 const VERIFIED_DATA_CACHE_VERSION = `ff14recipe-verified-data-${DATA_CACHE_VERSION.replace('ff14recipe-data-', '')}`;
 const DATA_FILE = `./data/Item.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 const LEGACY_ITEM_IDS_FILE = `./data/legacy-item-ids.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
@@ -2336,7 +2336,7 @@ function submitTextInput() {
   action?.(value);
 }
 
-function isFavorite(name, listId = getDisplayedFavoriteList()?.id || favoriteStore.selectedListId) {
+function isFavorite(name, listId = getDisplayedFavoriteList()?.id) {
   const list = findFavoriteList(listId);
   const id = itemIdForName(name);
   return Boolean(list && !isRecentList(list) && id && list.itemIds.includes(id));
@@ -2348,6 +2348,7 @@ function markRecipeListSelection(li) {
 }
 
 function resetTreeSelection() {
+  closeMacroForResultChange();
   selectedRecipe = null;
   selectedRecipeId = '';
   prevPanel = 'left';
@@ -2390,12 +2391,12 @@ function pinOn(name) {
 }
 
 function pinOff(name) {
-  const listName = findFavoriteList(getDisplayedFavoriteList()?.id || favoriteStore.selectedListId)?.name;
-  const message = listName
-    ? `「${name}」を\n「${listName}」から削除しますか？`
-    : `「${name}」を\nお気に入りから削除しますか？`;
+  const list = getDisplayedFavoriteList();
+  if (!list) return;
+  const listId = list.id;
+  const message = `「${name}」を\n「${list.name}」から削除しますか？`;
   showConfirm(message, () => {
-    applyFavoriteChange(name, false);
+    applyFavoriteChange(name, false, listId);
   });
 }
 
@@ -3131,7 +3132,7 @@ function addFavoriteToNewList(name) {
     saveFavorites();
     if (!preserveSearch) setListMode('fav');
     updateFavoriteButtonState();
-    refreshPins(name);
+    treePinMap.forEach((buttons, itemName) => refreshPins(itemName));
     renderList({ preserveScroll: true });
   });
 }
@@ -3335,10 +3336,14 @@ function createMasterbookLabel(commonName, craftInfo, className) {
   return wrapper;
 }
 
-function createCraftRequirementLabels(master, className, { requireLevel = false } = {}) {
+function createCraftRequirementLabels(master, className, { requireLevel = false, includeMasterbookLevel = false } = {}) {
   const groups = masterbookGroups(master.craftInfo);
   if (groups.length > 0) {
-    return groups.map(([commonName, craftInfo]) => createMasterbookLabel(commonName, craftInfo, className));
+    const labels = groups.map(([commonName, craftInfo]) => createMasterbookLabel(commonName, craftInfo, className));
+    if (includeMasterbookLevel && master.craftLevel > 0) {
+      labels.push(createTextElement('span', `${className} badge-craft`, `Lv${master.craftLevel}`));
+    }
+    return labels;
   }
   if (!CRAFT_JOBS_SET.has(master.method) || (requireLevel && master.craftLevel <= 0)) return [];
   return [
@@ -3428,6 +3433,7 @@ function createItemDisplayLabel(
     recipeVariant = null,
     provisional = false,
     hideCraftRequirement = false,
+    includeMasterbookLevel = false,
     hideEquipmentParameters = false,
     showEquipmentDuplicateWarning = false
   } = {}
@@ -3442,7 +3448,7 @@ function createItemDisplayLabel(
     for (const label of createCraftRequirementLabels(
       master,
       `${favorite ? 'favorite-item-job ' : ''}badge`,
-      { requireLevel: true }
+      { requireLevel: true, includeMasterbookLevel }
     )) {
       badges.appendChild(label);
     }
@@ -3977,7 +3983,6 @@ function showUsesPanel(ingredientName, options = {}) {
       activateRecipeVariant(recipeName, variant.recipeId);
       selectedRecipe = recipeName;
       selectedRecipeId = variant.recipeId || '';
-      macroLauncher.syncRecipe(selectedRecipeId);
       leaveFavoriteMaterialsMode();
       resetRightPanelViewState();
       setResultViewMode('tree');
@@ -4030,7 +4035,6 @@ function selectRecipe(name, li, recipeId = '') {
   }
   selectedRecipe = name;
   selectedRecipeId = nextRecipeId;
-  macroLauncher.syncRecipe(selectedRecipeId);
   closeUsesPanel();
   leaveFavoriteMaterialsMode();
   resetRightPanelViewState();
@@ -4059,7 +4063,6 @@ function selectRecipeByName(name, recipeId = '') {
   }
   selectedRecipe = name;
   selectedRecipeId = nextRecipeId;
-  macroLauncher.syncRecipe(selectedRecipeId);
   closeUsesPanel();
   leaveFavoriteMaterialsMode();
   resetMaterialPurchasesForContext(materialPurchaseState, currentMaterialPurchaseContext());
@@ -4842,7 +4845,13 @@ function clearMobilePanels() {
   }
 }
 
+function closeMacroForResultChange() {
+  pendingMacroRestore = null;
+  if (macroLauncher.getState().open) macroLauncher.close();
+}
+
 function resetRightPanelViewState() {
+  closeMacroForResultChange();
   resetDestinationPanelScroll('right');
   exchangeTreeState.clear();
   intermediateTreeState.clear();
@@ -5057,6 +5066,7 @@ function renderResultView({ preserveScroll = false } = {}) {
     selectedRecipeId,
     favoriteListIds: getActiveFavoriteMaterialLists().map(list => list.id)
   });
+  if (lastRenderedResultIdentity && lastRenderedResultIdentity !== nextIdentity) closeMacroForResultChange();
   preserveScroll = preserveScroll && (!lastRenderedResultIdentity || lastRenderedResultIdentity === nextIdentity);
   lastRenderedResultIdentity = nextIdentity;
   const treeScrollTop = elements.treeContainer.scrollTop;
@@ -5567,7 +5577,6 @@ function selectRecipeMethod(name, recipeId, list = null) {
   }
   if (name === selectedRecipe) {
     selectedRecipeId = recipeId;
-    macroLauncher.syncRecipe(selectedRecipeId);
   }
   resetMaterialPurchasesForContext(materialPurchaseState, currentMaterialPurchaseContext());
   renderUiChange(UI_CHANGE.RECIPE_METHOD_CHANGED);
@@ -5576,7 +5585,8 @@ function selectRecipeMethod(name, recipeId, list = null) {
 function createRecipeMethodVisual(name, variant) {
   const visual = createTextElement('span', 'recipe-method-visual', '');
   const labels = createCraftRequirementLabels(recipeVariantMaster(name, variant), 'badge', {
-    requireLevel: true
+    requireLevel: true,
+    includeMasterbookLevel: true
   });
   if (labels.length > 0) visual.append(...labels);
   else visual.appendChild(createTextElement('span', 'badge badge-craft', recipeSelectionLabel(name, variant)));
@@ -6842,6 +6852,7 @@ function createResultRootSummary(
   const display = createItemDisplayLabel(name, {
     recipeVariant: recipe,
     hideCraftRequirement: Boolean(selector),
+    includeMasterbookLevel: true,
     hideEquipmentParameters
   });
   display.classList.add('root-item-display-label');
@@ -6991,12 +7002,15 @@ function collectTreeCraftTypes(rootName) {
   return craftTypes;
 }
 
-function createTreeBadge(method, hideCraftBadge) {
-  const label = CRAFT_JOBS_SET.has(method) ? craftJobName(method) : method;
-  const badge = CRAFT_JOBS_SET.has(method)
+function createTreeBadge(master, hideCraftBadge) {
+  const { method, craftLevel } = master;
+  const label = CRAFT_JOBS_SET.has(method)
+    ? hideCraftBadge && craftLevel > 0 ? `Lv${craftLevel}` : craftJobLevelLabel(method, craftLevel)
+    : method;
+  const badge = CRAFT_JOBS_SET.has(method) && !hideCraftBadge
     ? createCraftJobLabel(method, `badge ${methodBadgeClass(method)}`, label)
     : createTextElement('span', `badge ${methodBadgeClass(method)}`, label);
-  badge.classList.toggle('hidden', !method || hideCraftBadge);
+  badge.classList.toggle('hidden', !method || (hideCraftBadge && !(craftLevel > 0)));
   return badge;
 }
 
@@ -7487,7 +7501,7 @@ function buildNode(
     name,
     neededQty,
     createTreeSubInfo(recipe, neededQty, unitCost, unitTimes),
-    selector ? null : createTreeBadge(master.method, hideCraftBadge)
+    selector ? null : createTreeBadge(master, hideCraftBadge)
   );
   if (selector) prependRecipeMethodControl(main, selector);
   row.appendChild(main);
@@ -7829,6 +7843,7 @@ function renderMarkdown(markdown, { breaks = false } = {}) {
 }
 
 function openMarkdownNotice(title, markdown) {
+  elements.licenseText.classList.remove('license-detail');
   elements.licenseOverlay.classList.remove('privacy-policy');
   elements.licenseTitle.textContent = title;
   try {
@@ -7840,6 +7855,7 @@ function openMarkdownNotice(title, markdown) {
 }
 
 async function openDocumentNotice(title, path) {
+  elements.licenseText.classList.remove('license-detail');
   elements.licenseOverlay.classList.toggle('privacy-policy', path === PRIVACY_POLICY_FILE);
   elements.licenseTitle.textContent = title;
   elements.licenseText.textContent = '読み込み中...';
@@ -7855,6 +7871,35 @@ async function openDocumentNotice(title, path) {
       link.href = new URL(link.getAttribute('href'), documentUrl).href;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
+      const localLicenseRoot = new URL('./vendor/licenses/', document.baseURI);
+      if (path === LICENSE_NOTICE_FILE && link.href.startsWith(localLicenseRoot.href) && new URL(link.href).pathname.endsWith('.html')) {
+        link.target = '_self';
+        link.addEventListener('click', event => {
+          event.preventDefault();
+          const container = elements.licenseText;
+          const previousNodes = [...container.childNodes];
+          const previousScroll = container.scrollTop;
+          const back = document.createElement('button');
+          back.type = 'button';
+          back.className = 'confirm-btn no license-detail-back';
+          back.textContent = 'ライセンス一覧に戻る';
+          const frame = document.createElement('iframe');
+          frame.className = 'license-detail-frame';
+          frame.title = link.textContent;
+          frame.setAttribute('sandbox', 'allow-same-origin');
+          frame.src = link.href;
+          back.addEventListener('click', () => {
+            container.classList.remove('license-detail');
+            container.replaceChildren(...previousNodes);
+            container.scrollTop = previousScroll;
+            link.focus({ preventScroll: true });
+          });
+          container.classList.add('license-detail');
+          container.replaceChildren(back, frame);
+          container.scrollTop = 0;
+          back.focus({ preventScroll: true });
+        });
+      }
     }
   } catch {
     elements.licenseText.textContent = '文書を読み込めませんでした。時間をおいて再度お試しください。';

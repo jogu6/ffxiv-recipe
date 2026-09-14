@@ -1,0 +1,807 @@
+{
+  "schemaVersion": 1,
+  "toolchain": "nightly-2026-05-10",
+  "target": "wasm32-unknown-unknown",
+  "inputs": [
+    {
+      "file": "macro-app/Cargo.lock",
+      "sha256": "635ac704925d064e6c56df2c50ab6dde305b23c1f1b6e94ea0de6f9e166a90a9"
+    },
+    {
+      "file": "macro-app/Cargo.toml",
+      "sha256": "d6c6a210ceb9a7dd8fb66b0a7f2ac38781fb11f9c1cde084064f6fe1c025b22c"
+    },
+    {
+      "file": "macro-app/.cargo/config.toml",
+      "sha256": "3e680eaf099b0588255412836325b69dd238ce06feca740889a20cdac14aa330"
+    },
+    {
+      "file": "macro-app/engine/Cargo.toml",
+      "sha256": "ac644312090a9557188df1cdf507024053a80e3b39074b53e8a21aac60a0c2a0"
+    },
+    {
+      "file": "macro-app/vendor/raphael-sim/Cargo.toml",
+      "sha256": "8a2a595ecd851bc90f5c147d00fe80864a81afc158fece8f5d790dfe9c302372"
+    },
+    {
+      "file": "macro-app/vendor/raphael-solver/Cargo.toml",
+      "sha256": "2b368c265d4cc0b7a882e615407dcd640e3d7420ca8efd017c8462c3bf2545ee"
+    },
+    {
+      "file": "macro-app/tools/build-wasm.mjs",
+      "sha256": "1a4bc705f40d53542c4214dc384c0139c03de9827b6f3f89f1c37999e221a58c"
+    }
+  ],
+  "npm": [
+    {
+      "name": "marked",
+      "version": "18.0.5"
+    },
+    {
+      "name": "dompurify",
+      "version": "3.4.11"
+    },
+    {
+      "name": "html2canvas",
+      "version": "1.4.1"
+    },
+    {
+      "name": "swiper",
+      "version": "14.0.5"
+    },
+    {
+      "name": "css-line-break",
+      "version": "2.1.0"
+    },
+    {
+      "name": "text-segmentation",
+      "version": "1.0.3"
+    },
+    {
+      "name": "utrie",
+      "version": "1.0.2"
+    },
+    {
+      "name": "base64-arraybuffer",
+      "version": "1.0.2"
+    }
+  ],
+  "packages": [
+    {
+      "name": "addr2line",
+      "version": "0.25.1",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/addr2line/0.25.1",
+      "notices": [
+        "L001"
+      ]
+    },
+    {
+      "name": "adler2",
+      "version": "2.0.1",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/adler2/2.0.1",
+      "notices": [
+        "L002"
+      ]
+    },
+    {
+      "name": "bitfield-struct",
+      "version": "0.12.1",
+      "license": "MIT",
+      "scope": "生成用（ホスト側）",
+      "source": "https://crates.io/crates/bitfield-struct/0.12.1",
+      "notices": [
+        "L003"
+      ]
+    },
+    {
+      "name": "bump-scope",
+      "version": "2.2.0",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/bump-scope/2.2.0",
+      "notices": [
+        "L004"
+      ]
+    },
+    {
+      "name": "bumpalo",
+      "version": "3.20.3",
+      "license": "MIT",
+      "scope": "生成用（ホスト側）",
+      "source": "https://crates.io/crates/bumpalo/3.20.3",
+      "notices": [
+        "L005"
+      ]
+    },
+    {
+      "name": "bytemuck",
+      "version": "1.25.2",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/bytemuck/1.25.2",
+      "notices": [
+        "L006"
+      ]
+    },
+    {
+      "name": "cfg-if",
+      "version": "1.0.4",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/cfg-if/1.0.4",
+      "notices": [
+        "L007"
+      ]
+    },
+    {
+      "name": "crossbeam-channel",
+      "version": "0.5.17",
+      "license": "MIT",
+      "scope": "並列版",
+      "source": "https://crates.io/crates/crossbeam-channel/0.5.17",
+      "notices": [
+        "L008"
+      ]
+    },
+    {
+      "name": "crossbeam-deque",
+      "version": "0.8.8",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/crossbeam-deque/0.8.8",
+      "notices": [
+        "L008"
+      ]
+    },
+    {
+      "name": "crossbeam-epoch",
+      "version": "0.9.21",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/crossbeam-epoch/0.9.21",
+      "notices": [
+        "L008"
+      ]
+    },
+    {
+      "name": "crossbeam-utils",
+      "version": "0.8.23",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/crossbeam-utils/0.8.23",
+      "notices": [
+        "L008"
+      ]
+    },
+    {
+      "name": "dlmalloc",
+      "version": "0.2.13",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/dlmalloc/0.2.13",
+      "notices": [
+        "L007"
+      ]
+    },
+    {
+      "name": "either",
+      "version": "1.18.0",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/either/1.18.0",
+      "notices": [
+        "L009"
+      ]
+    },
+    {
+      "name": "futures-core",
+      "version": "0.3.34",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/futures-core/0.3.34",
+      "notices": [
+        "L010"
+      ]
+    },
+    {
+      "name": "futures-task",
+      "version": "0.3.34",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/futures-task/0.3.34",
+      "notices": [
+        "L010"
+      ]
+    },
+    {
+      "name": "futures-util",
+      "version": "0.3.34",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/futures-util/0.3.34",
+      "notices": [
+        "L010"
+      ]
+    },
+    {
+      "name": "gimli",
+      "version": "0.32.3",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/gimli/0.32.3",
+      "notices": [
+        "L011"
+      ]
+    },
+    {
+      "name": "hashbrown",
+      "version": "0.17.0",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/hashbrown/0.17.0",
+      "notices": [
+        "L012"
+      ]
+    },
+    {
+      "name": "heck",
+      "version": "0.5.0",
+      "license": "MIT",
+      "scope": "生成用（ホスト側）",
+      "source": "https://crates.io/crates/heck/0.5.0",
+      "notices": [
+        "L011"
+      ]
+    },
+    {
+      "name": "itoa",
+      "version": "1.0.18",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/itoa/1.0.18",
+      "notices": [
+        "L002"
+      ]
+    },
+    {
+      "name": "js-sys",
+      "version": "0.3.105",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/js-sys/0.3.105",
+      "notices": [
+        "L007"
+      ]
+    },
+    {
+      "name": "libc",
+      "version": "0.2.185",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/libc/0.2.185",
+      "notices": [
+        "L013"
+      ]
+    },
+    {
+      "name": "log",
+      "version": "0.4.33",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/log/0.4.33",
+      "notices": [
+        "L014"
+      ]
+    },
+    {
+      "name": "memchr",
+      "version": "2.7.6",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/memchr/2.7.6",
+      "notices": [
+        "L015"
+      ]
+    },
+    {
+      "name": "memchr",
+      "version": "2.8.3",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/memchr/2.8.3",
+      "notices": [
+        "L015"
+      ]
+    },
+    {
+      "name": "miniz_oxide",
+      "version": "0.8.9",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/miniz_oxide/0.8.9",
+      "notices": [
+        "L016",
+        "L017"
+      ]
+    },
+    {
+      "name": "nunny",
+      "version": "0.2.2",
+      "license": "Apache-2.0",
+      "scope": "通常版・並列版",
+      "source": "https://github.com/aatifsyed/nunny/blob/33d72c4a76f8afa195bd12a9542e34ccb1411d52/Cargo.toml",
+      "notices": [
+        "L018"
+      ]
+    },
+    {
+      "name": "object",
+      "version": "0.37.3",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/object/0.37.3",
+      "notices": [
+        "L019"
+      ]
+    },
+    {
+      "name": "once_cell",
+      "version": "1.21.4",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/once_cell/1.21.4",
+      "notices": [
+        "L002"
+      ]
+    },
+    {
+      "name": "pin-project-lite",
+      "version": "0.2.17",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/pin-project-lite/0.2.17",
+      "notices": [
+        "L002"
+      ]
+    },
+    {
+      "name": "proc-macro2",
+      "version": "1.0.107",
+      "license": "MIT",
+      "scope": "生成用（ホスト側）",
+      "source": "https://crates.io/crates/proc-macro2/1.0.107",
+      "notices": [
+        "L002"
+      ]
+    },
+    {
+      "name": "quote",
+      "version": "1.0.47",
+      "license": "MIT",
+      "scope": "生成用（ホスト側）",
+      "source": "https://crates.io/crates/quote/1.0.47",
+      "notices": [
+        "L002"
+      ]
+    },
+    {
+      "name": "rayon-core",
+      "version": "1.13.0",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/rayon-core/1.13.0",
+      "notices": [
+        "L020"
+      ]
+    },
+    {
+      "name": "rayon",
+      "version": "1.11.0",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/rayon/1.11.0",
+      "notices": [
+        "L020"
+      ]
+    },
+    {
+      "name": "rustc-demangle",
+      "version": "0.1.27",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/rustc-demangle/0.1.27",
+      "notices": [
+        "L007"
+      ]
+    },
+    {
+      "name": "rustc-hash",
+      "version": "2.1.1",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/rustc-hash/2.1.1",
+      "notices": [
+        "L002"
+      ]
+    },
+    {
+      "name": "rustc-literal-escaper",
+      "version": "0.0.7",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/rustc-literal-escaper/0.0.7",
+      "notices": [
+        "L002"
+      ]
+    },
+    {
+      "name": "rustversion",
+      "version": "1.0.23",
+      "license": "MIT",
+      "scope": "生成用（ホスト側）",
+      "source": "https://crates.io/crates/rustversion/1.0.23",
+      "notices": [
+        "L002"
+      ]
+    },
+    {
+      "name": "safe_arch",
+      "version": "0.9.3",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/safe_arch/0.9.3",
+      "notices": [
+        "L021"
+      ]
+    },
+    {
+      "name": "serde_core",
+      "version": "1.0.228",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/serde_core/1.0.228",
+      "notices": [
+        "L002"
+      ]
+    },
+    {
+      "name": "serde_derive",
+      "version": "1.0.228",
+      "license": "MIT",
+      "scope": "生成用（ホスト側）",
+      "source": "https://crates.io/crates/serde_derive/1.0.228",
+      "notices": [
+        "L002"
+      ]
+    },
+    {
+      "name": "serde_json",
+      "version": "1.0.151",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/serde_json/1.0.151",
+      "notices": [
+        "L002"
+      ]
+    },
+    {
+      "name": "serde",
+      "version": "1.0.228",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/serde/1.0.228",
+      "notices": [
+        "L002"
+      ]
+    },
+    {
+      "name": "slab",
+      "version": "0.4.12",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/slab/0.4.12",
+      "notices": [
+        "L022"
+      ]
+    },
+    {
+      "name": "smallvec",
+      "version": "1.15.1",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/smallvec/1.15.1",
+      "notices": [
+        "L023"
+      ]
+    },
+    {
+      "name": "strum_macros",
+      "version": "0.27.2",
+      "license": "MIT",
+      "scope": "生成用（ホスト側）",
+      "source": "https://crates.io/crates/strum_macros/0.27.2",
+      "notices": [
+        "L024"
+      ]
+    },
+    {
+      "name": "strum",
+      "version": "0.27.2",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/strum/0.27.2",
+      "notices": [
+        "L024"
+      ]
+    },
+    {
+      "name": "syn",
+      "version": "2.0.119",
+      "license": "MIT",
+      "scope": "生成用（ホスト側）",
+      "source": "https://crates.io/crates/syn/2.0.119",
+      "notices": [
+        "L002"
+      ]
+    },
+    {
+      "name": "syn",
+      "version": "3.0.5",
+      "license": "MIT",
+      "scope": "生成用（ホスト側）",
+      "source": "https://crates.io/crates/syn/3.0.5",
+      "notices": [
+        "L002"
+      ]
+    },
+    {
+      "name": "unicode-ident",
+      "version": "1.0.24",
+      "license": "MIT AND Unicode-3.0",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/unicode-ident/1.0.24",
+      "notices": [
+        "L002",
+        "L025"
+      ]
+    },
+    {
+      "name": "wasm_sync",
+      "version": "0.1.2",
+      "license": "Apache-2.0",
+      "scope": "並列版",
+      "source": "https://github.com/DouglasDwyer/wasm_sync/blob/cc027b3b27c2e24e3cd5c7a6cc63306eff724af5/Cargo.toml",
+      "notices": [
+        "L018"
+      ]
+    },
+    {
+      "name": "wasm-bindgen-macro-support",
+      "version": "0.2.128",
+      "license": "MIT",
+      "scope": "生成用（ホスト側）",
+      "source": "https://crates.io/crates/wasm-bindgen-macro-support/0.2.128",
+      "notices": [
+        "L007"
+      ]
+    },
+    {
+      "name": "wasm-bindgen-macro",
+      "version": "0.2.128",
+      "license": "MIT",
+      "scope": "生成用（ホスト側）",
+      "source": "https://crates.io/crates/wasm-bindgen-macro/0.2.128",
+      "notices": [
+        "L007"
+      ]
+    },
+    {
+      "name": "wasm-bindgen-rayon",
+      "version": "1.3.0",
+      "license": "Apache-2.0",
+      "scope": "並列版",
+      "source": "https://crates.io/crates/wasm-bindgen-rayon/1.3.0",
+      "notices": [
+        "L026"
+      ]
+    },
+    {
+      "name": "wasm-bindgen-shared",
+      "version": "0.2.128",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/wasm-bindgen-shared/0.2.128",
+      "notices": [
+        "L007"
+      ]
+    },
+    {
+      "name": "wasm-bindgen",
+      "version": "0.2.128",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/wasm-bindgen/0.2.128",
+      "notices": [
+        "L007"
+      ]
+    },
+    {
+      "name": "web-sys",
+      "version": "0.3.105",
+      "license": "MIT",
+      "scope": "並列版",
+      "source": "https://crates.io/crates/web-sys/0.3.105",
+      "notices": [
+        "L007"
+      ]
+    },
+    {
+      "name": "web-time",
+      "version": "1.1.0",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/web-time/1.1.0",
+      "notices": [
+        "L027"
+      ]
+    },
+    {
+      "name": "wide",
+      "version": "0.8.2",
+      "license": "Zlib",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/wide/0.8.2",
+      "notices": [
+        "L028"
+      ]
+    },
+    {
+      "name": "zmij",
+      "version": "1.0.23",
+      "license": "MIT",
+      "scope": "通常版・並列版",
+      "source": "https://crates.io/crates/zmij/1.0.23",
+      "notices": [
+        "L002"
+      ]
+    },
+    {
+      "name": "css-line-break",
+      "version": "2.1.0",
+      "license": "MIT",
+      "scope": "html2canvas内包",
+      "source": "https://www.npmjs.com/package/css-line-break/v/2.1.0",
+      "notices": [
+        "L029"
+      ]
+    },
+    {
+      "name": "text-segmentation",
+      "version": "1.0.3",
+      "license": "MIT",
+      "scope": "html2canvas内包",
+      "source": "https://www.npmjs.com/package/text-segmentation/v/1.0.3",
+      "notices": [
+        "L030"
+      ]
+    },
+    {
+      "name": "utrie",
+      "version": "1.0.2",
+      "license": "MIT",
+      "scope": "html2canvas内包",
+      "source": "https://www.npmjs.com/package/utrie/v/1.0.2",
+      "notices": [
+        "L030"
+      ]
+    },
+    {
+      "name": "base64-arraybuffer",
+      "version": "1.0.2",
+      "license": "MIT",
+      "scope": "html2canvas内包",
+      "source": "https://www.npmjs.com/package/base64-arraybuffer/v/1.0.2",
+      "notices": [
+        "L031"
+      ]
+    }
+  ],
+  "modifiedSources": [
+    "macro-app/vendor/raphael-solver/examples/profile-compression.rs",
+    "macro-app/vendor/raphael-solver/src/finish_solver.rs",
+    "macro-app/vendor/raphael-solver/src/lib.rs",
+    "macro-app/vendor/raphael-solver/src/macro_solver/mod.rs",
+    "macro-app/vendor/raphael-solver/src/macro_solver/pareto_front.rs",
+    "macro-app/vendor/raphael-solver/src/macro_solver/search_queue.rs",
+    "macro-app/vendor/raphael-solver/src/macro_solver/solver.rs",
+    "macro-app/vendor/raphael-solver/src/memory.rs",
+    "macro-app/vendor/raphael-solver/src/quality_upper_bound_solver/solver.rs",
+    "macro-app/vendor/raphael-solver/src/quality_upper_bound_solver/tests.rs",
+    "macro-app/vendor/raphael-solver/src/sequential.rs",
+    "macro-app/vendor/raphael-solver/src/step_lower_bound_solver/solver.rs",
+    "macro-app/vendor/raphael-solver/src/step_lower_bound_solver/tests.rs",
+    "macro-app/vendor/raphael-solver/src/utils/pareto_front_builder.rs"
+  ],
+  "files": [
+    {
+      "file": "site/vendor/licenses/dompurify-Apache-2.0-LICENSE.txt",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "file": "site/vendor/licenses/html2canvas-MIT-LICENSE.txt",
+      "sha256": "86200ce4e92d9a22c41c8647a55f7a5fddff304ff89b4d36ecc699ed8c123d2c"
+    },
+    {
+      "file": "site/vendor/licenses/marked-LICENSE.txt",
+      "sha256": "8e3a3f82f59a60958f56ca08f445647c32a4733dc7ca6c2c46f6eb898471ab9c"
+    },
+    {
+      "file": "site/vendor/licenses/raphael-Apache-2.0-LICENSE.txt",
+      "sha256": "69849221bfb90053de2134ef5e6d540287b4b98062326492f1f96f5da685524b"
+    },
+    {
+      "file": "site/vendor/licenses/rust-COPYRIGHT-library.html",
+      "sha256": "6ea7a65ef2a77f73b45ea3ef2d662ea3c5442a6b32b34341f59b0f941844bd7c"
+    },
+    {
+      "file": "site/vendor/licenses/swiper-MIT-LICENSE.txt",
+      "sha256": "99f08e3e3ee0799fe1488fcbcb41dc933b14873e9556693209daf9e1007601d6"
+    },
+    {
+      "file": "site/vendor/licenses/third-party-NOTICES.txt",
+      "sha256": "8f7185aa27b59e458c883224bb9a928062132ca8f0c22b0c69fa56da4406d21f"
+    },
+    {
+      "file": "site/vendor/licenses/xivca-MIT-LICENSE.txt",
+      "sha256": "7e80f8534884755e36321b3d9594b673fef36b3c23b19640715dd8dbeb7285a3"
+    },
+    {
+      "file": "site/vendor/html2canvas.min.js",
+      "sha256": "e87e550794322e574a1fda0c1549a3c70dae5a93d9113417a429016838eab8cb"
+    },
+    {
+      "file": "site/vendor/marked.umd.js",
+      "sha256": "2dc4769dfde29f51c7aca1a539c6407c789c8ea644cf8b7d01ded28a9c1d800b"
+    },
+    {
+      "file": "site/vendor/purify.min.js",
+      "sha256": "dbabb5b205a333ec49c8c09e7fca30ef66df0523bb8bc0fa9ea843841f111dbd"
+    },
+    {
+      "file": "site/vendor/swiper-bundle.min.js",
+      "sha256": "39b8c33206dd5df7e26f9037795dbd09ce5f3c4229f2577f1b02982522390596"
+    },
+    {
+      "file": "site/vendor/licenses/dompurify-Apache-2.0-LICENSE.html",
+      "sha256": "b93edc50db66837639eb12bc199c49ef9a84ca94d52d912c8ab5a77fbe1dfce5"
+    },
+    {
+      "file": "site/vendor/licenses/html2canvas-MIT-LICENSE.html",
+      "sha256": "00d703d68354ce882df09b98b5a42c04e8ba52e0b0701f5f355ec23ed319d3fb"
+    },
+    {
+      "file": "site/vendor/licenses/marked-LICENSE.html",
+      "sha256": "a7d652e3737b887bdeb964582c51491c6dfcaef0ac6f5583757a8f60b8f90efa"
+    },
+    {
+      "file": "site/vendor/licenses/raphael-Apache-2.0-LICENSE.html",
+      "sha256": "c677c0bff6b819cfee33f365da7ac09b12e60df46b8d2f4b42fc2d9cb2b68449"
+    },
+    {
+      "file": "site/vendor/licenses/swiper-MIT-LICENSE.html",
+      "sha256": "499261bd3c2ed2df5c898de88c3945efa017ea5b5f7b671125102a98c231934a"
+    },
+    {
+      "file": "site/vendor/licenses/third-party-NOTICES.html",
+      "sha256": "fba9c6314e89d658c78d5472138ff703995751de0f039a84703e02b516f64857"
+    },
+    {
+      "file": "site/vendor/licenses/xivca-MIT-LICENSE.html",
+      "sha256": "e1faa3d06d9023ecf1da502451a3eea46de6599dc83acf24aff3c73dfff0da97"
+    }
+  ]
+}

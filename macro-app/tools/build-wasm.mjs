@@ -1,4 +1,6 @@
 import { spawnSync } from 'node:child_process';
+import { validateLicenses } from '../../tools/validate-licenses.mjs';
+validateLicenses({ checkArtifacts: false });
 const profile = process.argv.includes('--dev') ? '--dev' : '--release';
 function run(command, args, env = process.env) {
   const result = spawnSync(command, args, { stdio: 'inherit', env });
@@ -11,3 +13,4 @@ run('rustup', ['run', 'nightly-2026-05-10', 'wasm-pack', 'build', 'engine', '--t
   RUSTFLAGS: '-C target-feature=+atomics,+bulk-memory,+simd128,-reference-types,-multivalue -C link-arg=--max-memory=4294967296 -C link-arg=--import-memory -C link-arg=--shared-memory -C link-arg=--export=__wasm_init_tls -C link-arg=--export=__tls_size -C link-arg=--export=__tls_align -C link-arg=--export=__tls_base'
 });
 run(process.execPath, ['tools/prepare-parallel-wasm.mjs']);
+validateLicenses({ checkArtifacts: false });

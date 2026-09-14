@@ -182,6 +182,38 @@ test('shows the transfer and listing restriction badge only for confirmed EX ite
   await expect(root.getByRole('button', { name: 'バスタードソードの店情報' })).toBeVisible();
 });
 
+for (const width of [390, 900]) test(`recipe tree shows crafting levels for roots and materials ${width}px`, async ({ page }) => {
+  await openApp(page, width, 800);
+  await searchFor(page, 'バスタードソード');
+  await page.locator('#recipeList').getByText('バスタードソード', { exact: true }).first().click();
+  await expect(page.locator('.result-root-summary .item-list-badges')).toContainText('鍛冶Lv2');
+  const maple = page.locator('.tree-node > .node-row').filter({ has: page.locator('.node-name', { hasText: /^メープル材$/ }) });
+  await expect(maple.locator('.badge')).toContainText('木工Lv1');
+  const bone = page.locator('.tree-node > .node-row').filter({ has: page.locator('.node-name', { hasText: /^骨片$/ }) });
+  await expect(bone.locator('.badge')).not.toContainText(/Lv\d/);
+
+  await page.locator('#appTitle').click();
+  await searchFor(page, 'アリペブレ');
+  await page.locator('#recipeList').getByText('アリペブレ', { exact: true }).first().click();
+  await expect(page.locator('.result-root-summary .item-list-badges')).toContainText('調理秘伝書:第12巻');
+  await expect(page.locator('.result-root-summary .item-list-badges')).toContainText('Lv100');
+  for (const [name, level] of [['高山食塩', 92], ['ペリラオイル', 82]]) {
+    const row = page.locator('.tree-node > .node-row').filter({ has: page.locator('.node-name', { hasText: new RegExp(`^${name}$`) }) });
+    await expect(row.locator('.badge')).toContainText(`Lv${level}`);
+    await expect(row.locator('.badge')).toBeVisible();
+  }
+
+  await page.locator('#appTitle').click();
+  await searchFor(page, 'ミラージュプリズム');
+  await page.locator('#recipeList').getByText('ミラージュプリズム', { exact: true }).first().click();
+  const selector = page.locator('.result-root-summary .recipe-method-selector');
+  await expect(selector.locator('.recipe-method-summary')).toContainText('Lv15');
+  await selector.locator('.recipe-method-summary').click();
+  await selector.locator('.recipe-method-choice').nth(1).click();
+  await expect(selector.locator('.recipe-method-summary')).toContainText('Lv15');
+  await expect(selector.locator('.recipe-method-summary')).toContainText('秘伝書');
+});
+
 test('shows the confirmed masterbook on recipe item labels', async ({ page }) => {
   await openApp(page);
   await searchFor(page, 'ギガントガルロングソード');
@@ -670,6 +702,63 @@ test('offers the same recipe selector for an intermediate item in the tree and m
   expect(narrowLayout.selectorActionGap).toBeGreaterThanOrEqual(0);
 });
 
+for (const width of [600, 601, 1200]) test(`left item action buttons align right while pins stay beside icons ${width}px`, async ({ page }) => {
+  await seedAppStorage(page, {
+    favoritesV3: favoriteStore({ lists: [favoriteList({
+      id: 'button-alignment', name: '配置確認', itemIds: ['バスタードソード', 'ブロンズインゴット', 'アリペブレ']
+    })] })
+  });
+  await openApp(page, width, 800);
+  await page.locator('#favBtn').click();
+  await page.locator('#favoriteLists').getByText('配置確認', { exact: true }).click();
+  await dismissInfoDialog(page);
+  const rows = page.locator('#recipeList .fav-item-row');
+  await expect(rows).toHaveCount(3);
+  const layout = await rows.evaluateAll(items => items.map(row => {
+    const box = row.getBoundingClientRect();
+    const label = row.querySelector('.item-list-label').getBoundingClientRect();
+    const pin = row.querySelector('.pin-btn').getBoundingClientRect();
+    const actions = row.querySelector('.item-action-buttons')?.getBoundingClientRect();
+    return {
+      rightGap: actions ? box.right - Number.parseFloat(getComputedStyle(row).paddingRight) - actions.right : null,
+      pinBeforeLabel: pin.right <= label.left,
+      overflow: row.scrollWidth - row.clientWidth
+    };
+  }));
+  for (const item of layout) {
+    expect(item.overflow).toBeLessThanOrEqual(1);
+    expect(item.pinBeforeLabel).toBe(true);
+    if (item.rightGap !== null) {
+      expect(Math.abs(item.rightGap)).toBeLessThanOrEqual(1);
+    }
+  }
+  await rows.first().locator('.pin-btn').click();
+  await expect(page.locator('#confirmMsg')).toContainText('「配置確認」から削除しますか？');
+  await page.locator('#confirmNo').click();
+  await page.locator('.favorite-material-curtain-toggle').click();
+  await page.locator('#recipeList .favorite-materials-row').getByText('並び替え', { exact: true }).click();
+  await expect(rows.locator('.reorder-handle')).toHaveCount(3);
+  const reorderGaps = await rows.evaluateAll(items => items.map(row => {
+    const handle = row.querySelector('.reorder-handle');
+    const actions = row.querySelector('.item-action-buttons');
+    return {
+      edge: row.getBoundingClientRect().right - Number.parseFloat(getComputedStyle(row).paddingRight)
+        - handle.getBoundingClientRect().right,
+      last: actions.lastElementChild === handle
+    };
+  }));
+  for (const gap of reorderGaps) {
+    expect(Math.abs(gap.edge)).toBeLessThanOrEqual(1);
+    expect(gap.last).toBe(true);
+  }
+  await searchFor(page, '山羊乳');
+  const searchRow = page.locator('#recipeList .ingredient-row').first();
+  const gap = await searchRow.evaluate(row => row.getBoundingClientRect().right
+    - Number.parseFloat(getComputedStyle(row).paddingRight)
+    - row.querySelector('.item-action-buttons').getBoundingClientRect().right);
+  expect(Math.abs(gap)).toBeLessThanOrEqual(1);
+});
+
 test('desktop material groups align their own columns while tree actions follow each item', async ({ page }) => {
   await openApp(page, 1365, 900);
   await searchFor(page, 'エバーキープ・サイドボード');
@@ -764,12 +853,12 @@ test('opens Japanese license notice with working bundled license links from sett
   await expect(page.locator('#licenseText')).toContainText('Swiper 14.0.5');
 
   const licenseLinks = page.locator('#licenseText a[href*="/vendor/licenses/"]');
-  await expect(licenseLinks).toHaveCount(6);
+  await expect(licenseLinks).toHaveCount(8);
   for (const link of await licenseLinks.all()) {
-    await expect(link).toHaveAttribute('target', '_blank');
+    await expect(link).toHaveAttribute('target', '_self');
     await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
     const url = await link.getAttribute('href');
-    expect(new URL(url).pathname).toMatch(/^\/vendor\/licenses\/[^/]+\.txt$/);
+    expect(new URL(url).pathname).toMatch(/^\/vendor\/licenses\/[^/]+\.html$/);
     const response = await page.request.get(url);
     expect(response.ok(), url).toBe(true);
     expect(await response.text()).toMatch(/Permission is hereby granted|Apache License/);

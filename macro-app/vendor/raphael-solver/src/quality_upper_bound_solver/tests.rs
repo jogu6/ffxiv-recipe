@@ -1,3 +1,4 @@
+// Modified by XIVca: browser execution and search storage integration.
 use crate::memory::FrontPool as BumpPool;
 use raphael_sim::*;
 

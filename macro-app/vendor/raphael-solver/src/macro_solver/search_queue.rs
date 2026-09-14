@@ -1,3 +1,4 @@
+// Modified by XIVca: browser execution and search storage integration.
 use std::collections::{BTreeSet, hash_map::Entry};
 
 use raphael_sim::SimulationState;

@@ -1,3 +1,4 @@
+// Added by XIVca: browser integration and search storage support.
 //! Keep search data in RAM while allocations succeed. Spill losslessly only
 //! after allocation pressure, or under an explicitly configured test budget.
 use std::sync::{Arc, Mutex, RwLock, atomic::{AtomicBool, Ordering}};
