@@ -121,7 +121,9 @@ test('並列探索を中断して一時保存を削除した後に再生成で�
 });
 
 test('並列WASMの確保上限に達しても退避で回復して完走する', async ({ page }) => {
-  test.setTimeout(60000);
+  // This recovery fixture performs thousands of IndexedDB transactions.
+  // Check completion and correctness without treating CI disk speed as a limit.
+  test.setTimeout(180000);
   await openRunner(page);
   const requestInput = { ...input, maxCp: 200, maxQuality: 3000, targetQuality: 3000 };
   const baseline = await solve(page, 'solver-host.js', false, requestInput);

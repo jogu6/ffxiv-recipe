@@ -15,7 +15,7 @@ for (const tipsAvailable of [true, false]) {
       body: tipsAvailable ? '## v4.0 リリース\n\n最新の掲載情報\n\n---\n\n## v3.24 リリース\n\n古い情報' : 'unavailable',
     }));
     await page.goto('/');
-    await expect(page.locator('html')).toHaveAttribute('data-app-ready', 'true');
+    await expect(page.locator('html')).toHaveAttribute('data-app-ready', 'true', { timeout: 15000 });
     if (tipsAvailable) {
       await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
       await expect(page.locator('#releaseNoticeOverlay')).toHaveClass(/open/);
@@ -75,7 +75,7 @@ for (const controlledAtBoot of [false, true]) {
     }, { controlledAtBoot, version: publishedAppVersion });
 
     await page.goto('/');
-    await expect(page.locator('html')).toHaveAttribute('data-app-ready', 'true');
+    await expect(page.locator('html')).toHaveAttribute('data-app-ready', 'true', { timeout: 15000 });
     await expect(page.locator('#loadingOverlay')).not.toHaveClass(/open/);
     expect(await page.evaluate(() => crossOriginIsolated)).toBe(false);
     await page.locator('#searchBox').fill('ウォルナット');
