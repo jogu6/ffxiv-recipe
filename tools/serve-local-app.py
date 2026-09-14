@@ -20,6 +20,12 @@ PROFILE_LOCK = threading.Lock()
 LOCAL_SOURCE_PATTERN = re.compile(r'(?P<prefix>(?:src|href)="?)(?P<path>\./[^"?]+\.(?:css|js))(?P<suffix>"?)')
 
 
+class LocalAppServer(ThreadingHTTPServer):
+    # Browser and worker imports arrive in bursts; the default backlog of five
+    # can reject connections before the handler threads accept them on Windows.
+    request_queue_size = 128
+
+
 class LocalAppHandler(SimpleHTTPRequestHandler):
     def local_html(self) -> bytes | None:
         request_path = urlsplit(self.path).path
@@ -185,7 +191,7 @@ def main() -> None:
     args = parse_args()
     directory = args.directory.resolve()
     handler = partial(LocalAppHandler, directory=str(directory))
-    server = ThreadingHTTPServer((args.bind, args.port), handler)
+    server = LocalAppServer((args.bind, args.port), handler)
     print(f"Serving {directory} at http://{args.bind}:{args.port}/", flush=True)
     try:
         server.serve_forever()
