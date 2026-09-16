@@ -1,57 +1,72 @@
 # FinalFantasy XIV® Crafting Assistant XIVca(シヴカ)
 
-FF14のレシピ、必要素材、中間素材、装備、採集・店情報を確認するための静的Webアプリです。
+FF14のレシピ、必要素材、中間素材、装備、採集・店舗情報の確認と、製作マクロの生成を行う静的Webアプリです。
 
-- 公開サイト: https://jogu6.github.io/ffxiv-recipe/
+- [公開サイト](https://jogu6.github.io/ffxiv-recipe/)
 - GitHub Pagesで配信
-- PWA対応
-- 日本語表示専用
-- データ生成処理はWindows 11上のNode.js 24以降/Tauriツールで実行
+- PWA対応、日本語表示専用
 
 ## 主な機能
 
-- アイテム名からレシピを検索
+- アイテム名からのレシピ検索と、複数の製作方法の選択
 - ジョブ、装備レベル、アイテムレベル、部位による装備検索
-- レシピツリー表示
-- 必要素材リスト表示
-- お気に入りリスト複数管理
-- 複数のお気に入りリストを合算した素材リスト表示
-- 中間素材の製作回数と余り表示
-- 中間素材の使用先と、依存関係・製作ジョブを考慮した製作順表示
-- 店舗購入する中間素材と、それにより準備不要になる素材の表示
-- 中間素材からミニレシピツリーを表示
-- 交換/精選素材と交換貨幣の補足表示
-- 採集場所、ET時間帯、LTカウントダウン表示
-- 店舗、販売価格、販売場所の表示
-- シェアコードによるお気に入りリストの共有
-- 検索条件、選択画面、素材リスト作業状態の復帰
+- レシピツリーと必要素材リストの表示
+- お気に入りリストの複数管理、製作数の設定、複数リストの素材合算
+- 中間素材の製作回数、余り、使用先、依存関係・製作ジョブを考慮した製作順の表示
+- 中間素材の店舗購入指定と、それにより準備不要になる素材の表示
+- 中間素材のミニレシピツリー、交換・精選素材と交換貨幣の補足表示
+- 採集場所、ET時間帯、LTカウントダウン、店舗・販売価格・販売場所の表示
+- シェアコードによるお気に入りの共有、ファイルへの保存・取り込み
+- 表示内容のテキスト・画像共有と、シェアコード広場の表示
+- 検索条件、選択画面、素材のチェック状態、パネル表示の復元
+- 10段階のフォントサイズ設定と、画面幅に応じたパネル表示
+- 製作ステータス、食事・薬品、中間素材HQを指定するマクロ生成（β）
+- 診断情報と任意の画像を添付できる不具合・お問い合わせ送信
 
-## Repository structure
+## データと保存
 
-```text
-site/       GitHub Pagesへ公開するWebアプリ
-pipeline/   CSV入力、生成途中のJSON、生成ツール、GUI、ログ
-design/     アプリアイコンの原本と旧デザイン素材
-docs/       開発・運用ドキュメント
-tools/      環境構築、検証、リポジトリ操作用ツール
-.github/    GitHub Actions
-```
+アイテム・レシピ情報は日本語版Lodestoneをもとに生成します。アプリは公開済みのデータを読み込み、検索・素材計算・マクロ生成をブラウザー内で実行します。
 
-## Local preview
+お気に入りや表示設定はブラウザーに保存します。アイテムデータ、検証済み画像パック、起動時の整形済みデータは版を識別して再利用します。マクロの探索データは必要に応じて端末内の一時保存へ退避します。保存データはブラウザーや端末ごとに独立しているため、お気に入りの移動にはシェアコードまたはファイル保存・取り込みを使います。
 
-Service Workerと`fetch()`を使用するため、`site/`をローカルHTTPサーバーで公開します。
+アプリの更新時はService Workerの更新を確認し、適用後に再読み込みします。更新内容の確認が必要な場合は、確認画面を閉じてから利用を再開します。
+
+## 開発と確認
+
+Node.js 24以降を使用します。ブラウザーでの確認にはPython、マクロエンジンのビルドにはRustとWASMのツールチェーン、データ生成GUIにはWindows 11とTauriのビルド環境が必要です。
 
 ```powershell
-py -m http.server 4173 --bind 0.0.0.0 --directory site
+npm install
+npm run dev
 ```
 
-ブラウザで `http://127.0.0.1:4173/` を開きます。`npm run dev`でも同じサーバーを起動できます。
+プレビューサーバーは4173番ポートを使用します。マクロ機能を含む確認では、事前にマクロのビルドと公開配置を行います。
 
-スマートフォンなどLAN内の別端末から確認する場合は、同じネットワーク内で開発PCのIPアドレスと `4173` 番ポートを開きます。
+変更対象に対応するチェックを実行します。
 
-## Data pipeline
+```powershell
+npm run check:js
+npm run check:site
+npm run check:app
+npm run check:calculation
+npm run check:pipeline
+npm run check:crafting-mechanics
+npm run check:macro-launcher
+```
 
-データ生成はこのWebアプリ専用の Node.js/Tauri ツールで実行します。Tauri exe はリポジトリ全体のバージョンとは別に、アイテム情報作成ツール単体として `v1.0` を扱います。機能名、説明、ボタン名、確認文、引数、推奨実行順は`pipeline/tool/pipeline-ui-definition.mjs`を正本とし、exeは起動時に読み込んでUIと実行監視へ反映します。
+`npm run check`は上記チェックをまとめて実行します。ブラウザー検証は対象を指定します。
+
+```powershell
+npm run test:e2e -- --grep "<test name>"
+npm run test:e2e:app -- --grep "<test name>"
+npm run test:pipeline:gui
+```
+
+開発環境、マクロのビルド、検証、公開処理は[開発ガイド](docs/development.md)を参照してください。
+
+## データ生成
+
+Node.jsとTauriの生成ツールで、Lodestone完全監査、候補生成、画像整備、公開用データへの反映と検証を実行します。GUIには個別実行と一括実行があり、取得間隔、WebP品質、画像サイズを設定できます。
 
 ```powershell
 npm run pipeline:gui
@@ -61,52 +76,25 @@ npm run pipeline:gui:build:timings
 npm run pipeline:gui:build
 ```
 
-`pipeline:gui:check`はRust/Tauriの増分チェック、`pipeline:gui:build:exe`はインストーラーを作らない高速なexe生成、`pipeline:gui:build`はNSISインストーラーを含む配布ビルドです。`pipeline:gui:build:timings`はexeを生成し、`src-tauri/target/cargo-timings/`へCargoの計測結果を出力します。
+`pipeline:gui:check`は増分チェック、`pipeline:gui:build:exe`はインストーラーなしの実行ファイル生成、`pipeline:gui:build:timings`は計測付き生成、`pipeline:gui:build`はNSISインストーラーを含むビルドです。
 
-共通ラッパーはツールチェーン内の`rust-lld`を検出します。開発・検査ではCargoのincrementalを使い、exe・配布ビルドでは依存クレートを`sccache`へ保存します。キャッシュ不能な最終アプリだけは専用プロファイルでincrementalを維持します。ビルド後にはsccacheの統計を表示し、キャッシュ障害時は通常コンパイルへ退避します。
+詳細は[データ生成](docs/data-pipeline.md)を参照してください。
 
-詳細は [docs/data-pipeline.md](docs/data-pipeline.md) を参照してください。
+## Lodestone更新監視と自動公開
 
-## Validation
+定期実行では、製作手帳の全一覧ページを、最後に公開反映が成功した完全監査の保存内容と比較します。変更がなければ通知せず終了し、未反映の変更があれば新しい完全監査、データ・画像パック生成、キャッシュ識別子更新、検証、コミット、push、GitHub Pagesのデプロイ確認へ進みます。
 
-Node.js 24以降で依存関係をインストールします。
+レシピ一覧に現れない詳細ページだけの変更は、定期比較の検知対象外です。自動公開は設定したリモートと同期した`main`から始まり、生成データと必要なキャッシュ定数だけをコミットします。無関係な編集中・ステージ済みの変更は維持されます。
 
-```powershell
-npm install
-```
+詳細は[更新監視と復旧](docs/lodestone-update-monitor.md)を参照してください。
 
-標準チェックを実行します。JavaScript構文チェック、サイトデータ検証、アプリと計算ロジックのNode.jsテスト、パイプラインツールのNode.jsテストを並列に実行します。
+## 関連ドキュメント
 
-```powershell
-npm run check
-```
-
-個別に確認したい場合は、以下の npm scripts を使います。
-
-```powershell
-npm run check:js
-npm run check:site
-npm run check:app
-npm run check:calculation
-npm run check:pipeline
-npm run pipeline:gui:check
-```
-
-PlaywrightによるブラウザUI回帰テストを実行します。
-
-```powershell
-npm run test:e2e
-npm run test:e2e:app
-npm run test:pipeline:gui
-```
-
-`test:e2e:app`は公開アプリだけを対象にします。変更中はさらに`npm run test:e2e:app -- --grep "<test name>"`で対象を絞り、最終確認では`test:e2e`を実行します。
-
-安定実行設定は`playwright.config.js`へ集約しています。公開サイトE2Eはファイル単位で並列化し、ローカルではCPUに応じて2～4ワーカー、CIでは2ワーカーを使用します。独立したTauriモックを使うpipeline GUI E2Eはファイル内も並列化します。互換性のあるテスト用サーバーが4173番ポートで動作済みの場合は再利用します。ワーカー数と設定ファイルはコマンドラインから上書きできません。
-
-ユーザーに見える機能追加・仕様変更・バグ修正には、その挙動を表す固有名のE2Eテストを追加してください。
-
-開発ツールの詳細は [docs/development.md](docs/development.md) を参照してください。
+- [Service Workerとキャッシュ](docs/service-worker-notes.txt)
+- [マクロ生成機能](macro-app/README.md)
+- [固定マスターデータ](pipeline/input/web-app/README.md)
+- [ジョブアイコンの制作仕様](tools/job-icons/README.md)
+- [お問い合わせ送信Worker](workers/bug-report/README.md)
 
 ## 権利とライセンス
 
@@ -117,23 +105,3 @@ FINAL FANTASY XIV の画像、名称、アイテム・レシピデータ、商�
 SQUARE ENIX やホスティング提供者からの要請・措置に従い、必要な修正、削除、公開・提供の停止を行います。
 
 詳細は [NOTICE.md](NOTICE.md) および [site/docs/license-notice.md](site/docs/license-notice.md) を参照してください。
-
-## Lodestone更新監視と自動公開
-
-Lodestoneのアイテム一覧と製作手帳一覧を毎日確認します。正常に取得できて更新がない場合は通知せず終了し、更新を検知した場合だけ完全監査、Item.json生成、`sw.js`を含むキャッシュ版更新、検証、コミット、push、GitHub Pagesのデプロイ確認を自動実行します。正常終了時と異常終了時はDiscordへ日本語で通知します。この処理はNode.js、Git、GitHub CLIだけで動作し、CodexやAI APIを使用しません。
-
-詳細なセットアップ、タスク設定、ログ、テスト通知については [Lodestone update monitor](docs/lodestone-update-monitor.md) を参照してください。
-
-1. `pipeline/config/lodestone-monitor.example.json` を `pipeline/config/lodestone-monitor.local.json` としてコピーします。
-2. `discordWebhookUrl` に通知先のDiscord Webhook URLを設定します。ローカル設定はGitの追跡対象外です。
-3. Gitの追跡対象外であるタスク定義をタスクスケジューラへインポートし、`xivapi-update-monitor-task` の実行ユーザーとパスワードを設定します。この名称は互換性のため維持していますが、監視対象はLodestoneです。
-4. `gh auth login --hostname github.com --git-protocol https --web` と `gh auth setup-git` を実行し、GitHubへのpushとActions確認に使う認証を設定します。
-5. タスクを一度手動実行して基準状態を保存します。初回実行では通知も自動公開も行いません。
-
-Webhookへのテスト通知は `node pipeline/tool/lodestone-update-monitor.mjs --test-notification` で送信できます。この操作では監視の基準状態を変更しません。
-
-取得不能、HTML構造不整合、生成・検証失敗、想定外の差分、コミット・push・デプロイ失敗は日本語の原因と対応方法をDiscordへ通知して中止します。確認が必要なログがある場合は、そのログの絶対パスも通知します。GitHub認証切れの場合は再認証コマンドも案内します。認証処理は非対話で実行するため、ブラウザーや認証画面を自動表示しません。Discord Webhook自体が無効な場合は通知できないため、同じ日本語案内を実行ログへ保存します。
-
-タスクは `wscript.exe` の非表示実行からNode.jsを起動するため、ターミナルウィンドウを表示しません。監視処理とその子プロセスはCPU優先度を「通常以下」に固定し、生成処理のNode.jsヒープにも上限を設けます。Lodestoneへのアクセスと保存済みHTMLの解析は逐次処理し、全件HTMLをメモリへ保持しません。状態、取得キャッシュ、ログはそれぞれ `pipeline/state/`、`pipeline/cache/`、`pipeline/logs/` に保存され、いずれもGitの追跡対象外です。自動公開はクリーンな`main`ブランチだけで開始し、完了済み工程、コミット済み・push済みの途中状態を保存して次回の定期実行から安全に再開します。
-
-ログ整理は共通処理として監視開始時に実行します。完了した月の実行ログを月別ZIPへ移して元ログを削除し、完了した年は月別ZIPを年別ZIPへまとめて月別ZIPを削除します。月と年の境界を含む日時判定、状態、ログ、通知はすべて日本時間を使用します。

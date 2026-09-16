@@ -1,66 +1,74 @@
 # Lodestone Data Pipeline
 
-The local pipeline builds the static application's recipe data from the Japanese Lodestone.
+The pipeline builds the static application's recipe data from the Japanese Lodestone. The Node.js generation tools are also exposed through a Tauri GUI.
 
 ## Public data model
 
-`site/data/Item.json` contains only data used by the application:
+`Item.json` is the main public document:
 
-- `Version`: the Lodestone Version
-- `Items`: records keyed by the unique Japanese item name
-- `SortOrder`: a presentation value derived from the descending Lodestone item list
-- Lodestone recipe, category, icon, shop, gathering, equipment, and EX fields used at runtime
+- `Version` identifies the Lodestone version.
+- `DataGeneration` identifies the audited item order and canonical recipe contents.
+- `Items` is an array of records identified by unique Japanese `Name` values.
+- Item records contain the recipe, category, icon, shop, gathering, equipment, and EX fields used by the application.
+- Recipes include ingredients, result amounts, crafting jobs, and available crafting parameters for macro generation. Items with multiple recipes retain their selectable alternatives.
 
-Recipe ingredients refer to `Name`; neither item IDs nor ingredient item IDs are published. `site/data/legacy-item-ids.json` contains only old ID-to-name mappings required to migrate saved browser data and old share codes.
+Ingredients refer to `Name`. Numeric item IDs are not published in the main document. The separate `legacy-item-ids.json` compatibility mapping supports migration of older browser data and share codes.
 
-Every `IconFile` uses `{item-name-sha256-20}-{webp-content-sha256-12}.webp`, sharded under the first three name-hash characters. This makes icon paths independent of item IDs and list order while changing the URL whenever the generated WebP changes. Generation stops on any truncated-hash collision.
+`SortOrder` follows the descending Lodestone item list: the first item receives the total count, and later items decrement by one. The regular target set includes crafted items and recursively required ingredients. Configured exchange items and currencies supplement that set; a supplemental currency may have no `SortOrder`.
 
-Items absent from the Lodestone item list are excluded. The regular target set consists of items with Lodestone recipes and all ingredients recursively reached by those recipes. Existing hand-maintained exchange data in `pipeline/input/token-items.csv` is preserved. Supplemental exchange currencies may remain without `SortOrder`.
-
-## Sequential access and bounded memory
-
-All external reads use one sequential request queue. Parallel requests are prohibited. The default interval is 100 milliseconds and can be changed in the pipeline GUI. List pages are compressed as soon as they are captured, recipe rows are streamed from saved artifacts, and extracted strings do not retain their source HTML buffers. Generated-data child processes also run with a bounded Node.js heap and below-normal CPU priority.
+Candidate generation preserves existing equipment, gathering, shop, icon, and additional document fields while rebuilding recipe and ordering data. Name aliases carry fields across renames. New items obtain required fields from audited detail data or sequential source reads. Preservation checks distinguish explicitly retired items from unexpected missing records.
 
 ## Complete audit
 
-An automatic update starts with `lodestone-audit`. It creates a durable plan covering every item-list page, recipe-list page, and recipe-detail page, then fetches them sequentially. Completed resources are immutable and can be resumed after interruption. A new audit is promoted only after all planned resources, end-of-run consistency checks, comparisons, and hashes are complete. A version drift abandons the inconsistent audit instead of combining different Lodestone generations.
+A complete audit plans every item-list, recipe-list, and recipe-detail page, fetches them sequentially, and stores immutable compressed artifacts. Interrupted manual audits resume completed work. Promotion requires the full plan, final consistency checks, comparisons, and integrity hashes. A source-version drift invalidates the audit rather than mixing source generations.
 
-The `DataGeneration` value is a deterministic SHA-256 digest of the current item order and canonical recipe contents. Repeating an audit with identical production data therefore produces the same generation and does not create an unnecessary public commit.
+The item-order cache is reusable only when the source version and item count match. Recipe-list metadata is checked separately. Identical audited order and recipe contents produce the same `DataGeneration`, avoiding unnecessary data-only publication.
 
-## Item-order cache
+All external reads share a sequential request queue. The default interval is 100 milliseconds. The GUI accepts intervals from 100 to 60,000 milliseconds. Source pages are compressed or released as work progresses, and generated-data child processes use bounded heaps and below-normal CPU priority.
 
-The first item in the descending Lodestone item list receives the total item count as `SortOrder`; each following item decrements by one. The saved order can be reused only when both the Lodestone Version and total item count are unchanged. Otherwise, every item-list page is read again and a new order signature is stored.
+## GUI workflow
 
-Recipe-list metadata is checked separately. Candidate generation uses the saved recipe list and verified Lodestone recipe-detail cache.
-
-The audit caches every recipe-detail page. During candidate generation, an item that is not present in the current public document is recognized as new and its Lodestone item-detail page is read to populate EX, equipment, and unconditional shop data. No alternate data source is used.
-
-## GUI and CLI workflow
-
-`pipeline/tool/pipeline-ui-definition.mjs` is the single source of truth for GUI modules, nested setting groups, accordions, and action groups. The renderer builds those controls dynamically while progress, cancellation, and logs remain fixed application-level functions. The GUI exposes these four actions and the same sequence as a single combined run:
+Start the GUI from the main package:
 
 ```powershell
-node pipeline/tool/pipeline-tool.mjs lodestone-audit --delay 100
-node pipeline/tool/pipeline-tool.mjs build-lodestone-candidate --delay 100
-node pipeline/tool/pipeline-tool.mjs lodestone-candidate-icons --delay 100 --quality 80 --size 80
-node pipeline/tool/pipeline-tool.mjs publish-lodestone-candidate
+npm run pipeline:gui
 ```
 
-The image settings group also exposes an in-GUI comparison preview. It re-encodes deterministic representative Lodestone PNG samples at the selected size and quality without modifying public data. The GUI log keeps every received line, batches only high-frequency rendering, and follows new output only while the viewer is already at the bottom.
+The UI definition supplies settings, labels, arguments, action order, confirmations, and resume behavior. The combined generation action runs:
 
-Candidate files and downloaded source caches remain local. Hand-maintained exchange-currency images are protected under the local-only `pipeline/input/manual-item-icons/` directory. With that input present, the complete public icon directory can be regenerated from an empty output directory by the image step; listed items are read from the saved source cache or fetched sequentially when absent.
+1. Complete Lodestone audit.
+2. Candidate item-document generation.
+3. Image-cache preparation from the verified public pack.
+4. Missing-image acquisition and WebP generation.
+5. Validated item-document publication, including the image pack and cache identifiers.
+6. Synchronization of images needed by published share codes to the information site.
+7. Public image-pack validation.
 
-Publication is rejected when names are duplicated, a referenced image is missing, an image filename does not match its item name and WebP content, or the compatibility mapping is invalid. The existing public `Item.json` is protected locally before replacement. Only after the new document and every referenced image pass validation are unreferenced legacy WebP files removed.
+Individual actions also provide image quality preview, explicit pack regeneration, and application-cache recalculation. The preview compares representative source images without changing public data. Default image settings are quality 80 and size 80 pixels.
 
-When a hand-maintained item name is not found, generation stops with similar Lodestone names for manual confirmation. The unambiguous corrections `一時`→`一次`, `二時`→`二次`, `三時`→`三次`, and `四時`→`四次` may be applied automatically when the corresponding candidate exists.
+The GUI supports cancellation, checkpoint-based resumption where available, persisted settings, and logs. Log rendering is batched without dropping received lines, and automatic scrolling follows output only when the viewer is already at the bottom.
+
+## Images and publication
+
+Each item `IconFile` combines a 20-character item-name SHA-256 prefix and a 12-character WebP-content SHA-256 prefix, followed by the WebP extension. A three-character name-hash shard groups entries. This keeps the identity independent of numeric IDs and item order; content changes produce a new identifier. Truncated-hash collisions reject generation.
+
+`item-icons.pack.gz` packages the required item and job images. The browser verifies the pack before using it, then resolves entries to displayable image URLs. Publication therefore distributes the pack instead of requiring individual item-image requests. Image-cache preparation can reconstruct individual generation inputs from the existing verified pack.
+
+Publication rejects duplicate names, missing images, mismatched content hashes or image names, invalid compatibility mappings, and failed preservation checks. The previous public document is protected before replacement. Only validated candidates replace it; unused images are removed after remaining references have been verified.
+
+Hand-maintained exchange data and currency images are preserved as generation inputs. If an item name cannot be resolved, generation stops with similar source names for review. The unambiguous corrections `一時`→`一次`, `二時`→`二次`, `三時`→`三次`, and `四時`→`四次` may be applied when the corresponding candidate exists.
+
+Successful publication records the applied audit, source metadata, data generation, and document hash. Candidate generation alone does not create an applied record.
 
 ## Verification
 
-Run the shared checks after generation:
+Use the relevant existing checks:
 
 ```powershell
-npm run check
-npm run test:e2e
+npm run check:site
+npm run check:pipeline
+npm run check:calculation
+npm run check:macro-launcher
 ```
 
-Generated local inputs, caches, reports, source images, and intermediate files must not be committed unless they are required under `site/`.
+Browser verification selects affected behavior through `npm run test:e2e -- --grep "<test name>"`. Packaging and checks are described in the [development guide](development.md). Scheduled comparison and GitHub Pages publication are described in the [monitor guide](lodestone-update-monitor.md).

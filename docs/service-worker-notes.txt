@@ -1,14 +1,24 @@
 Service Worker cache maintenance
 
-- Bump APP_CACHE_VERSION in site/sw.js whenever a deployed app-shell file changes, including
-  index.html, styles.css, calculation.js, app.js, legal documents, the manifest, or app icons.
-- DATA_CACHE_VERSION is separate. Keep it synchronized with the matching constant at the top of
-  site/app.js whenever Item.json or public item icons change.
-- Item.json and item icons use cache-first behavior. Other app files use network-first behavior.
-- tips.md is fetched with no-store and is never cached by the Service Worker.
-- Changing APP_CACHE_VERSION installs a new app cache. Activation removes obsolete caches whose
-  names begin with ff14recipe-.
-- Startup explicitly checks sw.js with updateViaCache set to none and keeps the application inert
-  until the check and any activation finish. An applied update reloads automatically.
-- After the reload, the current release section from tips.md blocks application use until the user
-  acknowledges it with OK. The acknowledged app version is stored locally.
+- APP_CACHE_VERSION identifies the deployed app shell, including the integrated macro runtime.
+  Run npm run cache:app after staging changed assets. The command hashes precached content,
+  updates report build identifiers, and retains the existing release number.
+- DATA_CACHE_VERSION is separate and must match between the application and Service Worker.
+  Image generation also updates PACK_VERSION to identify the expected image-pack content.
+- Item.json and the legacy item-ID compatibility mapping use cache-first responses.
+  Other same-origin application assets use network-first responses with an offline fallback.
+- tips.md and the image-pack download use no-store and bypass Service Worker response caching.
+  The image loader separately verifies the pack, caches the verified result through Cache
+  Storage or an IndexedDB fallback, and rejects damaged or mismatched cached content.
+- Application models and macro consumable lists use generation-specific IndexedDB caches.
+  These are separate from the Service Worker's application-shell cache.
+- Activation removes obsolete ff14recipe- caches while retaining the current application,
+  data, and verified-data caches, then claims clients.
+- Same-origin responses handled by the Service Worker receive isolation headers needed by
+  the parallel macro engine. A document without active isolation can use the single-threaded
+  engine without a forced reload solely to enable shared memory.
+- Startup checks for a Service Worker update with updateViaCache set to none before normal
+  application interaction. An applied update reloads the application automatically.
+- After an update reload, view restoration is skipped once. When the current release requires
+  acknowledgement, its notice blocks application use until OK is selected; acknowledgement
+  is stored in the browser.
