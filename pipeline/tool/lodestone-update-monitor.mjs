@@ -2,17 +2,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import {
-  DEFAULT_LODESTONE_DELAY_MS,
-  LODESTONE_ITEM_LIST_URL,
-  LODESTONE_RECIPE_LIST_URL,
-  applyDescendingSortOrder,
-  createSequentialRequestQueue,
-  crawlLodestoneList,
-  extractLodestoneItemList,
-  extractLodestoneListMeta,
-  lodestoneOrderSignature
-} from './lodestone-source.mjs';
+import { DEFAULT_LODESTONE_DELAY_MS } from './lodestone-source.mjs';
+import { compareRecipeList, saveRecipeMonitorBaseline } from './lodestone-recipe-monitor.mjs';
 import { archivePipelineLogs } from './log-archive.mjs';
 import { applyBackgroundCpuPriority, notifyMonitorFailure, runAutomaticPublication } from './auto-publish.mjs';
 import { matchesAppliedSource, readAppliedLodestoneState } from './lodestone-applied-state.mjs';
@@ -101,47 +92,8 @@ function readConfig() {
   return fs.existsSync(configPath) ? readJson(configPath) : readJson(legacyConfigPath);
 }
 
-export async function readLodestoneMonitorState({ previousState = {}, appliedState = null, delayMs = DEFAULT_LODESTONE_DELAY_MS, fetchImpl = fetch, deferChangedItemOrder = false } = {}) {
-  const requestSequentially = createSequentialRequestQueue({
-    delayMs,
-    request: async url => {
-      const response = await fetchImpl(url, { headers: { 'user-agent': 'ffxiv-recipe-lodestone-monitor/1.0' } });
-      if (!response.ok) throw new Error(`Lodestoneの取得に失敗しました (HTTP ${response.status})`);
-      return response.text();
-    }
-  });
-  const itemFirstHtml = await requestSequentially(LODESTONE_ITEM_LIST_URL);
-  const recipeFirstHtml = await requestSequentially(LODESTONE_RECIPE_LIST_URL);
-  const itemMeta = extractLodestoneListMeta(itemFirstHtml);
-  const recipeMeta = extractLodestoneListMeta(recipeFirstHtml);
-  const orderState = [appliedState, previousState].find(state => state?.Version === itemMeta.version
-    && state.ItemCount === itemMeta.total
-    && /^[a-f0-9]{64}$/.test(state.ItemOrderSignature));
-  const reuseOrder = Boolean(orderState);
-  // A known metadata change already schedules a full audit. Let that audit
-  // obtain the authoritative catalog instead of crawling it twice.
-  const deferred = deferChangedItemOrder && !reuseOrder && previousState.initialized === true
-    && (previousState.Version !== itemMeta.version || previousState.ItemCount !== itemMeta.total
-      || previousState.RecipeVersion !== recipeMeta.version || previousState.RecipeCount !== recipeMeta.total);
-  let itemOrderSignature = orderState?.ItemOrderSignature || '';
-  if (!reuseOrder && !deferred) {
-    const result = await crawlLodestoneList({
-      baseUrl: LODESTONE_ITEM_LIST_URL,
-      extractEntries: extractLodestoneItemList,
-      fetchText: requestSequentially,
-      firstHtml: itemFirstHtml
-    });
-    itemOrderSignature = lodestoneOrderSignature(applyDescendingSortOrder(result.entries, result.total));
-  }
-  return {
-    Version: itemMeta.version,
-    RecipeVersion: recipeMeta.version,
-    ItemCount: itemMeta.total,
-    RecipeCount: recipeMeta.total,
-    ItemOrderSignature: itemOrderSignature,
-    ReusedItemOrder: reuseOrder,
-    ...(deferred ? { DeferredItemOrder: true } : {})
-  };
+export async function readLodestoneMonitorState(options = {}) {
+  return compareRecipeList(options);
 }
 
 export async function runMonitor({
@@ -150,6 +102,7 @@ export async function runMonitor({
   config = readConfig(),
   readCurrent = readLodestoneMonitorState,
   publish = runAutomaticPublication,
+  saveBaseline = saveRecipeMonitorBaseline,
   archive = archivePipelineLogs,
   logger = log,
   notifyFailure = notifyMonitorFailure
@@ -165,24 +118,41 @@ export async function runMonitor({
   let current;
   try {
     current = await readCurrent({
+      root,
       previousState,
       deferChangedItemOrder: true,
+      onProgress: ({ page, pages, reason }) => {
+        if (reason || page === 1 || page === pages || page % 25 === 0) {
+          logger(`製作手帳の比較 ${page}/${pages}${reason ? `: ${reason}の差分を検出` : ''}`);
+        }
+      },
       appliedState: readAppliedLodestoneState({ repositoryRoot: root }),
       delayMs: Math.max(0, Number(config.delayMs ?? DEFAULT_LODESTONE_DELAY_MS) || 0)
     });
   } catch (error) {
     return notifyFailure({ config, error });
   }
-  const changes = previousState.initialized ? diffLodestoneState(previousState, current) : [];
   // Recheck the actual file after source reads, in case a manual update ran meanwhile.
-  const alreadyApplied = matchesAppliedSource(readAppliedLodestoneState({ repositoryRoot: root }), current);
+  const applied = readAppliedLodestoneState({ repositoryRoot: root });
+  if (current.RecipeComparisonMode && !current.RecipeListChanged && !current.ResumePublication && !applied) {
+    return notifyFailure({ config, error: new Error('一覧の比較中に反映済みItem.jsonが変更されました。再確認が必要です') });
+  }
+  const changes = current.RecipeComparisonMode
+    ? (current.RecipeListChanged ? [{ key: 'RecipeList', label: '製作手帳一覧', before: '比較元', after: current.RecipeListChange || '更新処理を再開' }] : [])
+    : previousState.initialized ? diffLodestoneState(previousState, current) : [];
+  const alreadyApplied = !current.RecipeListChanged && matchesAppliedSource(applied, current);
   const publication = readJson(path.join(root, 'pipeline', 'state', 'auto-publish.json'), {});
   const pendingPublication = ['generating', 'committed', 'pushed'].includes(publication.status);
   let outcome = alreadyApplied ? 'already-applied' : 'unchanged';
   if (pendingPublication || (changes.length && !alreadyApplied)) {
     const result = await publish({ config, current, repositoryRoot: root });
     outcome = result.status;
-    if (outcome === 'disabled') return { initialized: previousState.initialized, changes, current, outcome };
+    if (outcome !== 'published' && outcome !== 'already-applied') return { initialized: previousState.initialized, changes, current, outcome };
+    if (current.RecipeComparisonMode) {
+      const baseline = saveBaseline({ root });
+      Object.assign(current, baseline.source);
+      delete current.DeferredItemOrder;
+    }
     if (current.DeferredItemOrder) {
       const applied = readAppliedLodestoneState({ repositoryRoot: root });
       if (applied && ['Version', 'RecipeVersion', 'ItemCount', 'RecipeCount']
@@ -200,7 +170,9 @@ export async function runMonitor({
     ...current,
     lastOutcome: outcome
   }, null, 2)}\n`);
-  logger(outcome === 'already-applied'
+  logger(current.RecipeComparisonMode && !changes.length && !pendingPublication
+    ? `製作手帳一覧の全${current.CheckedRecipePages}ページが一致しました。更新はありません`
+    : outcome === 'already-applied'
     ? 'Item.jsonに反映済みのため、全更新を省略して監視基準を同期しました'
     : previousState.initialized ? (changes.length ? `更新を処理しました: ${changes.map(change => change.label).join('、')}` : '更新はありません') : '初回基準状態を保存しました');
   return { initialized: previousState.initialized, changes, current, outcome };

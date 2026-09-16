@@ -316,6 +316,7 @@ export async function runLodestoneFullAudit({
   now = Date.now,
   createAuditId = crypto.randomUUID,
   createInitialComparison = null,
+  fresh = false,
   beforePromote = () => {}
 }) {
   if (!store || typeof request !== 'function') throw new TypeError('監査ストアと取得関数が必要です');
@@ -331,7 +332,9 @@ export async function runLodestoneFullAudit({
   });
   validateUnique(initialRecipes.entries, 'RecipeKey', 'Lodestoneレシピキー');
   const catalogFingerprint = lodestoneRecipeCatalogFingerprint(initialRecipes);
-  const resumable = findResumableLodestoneAudit(store, catalogFingerprint);
+  const previousRunning = findResumableLodestoneAudit(store, catalogFingerprint);
+  if (fresh && previousRunning) abandonLodestoneAudit(store, previousRunning.id, { now: now() });
+  const resumable = fresh ? null : previousRunning;
   const audit = resumable || createLodestoneAudit(store, {
     id: createAuditId(),
     catalogFingerprint,

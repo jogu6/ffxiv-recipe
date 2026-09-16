@@ -498,7 +498,7 @@ function assertAllowedChanges(files) {
 function pipelineCommands(settings) {
   const delay = String(settings.delayMs);
   return [
-    ["lodestone-audit", "--delay", delay],
+    ["lodestone-audit", "--delay", delay, ...(settings.freshAudit ? ["--fresh"] : [])],
     ["build-lodestone-candidate", "--delay", delay],
     ["item-icon-cache"],
     [
@@ -525,7 +525,7 @@ function publicationState(statePath) {
 }
 
 function publicationKey(current) {
-  return [
+  const key = [
     current?.Version,
     current?.RecipeVersion,
     current?.ItemCount,
@@ -534,6 +534,7 @@ function publicationKey(current) {
   ]
     .map((value) => String(value ?? ""))
     .join("|");
+  return current?.RecipeRefreshId ? `${key}|refresh:${current.RecipeRefreshId}` : key;
 }
 
 function savePublicationState(statePath, previous, update) {
@@ -650,6 +651,7 @@ export async function runAutomaticPublication({
   const settings = {
     ...normalizeSettings(config),
     delayMs: Math.max(0, Number(config?.delayMs ?? 100) || 0),
+    freshAudit: Boolean(current?.RecipeRefreshId),
   };
   const version = String(current?.Version || "").trim();
   let targetKey = publicationKey(current);
@@ -662,7 +664,8 @@ export async function runAutomaticPublication({
   let state = publicationState(statePath);
   // The full audit resolves a deferred order signature after generation.
   // Recovery must still finish the saved commit for that same source catalog.
-  if (state.deferredItemOrder && ["failed", "generating", "committed", "pushed"].includes(state.status)
+  if (current?.ResumePublication && ["generating", "committed", "pushed"].includes(state.status)) targetKey = state.targetKey;
+  if (!current?.RecipeRefreshId && state.deferredItemOrder && ["failed", "generating", "committed", "pushed"].includes(state.status)
       && ["Version", "RecipeVersion", "ItemCount", "RecipeCount"]
         .every(key => state.targetSource?.[key] === current?.[key])) {
     targetKey = state.targetKey;
@@ -758,7 +761,7 @@ export async function runAutomaticPublication({
       });
     }
 
-    if (state.status !== "generating" && matchesAppliedSource(
+    if (!current?.RecipeRefreshId && state.status !== "generating" && matchesAppliedSource(
       readAppliedLodestoneState({ repositoryRoot }), current,
     )) {
       logger?.write("検証済みのItem.jsonに反映済みのため、全更新を省略しました");
@@ -812,6 +815,7 @@ export async function runAutomaticPublication({
       );
 
     const completedCommands =
+      !current?.RecipeRefreshId &&
       state.status === "failed" &&
       state.targetKey === targetKey &&
       state.baseCommit === localHead &&
@@ -831,6 +835,8 @@ export async function runAutomaticPublication({
       snapshotRoot,
       targetVersion: version,
       targetKey,
+      recipeRefreshId: current?.RecipeRefreshId || null,
+      targetItemOrderSignature: current?.ItemOrderSignature || '',
       startedAt: jstTimestamp(),
       deferredItemOrder: Boolean(current?.DeferredItemOrder),
       targetSource: Object.fromEntries(["Version", "RecipeVersion", "ItemCount", "RecipeCount"]

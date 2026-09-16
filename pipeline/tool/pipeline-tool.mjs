@@ -2518,6 +2518,7 @@ export async function refreshLodestoneSourceSnapshot({
 }
 
 export async function refreshLodestoneAuditSnapshot({
+  fresh = false,
   delayMs = defaultLodestoneInfoDelayMs,
   target = lodestoneSourceSnapshotPath,
   databasePath = lodestoneAuditDatabasePath,
@@ -2552,6 +2553,7 @@ export async function refreshLodestoneAuditSnapshot({
     }
     log(`Lodestone完全監査を開始します: 間隔 ${Math.max(0, Number(delayMs) || 0)}ms`);
     const result = await runLodestoneFullAudit({
+      fresh,
       store,
       artifactRoot,
       request,
@@ -5107,7 +5109,7 @@ function printHelp() {
   lodestone-snapshot [--delay 100]
                              アイテム・製作手帳の全一覧を直列取得し、版・件数・順序署名を保存
   lodestone-audit [--delay 100]
-                             全一覧・全レシピ詳細をfresh取得し、再開可能な完全監査として昇格
+                             全一覧・全レシピ詳細をfresh取得し、再開可能な完全監査として昇格（--freshで最初から開始）
   build-lodestone-candidate  Lodestoneキャッシュと手動データから名前キーの公開候補を生成
   lodestone-candidate-icons [--delay 100] [--quality 80] [--size 80]
                              名前キー候補の不足画像をLodestone優先で逐次取得・生成
@@ -5139,6 +5141,7 @@ export async function main(argv = process.argv.slice(2)) {
   }
   if (command === 'lodestone-audit') {
     return refreshLodestoneAuditSnapshot({
+      fresh: Boolean(args.fresh),
       delayMs: Number(args.delay || defaultLodestoneInfoDelayMs),
       target: args.target ? path.resolve(String(args.target)) : lodestoneSourceSnapshotPath,
       databasePath: args.database ? path.resolve(String(args.database)) : lodestoneAuditDatabasePath,

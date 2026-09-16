@@ -116,6 +116,29 @@ test('full Lodestone audit fetches every source fresh in one sequential queue an
   });
 });
 
+test('fresh audit abandons a matching interrupted audit and refetches completed recipe details', async () => {
+  await withAudit(async ({ store, artifactRoot }) => {
+    let failItems = true;
+    let detailReads = 0;
+    const request = async url => {
+      if (url === RECIPE_LIST_URL) return listHtml([recipeRow('完成品')]);
+      if (url === RECIPE_DETAIL_URL) { detailReads += 1; return recipeDetailHtml(); }
+      if (url === ITEM_LIST_URL) {
+        if (failItems) throw new Error('interrupted after recipe details');
+        return listHtml([itemRow('完成品')]);
+      }
+      throw new Error(`unexpected URL: ${url}`);
+    };
+    await assert.rejects(runAudit({ store, artifactRoot, request, delayMs: 0, createAuditId: () => 'old-running' }), /interrupted/);
+    failItems = false;
+    const result = await runAudit({ store, artifactRoot, request, delayMs: 0, fresh: true, createAuditId: () => 'fresh-audit' });
+    assert.equal(result.resumed, false);
+    assert.equal(result.auditId, 'fresh-audit');
+    assert.equal(detailReads, 2);
+    assert.equal(getLodestoneAudit(store, 'old-running').status, 'abandoned');
+  });
+});
+
 test('full Lodestone audit caches craftable ingredient item details for candidate generation', async () => {
   await withAudit(async ({ store, artifactRoot }) => {
     const finalDetailUrl = `${RECIPE_LIST_URL}final/`;

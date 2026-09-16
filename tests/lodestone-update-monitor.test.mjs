@@ -5,6 +5,9 @@ import path from 'node:path';
 import os from 'node:os';
 import { buildMessage, diffLodestoneState, formatJstTimestamp, readLodestoneMonitorState, runMonitor } from '../pipeline/tool/lodestone-update-monitor.mjs';
 import { appliedStatePath, recordAppliedLodestoneState, readAppliedLodestoneState } from '../pipeline/tool/lodestone-applied-state.mjs';
+import { recipeMonitorCachePath, recipeListPageContent, saveRecipeMonitorBaseline } from '../pipeline/tool/lodestone-recipe-monitor.mjs';
+import { writeLodestoneAuditArtifact } from '../pipeline/tool/lodestone-audit.mjs';
+import { openLodestoneAuditStore, createLodestoneAudit, planLodestoneAuditResources, completeLodestoneAuditResource, promoteCompletedLodestoneAudit } from '../pipeline/tool/lodestone-audit-store.mjs';
 import { runAutomaticPublication } from '../pipeline/tool/auto-publish.mjs';
 
 test('diffLodestoneState reports only changed Lodestone metadata', () => {
@@ -32,23 +35,6 @@ test('buildMessage describes Lodestone changes without exposing full signatures'
 
 test('formatJstTimestamp formats timestamps with the JST offset', () => {
   assert.equal(formatJstTimestamp(new Date('2026-08-08T00:00:00.123Z')), '2026-08-08T09:00:00.123+09:00');
-});
-
-test('a definite update defers the full item catalog to the audit, without inventing its signature', async () => {
-  const calls = [];
-  const previous = { initialized: true, Version: '7.55', RecipeVersion: '7.55', ItemCount: 100,
-    RecipeCount: 1, ItemOrderSignature: 'a'.repeat(64) };
-  const result = await readLodestoneMonitorState({ previousState: previous, delayMs: 0,
-    deferChangedItemOrder: true, fetchImpl: async url => {
-      calls.push(url);
-      return { ok: true, text: async () => '<p class="db-content__title--version">Version:Patch 7.56</p>'
-        + `<span class="total">${url.includes('/item/') ? 45245 : 12308}</span>` };
-    } });
-  assert.equal(calls.length, 2);
-  assert.equal(result.DeferredItemOrder, true);
-  assert.equal(result.ItemOrderSignature, '');
-  assert.ok(!diffLodestoneState(previous, result).some(change => change.key === 'ItemOrderSignature'));
-  assert.ok(diffLodestoneState(previous, result).some(change => change.key === 'Version'));
 });
 
 test('deferred item order is replaced only by the verified publication receipt', async t => {
@@ -119,38 +105,6 @@ test('manual publication synchronizes the monitor without publication or changin
   assert.equal((await runMonitor(fixture.options)).outcome, 'already-applied');
 });
 
-test('applied source avoids a full item-list crawl even when the monitor baseline is old', async t => {
-  const fixture = appliedFixture(t);
-  const calls = [];
-  const result = await readLodestoneMonitorState({
-    previousState: fixture.previous,
-    appliedState: readAppliedLodestoneState({ repositoryRoot: fixture.root }),
-    delayMs: 0,
-    fetchImpl: async url => {
-      calls.push(url);
-      assert.ok(calls.length <= 2, '一覧全取得を開始しない');
-      const count = calls.length === 1 ? 45245 : 12308;
-      return { ok: true, text: async () => `<p class="db-content__title--version">Version:Patch 7.56</p><span class="total">${count}</span>` };
-    }
-  });
-  assert.equal(calls.length, 2);
-  assert.equal(result.ReusedItemOrder, true);
-  assert.equal(result.ItemOrderSignature, fixture.current.ItemOrderSignature);
-});
-
-test('a genuinely new source still crawls the item list instead of reusing applied order', async t => {
-  const fixture = appliedFixture(t);
-  const result = await readLodestoneMonitorState({
-    previousState: fixture.previous,
-    appliedState: readAppliedLodestoneState({ repositoryRoot: fixture.root }), delayMs: 0,
-    fetchImpl: async () => ({ ok: true, text: async () =>
-      '<p class="db-content__title--version">Version:Patch 7.57</p><span class="total">1</span>'
-      + '<tr><a href="/lodestone/playguide/db/item/abc123/" class="db-table__txt--detail_link">新素材</a></tr>' })
-  });
-  assert.equal(result.ReusedItemOrder, false);
-  assert.notEqual(result.ItemOrderSignature, fixture.current.ItemOrderSignature);
-});
-
 for (const scenario of ['candidate-only', 'modified-item', 'invalid-record', 'new-source', 'recipe-version']) {
   test(`monitor does not skip an update for ${scenario}`, async t => {
     const fixture = appliedFixture(t, { record: scenario !== 'candidate-only' });
@@ -167,6 +121,7 @@ for (const scenario of ['candidate-only', 'modified-item', 'invalid-record', 'ne
     assert.equal(result.outcome, 'published');
   });
 }
+
 
 test('an incomplete or mismatched candidate cannot create an applied receipt', t => {
   const fixture = appliedFixture(t, { record: false });
@@ -284,3 +239,228 @@ test('a resolved order signature does not block recovery of a deferred committed
   assert.equal(result.status, 'published');
   assert.deepEqual(calls[0], ['push', 'origin', 'saved-commit:refs/heads/main']);
 });
+
+function recipePage(page, { total = 120, version = '7.56', change = '', noise = '' } = {}) {
+  const start = (page - 1) * 50;
+  return `<p class="db-content__title--version">Version:Patch ${version}</p><span class="total">${total}</span>`
+    + '<table>' + Array.from({ length: Math.min(50, total - start) }, (_, i) => {
+      const key = `r${start + i}`;
+      return `<tr><td><span class="db-table__txt--type">木工師</span>`
+        + `<a href="/lodestone/playguide/db/recipe/${key}/" class="db-table__txt--detail_link">品${key}${i === 0 ? change : ''}</a>`
+        + `<img src="https://lds-img.finalfantasyxiv.com/itemicon/example.png?n7.56"></td><td>10</td><td>20</td></tr>`;
+    }).join('') + `</table><aside>${noise}</aside>`;
+}
+
+function recipeFixture(t) {
+  const fixture = appliedFixture(t, { record: false });
+  fixture.recordOptions.snapshot.RecipeCount = 120;
+  recordAppliedLodestoneState(fixture.recordOptions);
+  saveFixtureAudit(fixture);
+  const calls = [];
+  const options = { root: fixture.root, delayMs: 0, fetchImpl: async url => {
+    calls.push(url);
+    const page = Number(new URL(url).searchParams.get('page') || 1);
+    return { ok: true, text: async () => recipePage(page, { noise: `ranking-${Date.now()}` }) };
+  } };
+  return { ...fixture, calls, comparison: options };
+}
+
+function saveFixtureAudit(fixture, change = '') {
+  const store = openLodestoneAuditStore(path.join(fixture.root, 'pipeline/cache/lodestone-audits.sqlite'));
+  const auditId = fixture.recordOptions.snapshot.AuditId;
+  createLodestoneAudit(store, { id: auditId });
+  for (let page = 1; page <= 3; page += 1) {
+    const resource = { kind: 'recipe-list-page', key: `end:${page}`,
+      url: `https://jp.finalfantasyxiv.com/lodestone/playguide/db/recipe/${page === 1 ? '' : `?page=${page}`}` };
+    planLodestoneAuditResources(store, auditId, [resource]);
+    completeLodestoneAuditResource(store, auditId, { ...resource,
+      ...writeLodestoneAuditArtifact(path.join(fixture.root, 'pipeline/cache/lodestone-audits'), auditId, resource.kind, recipePage(page, { change })) });
+  }
+  promoteCompletedLodestoneAudit(store, auditId);
+  store.close();
+}
+
+test('recipe monitoring seeds HTML from the applied audit and compares every list page only', async t => {
+  const f = recipeFixture(t);
+  const result = await readLodestoneMonitorState(f.comparison);
+  assert.equal(result.RecipeListChanged, false);
+  assert.equal(result.CheckedRecipePages, 3);
+  assert.equal(f.calls.length, 3);
+  assert.ok(f.calls.every(url => url.includes('/db/recipe/')));
+  const baseline = JSON.parse(fs.readFileSync(recipeMonitorCachePath(f.root)));
+  assert.equal(baseline.auditId, f.recordOptions.snapshot.AuditId);
+  assert.equal(baseline.pages.length, 3);
+  const bytes = fs.readFileSync(recipeMonitorCachePath(f.root));
+  await readLodestoneMonitorState(f.comparison);
+  assert.deepEqual(fs.readFileSync(recipeMonitorCachePath(f.root)), bytes);
+});
+
+for (const scenario of ['name', 'level', 'order', 'icon', 'key']) {
+  test(`recipe monitoring stops on a second-page ${scenario} change, even at identical version/count`, async t => {
+    const f = recipeFixture(t);
+    saveRecipeMonitorBaseline({ root: f.root });
+    const before = fs.readFileSync(recipeMonitorCachePath(f.root));
+    const result = await readLodestoneMonitorState({ ...f.comparison, fetchImpl: async url => {
+      f.calls.push(url);
+      const page = Number(new URL(url).searchParams.get('page') || 1);
+      let html = recipePage(page);
+      if (page === 2) {
+        if (scenario === 'name') html = recipePage(page, { change: '変更' });
+        if (scenario === 'level') html = html.replace('<td>10</td>', '<td>11</td>');
+        if (scenario === 'key') html = html.replace('/recipe/r50/', '/recipe/replacement/');
+        if (scenario === 'icon') html = html.replace('example.png', 'changed.png');
+        if (scenario === 'order') {
+          const rows = [...html.matchAll(/<tr>[\s\S]*?<\/tr>/g)];
+          html = html.replace(rows[0][0] + rows[1][0], rows[1][0] + rows[0][0]);
+        }
+      }
+      return { ok: true, text: async () => html };
+    } });
+    assert.equal(result.RecipeListChanged, true);
+    assert.equal(result.RecipeListChange.page, 2);
+    assert.equal(f.calls.length, 2);
+    assert.ok(result.RecipeRefreshId);
+    assert.deepEqual(fs.readFileSync(recipeMonitorCachePath(f.root)), before);
+  });
+}
+
+for (const total of [121, 151, 100]) {
+  test(`recipe monitoring stops at page one when total becomes ${total}`, async t => {
+    const f = recipeFixture(t);
+    const result = await readLodestoneMonitorState({ ...f.comparison, fetchImpl: async url => {
+      f.calls.push(url);
+      return { ok: true, text: async () => recipePage(1, { total }) };
+    } });
+    assert.equal(result.RecipeListChanged, true);
+    assert.equal(result.RecipeCount, total);
+    assert.equal(f.calls.length, 1);
+  });
+}
+
+test('recipe row comparison ignores surrounding HTML, whitespace and icon query strings', () => {
+  const original = recipePage(1);
+  const changed = original.replaceAll('>10<', '>\n 10 \n<').replaceAll('?n7.56', '?different-cache-tag') + '<p>new ranking</p>';
+  assert.deepEqual(recipeListPageContent(changed, 1), recipeListPageContent(original, 1));
+});
+
+for (const scenario of ['http', 'truncated', 'missing-count', 'duplicate', 'corrupt-cache']) {
+  test(`recipe monitor reports ${scenario} as a failure and preserves its baseline`, async t => {
+    const f = recipeFixture(t);
+    const baseline = saveRecipeMonitorBaseline({ root: f.root });
+    const before = fs.readFileSync(recipeMonitorCachePath(f.root));
+    if (scenario === 'corrupt-cache') fs.writeFileSync(path.join(f.root, 'pipeline/cache/lodestone-audits', baseline.pages[0].artifactKey), 'invalid gzip');
+    let html = recipePage(1);
+    if (scenario === 'truncated') html = html.replace(/<tr>[\s\S]*?<\/tr>/, '');
+    if (scenario === 'missing-count') html = html.replace('<span class="total">120</span>', '');
+    if (scenario === 'duplicate') html = html.replace('/recipe/r1/', '/recipe/r0/');
+    let failures = 0;
+    const result = await runMonitor({ ...f.options,
+      readCurrent: options => readLodestoneMonitorState({ ...options, fetchImpl: async () => ({ ok: scenario !== 'http', status: 503, text: async () => html }) }),
+      notifyFailure: async () => { failures += 1; return { failed: true }; }
+    });
+    assert.equal(result.failed, true);
+    assert.equal(failures, 1);
+    assert.deepEqual(fs.readFileSync(recipeMonitorCachePath(f.root)), before);
+  });
+}
+
+test('a recipe difference bypasses applied metadata; failed/disabled publication never promotes the cache', async t => {
+  const f = recipeFixture(t);
+  saveRecipeMonitorBaseline({ root: f.root });
+  const before = fs.readFileSync(recipeMonitorCachePath(f.root));
+  const monitor = { ...f.options, readCurrent: options => readLodestoneMonitorState({ ...options,
+    fetchImpl: async () => ({ ok: true, text: async () => recipePage(1, { change: '更新' }) }) }) };
+  let attempts = 0;
+  await assert.rejects(runMonitor({ ...monitor, publish: async ({ current }) => {
+    assert.equal(current.RecipeListChanged, true);
+    assert.ok(current.RecipeRefreshId);
+    attempts += 1;
+    throw new Error('generation failed');
+  } }), /generation failed/);
+  await runMonitor({ ...monitor, publish: async () => { attempts += 1; return { status: 'disabled' }; } });
+  assert.equal(attempts, 2);
+  assert.deepEqual(fs.readFileSync(recipeMonitorCachePath(f.root)), before);
+});
+
+test('successful publication promotes HTML from the newly applied audit, never from the comparison fetch', async t => {
+  const f = recipeFixture(t);
+  saveRecipeMonitorBaseline({ root: f.root });
+  const before = fs.readFileSync(recipeMonitorCachePath(f.root));
+  const result = await runMonitor({ ...f.options,
+    readCurrent: options => readLodestoneMonitorState({ ...options,
+      fetchImpl: async () => ({ ok: true, text: async () => recipePage(1, { change: '比較時の変更' }) }) }),
+    publish: async () => {
+      assert.deepEqual(fs.readFileSync(recipeMonitorCachePath(f.root)), before);
+      f.recordOptions.snapshot.AuditId = 'new-audit';
+      f.recordOptions.candidate.AuditId = 'new-audit';
+      saveFixtureAudit(f, '通常処理の取得結果');
+      recordAppliedLodestoneState(f.recordOptions);
+      return { status: 'published' };
+    }
+  });
+  assert.equal(result.current.RecipeCount, 120);
+  assert.equal(JSON.parse(fs.readFileSync(recipeMonitorCachePath(f.root))).auditId, 'new-audit');
+  const comparison = await readLodestoneMonitorState({ ...f.comparison, fetchImpl: async url => ({ ok: true,
+    text: async () => recipePage(Number(new URL(url).searchParams.get('page') || 1), { change: '通常処理の取得結果' }) }) });
+  assert.equal(comparison.RecipeListChanged, false);
+});
+
+test('a source check without an applied baseline requests a complete update instead of adopting live HTML', async t => {
+  const f = appliedFixture(t, { record: false });
+  const result = await readLodestoneMonitorState({ root: f.root, delayMs: 0,
+    fetchImpl: async () => ({ ok: true, text: async () => recipePage(1) }) });
+  assert.equal(result.RecipeListChanged, true);
+  assert.equal(result.RecipeListChange.reason, '比較元なし');
+  assert.equal(fs.existsSync(recipeMonitorCachePath(f.root)), false);
+});
+
+test('a modified public file during list comparison is reported without advancing the baseline', async t => {
+  const f = recipeFixture(t);
+  saveRecipeMonitorBaseline({ root: f.root });
+  const before = fs.readFileSync(recipeMonitorCachePath(f.root));
+  const result = await runMonitor({ ...f.options, readCurrent: async options => {
+    const current = await readLodestoneMonitorState({ ...options, fetchImpl: f.comparison.fetchImpl });
+    fs.appendFileSync(f.itemJsonPath, ' ');
+    return current;
+  }, notifyFailure: async () => ({ failed: true }) });
+  assert.equal(result.failed, true);
+  assert.deepEqual(fs.readFileSync(recipeMonitorCachePath(f.root)), before);
+});
+
+for (const status of ['generating', 'committed', 'pushed']) {
+  test(`recipe monitoring recovers ${status} before reading the live source`, async t => {
+    const f = recipeFixture(t);
+    const state = { status, targetVersion: '7.56', targetSource: { Version: '7.56', RecipeVersion: '7.56', RecipeCount: 120 },
+      recipeRefreshId: 'saved-refresh', targetKey: 'saved-key' };
+    fs.writeFileSync(path.join(f.root, 'pipeline/state/auto-publish.json'), JSON.stringify(state));
+    const current = await readLodestoneMonitorState({ ...f.comparison, fetchImpl: async () => { throw new Error('通信禁止'); } });
+    assert.equal(current.ResumePublication, true);
+    assert.equal(current.RecipeRefreshId, 'saved-refresh');
+    assert.equal(fs.existsSync(recipeMonitorCachePath(f.root)), false);
+  });
+}
+
+for (const status of ['published', 'failed']) {
+  test(`recipe change starts every generation stage despite applied metadata and a ${status} journal`, async t => {
+    const f = appliedFixture(t);
+    const targetKey = ['Version', 'RecipeVersion', 'ItemCount', 'RecipeCount', 'ItemOrderSignature'].map(key => f.current[key]).join('|');
+    const statePath = path.join(f.root, 'pipeline/state/auto-publish.json');
+    fs.writeFileSync(statePath, JSON.stringify({ status, targetKey, baseCommit: 'base', completedCommands: ['lodestone-audit', 'build-lodestone-candidate'] }));
+    const calls = [];
+    const result = await runAutomaticPublication({ repositoryRoot: f.root, statePath, config: f.options.config,
+      current: { ...f.current, RecipeListChanged: true, RecipeRefreshId: 'new-comparison' },
+      logger: { write() {} }, fetchImpl: async () => ({ ok: true }),
+      prepareFiles: async () => ({ candidateRoot: f.root, changedFiles: [] }),
+      run: async (command, args) => {
+        calls.push(args);
+        return { stdout: args[0] === 'branch' ? 'main' : args[0] === 'rev-parse' ? 'base' : '' };
+      }
+    });
+    assert.equal(result.status, 'published');
+    const audit = calls.find(args => args.includes('lodestone-audit'));
+    assert.ok(audit.includes('--fresh'));
+    assert.ok(calls.some(args => args.includes('build-lodestone-candidate')));
+    assert.ok(calls.some(args => args.includes('publish-lodestone-candidate')));
+    assert.equal(JSON.parse(fs.readFileSync(statePath)).recipeRefreshId, 'new-comparison');
+  });
+}
