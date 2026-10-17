@@ -4,8 +4,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import zlib from 'node:zlib';
+import { execFileSync } from 'node:child_process';
+import { updateAppCacheVersion } from '../tools/app-cache-version.mjs';
 import {
-  createItemIconPack,
+  createItemIconPack, JOB_ICON_PACK_NAMES,
   extractItemIconPack,
   parseItemIconPack,
   validateItemIconPack
@@ -26,6 +29,42 @@ function iconFile(name, bytes) {
   const contentHash = crypto.createHash('sha256').update(bytes).digest('hex').slice(0, 12);
   return `${nameHash}-${contentHash}.webp`;
 }
+
+test('data-only site validation needs no macro runtime and rejects broken references and icon packs', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'xivca-data-validation-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const siteRoot = path.join(root, 'site');
+  fs.mkdirSync(path.join(siteRoot, 'data'), { recursive: true });
+  fs.copyFileSync(path.resolve(import.meta.dirname, '../site/pwa-update.js'), path.join(siteRoot, 'pwa-update.js'));
+  const jobPath = path.join(root, 'job.webp');
+  fs.writeFileSync(jobPath, webp('job'));
+  const document = { Version: '7.57', Items: [{ Name: '素材' }] };
+  const pack = createItemIconPack({ document, iconsRoot: root,
+    additionalFiles: JOB_ICON_PACK_NAMES.map(file => ({ key: `job-icons/${file}`, source: jobPath })) });
+  const itemPath = path.join(siteRoot, 'data/Item.json');
+  const packPath = path.join(siteRoot, 'data/item-icons.pack.gz');
+  fs.writeFileSync(itemPath, JSON.stringify(document));
+  fs.writeFileSync(packPath, zlib.gzipSync(pack.bytes));
+  fs.writeFileSync(path.join(siteRoot, 'data/legacy-item-ids.json'), '{"Items":{}}');
+  fs.writeFileSync(path.join(siteRoot, 'app.js'), "const DATA_CACHE_VERSION = 'test';\n");
+  const packHash = parseItemIconPack({ document, bytes: pack.bytes,
+    additionalKeys: JOB_ICON_PACK_NAMES.map(file => `job-icons/${file}`) }).bodyHash;
+  fs.writeFileSync(path.join(siteRoot, 'item-icon-pack.js'), `const PACK_VERSION = '${packHash}';\n`);
+  fs.writeFileSync(path.join(siteRoot, 'sw.js'), "const APP_CACHE_VERSION = 'ff14recipe-app-v4.03-base';\nconst DATA_CACHE_VERSION = 'test';\nconst PRECACHE_FILES = ['./macro-app/build/engine.wasm'];\n");
+  updateAppCacheVersion({ siteRoot, serviceWorkerPath: path.join(siteRoot, 'sw.js'), dataOnly: true });
+  const validate = () => execFileSync(process.execPath,
+    [path.resolve(import.meta.dirname, '../tools/validate-site.mjs'), '--root', root, '--data-only'],
+    { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  assert.match(validate(), /Validated 1 name-key items/);
+  assert.equal(fs.existsSync(path.join(siteRoot, 'macro-app')), false);
+  document.Items[0].Recipe = { Ingredients: [{ Name: '存在しない素材', Amount: 1 }] };
+  fs.writeFileSync(itemPath, JSON.stringify(document));
+  assert.throws(validate, error => /Invalid public Item.json projection/.test(String(error.stderr)));
+  delete document.Items[0].Recipe;
+  fs.writeFileSync(itemPath, JSON.stringify(document));
+  fs.writeFileSync(packPath, Buffer.from('broken gzip'));
+  assert.throws(validate);
+});
 
 test('item icon pack validates deterministic names and extracts only item images', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'xivca-icon-pack-'));

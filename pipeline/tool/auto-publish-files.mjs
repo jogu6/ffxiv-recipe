@@ -59,15 +59,20 @@ export async function preparePublicationFiles({ repositoryRoot, snapshotRoot, ba
   const options = { cwd: repositoryRoot, logger, env };
   await run('git', ['read-tree', baseCommit], options);
   await run('git', ['checkout-index', '--all', '--force', `--prefix=${candidateRoot.replaceAll('\\', '/')}/`], options);
+  let dataChanged = false;
   for (const file of AUTO_PUBLISH_FILES) {
     const generated = path.join(repositoryRoot, file);
     const target = path.join(candidateRoot, file);
+    const before = fs.readFileSync(target);
     if (constants[file]) {
-      fs.writeFileSync(target, transferConstants(fs.readFileSync(target, 'utf8'),
+      fs.writeFileSync(target, transferConstants(before.toString('utf8'),
         fs.readFileSync(generated, 'utf8'), constants[file]));
     } else copy(generated, target);
+    if (!before.equals(fs.readFileSync(target))) dataChanged = true;
   }
-  updateAppCacheVersion({ siteRoot: path.join(candidateRoot, 'site'), serviceWorkerPath: path.join(candidateRoot, 'site/sw.js') });
+  if (dataChanged) {
+    updateAppCacheVersion({ siteRoot: path.join(candidateRoot, 'site'), serviceWorkerPath: path.join(candidateRoot, 'site/sw.js'), dataOnly: true });
+  }
   await run('git', ['add', '--', ...AUTO_PUBLISH_FILES], options);
   await run('git', ['diff', '--cached', '--check'], options);
   const changedFiles = (await run('git', ['diff', '--cached', '--name-only'], options)).stdout.trim().split(/\r?\n/).filter(Boolean);

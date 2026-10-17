@@ -46,14 +46,21 @@ test('shows shop info button and dialog for items with ShopInfo', async ({ page 
         shopName: '素材屋 テスト',
         area: 'リムサ・ロミンサ：下甲板層',
         x: 8.6,
-        y: 11.8,
-        requiredRank: '1: 中立'
+        y: 11.8
         },
         {
         shopName: '通常ショップ テスト',
         area: 'グリダニア：新市街'
+        },
+        {
+        shopName: '条件付きショップ テスト',
+        area: 'グリダニア：新市街',
+        requiredRank: '1: 中立'
         }
       ]
+    };
+    items.find(item => item.Name === 'オーク材').ShopInfo = {
+      price: 470, shops: [{ shopName: '通常ショップ テスト', area: 'テスト地域' }]
     };
     await route.fulfill({
       contentType: 'application/json',
@@ -70,8 +77,8 @@ test('shows shop info button and dialog for items with ShopInfo', async ({ page 
   await expect(page.locator('#shopPriceHeader')).toContainText('4ギル');
   await expect(page.locator('#shopContent')).toContainText('素材屋 テスト');
   await expect(page.locator('#shopContent')).toContainText('リムサ・ロミンサ：下甲板層 X:8.6 Y:11.8');
-  await expect(page.locator('#shopContent')).toContainText('必要友好ランク：1: 中立');
-  await expect(page.locator('.shop-required-rank')).toHaveCount(1);
+  await expect(page.locator('#shopContent')).not.toContainText('条件付きショップ テスト');
+  await expect(page.locator('#shopContent')).not.toContainText('必要友好ランク');
   await expect
     .poll(async () => {
       const tops = await page
@@ -349,6 +356,89 @@ test('prepared intermediate count dialog clamps, confirms on close, and recalcul
   expect(await intermediateDisplay()).toEqual(originalIntermediateDisplay);
   await expect(bronze.locator('.prepared-adjusted-value')).toHaveCount(0);
   await expect(copperRow.locator('.prepared-adjusted-value')).toHaveCount(0);
+});
+
+test('prepared count Enter closes only after manual typing and commits the entered stock', async ({ page }) => {
+  await openApp(page);
+  await searchFor(page, 'ブラスバスタードソード');
+  await page.getByText('ブラスバスタードソード', { exact: true }).first().click();
+  await page.locator('#countInput').fill('5');
+  await page.locator('#materialsViewBtn').click();
+  const row = page.locator('.intermediate-tree-row .material-name')
+    .filter({ hasText: /^ブロンズインゴット$/ })
+    .locator('xpath=ancestor::li[contains(@class,"intermediate-tree-node")]');
+  const button = row.locator('.intermediate-tree-row .intermediate-prepared-btn').first();
+  await button.click();
+  const input = page.locator('#preparedCountInput');
+  await input.press('Enter');
+  await expect(page.locator('#preparedCountOverlay')).toHaveClass(/open/);
+  await input.fill('2');
+  await page.locator('#preparedCountIncreaseBtn').click();
+  await input.press('Enter');
+  await expect(page.locator('#preparedCountOverlay')).toHaveClass(/open/);
+  await input.fill('2');
+  await input.press('Enter');
+  await expect(page.locator('#preparedCountOverlay')).not.toHaveClass(/open/);
+  await expect(button).toHaveText('2');
+});
+
+test('gathering levels and imported gil icon appear with unconditional shop information', async ({ page }) => {
+  await openApp(page);
+  await page.evaluate(() => showShopDialog('銅鉱'));
+  await expect(page.locator('#shopPriceHeader .shop-price img')).toHaveAttribute('src', /^blob:/);
+  await expect.poll(() => page.locator('#shopPriceHeader .shop-price img').evaluate(image => image.naturalWidth)).toBe(64);
+  const gilAppearance = await page.locator('#shopPriceHeader .shop-price img').evaluate(image => {
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const context = canvas.getContext('2d');
+    context.drawImage(image, 0, 0);
+    return { cornerAlpha: context.getImageData(0, 0, 1, 1).data[3], shadow: getComputedStyle(image).boxShadow };
+  });
+  expect(gilAppearance).toEqual({ cornerAlpha: 0, shadow: 'none' });
+  await page.locator('#shopDialog').screenshot({ path: 'test-results/gil-transparent.png' });
+  await page.locator('#shopCloseBtn').click();
+  await searchFor(page, 'ブラスバスタードソード');
+  await page.getByText('ブラスバスタードソード', { exact: true }).first().click();
+  const treeCopper = page.locator('.node-row').filter({ has: page.locator('.node-name', { hasText: /^銅鉱$/ }) }).first();
+  const pin = treeCopper.locator(':scope > .item-cell-leading > .pin-btn');
+  await expect(pin).toHaveText('📍');
+  await expect(pin).toHaveCSS('filter', 'grayscale(1) opacity(0.4)');
+  await expect(treeCopper.locator(':scope > .item-action-buttons .pin-btn')).toHaveCount(0);
+  await expect(treeCopper.locator('.gathering-timer-btn')).toHaveCount(0);
+  expect(await pin.evaluate(element => element.getBoundingClientRect().right <= element.closest('.node-row').querySelector('.node-main').getBoundingClientRect().left)).toBe(true);
+  await page.locator('#materialsViewBtn').click();
+  const copper = page.locator('.materials-list > li').filter({ has: page.locator('.material-name', { hasText: /^銅鉱$/ }) });
+  await expect(copper.locator('.badge-gathering')).toHaveText('採掘Lv1');
+  await expect(copper.locator('.gathering-timer-btn')).toHaveCount(0);
+  await expect(copper.locator('.craft-job-label .job-icon')).toHaveAttribute('data-item-icon-file', 'job-icons/miner.webp');
+  const craftingRow = page.locator('.intermediate-tree-row').filter({ has: page.locator('.material-name', { hasText: /^バスタードソード$/ }) });
+  const layout = row => row.evaluate(element => {
+    const method = element.querySelector('.item-method-line');
+    const name = element.querySelector('.material-name-quantity');
+    return {
+      twoLines: method.getBoundingClientRect().bottom <= name.getBoundingClientRect().top,
+      labelSize: getComputedStyle(method.querySelector('.job-badge')).fontSize,
+      iconSize: getComputedStyle(method.querySelector('.job-icon')).width
+    };
+  });
+  for (const width of [1280, 423]) {
+    await openApp(page, width, 850);
+    await searchFor(page, 'ブラスバスタードソード');
+    await page.getByText('ブラスバスタードソード', { exact: true }).first().click();
+    await page.locator('#materialsViewBtn').click();
+    await expect(copper).toBeVisible();
+    await expect.poll(async () => {
+      const gathering = await layout(copper);
+      const crafting = await layout(craftingRow);
+      return {
+        twoLines: gathering.twoLines && crafting.twoLines,
+        labelMatches: Boolean(gathering.labelSize) && gathering.labelSize === crafting.labelSize,
+        iconMatches: Boolean(gathering.iconSize) && gathering.iconSize === crafting.iconSize
+      };
+    }).toEqual({ twoLines: true, labelMatches: true, iconMatches: true });
+    await page.screenshot({ path: `test-results/gathering-two-lines-${width}.png` });
+  }
 });
 
 test('prepared quantities update and distinguish remaining count, craft times, and surplus', async ({ page }) => {

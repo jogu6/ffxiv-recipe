@@ -67,7 +67,7 @@ test('GUI publication refreshes the app cache version after final data files', (
   const updateFunction = pipelineSource.match(/function updateDataCacheVersion[\s\S]*?\n}\n\nexport function buildPublicItemIconPack/)?.[0] || '';
   const serviceWorkerUpdate = updateFunction.indexOf('updateServiceWorkerDataCacheVersion(version)');
   const appDataUpdate = updateFunction.indexOf('updateAppDataCacheVersion(version)');
-  const appCacheUpdate = updateFunction.indexOf('updateAppCacheVersion({ siteRoot, serviceWorkerPath })');
+  const appCacheUpdate = updateFunction.indexOf('updateAppCacheVersion({ siteRoot, serviceWorkerPath, dataOnly })');
   assert.ok(serviceWorkerUpdate >= 0);
   assert.ok(appDataUpdate > serviceWorkerUpdate);
   assert.ok(appCacheUpdate > appDataUpdate);

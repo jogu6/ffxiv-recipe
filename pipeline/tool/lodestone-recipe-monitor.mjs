@@ -111,7 +111,9 @@ export async function compareRecipeList({ root = defaultRoot, appliedState = rea
       DeferredItemOrder: Boolean(publication.deferredItemOrder),
       RecipeComparisonMode: true, ResumePublication: true,
       RecipeRefreshId: publication.recipeRefreshId || undefined,
-      RecipeListChanged: Boolean(publication.recipeRefreshId) };
+      RecipeListChanged: Boolean(publication.recipeRefreshId),
+      AcquisitionRefreshId: publication.acquisitionRefreshId || undefined,
+      AcquisitionChanged: Boolean(publication.acquisitionRefreshId) };
   }
   let baseline = readJson(recipeMonitorCachePath(root));
   if (!baseline && appliedState && !(publication.status === 'failed' && publication.recipeRefreshId)) {

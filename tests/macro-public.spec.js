@@ -129,6 +129,7 @@ test('Webアプリ起動後のマクロ用データ準備中だけ全📜を無�
   await expect(buttons.first()).toBeVisible();
   expect(await buttons.count()).toBeGreaterThan(1);
   expect(await buttons.evaluateAll(values => values.every(button => button.disabled))).toBe(true);
+  expect(await buttons.allTextContents()).toEqual(Array(await buttons.count()).fill('準備中'));
 
   releasePreparation();
   await expect.poll(() => buttons.evaluateAll(values => values.every(button => !button.disabled)), {

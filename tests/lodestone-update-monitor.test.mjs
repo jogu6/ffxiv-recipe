@@ -9,6 +9,151 @@ import { recipeMonitorCachePath, recipeListPageContent, saveRecipeMonitorBaselin
 import { writeLodestoneAuditArtifact } from '../pipeline/tool/lodestone-audit.mjs';
 import { openLodestoneAuditStore, createLodestoneAudit, planLodestoneAuditResources, completeLodestoneAuditResource, promoteCompletedLodestoneAudit } from '../pipeline/tool/lodestone-audit-store.mjs';
 import { runAutomaticPublication } from '../pipeline/tool/auto-publish.mjs';
+import { compareLodestoneAcquisition } from '../pipeline/tool/lodestone-acquisition-monitor.mjs';
+
+const shopList = (count = 0) => '<p class="db-content__title--version">Version:Patch 7.56</p><span class="total">' + count + '</span>' +
+  (count ? '<a href="/lodestone/playguide/db/shop/abc/" class="db-table__txt--detail_link">販売店</a>' : '');
+const shopHeader = '<p class="db-content__title--version">Version:Patch 7.56</p><h2 class="db-shop__name">販売店</h2><ul class="db-shop__place"><li>地域 X:1 Y:2</li></ul>';
+
+test('acquisition-only changes trigger publication at the same source version and counts', async t => {
+  const f = appliedFixture(t);
+  let publications = 0;
+  const result = await runMonitor({ ...f.options,
+    readCurrent: async () => ({ ...f.current, RecipeComparisonMode: true, RecipeListChanged: false,
+      AcquisitionChanged: true, AcquisitionRefreshId: 'acquisition-refresh', AcquisitionChange: '素材' }),
+    publish: async () => { publications++; return { status: 'published' }; },
+    saveBaseline: () => ({ source: f.current })
+  });
+  assert.equal(publications, 1);
+  assert.equal(result.outcome, 'published');
+  assert.equal(result.changes[0].key, 'Acquisition');
+});
+
+test('shop-only price, location and purchase-condition changes are monitored without recipe changes', async t => {
+  const f = appliedFixture(t);
+  const item = { Name: '素材', MaterialSortOrder: 1, ShopInfo: { price: 25, shops: [{ shopName: '販売店', area: '地域', x: 1, y: 2 }] } };
+  fs.writeFileSync(f.itemJsonPath, JSON.stringify({ Items: [item] }));
+  fs.writeFileSync(path.join(f.root, 'pipeline/state/lodestone-source-snapshot.json'), JSON.stringify({ Items: [{ Name: '素材', DetailPath: '/lodestone/playguide/db/item/example/' }] }));
+  const html = price => shopHeader + '<table><tr><td id="item_gil_example"><h4>素材</h4></td><td>' + price + '</td></tr></table>';
+  let price = 25;
+  let conditional = false;
+  const options = { root: f.root, delayMs: 0, maxAgeMs: 0, fetchImpl: async url => ({ ok: true, text: async () =>
+    url.endsWith('/shop/') ? shopList(1) : html(price) + (conditional ? 'このショップはプレイヤーの特定条件によって販売されるアイテムが異なります' : '') }) };
+  assert.equal((await compareLodestoneAcquisition(options)).AcquisitionChanged, false);
+  price = 30;
+  assert.equal((await compareLodestoneAcquisition(options)).AcquisitionChanged, true);
+  price = 25; conditional = true;
+  assert.equal((await compareLodestoneAcquisition(options)).AcquisitionChanged, true);
+  delete item.ShopInfo;
+  fs.writeFileSync(f.itemJsonPath, JSON.stringify({ Items: [item] }));
+  assert.equal((await compareLodestoneAcquisition(options)).AcquisitionChanged, false);
+});
+
+test('scheduled shop checks restore and retain unconditional vendors available only in manual JSON', async t => {
+  const f = appliedFixture(t);
+  const item = { Name: '手製だけの素材' };
+  const info = { price: 25, shops: [{ shopName: '使用人／奉公人', area: 'ハウジング雇用NPC' }] };
+  fs.mkdirSync(path.join(f.root, 'pipeline/input'), { recursive: true });
+  fs.writeFileSync(path.join(f.root, 'pipeline/input/gil-shop-supplements.json'), JSON.stringify({ [item.Name]: info,
+    条件付き素材: { price: 10, shops: [{ shopName: '友好部族', requiredRank: '中立' }] } }));
+  fs.writeFileSync(path.join(f.root, 'pipeline/state/lodestone-source-snapshot.json'), JSON.stringify({ Items: [] }));
+  const publish = () => fs.writeFileSync(f.itemJsonPath, JSON.stringify({ Version: '7.56', Items: [item] }));
+  publish();
+  const options = { root: f.root, delayMs: 0, maxAgeMs: 0, fetchImpl: async () => ({ ok: true, text: async () => shopList() }) };
+  assert.equal((await compareLodestoneAcquisition(options)).AcquisitionChanged, true);
+  item.ShopInfo = info; publish();
+  assert.equal((await compareLodestoneAcquisition(options)).AcquisitionChanged, false);
+  assert.equal((await compareLodestoneAcquisition(options)).AcquisitionChanged, false);
+});
+
+test('acquisition-only publication bypasses the applied-version skip and updates data without a full recipe audit or engine build', async t => {
+  const f = appliedFixture(t);
+  const calls = [];
+  const result = await runAutomaticPublication({
+    repositoryRoot: f.root, current: { ...f.current, AcquisitionRefreshId: 'fresh-acquisition', AcquisitionChanged: true },
+    config: { delayMs: 0, discordWebhookUrl: 'https://discord.com/api/webhooks/1/test' },
+    logger: { write() {} },
+    run: async (_command, args) => {
+      calls.push(args);
+      return { stdout: args[0] === 'branch' ? 'main' : args[0] === 'rev-parse' ? 'base' : '', stderr: '' };
+    },
+    prepareFiles: async () => ({ candidateRoot: f.root, changedFiles: [] }),
+    fetchImpl: async () => ({ ok: true })
+  });
+  assert.equal(result.status, 'published');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(f.root, 'pipeline/state/auto-publish.json'))).acquisitionRefreshId, 'fresh-acquisition');
+  assert.ok(calls.some(args => args.includes('build-lodestone-candidate')));
+  assert.ok(calls.some(args => args.includes('publish-lodestone-candidate') && args.includes('--data-only')));
+  assert.ok(calls.every(args => !args.includes('lodestone-audit') && !args.some(arg => /wasm|cargo/.test(arg))));
+});
+
+test('acquisition monitoring fetches current detail pages, detects updates and removals, and retains the published baseline on failure', async t => {
+  const f = appliedFixture(t);
+  const item = { Name: '素材', MaterialSortOrder: 1,
+    GatheringLevels: [{ method: '採掘', level: 14 }],
+    Recipe: { CraftType: '8', Ingredients: [{ Name: '詩学', Amount: '5' }] },
+    ExchangeInfo: [{ ingredients: [{ Name: '詩学', Amount: 5 }], shops: [{ shopName: '販売店', area: '地域', x: 1, y: 2 }] }] };
+  fs.writeFileSync(f.itemJsonPath, JSON.stringify({ Items: [item] }));
+  fs.writeFileSync(path.join(f.root, 'pipeline/state/lodestone-source-snapshot.json'), JSON.stringify({
+    Items: [{ Name: '素材', DetailPath: '/lodestone/playguide/db/item/example/' }]
+  }));
+  const html = (level = 14, amount = 5) => '<h2 class="db-view__item__text__name">素材</h2>' +
+    `<h3>このアイテムの採集手帳</h3><table><tr><td>採掘</td><td>${level}</td></tr></table><h3>交換</h3>` +
+    '<table class="db-table__item_source"><tr><th>取引に必要なアイテム</th></tr>' +
+    `<tr><td><h4>詩学</h4><span class="db-view__data__number">${amount}</span></td><td></td></tr></table>`;
+  let response = html();
+  let amount = 5;
+  let calls = 0;
+  const options = { root: f.root, delayMs: 0, maxAgeMs: 0, fetchImpl: async url => {
+    if (url.endsWith('/shop/')) return { ok: true, text: async () => shopList(1) };
+    if (url.includes('/shop/abc/')) return { ok: true, text: async () => shopHeader + '<table><tr><td><li id="item_currency_example"><h4>素材</h4><span class="db-view__data__number">1</span></li></td><td><h4>詩学</h4><span class="db-view__data__number">' + amount + '</span></td></tr></table>' };
+    calls++; assert.match(url, /\/item\/example\//);
+    return { ok: true, text: async () => response };
+  } };
+  assert.equal((await compareLodestoneAcquisition(options)).AcquisitionChanged, false);
+  response = html(15);
+  assert.equal((await compareLodestoneAcquisition(options)).AcquisitionChanged, true);
+  response = html(14, 6); amount = 6;
+  assert.equal((await compareLodestoneAcquisition(options)).AcquisitionChanged, true);
+  response = '<h2 class="db-view__item__text__name">素材</h2>'; amount = 5;
+  assert.equal((await compareLodestoneAcquisition(options)).AcquisitionChanged, true);
+  response = '<html>maintenance</html>';
+  const before = fs.readFileSync(f.itemJsonPath);
+  await assert.rejects(compareLodestoneAcquisition(options), /不正/);
+  assert.deepEqual(fs.readFileSync(f.itemJsonPath), before);
+  await assert.rejects(compareLodestoneAcquisition({ ...options, fetchImpl: async () => ({ ok: false, status: 503 }) }), /503/);
+  assert.equal(calls, 4);
+});
+
+test('scheduled acquisition checks restore manual schedules for hidden official maps and retain them on subsequent checks', async t => {
+  const f = appliedFixture(t);
+  const name = '高密度軽銀鉱';
+  const chronicle = '鉱物伝承録:アレクサンドリア';
+  const item = { Name: name, GatheringLevels: [{ method: '採掘', level: 100, chronicle }],
+    GatheringTimer: [{ Area: 'サカ・トラル', Map: '????', Method: '採掘', Chronicle: chronicle, Type: '伝説', Times: [] }] };
+  fs.mkdirSync(path.join(f.root, 'pipeline/input'), { recursive: true });
+  fs.writeFileSync(path.join(f.root, 'pipeline/input/gathering-supplements.json'), JSON.stringify({ gathering_supplements: [
+    { item_name: name, method: '採掘', required_technical: 5090, location: { ヘリテージファウンド: ['10:00-12:00', '22:00-00:00'] } }
+  ] }));
+  const publish = () => fs.writeFileSync(f.itemJsonPath, JSON.stringify({ Version: '7.56', Items: [item] }));
+  publish();
+  fs.writeFileSync(path.join(f.root, 'pipeline/state/lodestone-source-snapshot.json'), JSON.stringify({ Items: [{ Name: name, DetailPath: '/lodestone/playguide/db/item/abc/' }] }));
+  const options = { root: f.root, delayMs: 0, maxAgeMs: 0, fetchImpl: async url => ({ ok: true, text: async () => {
+    if (url.includes('/shop/')) return shopList();
+    if (url.includes('/item/')) return `<h2 class="db-view__item__text__name">${name}</h2><h3>このアイテムの採集手帳</h3><a href="/lodestone/playguide/db/gathering/abc/">採掘</a>`;
+    return '<p class="db-view__item__text__job_name">採掘</p><span class="db-view__item__text__level__num">100</span>' +
+      '<a class="breadcrumb__link">伝承録</a><a class="breadcrumb__link">アレクサンドリア</a>' +
+      '<div class="db-view__gathering__data"><h5 class="db-view__gathering__area">サカ・トラル</h5><dl class="db-view__gathering__point"><dt>????</dt></div><div class="db-tools">';
+  } }) };
+  assert.equal((await compareLodestoneAcquisition(options)).AcquisitionChanged, true);
+  Object.assign(item.GatheringTimer[0], { Map: 'ヘリテージファウンド', Times: ['10:00-12:00', '22:00-00:00'], RequiredTechnical: 5090 });
+  publish();
+  assert.equal((await compareLodestoneAcquisition(options)).AcquisitionChanged, false);
+  delete item.GatheringLevels;
+  delete item.GatheringTimer;
+  publish();
+  assert.equal((await compareLodestoneAcquisition(options)).AcquisitionChanged, true);
+});
 
 test('diffLodestoneState reports only changed Lodestone metadata', () => {
   const previous = { Version: '7.5', ItemCount: 45000, RecipeCount: 12000, ItemOrderSignature: 'a'.repeat(64) };
@@ -279,6 +424,32 @@ function saveFixtureAudit(fixture, change = '') {
   promoteCompletedLodestoneAudit(store, auditId);
   store.close();
 }
+
+test('scheduled source reading compares acquisition details after identical recipe-list pages', async t => {
+  const f = recipeFixture(t);
+  const item = f.recordOptions.candidate.Items[0];
+  item.MaterialSortOrder = 1;
+  item.GatheringLevels = [{ method: '採掘', level: 14 }];
+  fs.writeFileSync(f.itemJsonPath, JSON.stringify({ Version: f.recordOptions.candidate.Version,
+    DataGeneration: f.recordOptions.candidate.DataGeneration, Items: [item] }));
+  recordAppliedLodestoneState(f.recordOptions);
+  fs.writeFileSync(path.join(f.root, 'pipeline/state/lodestone-source-snapshot.json'), JSON.stringify({
+    Items: [{ Name: item.Name, DetailPath: '/lodestone/playguide/db/item/material/' }]
+  }));
+  let detailReads = 0;
+  const recipeFetch = f.comparison.fetchImpl;
+  const result = await readLodestoneMonitorState({ ...f.comparison, fetchImpl: async url => {
+    if (url.includes('/db/shop/')) return { ok: true, text: async () => shopList() };
+    if (!url.includes('/db/item/')) return recipeFetch(url);
+    detailReads++;
+    return { ok: true, text: async () => '<h2 class="db-view__item__text__name">テスト素材</h2>' +
+      '<h3>このアイテムの採集手帳</h3><table><tr><td>採掘</td><td>15</td></tr></table>' };
+  } });
+  assert.equal(result.RecipeListChanged, false);
+  assert.equal(result.AcquisitionChanged, true);
+  assert.equal(result.CheckedRecipePages, 3);
+  assert.equal(detailReads, 1);
+});
 
 test('recipe monitoring seeds HTML from the applied audit and compares every list page only', async t => {
   const f = recipeFixture(t);

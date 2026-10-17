@@ -3,6 +3,9 @@ Service Worker cache maintenance
 - APP_CACHE_VERSION identifies the deployed app shell, including the integrated macro runtime.
   Run npm run cache:app after staging changed assets. The command hashes precached content,
   updates report build identifiers, and retains the existing release number.
+- Data-only publication retains the unchanged app-shell identifier as its base
+  and adds a stable data suffix derived from app.js and item-icon-pack.js.
+  It does not read, rebuild, copy, or update macro runtime artifacts.
 - DATA_CACHE_VERSION is separate and must match between the application and Service Worker.
   Image generation also updates PACK_VERSION to identify the expected image-pack content.
 - Item.json and the legacy item-ID compatibility mapping use cache-first responses.

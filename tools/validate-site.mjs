@@ -7,14 +7,16 @@ import { JOB_ICON_PACK_NAMES, validateItemIconPack } from '../pipeline/tool/item
 import { expectedAppCacheVersion } from './app-cache-version.mjs';
 import { validateLicenses } from './validate-licenses.mjs';
 
-const repositoryRoot = path.resolve(import.meta.dirname, '..');
+const rootArgument = process.argv.indexOf('--root');
+const repositoryRoot = rootArgument < 0 ? path.resolve(import.meta.dirname, '..') : path.resolve(process.argv[rootArgument + 1]);
 const siteRoot = path.join(repositoryRoot, 'site');
 const applicationName = 'FinalFantasy XIV® Crafting Assistant XIVca(シヴカ)';
 const applicationWindowTitle = 'XIVca | FinalFantasy XIV® Crafting Assistant';
 const require = createRequire(import.meta.url);
-const { extractAppVersion } = require('../site/pwa-update.js');
+const { extractAppVersion } = require(path.join(repositoryRoot, 'site/pwa-update.js'));
+const dataOnly = process.argv.includes('--data-only');
 
-validateLicenses({ repositoryRoot });
+if (!dataOnly) validateLicenses({ repositoryRoot });
 
 function requireFile(relativePath) {
   const absolutePath = path.join(siteRoot, relativePath);
@@ -22,7 +24,10 @@ function requireFile(relativePath) {
   return absolutePath;
 }
 
-for (const relativePath of [
+for (const relativePath of dataOnly ? [
+  'app.js', 'sw.js', 'item-icon-pack.js',
+  'data/Item.json', 'data/item-icons.pack.gz', 'data/legacy-item-ids.json'
+] : [
   'index.html',
   'calculation.js',
   'pwa-update.js',
@@ -71,33 +76,44 @@ if (!itemData || typeof itemData.Version !== 'string' || !Array.isArray(itemData
 }
 const items = itemData.Items;
 const itemNames = new Set(items.map(item => item.Name));
+if (itemNames.size !== items.length || items.some(item => typeof item.Name !== 'string' || !item.Name)) {
+  throw new Error('Item.json contains duplicate or invalid item names.');
+}
 const legacyItemIds = JSON.parse(fs.readFileSync(requireFile('data/legacy-item-ids.json'), 'utf8'));
 if (!legacyItemIds?.Items || typeof legacyItemIds.Items !== 'object') throw new Error('Invalid legacy-item-ids.json.');
-const tipsMarkdown = fs.readFileSync(requireFile('data/tips.md'), 'utf8');
 const serviceWorkerSource = fs.readFileSync(requireFile('sw.js'), 'utf8');
 const declaredAppCacheVersion = serviceWorkerSource.match(/const\s+APP_CACHE_VERSION\s*=\s*['"]([^'"]+)['"];/u)?.[1];
-const expectedCacheVersion = expectedAppCacheVersion({ siteRoot, serviceWorkerSource });
-if (declaredAppCacheVersion !== expectedCacheVersion) {
-  throw new Error(`APP_CACHE_VERSION is stale. Run npm run cache:app (${expectedCacheVersion}).`);
+if (!dataOnly || /-data-[0-9a-f]{12}$/u.test(declaredAppCacheVersion || '')) {
+  const expectedCacheVersion = expectedAppCacheVersion({ siteRoot, serviceWorkerSource });
+  if (declaredAppCacheVersion !== expectedCacheVersion) {
+    throw new Error(`APP_CACHE_VERSION is stale. Run npm run cache:app (${expectedCacheVersion}).`);
+  }
 }
 const currentAppVersion = extractAppVersion(serviceWorkerSource);
 if (!currentAppVersion) throw new Error('APP_CACHE_VERSION must contain the published app version.');
-if (!tipsMarkdown.trim()) throw new Error('tips.md must not be empty.');
-const indexHtml = fs.readFileSync(requireFile('index.html'), 'utf8');
-const manifest = JSON.parse(fs.readFileSync(requireFile('manifest.webmanifest'), 'utf8'));
-if (!indexHtml.includes(`<title>${applicationWindowTitle}</title>`) || !indexHtml.includes(`alt="${applicationName}"`)) {
-  throw new Error('Application name or XIVca logo accessibility text is missing from index.html.');
+const dataVersion = source => source.match(/const\s+DATA_CACHE_VERSION\s*=\s*['"]([^'"]+)['"];/u)?.[1];
+if (!dataVersion(serviceWorkerSource) || dataVersion(serviceWorkerSource) !== dataVersion(fs.readFileSync(requireFile('app.js'), 'utf8'))) {
+  throw new Error('DATA_CACHE_VERSION must match between app.js and sw.js.');
 }
-if (manifest.name !== applicationName || manifest.short_name !== 'XIVca') {
-  throw new Error('Application name is not synchronized with manifest.webmanifest.');
-}
+if (!dataOnly) {
+  const tipsMarkdown = fs.readFileSync(requireFile('data/tips.md'), 'utf8');
+  if (!tipsMarkdown.trim()) throw new Error('tips.md must not be empty.');
+  const indexHtml = fs.readFileSync(requireFile('index.html'), 'utf8');
+  const manifest = JSON.parse(fs.readFileSync(requireFile('manifest.webmanifest'), 'utf8'));
+  if (!indexHtml.includes(`<title>${applicationWindowTitle}</title>`) || !indexHtml.includes(`alt="${applicationName}"`)) {
+    throw new Error('Application name or XIVca logo accessibility text is missing from index.html.');
+  }
+  if (manifest.name !== applicationName || manifest.short_name !== 'XIVca') {
+    throw new Error('Application name is not synchronized with manifest.webmanifest.');
+  }
 
-const forbiddenStaticItemIconReferences = [...indexHtml.matchAll(/(?:\.\/)?assets\/item-icons\//g)];
-if (forbiddenStaticItemIconReferences.length > 0) {
-  throw new Error('index.html must use the packed item icon data instead of individual item icon files.');
-}
-if (fs.existsSync(path.join(siteRoot, 'assets', 'item-icons'))) {
-  throw new Error('site/assets/item-icons must not be published; keep individual item icons under pipeline/cache.');
+  const forbiddenStaticItemIconReferences = [...indexHtml.matchAll(/(?:\.\/)?assets\/item-icons\//g)];
+  if (forbiddenStaticItemIconReferences.length > 0) {
+    throw new Error('index.html must use the packed item icon data instead of individual item icon files.');
+  }
+  if (fs.existsSync(path.join(siteRoot, 'assets', 'item-icons'))) {
+    throw new Error('site/assets/item-icons must not be published; keep individual item icons under pipeline/cache.');
+  }
 }
 
 const invalidEquipmentPerformance = [];
@@ -175,7 +191,7 @@ if (declaredItemIconPackVersion !== expectedItemIconPackVersion) {
 }
 
 const powershellFiles = [];
-for (const directory of ['pipeline/scripts', 'tools/repository', 'tools/setup']) {
+for (const directory of dataOnly ? [] : ['pipeline/scripts', 'tools/repository', 'tools/setup']) {
   const absoluteDirectory = path.join(repositoryRoot, directory);
   if (!fs.existsSync(absoluteDirectory)) continue;
   for (const name of fs.readdirSync(absoluteDirectory)) {

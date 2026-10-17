@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
+import { extractLodestoneShopInventory, readLodestoneShopIndex } from '../pipeline/tool/lodestone-shop-source.mjs';
 import {
   CRAFTING_MECHANICS_MASTER_COUNTS,
   resolveCraftingMechanics
@@ -20,6 +21,10 @@ import {
   extractLodestoneRecipePaths,
   extractLodestoneShopInfo,
   extractLodestoneMaterialSortInfo,
+  extractLodestoneGatheringLevels, extractLodestoneExchanges,
+  refreshLodestoneExchangeCosts,
+  extractLodestoneGatheringInfo, createLodestoneAcquisitionReader, readGatheringSupplements, applyLodestoneShopIndex,
+  createLodestoneHtmlReader,
   assignMaterialSortOrders,
   compressLodestoneHtml,
   decompressLodestoneHtml,
@@ -63,6 +68,305 @@ import {
   promoteCompletedLodestoneAudit
 } from '../pipeline/tool/lodestone-audit-store.mjs';
 
+test('Lodestone gathering levels retain exact methods and exclude empty or invalid levels', () => {
+  const html = '<h3>このアイテムの採集手帳</h3><table>' +
+    '<tr><td>採掘</td><td>14</td></tr><tr><td>砕岩</td><td>20</td></tr>' +
+    '<tr><td>釣り</td><td>50</td></tr><tr><td>採掘</td><td></td></tr></table><h3>関連製作手帳</h3>';
+  assert.deepEqual(extractLodestoneGatheringLevels(html), [
+    { method: '採掘', level: 14 }, { method: '砕岩', level: 20 }, { method: '釣り', level: 50 }
+  ]);
+});
+
+function shopInventoryFixture() {
+  return '<p class="db-content__title--version">Version:Patch 7.57</p><h2 class="db-shop__name">販売店</h2>' +
+    '<ul class="db-shop__place"><li>地域 X:1 Y:2</li><li>別の場所 X:3 Y:4</li></ul>' +
+    '<div class="hide"><table><tr><td id="item_gil_abc"><h4>銅鉱</h4></td><td>2</td></tr></table></div>' +
+    '<table><tr><td><li id="item_currency_def"><h4>岩塩</h4><span class="db-view__data__number">5</span></li></td>' +
+    '<td><h4>交換券</h4><span class="db-view__data__number">1</span></td></tr></table>';
+}
+
+test('acquisition HTML persists across monitor and generation readers, expires by age and refreshes on source-version changes', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lodestone-html-reuse-'));
+  const url = 'https://jp.finalfantasyxiv.com/lodestone/playguide/db/item/abc/';
+  let calls = 0, version = '7.57', label = '素材';
+  const fetchImpl = async () => { calls++; return { ok: true, text: async () => `<p class="db-content__title--version">Version:Patch ${version}</p><h2 class="db-view__item__text__name">${label}</h2>` }; };
+  const create = expected => createLodestoneHtmlReader({ root, version: expected, delayMs: 0, fetchImpl });
+  let reader;
+  try {
+    reader = create('7.57');
+    const html = await reader.request(url);
+    assert.equal(await reader.request(url), html);
+    reader.close(); reader = create('7.57');
+    assert.equal(await reader.request(url), html);
+    assert.equal(calls, 1);
+    reader.close(); reader = null;
+    const store = openLodestoneShopCacheStore(path.join(root, 'pipeline/cache/lodestone-shops.sqlite'));
+    store.db.exec('UPDATE cache SET updated_at = 0'); store.close();
+    label = '更新後'; reader = create('7.57');
+    assert.match(await reader.request(url), /更新後/); assert.equal(calls, 2);
+    reader.close(); version = '7.58'; reader = create('7.58');
+    assert.match(await reader.request(url), /7\.58/); assert.equal(calls, 3);
+    reader.close(); reader = null;
+    reader = createLodestoneHtmlReader({ root, version: '7.58', delayMs: 0, maxAgeMs: 0,
+      fetchImpl: async () => ({ ok: true, text: async () => '<html>maintenance</html>' }) });
+    await assert.rejects(reader.request(url), /不正/);
+    reader.close(); reader = create('7.58');
+    assert.match(await reader.request(url), /更新後/); assert.equal(calls, 3);
+  } finally { reader?.close(); fs.rmSync(root, { recursive: true }); }
+});
+
+test('shop inventories include hidden tabs, every location and batch quantities; conditions exclude gil sales', () => {
+  const result = extractLodestoneShopInventory(shopInventoryFixture());
+  assert.equal(result.inventory[0].price, 2);
+  assert.equal(result.inventory[0].shops.length, 2);
+  assert.equal(result.inventory[1].resultAmount, 5);
+  assert.deepEqual(result.inventory[1].ingredients, [{ Name: '交換券', Amount: 1 }]);
+  assert.deepEqual(extractLodestoneShopInventory(shopInventoryFixture() + 'このショップはプレイヤーの特定条件によって販売されるアイテムが異なります').inventory.map(i => i.Name), ['岩塩']);
+  assert.throws(() => extractLodestoneShopInventory(shopInventoryFixture().replace('<td>2</td>', '<td>?</td>')), /取得できません/);
+});
+
+test('shop-first crawling validates pagination and fetches each store once without following item links', async () => {
+  const calls = [];
+  const result = await readLodestoneShopIndex({ version: '7.57', request: async url => {
+    calls.push(url);
+    const parsed = new URL(url);
+    if (parsed.pathname.endsWith('/shop/')) {
+      const page = Number(parsed.searchParams.get('page') || 1);
+      return '<p class="db-content__title--version">Version:Patch 7.57</p><span class="total">51</span>' +
+        Array.from({ length: page === 1 ? 50 : 1 }, (_,i) => `<a href="/lodestone/playguide/db/shop/a${(page-1)*50+i}/" class="db-table__txt--detail_link">店舗</a>`).join('');
+    }
+    return shopInventoryFixture();
+  } });
+  assert.equal(result.requests, 53);
+  assert.equal(calls.length, 53);
+  assert.equal(new Set(calls).size, 53);
+  assert.ok(calls.every(url => !url.includes('/db/item/')));
+  assert.equal(result.index.get('銅鉱').ShopInfo.shops.length, 2);
+  assert.equal(result.index.get('岩塩').ExchangeInfo[0].resultAmount, 5);
+  await assert.rejects(readLodestoneShopIndex({ request: async () => '<html>maintenance</html>' }), /Version/);
+});
+
+test('shop categories fetch scrip inventories once and retain refined exchange recipes across updates', async () => {
+  const key = 'a'.repeat(40);
+  const fragment = '<table><tr><td id="item_sundry_splendors_abc"><h4>霊砂</h4><span class="db-view__data__number">1</span></td><td><h4>ギャザラースクリップ:橙貨</h4><span class="db-view__data__number">300</span></td></tr></table>';
+  let categoryCalls = 0;
+  const { index } = await readLodestoneShopIndex({ version: '7.57', request: async url => {
+    if (url.endsWith('/shop/')) return '<p class="db-content__title--version">Version:Patch 7.57</p><span class="total">2</span>' +
+      ['first','second'].map(id => `<a href="/lodestone/playguide/db/shop/${id}/" class="db-table__txt--detail_link">店</a>`).join('');
+    if (url.includes('/special_shop_inner?')) { categoryCalls++; return fragment; }
+    return shopInventoryFixture() + `<select data-shops="{&quot;group&quot;:[{&quot;key&quot;:&quot;${key}&quot;}]} "></select>`;
+  } });
+  assert.equal(categoryCalls, 1);
+  const item = { Name: '霊砂', Recipe: { CraftType: '9', AmountResult: '1', Ingredients: [{ Name: 'ギャザラースクリップ:橙貨', Amount: '1' }] } };
+  for (let update = 0; update < 2; update++) {
+    applyLodestoneShopIndex(item, index);
+    assert.equal(item.Recipe.CraftType, '9');
+    assert.equal(item.Recipe.Ingredients[0].Amount, '300');
+  }
+});
+
+test('shop category HTML is cached across readers, expires, and is isolated by source version', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'shop-category-cache-'));
+  const url = 'https://jp.finalfantasyxiv.com/lodestone/playguide/db/shop/abc/special_shop_inner?shop=' + 'a'.repeat(40);
+  const fragment = '<tr><td id="item_sundry_splendors_abc"><h4>素材</h4><span class="db-view__data__number">1</span></td><td><h4>スクリップ</h4><span class="db-view__data__number">300</span></td></tr>';
+  let calls = 0, reader;
+  try {
+    const create = version => createLodestoneHtmlReader({ root, version, delayMs: 0, fetchImpl: async () => { calls++; return { ok: true, text: async () => fragment }; } });
+    reader = create('7.57'); await reader.request(url); reader.close();
+    reader = create('7.57'); await reader.request(url); reader.close(); assert.equal(calls, 1);
+    reader = create('7.58'); await reader.request(url); reader.close(); assert.equal(calls, 2);
+    const store = openLodestoneShopCacheStore(path.join(root, 'pipeline/cache/lodestone-shops.sqlite'));
+    store.db.exec('UPDATE cache SET updated_at = 0'); store.close();
+    reader = create('7.58'); await reader.request(url); reader.close(); reader = null; assert.equal(calls, 3);
+  } finally { reader?.close(); fs.rmSync(root, { recursive: true }); }
+});
+
+test('automatic shop indexing and candidate application keep only unconditional gil sales in ShopInfo', async () => {
+  const { index } = await readLodestoneShopIndex({ version: '7.57', request: async url => {
+    if (url.endsWith('/shop/')) return '<p class="db-content__title--version">Version:Patch 7.57</p><span class="total">2</span>' +
+      ['normal', 'conditional'].map(id => `<a href="/lodestone/playguide/db/shop/${id}/" class="db-table__txt--detail_link">店舗</a>`).join('');
+    if (url.includes('/conditional/')) return shopInventoryFixture().replace('銅鉱', '条件付き素材') + 'このショップはプレイヤーの特定条件によって販売されるアイテムが異なります';
+    return shopInventoryFixture();
+  } });
+  const gil = { Name: '銅鉱' };
+  const conditional = { Name: '条件付き素材', ShopInfo: { price: 999, shops: [{ shopName: '古い条件付き店舗' }] } };
+  const exchange = { Name: '岩塩', ShopInfo: { price: 999, shops: [{ shopName: '古い交換店舗' }] } };
+  for (const item of [gil, conditional, exchange]) applyLodestoneShopIndex(item, index);
+  assert.equal(gil.ShopInfo.price, 2);
+  assert.equal(gil.ShopInfo.shops.length, 2);
+  assert.equal(conditional.ShopInfo, undefined);
+  assert.equal(exchange.ShopInfo, undefined);
+  assert.deepEqual(exchange.ExchangeInfo[0].ingredients, [{ Name: '交換券', Amount: 1 }]);
+  for (const item of [gil, conditional, exchange]) applyLodestoneShopIndex(item, index);
+  assert.equal(conditional.ShopInfo, undefined);
+  assert.equal(exchange.ShopInfo, undefined);
+});
+
+test('automatic shop indexing retains manual-only gil vendors, prefers official prices and rejects confirmed conditional vendors', async () => {
+  const manualShop = { shopName: '使用人／奉公人', area: 'ハウジング雇用NPC' };
+  const { index } = await readLodestoneShopIndex({ version: '7.57', supplements: new Map([
+    ['銅鉱', { price: 999, shops: [manualShop, { shopName: '販売店', area: '地域' }] }],
+    ['手製だけの素材', { price: 25, shops: [manualShop] }],
+    ['条件付きだけの素材', { price: 30, shops: [{ shopName: '条件付き店', area: '地域' }] }],
+    ['友好ランク付き', { price: 40, shops: [{ ...manualShop, requiredRank: '中立' }] }]
+  ]), request: async url => {
+    if (url.endsWith('/shop/')) return '<p class="db-content__title--version">Version:Patch 7.57</p><span class="total">2</span>' +
+      ['normal','conditional'].map(id => `<a href="/lodestone/playguide/db/shop/${id}/" class="db-table__txt--detail_link">店舗</a>`).join('');
+    return url.includes('/conditional/') ? shopInventoryFixture().replace('>販売店</h2>', '>条件付き店</h2>') + 'このショップはプレイヤーの特定条件によって販売されるアイテムが異なります' : shopInventoryFixture();
+  } });
+  assert.equal(index.get('銅鉱').ShopInfo.price, 2);
+  assert.equal(index.get('銅鉱').ShopInfo.shops.length, 3);
+  assert.deepEqual(index.get('手製だけの素材').ShopInfo, { price: 25, shops: [manualShop] });
+  assert.equal(index.get('条件付きだけの素材'), undefined);
+  assert.equal(index.get('友好ランク付き'), undefined);
+  const item = { Name: '手製だけの素材' };
+  applyLodestoneShopIndex(item, index);
+  applyLodestoneShopIndex(item, index);
+  assert.deepEqual(item.ShopInfo, { price: 25, shops: [manualShop] });
+});
+
+function gatheringDetailFixture(method = '採掘', folklore = true) {
+  return `<p class="db-view__item__text__job_name">${method}</p><span class="db-view__item__text__level__num">60</span>` +
+    (folklore ? '<a class="breadcrumb__link">伝承録</a><a class="breadcrumb__link">ドラヴァニア</a>' : '') +
+    '<div class="db-view__gathering__data"><h5 class="db-view__gathering__area">ドラヴァニア</h5>' +
+    '<dl class="db-view__gathering__point"><dt>ドラヴァニア雲海</dt><dd>Lv 60 グリーンスウォード島</dd></dl></div><div class="db-tools">';
+}
+
+test('gathering details derive folklore only from breadcrumbs and obtain official maps and locations', () => {
+  for (const method of ['採掘', '砕岩', '伐採', '草刈']) {
+    const info = extractLodestoneGatheringInfo(gatheringDetailFixture(method));
+    assert.equal(info.chronicle, `${['採掘', '砕岩'].includes(method) ? '鉱物' : '草木'}伝承録:ドラヴァニア`);
+    assert.equal(info.locations[0].Map, 'ドラヴァニア雲海');
+    assert.equal(info.locations[0].Location, 'グリーンスウォード島');
+  }
+  assert.equal(extractLodestoneGatheringInfo(gatheringDetailFixture('採掘', false) + '<nav>伝承録</nav>').chronicle, undefined);
+  assert.throws(() => extractLodestoneGatheringInfo('<html>maintenance</html>'), /不正/);
+  const hidden = gatheringDetailFixture().replace('<dl class="db-view__gathering__point"><dt>ドラヴァニア雲海</dt><dd>Lv 60 グリーンスウォード島</dd></dl>', '<dl class="db-view__gathering__point"><dt>????</dt>');
+  assert.equal(extractLodestoneGatheringInfo(hidden).locations[0].Map, '????');
+});
+
+test('gathering supplement input retains only supplemental values and matching keys', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gathering-supplement-'));
+  try {
+    fs.mkdirSync(path.join(root, 'pipeline/input'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'pipeline/input/gathering-supplements.json'), JSON.stringify({ gathering_supplements: [
+      { item_name: '素材', method: '採掘', location: { 地域: ['02:00-04:00'] }, required_technical: 600 }
+    ] }));
+    assert.deepEqual(readGatheringSupplements(root).get('素材'), [{ Map: '地域', Method: '採掘', Type: '', Times: ['02:00-04:00'], RequiredTechnical: 600 }]);
+  } finally { fs.rmSync(root, { recursive: true }); }
+});
+
+test('official gathering supplements only missing times and never follows item vendor links', async () => {
+  const item = { Name: '素材', ShopInfo: { price: 99, shops: [{ shopName: '手製の店' }] } };
+  const urls = [];
+  const reader = createLodestoneAcquisitionReader({
+    supplements: new Map([['素材', [{ Map: 'ドラヴァニア雲海', Method: '採掘', Times: ['02:00-04:00'], RequiredTechnical: 600, Chronicle: '誤った伝承録' }]]]),
+    request: async url => {
+      urls.push(url);
+      if (url.includes('/gathering/')) return gatheringDetailFixture();
+      return '<h2 class="db-shop__name">店</h2>' + (url.includes('/conditional/')
+        ? 'このショップはプレイヤーの特定条件によって販売されるアイテムが異なります' : '');
+    }
+  });
+  const html = '<h3>このアイテムの採集手帳</h3><a href="/lodestone/playguide/db/gathering/abc/">採掘</a><h3>販売</h3>' +
+    'SHOP販売価格: 25 Gil<table>' + ['normal', 'conditional'].map(key =>
+      `<tr><td><a href="/lodestone/playguide/db/shop/${key}/?item=abc&amp;type=gil">${key}</a></td><td>地域 X:1 Y:2</td></tr>`).join('') + '</table>';
+  await reader(item, html);
+  assert.deepEqual(item.ShopInfo, { price: 99, shops: [{ shopName: '手製の店' }] });
+  assert.equal(item.GatheringLevels[0].chronicle, '鉱物伝承録:ドラヴァニア');
+  assert.deepEqual(item.GatheringTimer[0].Times, ['02:00-04:00']);
+  assert.equal(item.GatheringTimer[0].RequiredTechnical, 600);
+  assert.equal(item.GatheringTimer[0].Chronicle, '鉱物伝承録:ドラヴァニア');
+  await reader(item, html);
+  assert.equal(urls.filter(url => url.includes('/shop/')).length, 0);
+  await reader(item, '<h3>販売なし</h3>');
+  assert.deepEqual(item.GatheringTimer[0].Times, ['02:00-04:00']);
+  assert.equal(item.GatheringTimer[0].RequiredTechnical, 600);
+});
+
+test('hidden gathering maps and unavailable official details fall back to manual maps, schedules and technical requirements', async () => {
+  const extra = { Area: 'サカ・トラル', Map: 'ヘリテージファウンド', Method: '採掘', Times: ['10:00-12:00', '22:00-00:00'], RequiredTechnical: 5090 };
+  const item = { Name: '高密度軽銀鉱', GatheringLevels: [{ method: '採掘', level: 100, chronicle: '鉱物伝承録:アレクサンドリア' }] };
+  const html = '<h3>このアイテムの採集手帳</h3><a href="/lodestone/playguide/db/gathering/abc/">採掘</a>';
+  let hidden = gatheringDetailFixture().replace('<dl class="db-view__gathering__point"><dt>ドラヴァニア雲海</dt><dd>Lv 60 グリーンスウォード島</dd></dl>', '<dl class="db-view__gathering__point"><dt>????</dt>');
+  const reader = createLodestoneAcquisitionReader({ supplements: new Map([[item.Name, [extra]]]), request: async () => hidden });
+  await reader(item, html);
+  assert.equal(item.GatheringTimer[0].Map, extra.Map);
+  assert.deepEqual(item.GatheringTimer[0].Times, extra.Times);
+  assert.equal(item.GatheringTimer[0].RequiredTechnical, 5090);
+  hidden = gatheringDetailFixture().replace('<h5 class="db-view__gathering__area">ドラヴァニア</h5><dl class="db-view__gathering__point"><dt>ドラヴァニア雲海</dt><dd>Lv 60 グリーンスウォード島</dd></dl>', '<h5 class="db-view__gathering__area">技術力6000以上</h5><h5 class="db-view__gathering__area">????</h5>');
+  await reader(item, html);
+  assert.deepEqual(item.GatheringTimer[0].Times, extra.Times);
+  assert.equal(item.GatheringTimer[0].RequiredTechnical, 6000);
+  const offline = createLodestoneAcquisitionReader({ supplements: new Map([[item.Name, [extra]]]), request: async () => { throw Error('HTTP 503'); } });
+  await offline(item, html);
+  assert.deepEqual(item.GatheringTimer[0].Times, extra.Times);
+  assert.equal(item.GatheringTimer[0].RequiredTechnical, 5090);
+  const empty = createLodestoneAcquisitionReader({ supplements: new Map(), request: async () => { throw Error('HTTP 503'); } });
+  await assert.rejects(empty({ Name: '補助情報なし' }, html), /503/);
+});
+
+test('unknown regions preserve every manual location without duplicate rows or mixing gathering methods', async () => {
+  const item = { Name: '複数採集地' };
+  const extras = [{ Method: '砕岩', Map: '嘆きの海', Times: ['02:00-04:00'] }, { Method: '砕岩', Map: 'エルピス', Times: ['04:00-06:00'] },
+    { Method: '砕岩', Map: '嘆きの海', Times: ['02:00-04:00'] }];
+  const source = gatheringDetailFixture('砕岩').replace('<dl class="db-view__gathering__point"><dt>ドラヴァニア雲海</dt><dd>Lv 60 グリーンスウォード島</dd></dl>', '<h5 class="db-view__gathering__area">????</h5><h5 class="db-view__gathering__area">????</h5>');
+  const reader = createLodestoneAcquisitionReader({ supplements: new Map([[item.Name, extras]]), request: async () => source });
+  await reader(item, '<h3>このアイテムの採集手帳</h3><a href="/lodestone/playguide/db/gathering/abc/">砕岩</a>');
+  assert.deepEqual(item.GatheringTimer.map(row => [row.Method, row.Map, row.Times]), [['砕岩', '嘆きの海', ['02:00-04:00']], ['砕岩', 'エルピス', ['04:00-06:00']]]);
+});
+
+test('new exchange routes using known currencies are discovered without hand-maintained exchange inputs', async () => {
+  const html = '<table class="db-table__item_source"><tr><th>取引に必要なアイテム</th><th>販売ショップNPC</th></tr>' +
+    '<tr><td><h4>軍票</h4><span class="db-view__data__number">250</span></td><td><p class="db-shop__item__npc">窓口</p></td></tr></table>';
+  const item = { Name: '新しい交換素材' };
+  const index = new Map([['新しい交換素材', { ExchangeInfo: extractLodestoneExchanges(html) }]]);
+  applyLodestoneShopIndex(item, index, new Set(['軍票']));
+  assert.equal(item.Recipe.CraftType, '8');
+  assert.deepEqual(item.Recipe.Ingredients, [{ Name: '軍票', Amount: '250' }]);
+  const crafted = { Name: '製作素材', Recipe: { CraftType: '1', Ingredients: [] } };
+  applyLodestoneShopIndex(crafted, index, new Set(['軍票']));
+  assert.equal(crafted.Recipe.CraftType, '1');
+});
+
+test('official exchange costs refresh each alternative separately and remove routes absent from the source', () => {
+  const item = { Name: '素材', Recipe: { CraftType: '8', Ingredients: [{ Name: '詩学', Amount: '99' }] },
+    ExchangeInfo: [{ ingredients: [{ Name: '詩学', Amount: 5 }] }, { ingredients: [{ Name: '交換券', Amount: 1 }] }] };
+  refreshLodestoneExchangeCosts(item);
+  assert.deepEqual(item.Recipe.Ingredients, [{ Name: '詩学', Amount: '5' }]);
+  item.Recipe.Ingredients.push({ Name: '交換券', Amount: '99' });
+  refreshLodestoneExchangeCosts(item);
+  assert.deepEqual(item.Recipe.Ingredients, [{ Name: '詩学', Amount: '5' }, { Name: '交換券', Amount: '1' }]);
+  item.Recipe = { CraftType: '9', Ingredients: [{ Name: '精選対象', Amount: '100' }] };
+  refreshLodestoneExchangeCosts(item);
+  assert.equal(item.Recipe, undefined);
+});
+
+test('military exchanges retain each company vendor rank with its location', () => {
+  const vendors = [['黒渦団補給担当官', 'リムサ・ロミンサ：上甲板層', '少甲士'], ['双蛇党補給担当官', 'グリダニア：新市街', '少牙士'], ['不滅隊補給担当官', 'ウルダハ：ナル回廊', '少闘士']];
+  const html = '<table class="db-table__item_source"><tr><th>交換に必要な軍票</th><th>販売ショップNPC</th></tr>' + vendors.map(([npc, area, rank]) =>
+    `<tr><td><table class="db-shop__cs"><tr><td><p class="db-view__shop__type__text">250</p><p class="db-view__shop__type__text">${rank}</p></td></tr></table></td><td><p class="db-shop__item__npc">${npc}</p><p class="db-shop__item__xy"><span>${area}</span> X: 1.2 Y: 3.4</p></td></tr>`).join('') + '</table>';
+  const [exchange] = extractLodestoneExchanges(html);
+  assert.deepEqual(exchange.ingredients, [{ Name: '軍票', Amount: 250 }]);
+  assert.deepEqual(exchange.shops, vendors.map(([shopName, area, requiredRank]) => ({ shopName, area, x: 1.2, y: 3.4, requiredRank })));
+});
+
+test('exchange acquisition keeps alternative payment routes separate and retains NPC locations', () => {
+  const cost = (name, amount) => `<h4>${name}</h4><span class="db-view__data__number">${amount}</span>`;
+  const row = (costs, npc) => `<tr><td>${costs}</td><td><p class="db-shop__item__npc"><a>${npc}</a></p>` +
+    '<p class="db-shop__item__xy"><span>イディルシャイア</span> X: 5.7 Y: 5.2</p></td></tr>';
+  const html = '<table class="db-table db-table__item_source"><tr><th>取引に必要なアイテム</th><th>販売ショップNPC</th></tr>' +
+    row(cost('アラガントームストーン:詩学', 5), 'ヒスメナ') + row(cost('アラガントームストーン:詩学', 5), '別の窓口') +
+    row(cost('交換券', 2) + cost('補助素材', 3), '別ルート') + '</table>';
+  const result = extractLodestoneExchanges(html);
+  assert.equal(result.length, 2);
+  assert.deepEqual(result[0].ingredients, [{ Name: 'アラガントームストーン:詩学', Amount: 5 }]);
+  assert.deepEqual(result[0].shops[0], { shopName: 'ヒスメナ', area: 'イディルシャイア', x: 5.7, y: 5.2 });
+  assert.equal(result[0].shops.length, 2);
+  assert.deepEqual(result[1].ingredients, [{ Name: '交換券', Amount: 2 }, { Name: '補助素材', Amount: 3 }]);
+  assert.throws(() => extractLodestoneExchanges(html.replace('>5</span>', '>?</span>')), /正確に取得できません/);
+});
+
 function createPromotedTestAudit(store, id) {
   createLodestoneAudit(store, { id, catalogFingerprint: 'catalog', now: 100 });
   planLodestoneAuditResource(store, id, {
@@ -80,7 +384,7 @@ function createPromotedTestAudit(store, id) {
   promoteCompletedLodestoneAudit(store, id, { now: 110 });
 }
 
-test('candidate preservation keeps opaque data, false EX, material level, and vendor rank through a rename', () => {
+test('candidate preservation keeps opaque fields through renames while allowing official acquisition replacement', () => {
   const original = { Name: '旧名', SortOrder: 1, ItemCategory: '素材', IsEx: false, ItemLevel: 10,
     ShopInfo: { price: 100, shops: [{ shopName: '店', requiredRank: 'ランク2' }] },
     GatheringTimer: { hours: [0, 12] }, CraftingEffects: { NQ: { CP: 5 } },
@@ -93,7 +397,10 @@ test('candidate preservation keeps opaque data, false EX, material level, and ve
   assert.equal(kept.Recipe, undefined);
   assert.doesNotThrow(() => assertLodestoneItemPreservation([original], [candidate], { 旧名: '新名' }));
   delete candidate.GatheringTimer;
-  assert.throws(() => assertLodestoneItemPreservation([original], [candidate], { 旧名: '新名' }), /GatheringTimer/);
+  delete candidate.ShopInfo;
+  assert.doesNotThrow(() => assertLodestoneItemPreservation([original], [candidate], { 旧名: '新名' }));
+  delete candidate.Extension;
+  assert.throws(() => assertLodestoneItemPreservation([original], [candidate], { 旧名: '新名' }), /Extension/);
   assert.throws(() => assertLodestoneItemPreservation([original], []), /アイテム欠落/);
   assert.doesNotThrow(() => assertLodestoneItemPreservation([original], [], {}, ['旧名']));
 });

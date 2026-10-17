@@ -1,5 +1,5 @@
-const DATA_CACHE_VERSION = 'ff14recipe-data-7.56-3601f731';
-const REPORT_BUILD_ID = 'sha256:d09776bd304527b2a2b405c36c945f6d40ef0b550f0a2b7869ed7036f84b6e5d';
+const DATA_CACHE_VERSION = 'ff14recipe-data-7.57-3c6555cc';
+const REPORT_BUILD_ID = 'sha256:29f9f52fdef769137d8520c9de0472f77f53256655304abab39e121060b31e8f';
 const VERIFIED_DATA_CACHE_VERSION = `ff14recipe-verified-data-${DATA_CACHE_VERSION.replace('ff14recipe-data-', '')}`;
 const DATA_FILE = `./data/Item.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 const LEGACY_ITEM_IDS_FILE = `./data/legacy-item-ids.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
@@ -464,6 +464,7 @@ let favoriteItemReorderEnabled = false;
 let materialTreeRecipe = null;
 let preparedCountTargetName = '';
 let preparedCountMaximum = 0;
+let preparedCountManuallyEdited = false;
 let expandedFavoriteListActionsId = null;
 let expandedFavoriteMaterialActions = false;
 let favoriteMaterialsListIds = [];
@@ -3301,6 +3302,25 @@ function createCraftJobLabel(jobName, className, label) {
   return wrapper;
 }
 
+function createGatheringRequirementLabels(master) {
+  return (master.gatheringLevels || []).map(({ method, level, chronicle }) => {
+    const label = createCraftJobLabel(
+      GATHERING_METHOD_JOBS[method] || (['釣り', '刺突漁'].includes(method) ? '漁師' : method),
+      `badge badge-gather badge-gathering${GATHERING_METHOD_JOBS[method] ? ` ${gatheringMethodClass(method)}` : ''}`,
+      chronicle || `${method}Lv${level}`
+    );
+    if (chronicle) label.title = `${method}Lv${level}: ${chronicle} が必要`;
+    return label;
+  });
+}
+
+function appendItemMethodLine(content, labels) {
+  if (!labels.length) return;
+  const line = createTextElement('span', 'item-method-line', '');
+  line.append(...labels);
+  content.appendChild(line);
+}
+
 function masterbookGroups(craftInfo) {
   const groups = new Map();
   for (const info of craftInfo || []) {
@@ -3480,6 +3500,7 @@ function createItemDisplayLabel(
   if (master.isEx === true) {
     badges.append(createTextElement('span', 'badge badge-ex', '譲渡・出品✖'));
   }
+  badges.append(...createGatheringRequirementLabels(master));
 
   const nameElement = createTextElement('span', favorite ? 'favorite-item-name list-name' : 'list-name', name);
   if (badges.childElementCount > 0) wrapper.appendChild(badges);
@@ -6347,13 +6368,16 @@ function renderMaterialsList() {
       if (icon) li.appendChild(icon);
       const content = document.createElement('div');
       content.className = 'material-content';
+      appendItemMethodLine(content, createGatheringRequirementLabels(itemMaster[row.name] || {}));
       const primary = document.createElement('div');
       primary.className = 'material-primary';
       const quantity = createTextElement('span', 'material-qty', `× ${formatNumber(row.qty)}`);
       if (row.preparationChange?.changedFields.includes('needed')) {
         quantity.classList.add('prepared-adjusted-value');
       }
-      primary.append(createTextElement('span', 'material-name', row.name), quantity);
+      const nameAndQuantity = createTextElement('span', 'material-name-quantity', '');
+      nameAndQuantity.append(createTextElement('span', 'material-name', row.name), quantity);
+      primary.appendChild(nameAndQuantity);
       if (noLongerNeeded) {
         primary.appendChild(createTextElement('span', 'purchase-status', exclusionReason));
       }
@@ -6458,9 +6482,7 @@ function renderMaterialsList() {
       content.appendChild(selector);
     }
     if (!selector) {
-      for (const label of createCraftRequirementLabels(master, 'badge')) {
-        primary.appendChild(label);
-      }
+      appendItemMethodLine(content, createCraftRequirementLabels(master, 'badge'));
     }
     const nameAndQuantity = document.createElement('span');
     nameAndQuantity.className = 'material-name-quantity';
@@ -6920,6 +6942,7 @@ function updatePreparedCountControls({ normalize = false } = {}) {
 }
 
 function changePreparedCount(delta) {
+  preparedCountManuallyEdited = false;
   elements.preparedCountInput.value = String(
     Math.max(0, Math.min(preparedCountMaximum, preparedCountInputValue() + delta))
   );
@@ -6927,6 +6950,7 @@ function changePreparedCount(delta) {
 }
 
 function openPreparedCountDialog(name, maximum) {
+  preparedCountManuallyEdited = false;
   preparedCountTargetName = name;
   preparedCountMaximum = Math.max(0, Number(maximum) || 0);
   elements.preparedCountTitle.textContent = `${name}の準備済み個数`;
@@ -7004,6 +7028,11 @@ function collectTreeCraftTypes(rootName) {
 
 function createTreeBadge(master, hideCraftBadge) {
   const { method, craftLevel } = master;
+  if (master.gatheringLevels?.length) {
+    const labels = document.createDocumentFragment();
+    labels.append(...createGatheringRequirementLabels(master));
+    return labels;
+  }
   const label = CRAFT_JOBS_SET.has(method)
     ? hideCraftBadge && craftLevel > 0 ? `Lv${craftLevel}` : craftJobLevelLabel(method, craftLevel)
     : method;
@@ -7030,7 +7059,7 @@ function createTreePin(name) {
 }
 
 function hasGatheringTimer(name) {
-  return (itemMaster[name]?.gatheringTimer || []).length > 0;
+  return (itemMaster[name]?.gatheringTimer || []).some(entry => entry.Times?.length > 0);
 }
 
 function createGatheringTimerButton(name) {
@@ -7205,7 +7234,7 @@ function showGatheringDialog(name) {
       if (entry.Map !== currentMap) {
         currentMap = entry.Map;
         mapSection = createTextElement('section', 'gathering-map-section', '');
-        mapSection.appendChild(createTextElement('h4', '', entry.Map));
+        mapSection.appendChild(createTextElement('h4', '', entry.Map === '????' ? '場所の詳細は未公開' : entry.Map));
         areaSection.appendChild(mapSection);
       }
       const block = createTextElement('div', 'gathering-entry', '');
@@ -7220,6 +7249,8 @@ function showGatheringDialog(name) {
       head.appendChild(createTextElement('span', 'gathering-type', entry.Type));
       block.appendChild(head);
       if (entry.Chronicle) block.appendChild(createGatheringNote('', entry.Chronicle, ' が必要'));
+      if (entry.Location) block.appendChild(createTextElement('div', 'gathering-note', `${entry.NodeLevel ? `Lv${entry.NodeLevel} ` : ''}${entry.Location}`));
+      if (entry.Map === '????') block.appendChild(createTextElement('div', 'gathering-note', '場所の詳細は公式DBで未公開です。'));
       if (Number.isFinite(Number(entry.RequiredTechnical))) {
         block.appendChild(createGatheringNote('必要技術力: ', formatNumber(Number(entry.RequiredTechnical)), ' 以上'));
       }
@@ -7266,13 +7297,17 @@ function showShopDialog(
   elements.shopContent.replaceChildren();
   if (!shops.length) {
     elements.shopContent.appendChild(createTextElement('p', 'shop-empty', '店情報はありません。'));
-  } else {
+  } else if (shops.length) {
     const price = Number(shopInfo.price);
     if (Number.isFinite(price)) {
       const priceBlock = createTextElement('section', 'shop-price-section', '');
+      const priceValue = createTextElement('div', 'shop-price shop-price-amount', '');
+      const gilIcon = createItemIcon(itemMaster['ギル']?.icon, 'list-icon currency-icon');
+      if (gilIcon) priceValue.appendChild(gilIcon);
+      priceValue.appendChild(document.createTextNode(`${formatNumber(price)}ギル`));
       priceBlock.append(
         createTextElement('h3', '', '販売価格'),
-        createTextElement('div', 'shop-price', `${formatNumber(price)}ギル`)
+        priceValue
       );
       elements.shopPriceHeader.appendChild(priceBlock);
     }
@@ -7337,9 +7372,6 @@ function showShopDialog(
         createTextElement('div', 'shop-name', shop.shopName || 'ショップ'),
         createTextElement('div', 'shop-location', location)
       );
-      if (shop.requiredRank) {
-        entry.appendChild(createTextElement('div', 'shop-required-rank', `必要友好ランク：${shop.requiredRank}`));
-      }
       entryList.appendChild(entry);
     });
     listSection.appendChild(entryList);
@@ -7386,10 +7418,10 @@ function closeShopDialog() {
   floatingWindows.shop.close();
 }
 
-function createTreeMain(name, producedQty, subInfo, badge) {
+function createTreeMain(name, producedQty, subInfo, badge, methodAbove = false) {
   const title = document.createElement('span');
   title.className = 'node-title';
-  if (badge) title.appendChild(badge);
+  if (badge && !methodAbove) title.appendChild(badge);
   title.append(
     createTextElement('span', 'node-name', name),
     createTextElement('span', 'node-qty', `× ${formatNumber(producedQty)}`)
@@ -7397,6 +7429,7 @@ function createTreeMain(name, producedQty, subInfo, badge) {
 
   const main = document.createElement('span');
   main.className = 'node-main';
+  if (badge && methodAbove) appendItemMethodLine(main, [badge]);
   main.appendChild(title);
   if (subInfo) main.appendChild(subInfo);
   return main;
@@ -7501,7 +7534,8 @@ function buildNode(
     name,
     neededQty,
     createTreeSubInfo(recipe, neededQty, unitCost, unitTimes),
-    selector ? null : createTreeBadge(master, hideCraftBadge)
+    selector ? null : createTreeBadge(master, hideCraftBadge),
+    Boolean(master.gatheringLevels?.length)
   );
   if (selector) prependRecipeMethodControl(main, selector);
   row.appendChild(main);
@@ -9144,12 +9178,22 @@ function bindEvents() {
     changePreparedCount
   );
   elements.preparedCountInput.addEventListener('input', () => updatePreparedCountControls());
+  elements.preparedCountInput.addEventListener('beforeinput', event => {
+    if (/^(?:insert|delete)/u.test(event.inputType || '')) preparedCountManuallyEdited = true;
+  });
+  elements.preparedCountInput.addEventListener('keydown', event => {
+    if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229 || !preparedCountManuallyEdited) return;
+    event.preventDefault();
+    closePreparedCountDialog();
+  });
   elements.preparedCountInput.addEventListener('change', () => updatePreparedCountControls({ normalize: true }));
   elements.preparedCountZeroBtn.addEventListener('click', () => {
+    preparedCountManuallyEdited = false;
     elements.preparedCountInput.value = '0';
     updatePreparedCountControls();
   });
   elements.preparedCountMaximumBtn.addEventListener('click', () => {
+    preparedCountManuallyEdited = false;
     elements.preparedCountInput.value = String(preparedCountMaximum);
     updatePreparedCountControls();
   });

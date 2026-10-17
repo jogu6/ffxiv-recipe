@@ -4,6 +4,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { DEFAULT_LODESTONE_DELAY_MS } from './lodestone-source.mjs';
 import { compareRecipeList, saveRecipeMonitorBaseline } from './lodestone-recipe-monitor.mjs';
+import { compareLodestoneAcquisition } from './lodestone-acquisition-monitor.mjs';
 import { archivePipelineLogs } from './log-archive.mjs';
 import { applyBackgroundCpuPriority, notifyMonitorFailure, runAutomaticPublication } from './auto-publish.mjs';
 import { matchesAppliedSource, readAppliedLodestoneState } from './lodestone-applied-state.mjs';
@@ -93,7 +94,9 @@ function readConfig() {
 }
 
 export async function readLodestoneMonitorState(options = {}) {
-  return compareRecipeList(options);
+  const current = await compareRecipeList(options);
+  if (current.RecipeListChanged || current.ResumePublication) return current;
+  return { ...current, ...await compareLodestoneAcquisition(options) };
 }
 
 export async function runMonitor({
@@ -126,6 +129,9 @@ export async function runMonitor({
           logger(`製作手帳の比較 ${page}/${pages}${reason ? `: ${reason}の差分を検出` : ''}`);
         }
       },
+      onAcquisitionProgress: ({ completed, total, item }) => {
+        if (completed === 1 || completed === total || completed % 250 === 0) logger(`入手情報の比較 ${completed}/${total}: ${item}`);
+      },
       appliedState: readAppliedLodestoneState({ repositoryRoot: root }),
       delayMs: Math.max(0, Number(config.delayMs ?? DEFAULT_LODESTONE_DELAY_MS) || 0)
     });
@@ -138,9 +144,12 @@ export async function runMonitor({
     return notifyFailure({ config, error: new Error('一覧の比較中に反映済みItem.jsonが変更されました。再確認が必要です') });
   }
   const changes = current.RecipeComparisonMode
-    ? (current.RecipeListChanged ? [{ key: 'RecipeList', label: '製作手帳一覧', before: '比較元', after: current.RecipeListChange || '更新処理を再開' }] : [])
+    ? [
+      ...(current.RecipeListChanged ? [{ key: 'RecipeList', label: '製作手帳一覧', before: '比較元', after: current.RecipeListChange || '更新処理を再開' }] : []),
+      ...(current.AcquisitionChanged ? [{ key: 'Acquisition', label: '交換条件・採集レベル', before: '公開データ', after: current.AcquisitionChange || '更新処理を再開' }] : [])
+    ]
     : previousState.initialized ? diffLodestoneState(previousState, current) : [];
-  const alreadyApplied = !current.RecipeListChanged && matchesAppliedSource(applied, current);
+  const alreadyApplied = !current.RecipeListChanged && !current.AcquisitionChanged && matchesAppliedSource(applied, current);
   const publication = readJson(path.join(root, 'pipeline', 'state', 'auto-publish.json'), {});
   const pendingPublication = ['generating', 'committed', 'pushed'].includes(publication.status);
   let outcome = alreadyApplied ? 'already-applied' : 'unchanged';
@@ -171,7 +180,7 @@ export async function runMonitor({
     lastOutcome: outcome
   }, null, 2)}\n`);
   logger(current.RecipeComparisonMode && !changes.length && !pendingPublication
-    ? `製作手帳一覧の全${current.CheckedRecipePages}ページが一致しました。更新はありません`
+    ? `製作手帳一覧の全${current.CheckedRecipePages}ページと入手情報${current.CheckedAcquisitionItems || 0}件が一致しました。更新はありません`
     : outcome === 'already-applied'
     ? 'Item.jsonに反映済みのため、全更新を省略して監視基準を同期しました'
     : previousState.initialized ? (changes.length ? `更新を処理しました: ${changes.map(change => change.label).join('、')}` : '更新はありません') : '初回基準状態を保存しました');

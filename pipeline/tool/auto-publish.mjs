@@ -10,12 +10,6 @@ export { AUTO_PUBLISH_FILES } from './auto-publish-files.mjs';
 import { matchesAppliedSource, readAppliedLodestoneState } from "./lodestone-applied-state.mjs";
 
 const defaultRepositoryRoot = path.resolve(import.meta.dirname, "..", "..");
-const defaultStatePath = path.join(
-  defaultRepositoryRoot,
-  "pipeline",
-  "state",
-  "auto-publish.json",
-);
 const defaultLogsRoot = path.join(defaultRepositoryRoot, "pipeline", "logs");
 const discordLimit = 1900;
 const backgroundCpuPriority = os.constants.priority.PRIORITY_BELOW_NORMAL;
@@ -498,7 +492,7 @@ function assertAllowedChanges(files) {
 function pipelineCommands(settings) {
   const delay = String(settings.delayMs);
   return [
-    ["lodestone-audit", "--delay", delay, ...(settings.freshAudit ? ["--fresh"] : [])],
+    ...(settings.acquisitionOnly ? [] : [["lodestone-audit", "--delay", delay, ...(settings.freshAudit ? ["--fresh"] : [])]]),
     ["build-lodestone-candidate", "--delay", delay],
     ["item-icon-cache"],
     [
@@ -510,9 +504,9 @@ function pipelineCommands(settings) {
       "--size",
       String(settings.iconSize),
     ],
-    ["publish-lodestone-candidate"],
+    ["publish-lodestone-candidate", "--data-only"],
     ["item-icon-validate"],
-    ["app-cache-version"],
+    ["app-cache-version", "--data-only"],
   ];
 }
 
@@ -534,7 +528,8 @@ function publicationKey(current) {
   ]
     .map((value) => String(value ?? ""))
     .join("|");
-  return current?.RecipeRefreshId ? `${key}|refresh:${current.RecipeRefreshId}` : key;
+  const refreshId = current?.RecipeRefreshId || current?.AcquisitionRefreshId;
+  return refreshId ? `${key}|refresh:${refreshId}` : key;
 }
 
 function savePublicationState(statePath, previous, update) {
@@ -617,7 +612,7 @@ export async function runAutomaticPublication({
   config,
   current,
   repositoryRoot = defaultRepositoryRoot,
-  statePath = defaultStatePath,
+  statePath = path.join(repositoryRoot, "pipeline", "state", "auto-publish.json"),
   logger = createAutomationLogger(),
   run = runProcess,
   delay = defaultDelay,
@@ -652,6 +647,7 @@ export async function runAutomaticPublication({
     ...normalizeSettings(config),
     delayMs: Math.max(0, Number(config?.delayMs ?? 100) || 0),
     freshAudit: Boolean(current?.RecipeRefreshId),
+    acquisitionOnly: Boolean(current?.AcquisitionRefreshId && !current?.RecipeRefreshId),
   };
   const version = String(current?.Version || "").trim();
   let targetKey = publicationKey(current);
@@ -665,7 +661,7 @@ export async function runAutomaticPublication({
   // The full audit resolves a deferred order signature after generation.
   // Recovery must still finish the saved commit for that same source catalog.
   if (current?.ResumePublication && ["generating", "committed", "pushed"].includes(state.status)) targetKey = state.targetKey;
-  if (!current?.RecipeRefreshId && state.deferredItemOrder && ["failed", "generating", "committed", "pushed"].includes(state.status)
+    if (!current?.RecipeRefreshId && !current?.AcquisitionRefreshId && state.deferredItemOrder && ["failed", "generating", "committed", "pushed"].includes(state.status)
       && ["Version", "RecipeVersion", "ItemCount", "RecipeCount"]
         .every(key => state.targetSource?.[key] === current?.[key])) {
     targetKey = state.targetKey;
@@ -761,7 +757,7 @@ export async function runAutomaticPublication({
       });
     }
 
-    if (!current?.RecipeRefreshId && state.status !== "generating" && matchesAppliedSource(
+    if (!current?.RecipeRefreshId && !current?.AcquisitionRefreshId && state.status !== "generating" && matchesAppliedSource(
       readAppliedLodestoneState({ repositoryRoot }), current,
     )) {
       logger?.write("検証済みのItem.jsonに反映済みのため、全更新を省略しました");
@@ -816,6 +812,7 @@ export async function runAutomaticPublication({
 
     const completedCommands =
       !current?.RecipeRefreshId &&
+      !current?.AcquisitionRefreshId &&
       state.status === "failed" &&
       state.targetKey === targetKey &&
       state.baseCommit === localHead &&
@@ -836,6 +833,7 @@ export async function runAutomaticPublication({
       targetVersion: version,
       targetKey,
       recipeRefreshId: current?.RecipeRefreshId || null,
+      acquisitionRefreshId: current?.AcquisitionRefreshId || null,
       targetItemOrderSignature: current?.ItemOrderSignature || '',
       startedAt: jstTimestamp(),
       deferredItemOrder: Boolean(current?.DeferredItemOrder),
@@ -873,7 +871,7 @@ export async function runAutomaticPublication({
       });
     }
     const prepared = await prepareFiles({ repositoryRoot, snapshotRoot, baseCommit: localHead, run, logger });
-    await run(process.execPath, [path.join(prepared.candidateRoot, "tools", "validate-site.mjs")], {
+    await run(process.execPath, [path.join(repositoryRoot, "tools", "validate-site.mjs"), "--root", prepared.candidateRoot, "--data-only"], {
       cwd: prepared.candidateRoot, logger, timeoutMs: 2 * 60 * 60 * 1000,
     });
     for (const file of ["site/app.js", "site/sw.js", "site/item-icon-pack.js"]) {

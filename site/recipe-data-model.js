@@ -10,6 +10,12 @@
     return Number.isFinite(number) ? number : fallback;
   }
 
+  function unconditionalGilShopInfo(info) {
+    if (!info || info.price == null || !Number.isFinite(Number(info.price)) || Number(info.price) < 0) return null;
+    const shops = (info.shops || []).filter(shop => !shop.requiredRank);
+    return shops.length ? { ...info, shops } : null;
+  }
+
   function normalizedRecipeVariant(
     rawRecipe,
     { fallbackCraftInfo = null, itemNameForId = () => null } = {}
@@ -113,7 +119,9 @@
         uiCategory: toNumeric(item.ItemUICategory),
         uiCategoryName: item.ItemCategory || item.ItemUICategoryName || '',
         gatheringTimer: item.GatheringTimer || [],
-        shopInfo: item.ShopInfo || null,
+        gatheringLevels: item.GatheringLevels || [],
+        exchangeInfo: item.ExchangeInfo || [],
+        shopInfo: unconditionalGilShopInfo(item.ShopInfo),
         equipmentInfo: item.EquipmentInfo || null,
         isEx: item.IsEx === true
       };
@@ -164,7 +172,9 @@
           uiCategory: toNumeric(source.ItemUICategory),
           uiCategoryName: source.ItemCategory || source.ItemUICategoryName || '',
           gatheringTimer: source.GatheringTimer || [],
-          shopInfo: source.ShopInfo || null,
+          gatheringLevels: source.GatheringLevels || [],
+          exchangeInfo: source.ExchangeInfo || [],
+          shopInfo: unconditionalGilShopInfo(source.ShopInfo),
           equipmentInfo: source.EquipmentInfo || null,
           isEx: source.IsEx === true
         };

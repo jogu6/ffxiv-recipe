@@ -10,10 +10,20 @@ function canonicalAssetBytes(relative, bytes) {
   return Buffer.from(bytes.toString('utf8').replaceAll('\r\n', '\n'), 'utf8');
 }
 
-export function expectedAppCacheVersion({ siteRoot, serviceWorkerSource }) {
+export function expectedAppCacheVersion({ siteRoot, serviceWorkerSource, dataOnly }) {
   const current = serviceWorkerSource.match(/const\s+APP_CACHE_VERSION\s*=\s*['"]([^'"]+)['"];/u)?.[1] || '';
   const release = current.match(/v\d+(?:\.\d+)*/iu)?.[0];
   if (!release) throw new Error('APP_CACHE_VERSIONにユーザー確定版がありません。');
+  if (dataOnly ?? /-data-[0-9a-f]{12}$/u.test(current)) {
+    // Retain the unchanged app-shell identity. Only the data-bearing scripts
+    // change during data publication; macro assets are neither read nor built.
+    const base = current.replace(/-data-[0-9a-f]{12}$/u, '');
+    const hash = crypto.createHash('sha256').update(base);
+    for (const relative of ['app.js', 'item-icon-pack.js']) {
+      hash.update(relative).update('\0').update(canonicalAssetBytes(relative, fs.readFileSync(path.join(siteRoot, relative))));
+    }
+    return `${base}-data-${hash.digest('hex').slice(0, 12)}`;
+  }
   const block = serviceWorkerSource.match(/const\s+PRECACHE_FILES\s*=\s*\[([\s\S]*?)\];/u)?.[1];
   if (!block) throw new Error('PRECACHE_FILESが見つかりません。');
   const files = [...block.matchAll(/['"](\.\/[^'"]+)['"]/gu)].map(match => match[1]);
@@ -27,8 +37,8 @@ export function expectedAppCacheVersion({ siteRoot, serviceWorkerSource }) {
 }
 
 // Build-time report identifiers; no runtime hashing or additional requests.
-export function updateReportBuildIds({ siteRoot }) {
-  for (const relative of ['app.js', 'macro-app/web/app.js']) {
+export function updateReportBuildIds({ siteRoot, dataOnly = false }) {
+  for (const relative of dataOnly ? ['app.js'] : ['app.js', 'macro-app/web/app.js']) {
     const file = path.join(siteRoot, relative);
     if (!fs.existsSync(file)) continue;
     const source = fs.readFileSync(file, 'utf8');
@@ -40,10 +50,10 @@ export function updateReportBuildIds({ siteRoot }) {
   }
 }
 
-export function updateAppCacheVersion({ siteRoot, serviceWorkerPath }) {
-  updateReportBuildIds({ siteRoot });
+export function updateAppCacheVersion({ siteRoot, serviceWorkerPath, dataOnly = false }) {
+  updateReportBuildIds({ siteRoot, dataOnly });
   const source = fs.readFileSync(serviceWorkerPath, 'utf8');
-  const version = expectedAppCacheVersion({ siteRoot, serviceWorkerSource: source });
+  const version = expectedAppCacheVersion({ siteRoot, serviceWorkerSource: source, dataOnly });
   const next = source.replace(
     /const\s+APP_CACHE_VERSION\s*=\s*['"][^'"]+['"];/u,
     `const APP_CACHE_VERSION = '${version}';`

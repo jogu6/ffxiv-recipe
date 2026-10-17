@@ -1977,6 +1977,14 @@ input[type="number"]::-webkit-outer-spin-button {
   justify-content: center;
   gap: 2px;
 }
+.item-method-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  line-height: 1;
+}
+.node-main > .item-method-line { margin-bottom: 2px; }
 .material-primary,
 .material-supplement-row {
   display: flex;
@@ -2655,6 +2663,11 @@ button.intermediate-prepared-btn.active {
   flex-shrink: 0;
   border-radius: 5px;
   box-shadow: inset 0 0 5px 2px rgba(0, 0, 0, 0.6);
+}
+.currency-icon {
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
 }
 .node-icon {
   vertical-align: middle;
@@ -4220,6 +4233,8 @@ button.intermediate-prepared-btn.active {
   border-bottom: 1px solid var(--border);
   padding-bottom: 4px;
 }
+.shop-price-amount { display: flex; align-items: center; gap: 6px; color: var(--accent); font-weight: 700; }
+.shop-price-amount img { width: 24px; height: 24px; object-fit: contain; }
 .shop-price {
   font-size: calc(16px * var(--font-size-scale));
   color: var(--soft-text);
@@ -4299,16 +4314,6 @@ button.intermediate-prepared-btn.active {
 .shop-location {
   color: var(--muted);
   font-size: calc(13px * var(--font-size-scale));
-}
-.shop-required-rank {
-  width: fit-content;
-  color: var(--accent);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 2px 7px;
-  font-size: calc(12px * var(--font-size-scale));
-  font-weight: 700;
 }
 .favorite-list-root-name {
   color: var(--soft-text);

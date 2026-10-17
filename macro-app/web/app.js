@@ -7,7 +7,8 @@ import {
 } from './model.js';
 import {
   formatJapaneseDateTime, japaneseIsoDateTime, loadRestorableResult, saveGeneratedResult,
-  loadDraftSelection, saveDraftSelection, loadPanelView, savePanelView
+  loadDraftSelection, saveDraftSelection, loadPanelView, savePanelView,
+  reconcileSavedMacros, resultCalculationInputs
 } from './persistence.js';
 import { selectSolverWorkerCount } from './worker-policy.js';
 import { createProfiler } from './profiling.js';
@@ -404,6 +405,10 @@ function positionJobChoices() {
 
 function updateSelectedJobVisual() {
   elements.jobToggle.replaceChildren(jobVisual(elements.job.value));
+  const hint = document.getElementById('recipeJobHint');
+  const differentJob = Boolean(state.recipe && elements.job.value !== state.recipe.job);
+  hint.hidden = !differentJob;
+  hint.replaceChildren(...(differentJob ? ['このアイテムの製作ジョブ ', jobVisual(state.recipe.job)] : []));
   for (const option of elements.jobChoices.querySelectorAll('[role="option"]')) {
     const selected = option.dataset.job === elements.job.value;
     option.classList.toggle('active', selected);
@@ -527,13 +532,13 @@ function renderRecipe(recipe) {
   if (recipe.hqAvailable !== false) recipeName.append(' ', createHqMark('hq-mark-inline'));
   details.append(
     recipeName,
-    createText('span', '', `${recipe.job} Lv.${recipe.level}`)
+    createText('span', 'recipe-level', `${recipe.job} Lv.${recipe.level}`)
   );
   const values = createText('span', 'recipe-values', '');
   values.append(
-    createText('span', '', `工数 ${displayNumber(recipe.difficulty)}`),
-    createText('span', '', `品質 ${displayNumber(recipe.maxQuality)}`),
-    createText('span', '', `耐久 ${displayNumber(recipe.durability)}`)
+    createText('span', 'recipe-number', `工数 ${displayNumber(recipe.difficulty)}`),
+    createText('span', 'recipe-number', `品質 ${displayNumber(recipe.maxQuality)}`),
+    createText('span', 'recipe-number', `耐久 ${displayNumber(recipe.durability)}`)
   );
   details.append(values);
   const requirements = [
@@ -719,10 +724,11 @@ function renderGeneratedStatus(result) {
     entry.append(createText('dt', '', label), createText('dd', '', String(value)));
     stats.append(entry);
   }
-  const options = createText('div', 'generated-status-options', [
+  const options = createText('div', 'generated-status-options', '');
+  options.append(...[
     ['マニピュレーション', status.manipulation], ['一心不乱', status.heartAndSoul],
     ['クイックイノベーション', status.quickInnovation]
-  ].map(([name, enabled]) => `${name}：${enabled ? 'あり' : 'なし'}`).join(' / '));
+  ].map(([name, enabled]) => createText('div', '', `${name}：${enabled ? 'あり' : 'なし'}`)));
   const qualityName = (name, hq) => {
     const span = createText('span', '', `${name} `);
     span.append(hq ? createHqMark('hq-mark-inline') : 'NQ');
@@ -735,9 +741,10 @@ function renderGeneratedStatus(result) {
   };
   const hqIds = new Set(result.selection.hqIngredientIds.map(String));
   const ingredients = createText('div', '', '中間素材：');
-  state.recipe.ingredients.forEach((item, index) => {
-    if (index) ingredients.append(' / ');
-    ingredients.append(qualityName(item.name, hqIds.has(String(item.id))));
+  state.recipe.ingredients.forEach(item => {
+    const line = createText('div', '', '');
+    line.append(qualityName(item.name, hqIds.has(String(item.id))));
+    ingredients.append(line);
   });
   if (!state.recipe.ingredients.length) ingredients.append('なし');
   elements.generatedStatus.replaceChildren(
@@ -745,7 +752,9 @@ function renderGeneratedStatus(result) {
     createText('strong', '', '基礎ステータス'), stats, options,
     consumableLine('食事', food),
     consumableLine('薬品', medicine),
-    createText('div', '', `食事・薬品適用後：作業精度 ${effective.craftsmanship} / 加工精度 ${effective.control} / CP ${effective.cp}`),
+    createText('div', '', '食事・薬品適用後：'),
+    ...[['作業精度', effective.craftsmanship], ['加工精度', effective.control], ['CP', effective.cp]]
+      .map(([label, value]) => createText('div', '', `${label} ${value}`)),
     ingredients
   );
 }
@@ -1232,6 +1241,7 @@ elements.generateButton.addEventListener('click', async () => {
         recipeId: state.recipe.id, dataVersion: state.data.dataVersion,
         engineVersion: ENGINE_VERSION, crafter: status,
         selection: currentSelection(),
+        calculationInputs: resultCalculationInputs(state.data, state.recipe.id, status, currentSelection()),
         macro: formatMacro(actions), generatedAt: japaneseIsoDateTime()
       };
       saveGeneratedResult(localStorage, result);
@@ -1317,6 +1327,7 @@ async function initialize() {
   try {
     initializeJobPicker();
     state.data = preparedHostMacroData() || await loadMacroData(siteAssetUrl('data/Item.json'));
+    try { reconcileSavedMacros(localStorage, state.data); } catch { /* Storage may be unavailable. */ }
     elements.level.max = String(state.data.maxCrafterLevel);
     state.recipe = recipeFromLocation(state.data);
     if (!state.recipe) throw new Error('選択された製作レシピが見つかりません');
@@ -1372,7 +1383,9 @@ async function initialize() {
   try {
     await prepareSolverWorkers();
     elements.generateButton.disabled = false;
+    elements.generateButton.textContent = 'マクロ生成開始';
   } catch (error) {
+    elements.generateButton.textContent = '準備失敗';
     showGenerationMessage(error || 'マクロ生成エンジンを準備できませんでした。');
   }
 }
@@ -1424,7 +1437,11 @@ function captureBugReport() {
     } : null,
     中間素材: state.recipe?.ingredients.map(item => ({ 名前: item.name, 必要数: item.amount,
       品質: state.hqIngredientIds.has(String(item.id)) ? 'HQ' : 'NQ' })) || [],
-    現在の製作ステータス: { ジョブ: elements.job.value, ...formStatus() },
+    現在の製作ステータス: { ジョブ: elements.job.value, ...formStatus(),
+      入力値: { ジョブレベル: elements.level.value, 作業精度: elements.craftsmanship.value,
+        加工精度: elements.control.value, CP: elements.cp.value },
+      マニピュレーション: elements.manipulation.checked, 一心不乱: elements.heartAndSoul.checked,
+      クイックイノベーション: elements.quickInnovation.checked },
     食事: selected(state.food), 薬品: selected(state.medicine),
     前回のマクロ生成日時とクラフターステータス: elements.generatedStatusSection.hidden
       ? '表示なし' : `生成日時：${elements.generatedAt.textContent}（日本標準時）\n\n${readable(elements.generatedStatus).replace(/ \/ /g, '\n')}`,

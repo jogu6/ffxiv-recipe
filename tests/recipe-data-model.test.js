@@ -120,7 +120,9 @@ test('name-key Lodestone data uses names for identity and SortOrder only for sor
         Name: '完成品', SortOrder: 45000, ItemCategory: '木材',
         Recipe: { RecipeKey: 'abc', CraftType: '0', AmountResult: '1', Ingredients: [{ Name: '素材', Amount: '2' }] }
       },
-      { Name: '素材', SortOrder: 123, MaterialSortOrder: 7, ItemCategory: '石材' }
+      { Name: '素材', SortOrder: 123, MaterialSortOrder: 7, ItemCategory: '石材',
+        GatheringLevels: [{ method: '採掘', level: 14 }],
+        ExchangeInfo: [{ ingredients: [{ Name: '軍票', Amount: 5 }], shops: [] }] }
     ]
   }, { craftTypeNames: { 0: '木工師' } });
   assert.equal(result.version, '7.55');
@@ -128,6 +130,8 @@ test('name-key Lodestone data uses names for identity and SortOrder only for sor
   assert.equal(result.itemMaster['完成品'].sortOrder, 45000);
   assert.equal(result.itemMaster['素材'].uiCategoryName, '石材');
   assert.equal(result.itemMaster['素材'].materialSortOrder, 7);
+  assert.deepEqual(result.itemMaster['素材'].gatheringLevels, [{ method: '採掘', level: 14 }]);
+  assert.deepEqual(result.itemMaster['素材'].exchangeInfo[0].ingredients, [{ Name: '軍票', Amount: 5 }]);
   assert.equal(result.recipes['完成品'].recipeId, 'abc');
   assert.deepEqual(result.recipes['完成品'].ingredients, [{ name: '素材', qty: 2, itemId: '素材' }]);
 });

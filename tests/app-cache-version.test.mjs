@@ -3,7 +3,24 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { expectedAppCacheVersion, updateReportBuildIds } from '../tools/app-cache-version.mjs';
+import { expectedAppCacheVersion, updateAppCacheVersion, updateReportBuildIds } from '../tools/app-cache-version.mjs';
+
+test('data cache updates preserve the shell identity without requiring or touching macro artifacts', t => {
+  const siteRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'xivca-data-cache-'));
+  t.after(() => fs.rmSync(siteRoot, { recursive: true, force: true }));
+  const serviceWorkerPath = path.join(siteRoot, 'sw.js');
+  fs.writeFileSync(serviceWorkerPath, "const APP_CACHE_VERSION = 'ff14recipe-app-v4.03-original';\nconst PRECACHE_FILES = ['./app.js', './macro-app/build/engine.wasm'];\n");
+  fs.writeFileSync(path.join(siteRoot, 'app.js'), "const REPORT_BUILD_ID = 'old';\nconst DATA_CACHE_VERSION = 'one';\n");
+  fs.writeFileSync(path.join(siteRoot, 'item-icon-pack.js'), "const PACK_VERSION = 'one';\n");
+  const update = () => updateAppCacheVersion({ siteRoot, serviceWorkerPath, dataOnly: true });
+  const first = update();
+  assert.match(first, /^ff14recipe-app-v4\.03-original-data-[0-9a-f]{12}$/u);
+  assert.equal(update(), first);
+  fs.appendFileSync(path.join(siteRoot, 'app.js'), 'const next = true;\n');
+  assert.notEqual(update(), first);
+  assert.equal(fs.existsSync(path.join(siteRoot, 'macro-app')), false);
+  assert.throws(() => updateAppCacheVersion({ siteRoot, serviceWorkerPath }), /プリキャッシュ対象がありません/);
+});
 
 test('report build ID is stable across repeated builds and changes with the executing source', () => {
   const siteRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'xivca-report-id-'));

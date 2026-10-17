@@ -105,6 +105,7 @@ test('macro launcher disables every launch button until post-startup data prepar
     });
     const launchButton = launcher.createButton('テスト中間素材', 'material-recipe');
     assert.equal(launchButton.disabled, true);
+    assert.equal(launchButton.textContent, '準備中');
     assert.equal(launcher.open('recipe key'), false);
     assert.equal(classes.has('open'), false);
     assert.equal(launcher.showPending('recipe key', { scrollTop: 120 }), true);
@@ -116,6 +117,7 @@ test('macro launcher disables every launch button until post-startup data prepar
     await launcher.prepare({ Items: [] });
     assert.equal(launcher.isReady(), true);
     assert.equal(launchButton.disabled, false);
+    assert.equal(launchButton.textContent, '📜');
     assert.equal(global.MacroLauncher.getPreparedData(), prepared);
     launcher.open('recipe key');
     assert.match(frame.src, /recipe=recipe\+key/);

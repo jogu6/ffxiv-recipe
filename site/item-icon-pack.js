@@ -8,7 +8,7 @@
   const MAGIC = 'XIVIPK01';
   const HEADER_BYTES = 48;
   const PACK_SOURCE = './data/item-icons.pack.gz';
-  const PACK_VERSION = 'ff868b30521663058a826e92809b142ef3bc79b3dcc1256f65fb387489daac38';
+  const PACK_VERSION = '7218b1db8bbd3ef6003b657e00137d996567ae8ce0babdcfa806e1e874c2be46';
   const INDEXED_DB_NAME = 'ff14recipe-item-icons-v1';
   const INDEXED_DB_STORE = 'packs';
   const JOB_ICON_PACK_FILES = Object.freeze([

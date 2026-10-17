@@ -46,11 +46,15 @@ function gitFixture(t) {
   gitAt(root, 'config', 'user.name', 'Publication Test');
   gitAt(root, 'config', 'user.email', 'publication@example.invalid');
   gitAt(root, 'config', 'core.autocrlf', 'false');
-  write('.gitignore', 'pipeline/state/\nremote.git/\n');
+  write('.gitignore', 'pipeline/state/\nremote.git/\nmacro-app/build/\nsite/macro-app/\n');
   write('README.md', 'original\n');
   write('site/app.js', "const DATA_CACHE_VERSION = 'old-data';\nconst feature = 'original';\nconst stagedFeature = 'original';\n");
   write('site/item-icon-pack.js', "const PACK_VERSION = 'abcd';\nconst decoder = 'original';\n");
-  write('site/sw.js', "const APP_CACHE_VERSION = 'ff14recipe-app-v3.24-old';\nconst DATA_CACHE_VERSION = 'old-data';\nconst PRECACHE_FILES = ['./app.js', './item-icon-pack.js'];\nconst worker = 'original';\n");
+  write('site/sw.js', "const APP_CACHE_VERSION = 'ff14recipe-app-v3.24-old';\nconst DATA_CACHE_VERSION = 'old-data';\nconst PRECACHE_FILES = ['./app.js', './item-icon-pack.js', './macro-app/web/index.html', './macro-app/build/engine/runtime.wasm'];\nconst worker = 'original';\n");
+  write('macro-app/web/index.html', '<title>committed macro</title>');
+  write('macro-app/engine/src/lib.rs', '// committed engine\n');
+  write('site/macro-app/web/index.html', '<title>committed macro</title>');
+  write('site/macro-app/build/engine/runtime.wasm', 'committed engine');
   write('site/data/Item.json', '{"Version":"7.5","Items":[]}\n');
   write('site/data/legacy-item-ids.json', '{}\n');
   write('site/data/item-icons.pack.gz', Buffer.from([0, 255, 1]));
@@ -79,9 +83,11 @@ function gitFixture(t) {
     }
     if (args.some(arg => arg.endsWith('validate-site.mjs'))) {
       if (control.failValidation) throw new Error('simulated validation failure');
-      const candidate = path.resolve(path.dirname(args[0]), '..');
+      const candidate = args.includes('--root') ? args[args.indexOf('--root') + 1] : path.resolve(path.dirname(args[0]), '..');
       const sw = fs.readFileSync(path.join(candidate, 'site/sw.js'), 'utf8');
-      assert.ok(sw.includes(expectedAppCacheVersion({ siteRoot: path.join(candidate, 'site'), serviceWorkerSource: sw })));
+      if (/-data-[0-9a-f]{12}/u.test(sw)) {
+        assert.ok(sw.includes(expectedAppCacheVersion({ siteRoot: path.join(candidate, 'site'), serviceWorkerSource: sw })));
+      }
       assert.doesNotMatch(fs.readFileSync(path.join(candidate, 'site/app.js'), 'utf8'), /local|staged-edit/);
       return response();
     }
@@ -92,7 +98,7 @@ function gitFixture(t) {
       edit('site/sw.js', 'old-data', 'new-data');
       edit('site/item-icon-pack.js', 'abcd', 'ef01');
     }
-    if (args.includes('app-cache-version')) updateAppCacheVersion({ siteRoot: path.join(root, 'site'), serviceWorkerPath: path.join(root, 'site/sw.js') });
+    if (args.includes('app-cache-version')) updateAppCacheVersion({ siteRoot: path.join(root, 'site'), serviceWorkerPath: path.join(root, 'site/sw.js'), dataOnly: args.includes('--data-only') });
     return response();
   };
   const options = { repositoryRoot: root, statePath: path.join(root, 'pipeline/state/auto-publish.json'),
@@ -100,6 +106,27 @@ function gitFixture(t) {
     logger: { write() {} }, run, delay: async () => {}, fetchImpl: async () => ({ ok: true, status: 204 }) };
   return { root, remote, base, write, edit, calls, control, options };
 }
+
+test('data publication validates without macro artifacts and never builds or changes the engine', async t => {
+  const f = gitFixture(t);
+  f.write('macro-app/web/index.html', '<title>local macro edit</title>');
+  f.write('macro-app/engine/src/lib.rs', '// local engine edit\n');
+  fs.rmSync(path.join(f.root, 'site/macro-app'), { recursive: true });
+  const originalRun = f.options.run;
+  f.options.run = async (command, args, options) => {
+    assert.ok(!args.some(arg => /build-wasm|stage-site|wasm-pack|cargo/.test(arg)), 'data publication must not build or stage the macro engine');
+    if (args[0]?.endsWith('validate-site.mjs')) {
+      const candidate = args.includes('--root') ? args[args.indexOf('--root') + 1] : path.resolve(path.dirname(args[0]), '..');
+      assert.ok(args.includes('--data-only'));
+      assert.equal(fs.existsSync(path.join(candidate, 'site/macro-app')), false);
+    }
+    return originalRun(command, args, options);
+  };
+  const result = await publish(f.options);
+  assert.equal(result.status, 'published');
+  assert.equal(fs.existsSync(path.join(f.root, 'site/macro-app')), false);
+  assert.equal(gitAt(f.root, 'ls-tree', '-r', '--name-only', 'HEAD', '--', 'site/macro-app'), '');
+});
 
 test('real main publication commits only data and constant lines while preserving staged and unstaged edits', async t => {
   const f = gitFixture(t);

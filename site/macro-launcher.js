@@ -108,6 +108,7 @@
 
     function updateButton(button) {
       const ready = preparationState === 'ready';
+      button.textContent = ready ? '📜' : preparationState === 'failed' ? '準備失敗' : '準備中';
       button.disabled = !ready;
       button.classList?.toggle?.('preparing', !ready);
       if (ready) {

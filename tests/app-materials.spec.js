@@ -34,7 +34,7 @@ test('intermediate materials follow craft order, show usage, and open an indepen
   await expect(craftJobIcon).toHaveAttribute('data-item-icon-file', 'job-icons/blacksmith.webp');
   await expect(craftJobIcon).toHaveAttribute('alt', '');
   await expect(craftJobIcon).toHaveAttribute('aria-hidden', 'true');
-  const craftBadgeSizes = await bastardNode.locator('.material-primary').evaluate(primary => ({
+  const craftBadgeSizes = await bastardNode.evaluate(primary => ({
     fontSize: Number.parseFloat(getComputedStyle(primary.querySelector('.material-name')).fontSize),
     iconWidth: primary.querySelector('.job-icon').getBoundingClientRect().width,
     iconHeight: primary.querySelector('.job-icon').getBoundingClientRect().height
@@ -183,6 +183,7 @@ test('timed gathering dialog uses gatherer icons only for its gathering methods'
   await openApp(page);
 
   await searchFor(page, '金鉱');
+  await expect(page.locator('#recipeList .gathering-timer-btn').first()).toHaveText('⏰');
   await page.locator('#recipeList .gathering-timer-btn').first().click();
   const miningBadge = page.locator('#gatheringContent .gathering-method').first();
   await expect(miningBadge).toContainText('採掘');
@@ -206,6 +207,85 @@ test('timed gathering dialog uses gatherer icons only for its gathering methods'
   });
   expect(alignment.centerDelta).toBeLessThan(0.51);
   expect(alignment.iconWidth).toBeCloseTo(alignment.expectedIconSize, 1);
+});
+
+test('folklore requirements replace level labels and official gathering locations retain only supplemental timing', async ({ page }) => {
+  await openApp(page);
+  for (const [name, book, icon] of [
+    ['光霊銀鉱', '鉱物伝承録:ドラヴァニア', 'miner'],
+    ['カンファー古木', '草木伝承録:ドラヴァニア', 'botanist']
+  ]) {
+    await searchFor(page, name);
+    const row = page.locator('#recipeList li').filter({ has: page.getByText(name, { exact: true }) }).first();
+    await expect(row.locator('.badge-gathering')).toHaveText(book);
+    await expect(row.locator('.craft-job-label .job-icon')).toHaveAttribute('data-item-icon-file', `job-icons/${icon}.webp`);
+    await row.locator('.gathering-timer-btn').click();
+    await expect(page.locator('#gatheringContent')).toContainText('ドラヴァニア雲海');
+    await expect(page.locator('#gatheringContent')).toContainText(book);
+    await expect(page.locator('#gatheringContent')).not.toContainText('補助データ');
+    await page.locator('#gatheringCloseBtn').click();
+  }
+  await page.evaluate(() => showShopDialog('オーク材'));
+  await expect(page.locator('#shopContent')).not.toContainText('イクサル族のよろず屋');
+  await expect(page.locator('#shopPriceHeader')).not.toContainText('470');
+});
+
+test('timed gathering falls back to manual schedules for hidden official locations across all four methods', async ({ page }) => {
+  await openApp(page);
+  for (const [name, map, time, technical] of [
+    ['高密度軽銀鉱', 'ヘリテージファウンド', '10:00-12:00', '5,090'],
+    ['フルグライト', 'ヘリテージファウンド', '02:00-04:00', '4,740'],
+    ['コチニール染料', 'ヘリテージファウンド', '06:00-08:00', '4,740'],
+    ['海島綿', 'リビング・メモリー', '04:00-06:00', '4,480']
+  ]) {
+    await searchFor(page, name);
+    const row = page.locator('#recipeList li').filter({ has: page.getByText(name, { exact: true }) }).first();
+    await expect(row.locator('.gathering-timer-btn')).toHaveText('⏰');
+    await row.locator('.gathering-timer-btn').click();
+    await expect(page.locator('#gatheringContent')).toContainText(map);
+    await expect(page.locator('#gatheringContent')).toContainText(technical);
+    await expect(page.locator(`#gatheringContent .gathering-time[data-et-range="${time}"]`)).toBeVisible();
+    await page.locator('#gatheringCloseBtn').click();
+  }
+  await searchFor(page, '極硬水');
+  await page.locator('#recipeList .gathering-timer-btn').first().click();
+  for (const map of ['ガレマルド', '嘆きの海', 'エルピス']) await expect(page.locator('#gatheringContent')).toContainText(map);
+});
+
+test('shop information is restricted to unconditional gil sales', async ({ page }) => {
+  await openApp(page);
+  for (const name of ['ロースベーコン', 'イコンメタル', 'イコンミスライト', 'オーク材']) {
+    await searchFor(page, name);
+    const row = page.locator('#recipeList li').filter({ has: page.getByText(name, { exact: true }) }).first();
+    await expect(row.locator('.shop-info-btn')).toHaveCount(0);
+    await page.evaluate(name => showShopDialog(name), name);
+    await expect(page.locator('#shopContent')).toHaveText('店情報はありません。');
+    await page.locator('#shopCloseBtn').click();
+  }
+  await page.evaluate(() => showShopDialog('アバラシア岩塩'));
+  await expect(page.locator('#shopPriceHeader')).toContainText('1,980ギル');
+  await expect(page.locator('#shopContent')).toContainText('販売場所');
+  await expect(page.locator('#shopContent')).not.toContainText('アルジクラベンダー');
+  await expect(page.locator('#shopContent')).not.toContainText('交換条件');
+});
+
+test('manual-only unconditional gil vendors remain visible alongside official shops', async ({ page }) => {
+  await openApp(page);
+  for (const [name, price, vendor] of [
+    ['パースニップサラダ', '22ギル', '使用人／奉公人'],
+    ['ビーフシチュー', '415ギル', '使用人／奉公人'],
+    ['銅鉱', '2ギル', '素材屋']
+  ]) {
+    await searchFor(page, name);
+    const row = page.locator('#recipeList li').filter({ has: page.getByText(name, { exact: true }) }).first();
+    await expect(row.locator('.shop-info-btn')).toBeVisible();
+    await row.locator('.shop-info-btn').click();
+    await expect(page.locator('#shopPriceHeader')).toContainText(price);
+    const housing = page.locator('#shopContent .shop-entry').filter({ hasText: 'ハウジング雇用NPC' });
+    await expect(housing).toContainText(vendor);
+    if (name === '銅鉱') await expect(page.locator('#shopContent')).toContainText('甲冑師 スムルウィブ');
+    await page.locator('#shopCloseBtn').click();
+  }
 });
 
 test('uses buttons share the accent style', async ({ page }) => {

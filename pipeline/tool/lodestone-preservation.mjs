@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 
 const generatedItemFields = new Set(['ID', 'Name', 'SortOrder', 'ItemCategory', 'Recipe', 'Recipes',
-  'MaterialSortOrder', 'ItemLevel', 'CraftingEffects', 'IconFile', 'ShopInfo']);
+  'MaterialSortOrder', 'ItemLevel', 'CraftingEffects', 'IconFile', 'ShopInfo', 'GatheringTimer', 'GatheringLevels', 'ExchangeInfo']);
 
 export function publicItemMetadata(document) {
   if (!document || Array.isArray(document)) return {};
@@ -34,18 +34,11 @@ export function assertLodestoneItemPreservation(existingDocument, candidateItems
     }
     for (const [key, value] of Object.entries(before)) {
       if (key === 'ID' || key === 'Recipe' || key === 'Recipes') continue;
-      if (!Object.hasOwn(after, key)) problems.push(`${before.Name}.${key}: フィールド欠落`);
+      if (!Object.hasOwn(after, key)) {
+        if (!['GatheringLevels', 'GatheringTimer', 'ExchangeInfo', 'ShopInfo'].includes(key)) problems.push(`${before.Name}.${key}: フィールド欠落`);
+      }
       else if (!generatedItemFields.has(key) && !isDeepStrictEqual(value, after[key])) {
         problems.push(`${before.Name}.${key}: 引き継ぎ内容不一致`);
-      }
-    }
-    if (before.ShopInfo) {
-      // Prices can be refreshed in bulk. Keep vendor locations, ranks, and
-      // custom vendor fields, which are not all available on shop pages.
-      for (const [key, value] of Object.entries(before.ShopInfo)) {
-        if (key !== 'price' && !isDeepStrictEqual(value, after.ShopInfo?.[key])) {
-          problems.push(`${before.Name}.ShopInfo.${key}: 引き継ぎ内容不一致`);
-        }
       }
     }
   }

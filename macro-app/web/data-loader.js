@@ -146,6 +146,7 @@ export function macroDataFromItemDocument(document, preparedConsumables = null) 
   const maxCrafterLevel = Math.max(...recipes.map(recipe => recipe.level));
   return validateMacroData({
     dataVersion: `${document.Version}:${document.DataGeneration || 'unversioned'}`,
+    itemNameAliases: document.ItemNameAliases || {},
     recipes,
     foods: consumables.foods,
     medicines: consumables.medicines,

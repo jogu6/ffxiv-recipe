@@ -7,10 +7,12 @@ on:
       - 'site/**'
       - 'macro-app/**'
       - '.github/workflows/deploy-pages.yml'
+      - 'tools/prepare-macro-engines.mjs'
   workflow_dispatch:
 
 permissions:
   contents: read
+  deployments: read
   pages: write
   id-token: write
 
@@ -23,20 +25,32 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
           cache: npm
       - run: npm ci
       - run: npx playwright install chromium
+      - name: Prepare unchanged published engines
+        id: engines
+        run: node tools/prepare-macro-engines.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
       - uses: dtolnay/rust-toolchain@master
+        if: steps.engines.outputs.build == 'true'
         with:
           toolchain: nightly-2026-05-10
           components: rust-src
           targets: wasm32-unknown-unknown
       - uses: taiki-e/install-action@wasm-pack
-      - name: Build and stage macro engines
-        run: npm run build:wasm --prefix macro-app && npm run stage:site --prefix macro-app
+        if: steps.engines.outputs.build == 'true'
+      - name: Build changed macro engines
+        if: steps.engines.outputs.build == 'true'
+        run: npm run build:wasm --prefix macro-app
+      - name: Stage macro runtime
+        run: npm run stage:site --prefix macro-app
       - name: Verify one startup, parallel search, and allocation recovery
         run: npm run test:e2e -- tests/app-startup-progress.spec.js tests/macro-parallel-storage.spec.js --project chromium
   deploy:
@@ -47,16 +61,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Prepare unchanged published engines
+        id: engines
+        run: node tools/prepare-macro-engines.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
       - uses: dtolnay/rust-toolchain@master
+        if: steps.engines.outputs.build == 'true'
         with:
           toolchain: nightly-2026-05-10
           components: rust-src
           targets: wasm32-unknown-unknown
       - uses: taiki-e/install-action@wasm-pack
-      - name: Build isolated macro engine
+        if: steps.engines.outputs.build == 'true'
+      - name: Build changed macro engine
+        if: steps.engines.outputs.build == 'true'
         run: npm run build:wasm --prefix macro-app
       - name: Stage isolated macro application
         run: npm run stage:site --prefix macro-app

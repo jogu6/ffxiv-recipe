@@ -15,6 +15,7 @@ import { compareInitialLodestoneAudit, mergeLodestoneNameAliases } from './lodes
 import { resolveCraftingMechanics } from './crafting-mechanics-master.mjs';
 import { recordAppliedLodestoneState } from './lodestone-applied-state.mjs';
 import { assertLodestoneItemPreservation, publicItemMetadata, publicLodestoneDocument } from './lodestone-preservation.mjs';
+import { extractLodestoneShopInventory, readLodestoneShopIndex } from './lodestone-shop-source.mjs';
 import {
   buildItemIconPack,
   extractItemIconPack,
@@ -82,10 +83,8 @@ const tmpPreviewRoot = path.join(siteRoot, '__tmp_icon_quality');
 const tmpPreviewManifestPath = path.join(tmpPreviewRoot, 'manifest.json');
 const tmpPreviewDataPath = path.join(tmpPreviewRoot, 'preview-data.json');
 const remoteCsvNames = ['Item.csv', 'Recipe.csv', 'ItemUICategory.csv', 'ItemSearchCategory.csv'];
-const localCsvNames = ['token-items.csv'];
+const localCsvNames = [];
 const oxidizerRepositoryUrl = 'https://github.com/skyborn-industries/xiv-data-oxidizer';
-const gatheringAreaPath = path.join(inputRoot, 'gathering_area.json');
-const gatheringTimerPath = path.join(inputRoot, 'gathering_timer.json');
 const housingShopsPath = path.join(inputRoot, 'housing-shops.json');
 const friendlyTribeShopsPath = path.join(inputRoot, 'friendly-tribe-shops.json');
 const equipmentRoleOverridesPath = path.join(inputRoot, 'equipment-role-overrides.json');
@@ -532,7 +531,7 @@ export function openLodestoneShopCacheStore(file = lodestoneShopCacheDatabasePat
   return {
     file,
     db,
-    get: db.prepare('SELECT body, raw_bytes, sha256 FROM cache WHERE key = ?'),
+    get: db.prepare('SELECT body, raw_bytes, sha256, updated_at FROM cache WHERE key = ?'),
     put: db.prepare(`
       INSERT INTO cache (key, url, body, raw_bytes, sha256, updated_at) VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(key) DO UPDATE SET
@@ -569,6 +568,58 @@ export function writeLodestoneShopCacheEntry(store, key, text, { url = null } = 
     throw error;
   }
   return { sourceBytes: entry.rawBytes, compressedBytes: entry.body.length };
+}
+
+export const LODESTONE_ACQUISITION_CACHE_MAX_AGE_MS = 60 * 60 * 1000;
+
+// Shared by scheduled comparison and candidate generation. Age and source
+// version bound reuse; a new process can reuse the same verified HTML.
+export function createLodestoneHtmlReader({ root = repositoryRoot, version, delayMs = 100,
+  maxAgeMs = LODESTONE_ACQUISITION_CACHE_MAX_AGE_MS, fetchImpl = fetch, now = Date.now } = {}) {
+  const store = openLodestoneShopCacheStore(path.join(root, 'pipeline/cache/lodestone-shops.sqlite'));
+  const sourceVersion = html => normalizeHtmlText(html.match(/db-content__title--version[^>]*>([\s\S]*?)<\/p>/)?.[1] || '').replace(/^Version:\s*Patch\s*/i, '');
+  const isShopCategory = url => new URL(url).pathname.endsWith('/special_shop_inner');
+  const validate = (url, html) => {
+    const pathname = new URL(url).pathname;
+    if (isShopCategory(url)) {
+      const parsed = extractLodestoneShopInventory(html, { name: '交換カテゴリ', shops: [{}] });
+      if (!parsed.inventory.length) throw new Error('Lodestoneの交換カテゴリが不正です');
+    }
+    else if (pathname.endsWith('/db/shop/')) extractLodestoneListMeta(html);
+    else if (pathname.includes('/db/shop/')) extractLodestoneShopInventory(html);
+    else if (pathname.includes('/db/gathering/')) extractLodestoneGatheringInfo(html);
+    else if (!html.includes('db-view__item__text__name')) throw new Error('Lodestoneのアイテム詳細ページが不正です');
+    const actual = sourceVersion(html);
+    if (version && actual && actual !== version) throw new Error('取得HTMLのLodestone版が一致しません');
+  };
+  const network = createSequentialRequestQueue({ delayMs, request: async url => {
+    const response = await fetchImpl(url, { headers: { 'user-agent': 'ffxiv-recipe-lodestone-monitor/1.0' }, signal: AbortSignal.timeout(30000) });
+    if (!response.ok) throw new Error(`Lodestoneの取得に失敗しました (HTTP ${response.status})`);
+    const html = await response.text();
+    validate(url, html);
+    // Only pages carrying source metadata are eligible for persistent reuse.
+    if (sourceVersion(html) || (isShopCategory(url) && version)) writeLodestoneShopCacheEntry(store, cacheKey(url), html, { url });
+    return html;
+  } });
+  const cacheKey = url => lodestoneCacheKey(isShopCategory(url) ? `${url}#source-version=${version}` : url);
+  return {
+    async request(url) {
+      const key = cacheKey(url);
+      const cached = store.get.get(key);
+      const age = cached ? now() - cached.updated_at : Infinity;
+      if (cached && age >= 0 && age < maxAgeMs) {
+        try {
+          const html = decompressLodestoneHtml(cached);
+          if ((isShopCategory(url) && version) || (sourceVersion(html) && (!version || sourceVersion(html) === version))) {
+            validate(url, html);
+            return html;
+          }
+        } catch { store.remove.run(key); }
+      }
+      return network(url);
+    },
+    close: () => store.close()
+  };
 }
 
 function sha256File(file) {
@@ -612,7 +663,8 @@ function updateDataCacheVersion({
   itemJsonPath = publicItemJsonPath,
   salt = '',
   reason = 'data',
-  rebuildIconPack = true
+  rebuildIconPack = true,
+  dataOnly = false
 } = {}) {
   if (rebuildIconPack && path.resolve(itemJsonPath) === path.resolve(publicItemJsonPath)) {
     const pack = buildPublicItemIconPack();
@@ -622,7 +674,7 @@ function updateDataCacheVersion({
   updateServiceWorkerDataCacheVersion(version);
   updateAppDataCacheVersion(version);
   log(`データキャッシュ版を更新しました ${version} (${reason})`);
-  const appCacheVersion = updateAppCacheVersion({ siteRoot, serviceWorkerPath });
+  const appCacheVersion = updateAppCacheVersion({ siteRoot, serviceWorkerPath, dataOnly });
   log(`アプリキャッシュ版を更新しました ${appCacheVersion}`);
   return version;
 }
@@ -751,8 +803,8 @@ export function syncShareCodePlazaIcons({
   return output;
 }
 
-export function refreshAppCacheVersion() {
-  const version = updateAppCacheVersion({ siteRoot, serviceWorkerPath });
+export function refreshAppCacheVersion({ dataOnly = false } = {}) {
+  const version = updateAppCacheVersion({ siteRoot, serviceWorkerPath, dataOnly });
   log(`アプリキャッシュ版を更新しました ${version}`);
   return version;
 }
@@ -1913,7 +1965,7 @@ function extractTableCells(rowHtml) {
 }
 
 function parseLodestoneLocation(text) {
-  const match = String(text || '').match(/^(.+?)\s+X:([0-9]+(?:\.[0-9]+)?)\s+Y:([0-9]+(?:\.[0-9]+)?)/);
+  const match = String(text || '').match(/^(.+?)\s+X:\s*([0-9]+(?:\.[0-9]+)?)\s+Y:\s*([0-9]+(?:\.[0-9]+)?)/);
   if (!match) return null;
   return {
     area: match[1].trim(),
@@ -1943,8 +1995,7 @@ export function extractLodestoneShopInfo(detailHtml) {
     if (!shopPath) continue;
     const cells = extractTableCells(rowHtml);
     if (cells.length < 2) continue;
-    const location = parseLodestoneLocation(cells[1]);
-    if (!location) continue;
+    const location = parseLodestoneLocation(cells[1]) || { area: cells[1] };
     const shopName = cells[0].trim();
     const shopId = shopPath[2];
     const key = `${shopId}:${shopName}:${location.area}:${location.x}:${location.y}`;
@@ -1974,16 +2025,244 @@ function extractLodestoneSection(detailHtml, heading) {
   return nextHeading < 0 ? source.slice(start) : source.slice(start, start + nextHeading);
 }
 
-export function extractLodestoneMaterialSortInfo(detailHtml) {
-  const source = String(detailHtml || '');
-  const gatheringSection = extractLodestoneSection(source, 'このアイテムの採集手帳');
+export function extractLodestoneGatheringLevels(detailHtml) {
+  const gatheringSection = extractLodestoneSection(detailHtml, 'このアイテムの採集手帳');
   const gathering = [];
   for (const rowMatch of gatheringSection.matchAll(/<tr\b[\s\S]*?<\/tr>/gi)) {
     const cells = extractTableCells(rowMatch[0]);
-    const method = materialAcquisitionOrder.slice(0, 4).find(name => cells[0] === name);
+    const method = [...materialAcquisitionOrder.slice(0, 4), '釣り', '刺突漁'].find(name => cells[0] === name);
     const level = Number(cells[1]);
-    if (method && Number.isFinite(level)) gathering.push({ method, level });
+    if (method && Number.isSafeInteger(level) && level > 0
+      && !gathering.some(entry => entry.method === method && entry.level === level)) gathering.push({ method, level });
   }
+  return gathering;
+}
+
+export function extractLodestoneExchanges(detailHtml) {
+  const source = String(detailHtml || '').replace(/<table\b[^>]*class=["'][^"']*\bdb-shop__cs\b[^"']*["'][^>]*>([\s\S]*?)<\/table>/g, (_table, body) => {
+    const values = [...body.matchAll(/<p[^>]*class=["'][^"']*db-view__shop__type__text[^"']*["'][^>]*>([\s\S]*?)<\/p>/g)].map(match => normalizeHtmlText(match[1]));
+    if (!/^\d[\d,]*$/.test(values[0] || '')) throw new Error('軍票の必要数を取得できません');
+    if (!values[1]) throw new Error('軍票交換の必要階級を取得できません');
+    return `<h4>軍票</h4><span class="db-view__data__number">${values[0]}</span><span class="db-shop__required_rank">${values[1]}</span>`;
+  });
+  const alternatives = new Map();
+  for (const table of source.matchAll(/<table\b[^>]*class=["'][^"']*\bdb-table__item_source\b[^"']*["'][^>]*>([\s\S]*?)<\/table>/gi)) {
+    if (!/取引に必要なアイテム|交換に必要な軍票/.test(normalizeHtmlText(table[1]))) continue;
+    for (const row of table[1].matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
+      const cells = [...row[1].matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map(match => match[1]);
+      if (cells.length !== 2) continue;
+      const ingredients = [...cells[0].matchAll(/<h4\b[^>]*>([\s\S]*?)<\/h4>\s*<span\b[^>]*class=["'][^"']*\bdb-view__data__number\b[^"']*["'][^>]*>([\s\S]*?)<\/span>/gi)]
+        .map(match => ({ Name: normalizeHtmlText(match[1]), Amount: Number(normalizeHtmlText(match[2]).replaceAll(',', '')) }));
+      if (!ingredients.length || ingredients.some(item => !item.Name || !Number.isSafeInteger(item.Amount) || item.Amount <= 0)) {
+        throw new Error('Lodestoneの交換条件を正確に取得できません');
+      }
+      const key = JSON.stringify([...ingredients].sort((a, b) => a.Name.localeCompare(b.Name)));
+      if (!alternatives.has(key)) alternatives.set(key, { ingredients, shops: [] });
+      const shopName = normalizeHtmlText(cells[1].match(/<p\b[^>]*class=["'][^"']*db-shop__item__npc[^"']*["'][^>]*>([\s\S]*?)<\/p>/i)?.[1] || '');
+      const locationText = cells[1].match(/<p\b[^>]*class=["'][^"']*db-shop__item__xy[^"']*["'][^>]*>([\s\S]*?)<\/p>/i)?.[1] || '';
+      const location = parseLodestoneLocation(normalizeHtmlText(locationText));
+      const rank = normalizeHtmlText(cells[0].match(/class="db-shop__required_rank">([^<]*)/)?.[1] || '');
+      const shop = { shopName, ...(location || {}), ...(rank ? { requiredRank: rank } : {}) };
+      const shops = alternatives.get(key).shops;
+      if (shopName && !shops.some(value => JSON.stringify(value) === JSON.stringify(shop))) shops.push(shop);
+    }
+  }
+  return [...alternatives.values()];
+}
+
+export function enrichLodestoneAcquisition(item, detailHtml) {
+  const gathering = extractLodestoneGatheringLevels(detailHtml);
+  const exchanges = extractLodestoneExchanges(detailHtml);
+  if (gathering.length) item.GatheringLevels = gathering;
+  else delete item.GatheringLevels;
+  if (exchanges.length) item.ExchangeInfo = exchanges;
+  else delete item.ExchangeInfo;
+}
+
+export function extractLodestoneGatheringReferences(html) {
+  return [...extractLodestoneSection(html, 'このアイテムの採集手帳')
+    .matchAll(/href=["'](\/lodestone\/playguide\/db\/gathering\/[a-z0-9]+\/)["'][^>]*>([\s\S]*?)<\/a>/g)]
+    .map(match => ({ path: match[1], method: normalizeHtmlText(match[2]) }))
+    .filter(entry => materialAcquisitionOrder.slice(0, 4).includes(entry.method));
+}
+
+export function extractLodestoneGatheringInfo(html) {
+  if (!html.includes('db-view__gathering__data')) throw new Error('Lodestoneの採集詳細ページが不正です');
+  const method = normalizeHtmlText(html.match(/<p[^>]*class=["'][^"']*db-view__item__text__job_name[^"']*["'][^>]*>([\s\S]*?)<\/p>/)?.[1] || '');
+  const level = Number(html.match(/class=["'][^"']*db-view__item__text__level__num[^"']*["'][^>]*>\s*(\d+)/)?.[1]);
+  if (!materialAcquisitionOrder.slice(0, 4).includes(method) || !Number.isSafeInteger(level) || level <= 0) throw new Error('採集方法・レベルを取得できません');
+  const crumbs = [...html.matchAll(/<a\b[^>]*class=["'][^"']*\bbreadcrumb__link\b[^"']*["'][^>]*>([\s\S]*?)<\/a>/g)].map(match => normalizeHtmlText(match[1]));
+  const folkloreIndex = crumbs.indexOf('伝承録');
+  const region = folkloreIndex >= 0 ? crumbs[folkloreIndex + 1] : '';
+  if (folkloreIndex >= 0 && !region) throw new Error('伝承録の地域を取得できません');
+  const chronicle = region ? `${['採掘', '砕岩'].includes(method) ? '鉱物' : '草木'}伝承録:${region}` : '';
+  const data = html.slice(html.indexOf('db-view__gathering__data'), html.indexOf('<div class="db-tools">') > 0 ? html.indexOf('<div class="db-tools">') : undefined);
+  const technical = normalizeHtmlText(data).match(/技術力\s*([\d,]+)\s*以上/);
+  const requiredTechnical = technical ? Number(technical[1].replaceAll(',', '')) : undefined;
+  const locations = [];
+  for (const area of data.matchAll(/<h5[^>]*class=["'][^"']*db-view__gathering__area[^"']*["'][^>]*>([\s\S]*?)<\/h5>([\s\S]*?)(?=<h5\b|$)/g)) {
+    if (/^\?{2,}$/.test(normalizeHtmlText(area[1])) || /<dt[^>]*>\s*\?{2,}\s*<\/dt>/.test(area[2])) {
+      locations.push({ Area: normalizeHtmlText(area[1]), Map: '????', Method: method,
+        ...(chronicle ? { Chronicle: chronicle } : {}), Times: [] });
+      continue;
+    }
+    for (const point of area[2].matchAll(/<dl[^>]*class=["'][^"']*db-view__gathering__point["'][^>]*>([\s\S]*?)<\/dl>/g)) {
+      const map = normalizeHtmlText(point[1].match(/<dt[^>]*>([\s\S]*?)<\/dt>/)?.[1] || '');
+      for (const detail of point[1].matchAll(/<dd[^>]*>([\s\S]*?)<\/dd>/g)) {
+        const text = normalizeHtmlText(detail[1]);
+        const node = text.match(/^Lv\s*(\d+)\s*(.*)$/);
+        if (!map || !node) throw new Error('採集場所を取得できません');
+        locations.push({ Area: normalizeHtmlText(area[1]), Map: map, Method: method,
+          NodeLevel: Number(node[1]), Location: node[2], ...(chronicle ? { Chronicle: chronicle } : {}), Times: [] });
+      }
+    }
+  }
+  if (!locations.length && data.includes('db-view__gathering__point')) throw new Error('採集場所を解析できません');
+  return { method, level, ...(chronicle ? { chronicle } : {}), ...(requiredTechnical != null ? { requiredTechnical } : {}), locations };
+}
+
+export function readGatheringSupplements(root = repositoryRoot) {
+  const rows = readJson(path.join(root, 'pipeline/input/gathering-supplements.json'), {}).gathering_supplements || [];
+  const regions = readJson(path.join(root, 'pipeline/input/gathering-area-supplements.json'), {}).gathering_area || [];
+  const areaByMap = new Map(regions.flatMap(region => (region.maps || []).map(map => [map, region.region_name])));
+  const result = new Map();
+  for (const row of rows) {
+    if (!result.has(row.item_name)) result.set(row.item_name, []);
+    for (const [Map, Times] of Object.entries(row.location || {})) {
+      result.get(row.item_name).push({ Map, Method: row.method, Type: row.type || '', Times,
+        ...(areaByMap.has(Map) ? { Area: areaByMap.get(Map) } : {}),
+        ...(Number.isFinite(Number(row.required_technical)) ? { RequiredTechnical: Number(row.required_technical) } : {}) });
+    }
+  }
+  return result;
+}
+
+export function mergeLodestoneGatheringSupplements(info, supplements, { unavailable = false } = {}) {
+  const extras = supplements.filter(entry => entry.Method === info.method);
+  const known = info.locations.filter(entry => entry.Map && entry.Map !== '????');
+  const hidden = info.locations.filter(entry => !entry.Map || entry.Map === '????');
+  const result = [];
+  const append = (location, extra) => {
+    const technical = info.requiredTechnical ?? (unavailable ? extra?.RequiredTechnical ?? location.RequiredTechnical : location.RequiredTechnical ?? extra?.RequiredTechnical);
+    const row = { ...location, Method: info.method, Type: info.chronicle ? '伝説' : extra?.Type || location.Type || '',
+      ...(info.chronicle ? { Chronicle: info.chronicle } : {}), Times: unavailable && extra ? extra.Times : location.Times?.length ? location.Times : extra?.Times || [],
+      ...(technical != null ? { RequiredTechnical: technical } : {}) };
+    if (!result.some(value => JSON.stringify(value) === JSON.stringify(row))) result.push(row);
+  };
+  for (const location of known) append(location, extras.find(extra => extra.Map === location.Map));
+  if (hidden.length || !info.locations.length || unavailable) {
+    const unmatched = extras.filter(extra => !known.some(location => location.Map === extra.Map));
+    for (const extra of unmatched) {
+      const location = hidden.find(entry => entry.Area === extra.Area) || hidden[0] || {};
+      append({ ...location, Area: location.Area && location.Area !== '????' ? location.Area : extra.Area || '', Map: extra.Map }, extra);
+    }
+    if (!unmatched.length) for (const location of hidden) append(location);
+  }
+  return result;
+}
+
+export function createLodestoneAcquisitionReader({ request, supplements = readGatheringSupplements(), onFallback = () => {} }) {
+  return async (item, html) => {
+    const previousLevels = item.GatheringLevels || [];
+    const previousLocations = item.GatheringTimer || [];
+    const levels = extractLodestoneGatheringLevels(html);
+    const extras = supplements.get(item.Name) || [];
+    const gathering = [];
+    const locations = [];
+    const references = extractLodestoneGatheringReferences(html);
+    for (const method of new Set(extras.map(extra => extra.Method))) {
+      if (!references.some(reference => reference.method === method)) references.push({ method });
+    }
+    for (const reference of references) {
+      let info;
+      let unavailable = false;
+      try {
+        if (!reference.path) throw new Error('公式の採集詳細リンクがありません');
+        info = extractLodestoneGatheringInfo(await request(`${LODESTONE_BASE_URL}${reference.path}`));
+      } catch (error) {
+        if (!extras.some(extra => extra.Method === reference.method)) throw new Error(`採集情報を取得できません: ${item.Name} (${reference.path}): ${error.message}`, { cause: error });
+        unavailable = true;
+        const previous = previousLevels.find(level => level.method === reference.method) || levels.find(level => level.method === reference.method);
+        info = { ...previous, method: reference.method, locations: previousLocations.filter(location => location.Method === reference.method) };
+        onFallback({ item: item.Name, method: reference.method, reason: error.message });
+      }
+      if (info.method !== reference.method) throw new Error(`採集方法が一致しません: ${item.Name}`);
+      if (Number.isSafeInteger(info.level)) gathering.push({ method: info.method, level: info.level, ...(info.chronicle ? { chronicle: info.chronicle } : {}) });
+      locations.push(...mergeLodestoneGatheringSupplements(info, extras, { unavailable }));
+    }
+    if (gathering.length) item.GatheringLevels = gathering;
+    else if (levels.length) item.GatheringLevels = levels;
+    else delete item.GatheringLevels;
+    if (locations.length) item.GatheringTimer = locations;
+    else delete item.GatheringTimer;
+  };
+}
+
+export function applyLodestoneShopIndex(item, index, exchangeCurrencies = new Set()) {
+  const record = index.get(item.Name);
+  for (const key of ['ShopInfo', 'ExchangeInfo']) {
+    if (record?.[key]) item[key] = structuredClone(record[key]);
+    else delete item[key];
+  }
+  if (!item.Recipe) {
+    const routes = (item.ExchangeInfo || []).filter(route => (route.resultAmount || 1) === 1
+      && route.ingredients.length === 1 && exchangeCurrencies.has(route.ingredients[0].Name));
+    if (routes.length) item.Recipe = { RecipeKey: `exchange-${itemIconNameHash(item.Name)}`, CraftType: '8', AmountResult: '1',
+      Ingredients: routes.map(route => ({ ...route.ingredients[0], Amount: String(route.ingredients[0].Amount) })) };
+  }
+  refreshLodestoneExchangeCosts(item);
+}
+
+export function readGilShopSupplements(root = repositoryRoot) {
+  const input = readJson(path.join(root, 'pipeline/input/gil-shop-supplements.json'), {});
+  const result = new Map();
+  for (const [name, info] of Object.entries(input)) {
+    if (info.price == null || !Number.isSafeInteger(Number(info.price)) || Number(info.price) < 0) throw new Error(`ギル販売補助データの価格が不正です: ${name}`);
+    const shops = (info.shops || []).filter(shop => !shop.requiredRank);
+    if (shops.length) result.set(name, { price: Number(info.price), shops });
+  }
+  return result;
+}
+
+// Configured currencies choose a route; official quantities own its costs.
+export function refreshLodestoneExchangeCosts(item) {
+  for (const recipe of new Set([item.Recipe, ...(item.Recipes || [])].filter(Boolean))) {
+    if (!['8', '9'].includes(String(recipe.CraftType))) continue;
+    const ingredients = [];
+    const amounts = new Set();
+    for (const previous of recipe.Ingredients) {
+      const routes = (item.ExchangeInfo || []).filter(route => route.ingredients.length === 1 && route.ingredients[0].Name === previous.Name);
+      if (routes.length > 1) throw new Error(`交換必要数を一意に決定できません: ${item.Name}`);
+      if (routes.length === 1) {
+        ingredients.push({ ...routes[0].ingredients[0], Amount: String(routes[0].ingredients[0].Amount) });
+        amounts.add(routes[0].resultAmount || 1);
+      }
+    }
+    if (!ingredients.length && recipe.Ingredients.length) {
+      if (item.Recipes) item.Recipes = item.Recipes.filter(value => value !== recipe);
+      if (item.Recipe === recipe) {
+        if (item.Recipes?.length) item.Recipe = item.Recipes[0];
+        else delete item.Recipe;
+      }
+      continue;
+    }
+    recipe.Ingredients = ingredients;
+    if (amounts.size > 1) throw new Error(`交換ルートの受取個数が一致しません: ${item.Name}`);
+    if (amounts.size) recipe.AmountResult = String([...amounts][0]);
+  }
+}
+
+function exchangeRouteRows(items, aliases = {}) {
+  return items.flatMap(item => {
+    const recipe = item.Recipe;
+    return ['8', '9'].includes(String(recipe?.CraftType))
+      ? recipe.Ingredients.map(ingredient => [aliases[item.Name] || item.Name, ingredient.Name, '0', String(recipe.CraftType)]) : [];
+  });
+}
+
+export function extractLodestoneMaterialSortInfo(detailHtml) {
+  const source = String(detailHtml || '');
+  const gathering = extractLodestoneGatheringLevels(source).filter(entry => materialAcquisitionOrder.includes(entry.method));
 
   const recipeSection = extractLodestoneSection(source, '関連製作手帳');
   const craftLevels = [];
@@ -2001,7 +2280,7 @@ export function extractLodestoneMaterialSortInfo(detailHtml) {
   let acquisition = gatheringByPriority?.method || '';
   if (!acquisition && source.includes('ドロップする敵NPC')) acquisition = '狩猟';
   if (!acquisition && extractLodestoneShopPrice(source) != null) acquisition = '購入';
-  if (!acquisition && source.includes('取引に必要なアイテム')) acquisition = '交換';
+  if (!acquisition && /取引に必要なアイテム|交換に必要な軍票/.test(source)) acquisition = '交換';
   if (!acquisition) acquisition = 'その他';
 
   return {
@@ -2549,7 +2828,7 @@ export async function refreshLodestoneAuditSnapshot({
           !Array.isArray(initialPublishedDocument.Items)) {
         throw new Error('初回監査基準と現在公開中のItem.jsonが不整合なため監査を開始できません');
       }
-      initialManualExchangeRows = readCsv(csvPath('token-items.csv'));
+      initialManualExchangeRows = exchangeRouteRows(initialPublishedDocument.Items);
     }
     log(`Lodestone完全監査を開始します: 間隔 ${Math.max(0, Number(delayMs) || 0)}ms`);
     const result = await runLodestoneFullAudit({
@@ -4033,9 +4312,9 @@ function buildGatheringMapOrder(areas) {
   return order;
 }
 
-function normalizeGatheringTimerEntries() {
-  const areas = readJson(gatheringAreaPath, {}).gathering_area || [];
-  const timers = readJson(gatheringTimerPath, {}).gathering_timer || [];
+export function normalizeGatheringTimerEntries(root = repositoryRoot) {
+  const areas = readJson(path.join(root, 'pipeline/input/gathering_area.json'), {}).gathering_area || [];
+  const timers = readJson(path.join(root, 'pipeline/input/gathering_timer.json'), {}).gathering_timer || [];
   const mapOrder = buildGatheringMapOrder(areas);
   const methodOrder = new Map([['採掘', 0], ['砕岩', 1], ['伐採', 2], ['草刈', 3]]);
   const byName = new Map();
@@ -4584,6 +4863,7 @@ export async function buildLodestoneCandidate({
   clearCancelRequest();
   cancellationEnabled = true;
   let auditStore = null;
+  let acquisitionHtmlReader = null;
   try {
   const snapshot = readJson(snapshotPath, null);
   if (!snapshot || !Array.isArray(snapshot.Items) || !Array.isArray(snapshot.Recipes)) {
@@ -4609,19 +4889,19 @@ export async function buildLodestoneCandidate({
     const key = String(previousItemUrls[String(item.ID)] || '').match(/\/item\/([a-z0-9]+)\//)?.[1];
     if (key) existingByLodestoneKey.set(key, item);
   }
-  const tokenRows = readCsv(csvPath('token-items.csv'));
+  const tokenRows = exchangeRouteRows(existingItems, storedAliases?.Aliases || {});
   const unmatched = [];
   for (const [index, row] of tokenRows.entries()) {
-    if (row.length !== 4 || !['8', '9'].includes(row[3])) throw new Error(`Invalid token-items.csv row ${index + 1}.`);
+    if (row.length !== 4 || !['8', '9'].includes(row[3])) throw new Error(`Invalid generated exchange route ${index + 1}.`);
     if (!listedByName.has(row[0])) {
       const ordinalCorrection = row[0].replace(/([一二三四])時/g, '$1次');
       if (ordinalCorrection !== row[0] && listedByName.has(ordinalCorrection)) {
-        log(`手動データ名を自動修正します: ${row[0]} → ${ordinalCorrection}`);
+        log(`既存の交換アイテム名を自動修正します: ${row[0]} → ${ordinalCorrection}`);
         row[0] = ordinalCorrection;
       }
     }
     if (!listedByName.has(row[0])) {
-      unmatched.push({ source: 'token-items.csv', row: index + 1, name: row[0], candidates: similarLodestoneNames(row[0], allNames) });
+      unmatched.push({ source: 'generated-exchange-routes', row: index + 1, name: row[0], candidates: similarLodestoneNames(row[0], allNames) });
     }
   }
   ensureDir(reportsRoot);
@@ -4630,7 +4910,7 @@ export async function buildLodestoneCandidate({
     const batch = unmatched.slice(0, 10).map(entry =>
       `${entry.name} (${entry.source}:${entry.row}) 候補: ${entry.candidates.map(row => row.name).join('、')}`
     );
-    throw new Error(`手動データ名をLodestoneで確認できません（先頭${batch.length}/${unmatched.length}件）:\n${batch.join('\n')}`);
+    throw new Error(`既存の交換アイテム名をLodestoneで確認できません（先頭${batch.length}/${unmatched.length}件）:\n${batch.join('\n')}`);
   }
 
   const craftTypeByJob = new Map(readJson(craftJobsPath, { jobs: [] }).jobs.map(job => [job.name, String(job.craftType)]));
@@ -4668,7 +4948,7 @@ export async function buildLodestoneCandidate({
     const variants = recipeVariants.get(targetName) || [];
     const ingredient = { Name: currencyName, Amount: amount };
     if (variants.length > 0) variants[0].Ingredients.push(ingredient);
-    else variants.push({ RecipeKey: `exchange-${index + 1}`, CraftType: craftType, AmountResult: '1', Ingredients: [ingredient] });
+    else variants.push({ RecipeKey: existingByCurrentName.get(targetName)?.Recipe?.RecipeKey || `exchange-${itemIconNameHash(targetName)}`, CraftType: craftType, AmountResult: '1', Ingredients: [ingredient] });
     recipeVariants.set(targetName, variants);
   }
 
@@ -4747,7 +5027,7 @@ export async function buildLodestoneCandidate({
       log(`新規アイテム詳細 ${index + 1}/${newItems.length}: ${item.Name}`);
     }
   }
-  for (const currencyName of new Set(tokenRows.map(row => row[1]))) {
+  for (const currencyName of new Set([...tokenRows.map(row => row[1]), 'ギル'])) {
     if (regularNames.has(currencyName)) continue;
     const existing = existingByName.get(currencyName);
     items.push(existing ? { ...cloneJson(existing), Name: currencyName } : { Name: currencyName });
@@ -4757,17 +5037,28 @@ export async function buildLodestoneCandidate({
     crystalDefinition.kinds.map(kind => `${element.name}${kind.name}`)
   ));
   const tokenCurrencyNames = new Set(tokenRows.map(row => row[1]));
-  const materialNames = new Set([...usedNames].filter(name =>
-    !recipeVariants.has(name) && !crystalNames.has(name) && !tokenCurrencyNames.has(name)
+  const materialNames = new Set([...usedNames, ...tokenRows.map(row => row[0])
+    .filter(name => existingByName.get(name)?.MaterialSortOrder)].filter(name =>
+    (!recipeVariants.has(name) || existingByName.get(name)?.MaterialSortOrder)
+      && !crystalNames.has(name) && !tokenCurrencyNames.has(name)
   ));
   const materialSortInfoByName = new Map();
+  acquisitionHtmlReader = createLodestoneHtmlReader({ version: snapshot.Version, delayMs });
+  const acquisitionRequest = url => acquisitionHtmlReader.request(url);
+  const gatheringSupplements = readGatheringSupplements();
+  const readAcquisition = createLodestoneAcquisitionReader({ request: acquisitionRequest, supplements: gatheringSupplements,
+    onFallback: ({ item, method, reason }) => log(`採集補助データへ切替: ${item} (${method}): ${reason}`) });
+  const acquisitionNames = new Set();
   log(`素材の表示順をLodestone詳細から生成します: ${materialNames.size}件`);
   let materialIndex = 0;
   for (const name of materialNames) {
     assertNotCancelled();
     const source = listedByName.get(name);
     if (!source?.DetailPath) throw new Error(`素材のLodestone詳細URLがありません: ${name}`);
-    const detailHtml = await fetchCachedLodestoneText(`${LODESTONE_BASE_URL}${source.DetailPath}`, delayMs);
+    const detailHtml = await acquisitionRequest(`${LODESTONE_BASE_URL}${source.DetailPath}`);
+    if (!detailHtml.includes('db-view__item__text__name')) throw new Error(`素材のアイテム詳細ページが不正です: ${name}`);
+    await readAcquisition(itemByName.get(name), detailHtml);
+    acquisitionNames.add(name);
     materialSortInfoByName.set(name, extractLodestoneMaterialSortInfo(detailHtml));
     materialIndex += 1;
     if (materialIndex % 250 === 0 || materialIndex === materialNames.size) {
@@ -4775,6 +5066,20 @@ export async function buildLodestoneCandidate({
     }
   }
   assignMaterialSortOrders(items, materialNames, listedByName, materialSortInfoByName);
+  const remainingAcquisition = items.filter(item => !acquisitionNames.has(item.Name)
+    && (item.GatheringTimer?.length || item.GatheringLevels?.length || gatheringSupplements.has(item.Name))
+    && listedByName.has(item.Name));
+  for (const [index, item] of remainingAcquisition.entries()) {
+    const source = listedByName.get(item.Name);
+    const html = await acquisitionRequest(`${LODESTONE_BASE_URL}${source.DetailPath}`);
+    if (!html.includes('db-view__item__text__name')) throw new Error(`採集情報の詳細ページが不正です: ${item.Name}`);
+    await readAcquisition(item, html);
+    if ((index + 1) % 250 === 0 || index + 1 === remainingAcquisition.length) log(`採集情報 ${index + 1}/${remainingAcquisition.length}`);
+  }
+  const shopSource = await readLodestoneShopIndex({ request: acquisitionRequest, version: snapshot.Version, supplements: readGilShopSupplements(),
+    onProgress: ({ completed, total, name }) => { if (completed % 25 === 0 || completed === total) log(`店舗情報 ${completed}/${total}: ${name}`); } });
+  const exchangeCurrencies = new Set(tokenRows.map(row => row[1]));
+  for (const item of items) applyLodestoneShopIndex(item, shopSource.index, exchangeCurrencies);
   const currentNameByLodestoneKey = new Map(snapshot.Items.map(item => [item.LodestoneKey, item.Name]));
   const publishedLegacy = readJson(path.join(siteRoot, 'data', 'legacy-item-ids.json'), { Items: {} });
   const legacyIds = {
@@ -4790,7 +5095,7 @@ export async function buildLodestoneCandidate({
     Object.entries({ ...(existingDocument.ItemNameAliases || {}), ...(storedAliases?.Aliases || {}) })
       .filter(([, currentName]) => items.some(item => item.Name === currentName))
   );
-  const requiredNames = new Set([...targetNames, ...tokenRows.map(row => row[1])]);
+  const requiredNames = new Set([...targetNames, ...tokenRows.map(row => row[1]), 'ギル']);
   const retiredNames = existingItems.filter(item =>
     !requiredNames.has(storedAliases?.Aliases?.[item.Name] || item.Name)).map(item => item.Name);
   assertLodestoneItemPreservation(existingDocument, items, storedAliases?.Aliases || {}, retiredNames);
@@ -4836,6 +5141,7 @@ export async function buildLodestoneCandidate({
         lodestoneShopCacheStore = null;
       }
     }
+    if (acquisitionHtmlReader) acquisitionHtmlReader.close();
     if (auditStore) auditStore.close();
   }
 }
@@ -5055,7 +5361,8 @@ export function publishLodestoneCandidate({
   databasePath = lodestoneAuditDatabasePath,
   target = publicItemJsonPath,
   legacyTarget = path.join(siteRoot, 'data', 'legacy-item-ids.json'),
-  iconsRoot = itemIconsRoot
+  iconsRoot = itemIconsRoot,
+  dataOnly = false
 } = {}) {
   if (path.resolve(iconsRoot) === path.resolve(itemIconsRoot) && fs.existsSync(publicItemJsonPath)) {
     prepareItemIconCache({ itemJsonPath: publicItemJsonPath, iconsRoot });
@@ -5091,7 +5398,8 @@ export function publishLodestoneCandidate({
   updateDataCacheVersion({
     itemJsonPath: target,
     salt: hashIconFiles(candidate.Items.map(item => item.IconFile).filter(Boolean), iconsRoot),
-    reason: 'lodestone-name-publish'
+    reason: 'lodestone-name-publish',
+    dataOnly
   });
   const cleanup = cleanupItemIconAssets({ items: candidate.Items, iconsRoot });
   if (path.resolve(target) === path.resolve(publicItemJsonPath)) {
@@ -5110,7 +5418,7 @@ function printHelp() {
                              アイテム・製作手帳の全一覧を直列取得し、版・件数・順序署名を保存
   lodestone-audit [--delay 100]
                              全一覧・全レシピ詳細をfresh取得し、再開可能な完全監査として昇格（--freshで最初から開始）
-  build-lodestone-candidate  Lodestoneキャッシュと手動データから名前キーの公開候補を生成
+  build-lodestone-candidate  Lodestoneの製作・入手情報から名前キーの公開候補を生成
   lodestone-candidate-icons [--delay 100] [--quality 80] [--size 80]
                              名前キー候補の不足画像をLodestone優先で逐次取得・生成
   tmp-quality-preview [--delay 100] [--quality 80] [--size 80]
@@ -5175,7 +5483,7 @@ export async function main(argv = process.argv.slice(2)) {
       size: Number(args.size || 80)
     });
   }
-  if (command === 'publish-lodestone-candidate') return publishLodestoneCandidate();
+  if (command === 'publish-lodestone-candidate') return publishLodestoneCandidate({ dataOnly: Boolean(args['data-only']) });
   if (command === 'item-icon-cache') return prepareItemIconCache();
   if (command === 'item-icon-pack') {
     const pack = buildPublicItemIconPack();
@@ -5184,7 +5492,7 @@ export async function main(argv = process.argv.slice(2)) {
   }
   if (command === 'share-code-plaza-icons') return syncShareCodePlazaIcons();
   if (command === 'item-icon-validate') return validatePublicItemIconPack();
-  if (command === 'app-cache-version') return refreshAppCacheVersion();
+  if (command === 'app-cache-version') return refreshAppCacheVersion({ dataOnly: Boolean(args['data-only']) });
   throw new Error(`Unknown command: ${command}`);
 }
 

@@ -32,11 +32,13 @@
               <ul id="jobChoices" class="settings-dropdown-list macro-job-choices" role="listbox"></ul>
             </span>
           </div>
+          <div id="recipeJobHint" class="recipe-job-hint" hidden></div>
+          <p id="baseStatsNotice" class="base-stats-notice">食事・薬品の効果を含まない、素のジョブレベル・作業精度・加工精度・CPを入力してください。食事・薬品の補正は、選択内容から自動で加算します。</p>
           <div class="crafter-number-grid">
-            <label>ジョブレベル<input id="level" class="count-input crafter-number-input" type="number" inputmode="numeric" min="1"></label>
-            <label>作業精度<input id="craftsmanship" class="count-input crafter-number-input" type="number" inputmode="numeric" min="1"></label>
-            <label>加工精度<input id="control" class="count-input crafter-number-input" type="number" inputmode="numeric" min="1"></label>
-            <label>CP<input id="cp" class="count-input crafter-number-input" type="number" inputmode="numeric" min="1"></label>
+            <label>ジョブレベル<input id="level" class="count-input crafter-number-input" type="number" inputmode="numeric" min="1" aria-describedby="baseStatsNotice" title="食事・薬品の効果を含まない素の値を入力してください"></label>
+            <label>作業精度<input id="craftsmanship" class="count-input crafter-number-input" type="number" inputmode="numeric" min="1" aria-describedby="baseStatsNotice" title="食事・薬品の効果を含まない素の値を入力してください"></label>
+            <label>加工精度<input id="control" class="count-input crafter-number-input" type="number" inputmode="numeric" min="1" aria-describedby="baseStatsNotice" title="食事・薬品の効果を含まない素の値を入力してください"></label>
+            <label>CP<input id="cp" class="count-input crafter-number-input" type="number" inputmode="numeric" min="1" aria-describedby="baseStatsNotice" title="食事・薬品の効果を含まない素の値を入力してください"></label>
           </div>
           <div class="crafter-option-grid">
             <label class="check"><input id="manipulation" class="macro-checkbox" type="checkbox">マニピュレーションあり</label>
@@ -59,7 +61,7 @@
       <div class="accordion-clip"><div id="medicineList" class="list scroll-list"><button class="choice choice-list-btn selected" type="button">使用しない</button></div></div>
     </section>
 
-    <button id="generateButton" class="confirm-btn yes generate" type="button" disabled>マクロ生成開始</button>
+    <button id="generateButton" class="confirm-btn yes generate" type="button" disabled>準備中</button>
 
     <section id="generatedStatusSection" class="card accordion" hidden>
       <button class="accordion-toggle" type="button" aria-expanded="false">前回のマクロ生成日時とクラフターステータス</button>

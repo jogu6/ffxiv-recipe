@@ -77,7 +77,7 @@ npm run pipeline:gui:build
 
 The Tauri wrapper detects the Rust linker and supports compiler caching. Checks retain incremental compilation. Executable and installer builds cache dependencies while retaining incremental compilation for the application. The timing build emits Cargo timing reports.
 
-Pages deployment first builds the macro engines and runs targeted startup, parallel-search, and allocation-recovery browser checks on Windows. The deployment job then builds and stages the macro application, recalculates the application cache identifier, validates the built site, and uploads the static artifact. Pushes to `main` affecting the public app, macro package, or deployment workflow trigger this process; manual workflow dispatch is also available.
+Pages deployment compares engine sources with the latest successful Pages deployment. When they are unchanged, it downloads the deployed engines and verifies both WASM hashes before staging; data and browser UI changes do not rebuild the engines. Download, source-comparison, or integrity failures stop the workflow rather than triggering a replacement build. Actual engine-source changes enable the pinned Rust/WASM build steps. Targeted startup, parallel-search, and allocation-recovery browser checks run on Windows. The deployment job stages the macro application, recalculates the application cache identifier, validates the site, and uploads the static artifact. Pushes to `main` affecting the public app, macro package, engine-preparation tool, or deployment workflow trigger this process; manual workflow dispatch is also available.
 
 After changing deployed app-shell assets, `npm run cache:app` recalculates content-based cache and report identifiers while retaining the existing release number.
 

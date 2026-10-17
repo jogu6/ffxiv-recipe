@@ -26,6 +26,84 @@ async function snapshot(macro) {
     job: document.querySelector('#job').value
   }));
 }
+
+test('製作数値・異なるジョブの案内・素の入力注意・生成履歴とレポートを表示する', async ({ page }) => {
+  await page.addInitScript(result => {
+    localStorage.setItem('xivca.macro.crafter-status.v1', JSON.stringify({ 調理師: result.crafter }));
+    localStorage.setItem(`xivca.macro.result.v1.${result.recipeId}`, JSON.stringify(result));
+  }, result);
+  await page.goto('/macro-app/web/index.html?siteRoot=../..&recipe=b5cc569f3e4');
+  await expect(page.locator('#macroOutput')).toHaveValue(result.macro);
+  await expect(page.locator('#generatedStatus')).not.toContainText(' / ');
+  await expect(page.locator('.generated-status-options > div')).toHaveCount(3);
+  const numericStyle = await page.locator('.recipe-number').first().evaluate(element => ({
+    size: parseFloat(getComputedStyle(element).fontSize), weight: getComputedStyle(element).fontWeight,
+    normal: parseFloat(getComputedStyle(document.querySelector('#baseStatsNotice')).fontSize)
+  }));
+  expect(numericStyle.size).toBeGreaterThan(numericStyle.normal * 1.3);
+  expect(Number(numericStyle.weight)).toBeGreaterThanOrEqual(700);
+  await page.locator('#crafterStatusSection .accordion-toggle').click();
+  await expect(page.locator('#recipeJobHint')).toBeHidden();
+  await expect(page.locator('#baseStatsNotice')).toContainText('食事・薬品');
+  for (const id of ['level', 'craftsmanship', 'control', 'cp']) {
+    await expect(page.locator(`#${id}`)).toHaveAttribute('aria-describedby', 'baseStatsNotice');
+  }
+  await page.locator('#jobToggle').click();
+  await page.locator('#jobChoices [data-job="錬金術師"]').click();
+  await expect(page.locator('#recipeJobHint')).toContainText('このアイテムの製作ジョブ');
+  await expect(page.locator('#recipeJobHint')).toContainText('調理師');
+  await expect(page.locator('#recipeJobHint img')).toHaveCount(1);
+  await page.locator('#level').fill('99');
+  await page.locator('#craftsmanship').fill('4321');
+  await page.locator('#control').fill('3456');
+  await page.locator('#cp').fill('678');
+  await page.locator('#manipulation').check();
+  await page.locator('#heartAndSoul').check();
+  await page.locator('#quickInnovation').uncheck();
+  const status = await page.evaluate(() => captureInquiryDiagnostics().現在の製作ステータス);
+  expect(status.入力値).toEqual({ ジョブレベル: '99', 作業精度: '4321', 加工精度: '3456', CP: '678' });
+  expect([status.マニピュレーション, status.一心不乱, status.クイックイノベーション]).toEqual([true, true, false]);
+  await page.locator('#jobToggle').click();
+  await page.locator('#jobChoices [data-job="調理師"]').click();
+  await expect(page.locator('#recipeJobHint')).toBeHidden();
+});
+
+test('アイテム更新は名称変更で保存マクロを保持し使用食事の効果変更で削除する', async ({ page }) => {
+  const url = '/macro-app/web/index.html?siteRoot=../..&recipe=b5cc569f3e4';
+  await page.goto(url);
+  await expect(page.locator('#recipeInfo')).toContainText('アリペブレ');
+  await page.evaluate(async result => {
+    const { loadMacroData } = await import('/macro-app/web/data-loader.js');
+    const { saveGeneratedResult, saveDraftSelection, resultCalculationInputs } = await import('/macro-app/web/persistence.js');
+    const data = await loadMacroData('/data/Item.json');
+    localStorage.setItem('xivca.macro.crafter-status.v1', JSON.stringify({ 調理師: result.crafter }));
+    saveGeneratedResult(localStorage, { ...result,
+      calculationInputs: resultCalculationInputs(data, result.recipeId, result.crafter, result.selection) });
+    saveDraftSelection(localStorage, result);
+  }, result);
+  const updated = structuredClone(itemDocument);
+  updated.DataGeneration += '-names';
+  updated.ItemNameAliases = { ...updated.ItemNameAliases, ロネークステーキ: '名称変更した食事' };
+  updated.Items.find(item => item.Name === 'ロネークステーキ').Name = '名称変更した食事';
+  for (const item of updated.Items) {
+    for (const recipe of [item.Recipe, ...(item.Recipes || [])].filter(Boolean)) {
+      for (const ingredient of recipe.Ingredients || []) {
+        if (ingredient.Name === 'ロネークステーキ') ingredient.Name = '名称変更した食事';
+      }
+    }
+  }
+  await page.route('**/data/Item.json*', route => route.fulfill({ json: updated }));
+  await page.reload();
+  await expect(page.locator('#macroOutput')).toHaveValue(result.macro);
+  await expect(page.locator('#foodCurrent')).toContainText('名称変更した食事');
+  updated.DataGeneration += '-effects';
+  updated.Items.find(item => item.Name === '名称変更した食事').CraftingEffects.HQ.CP.Percent += 1;
+  await page.reload();
+  await expect(page.locator('#recipeInfo')).toContainText('アリペブレ');
+  await expect(page.locator('#macroSection')).toBeHidden();
+  expect(await page.evaluate(() => localStorage.getItem('xivca.macro.result.v1.b5cc569f3e4'))).toBeNull();
+});
+
 for (const width of [390, 1280]) test(`マクロパネルの選択・開閉・位置を復元する ${width}px`, async ({ page }, testInfo) => {
   test.setTimeout(60000);
   await page.addInitScript(result => {
