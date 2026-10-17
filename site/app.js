@@ -1,5 +1,5 @@
-const DATA_CACHE_VERSION = 'ff14recipe-data-7.57-3c6555cc';
-const REPORT_BUILD_ID = 'sha256:29f9f52fdef769137d8520c9de0472f77f53256655304abab39e121060b31e8f';
+const DATA_CACHE_VERSION = 'ff14recipe-data-7.57-302fa2fd';
+const REPORT_BUILD_ID = 'sha256:261bbe1b78049b388fdd669fd7a6e623f3cfa8f24437fe194d32372b8adbff9d';
 const VERIFIED_DATA_CACHE_VERSION = `ff14recipe-verified-data-${DATA_CACHE_VERSION.replace('ff14recipe-data-', '')}`;
 const DATA_FILE = `./data/Item.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
 const LEGACY_ITEM_IDS_FILE = `./data/legacy-item-ids.json?v=${encodeURIComponent(DATA_CACHE_VERSION)}`;
