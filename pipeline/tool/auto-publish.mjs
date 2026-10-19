@@ -491,6 +491,11 @@ function assertAllowedChanges(files) {
 
 function pipelineCommands(settings) {
   const delay = String(settings.delayMs);
+  if (settings.qualityOnly) return [
+    ['build-lodestone-quality-candidate', '--recipe-keys', settings.qualityRecipeKeys.join(','), '--delay', delay],
+    ['publish-lodestone-candidate', '--data-only'],
+    ['item-icon-validate'], ['app-cache-version', '--data-only']
+  ];
   return [
     ...(settings.acquisitionOnly ? [] : [["lodestone-audit", "--delay", delay, ...(settings.freshAudit ? ["--fresh"] : [])]]),
     ["build-lodestone-candidate", "--delay", delay],
@@ -648,6 +653,8 @@ export async function runAutomaticPublication({
     delayMs: Math.max(0, Number(config?.delayMs ?? 100) || 0),
     freshAudit: Boolean(current?.RecipeRefreshId),
     acquisitionOnly: Boolean(current?.AcquisitionRefreshId && !current?.RecipeRefreshId),
+    qualityOnly: Boolean(current?.QualityRecipeKeys?.length && !current?.RecipeRefreshId),
+    qualityRecipeKeys: current?.QualityRecipeKeys || [],
   };
   const version = String(current?.Version || "").trim();
   let targetKey = publicationKey(current);
@@ -834,6 +841,7 @@ export async function runAutomaticPublication({
       targetKey,
       recipeRefreshId: current?.RecipeRefreshId || null,
       acquisitionRefreshId: current?.AcquisitionRefreshId || null,
+      qualityRecipeKeys: current?.QualityRecipeKeys || [],
       targetItemOrderSignature: current?.ItemOrderSignature || '',
       startedAt: jstTimestamp(),
       deferredItemOrder: Boolean(current?.DeferredItemOrder),

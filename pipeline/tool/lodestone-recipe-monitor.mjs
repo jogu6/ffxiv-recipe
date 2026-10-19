@@ -113,6 +113,7 @@ export async function compareRecipeList({ root = defaultRoot, appliedState = rea
       RecipeRefreshId: publication.recipeRefreshId || undefined,
       RecipeListChanged: Boolean(publication.recipeRefreshId),
       AcquisitionRefreshId: publication.acquisitionRefreshId || undefined,
+      QualityRecipeKeys: publication.qualityRecipeKeys || undefined,
       AcquisitionChanged: Boolean(publication.acquisitionRefreshId) };
   }
   let baseline = readJson(recipeMonitorCachePath(root));

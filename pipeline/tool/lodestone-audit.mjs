@@ -316,6 +316,7 @@ export async function runLodestoneFullAudit({
   now = Date.now,
   createAuditId = crypto.randomUUID,
   createInitialComparison = null,
+  reuseRecipeHtml = () => null,
   fresh = false,
   beforePromote = () => {}
 }) {
@@ -359,7 +360,8 @@ export async function runLodestoneFullAudit({
   for (const [index, entry] of initialRecipes.entries.entries()) {
     const resource = detailResources[index];
     if (!resource.completed) {
-      const text = await requestSequentially(resource.url);
+      const text = await reuseRecipeHtml({ url: resource.url, version: initialRecipes.version })
+        ?? await requestSequentially(resource.url);
       completeLodestoneAuditResource(store, audit.id, {
         kind: resource.kind,
         key: resource.key,

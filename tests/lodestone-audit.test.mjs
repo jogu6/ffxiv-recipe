@@ -73,6 +73,16 @@ function runAudit(options) {
   return runLodestoneFullAudit({ createInitialComparison: initialComparison, ...options });
 }
 
+test('full audit reuses recently validated recipe HTML while list pages remain fresh', async () => {
+  await withAudit(async ({store,artifactRoot})=>{
+    const calls=[];
+    const result=await runAudit({store,artifactRoot,delayMs:0,
+      reuseRecipeHtml:({url,version})=>{assert.equal(url,RECIPE_DETAIL_URL);assert.equal(version,'7.55');return recipeDetailHtml();},
+      request:async url=>{calls.push(url);if(url===RECIPE_LIST_URL)return listHtml([recipeRow('完成品')]);if(url===ITEM_LIST_URL)return listHtml([itemRow('完成品')]);throw new Error('duplicate recipe fetch');}});
+    assert.ok(result.snapshot.DataGeneration);assert.deepEqual(calls,[RECIPE_LIST_URL,ITEM_LIST_URL,RECIPE_LIST_URL]);
+  });
+});
+
 test('full Lodestone audit fetches every source fresh in one sequential queue and promotes it', async () => {
   await withAudit(async ({ store, artifactRoot }) => {
     const calls = [];

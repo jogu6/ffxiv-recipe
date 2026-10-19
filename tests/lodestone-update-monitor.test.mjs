@@ -15,6 +15,41 @@ const shopList = (count = 0) => '<p class="db-content__title--version">Version:P
   (count ? '<a href="/lodestone/playguide/db/shop/abc/" class="db-table__txt--detail_link">販売店</a>' : '');
 const shopHeader = '<p class="db-content__title--version">Version:Patch 7.56</p><h2 class="db-shop__name">販売店</h2><ul class="db-shop__place"><li>地域 X:1 Y:2</li></ul>';
 
+test('quality-only publication bypasses unchanged source metadata and skips unrelated audit, gathering and image generation', async t => {
+  const f = appliedFixture(t); const calls = [];
+  const current = { ...f.current, AcquisitionChanged: true, AcquisitionRefreshId: 'quality-refresh', QualityRecipeKeys: ['abc'] };
+  const result = await runAutomaticPublication({ repositoryRoot: f.root, current,
+    config: f.options.config, logger: { write() {} },
+    run: async (_command,args) => { calls.push(args); return { stdout: args[0] === 'branch' ? 'main' : args[0] === 'rev-parse' ? 'base' : '', stderr: '' }; },
+    prepareFiles: async () => ({ candidateRoot:f.root,changedFiles:[] }), fetchImpl:async()=>({ok:true}) });
+  assert.equal(result.status,'published');
+  assert.ok(calls.some(args=>args.includes('build-lodestone-quality-candidate')&&args.includes('abc')));
+  assert.ok(calls.some(args=>args.includes('publish-lodestone-candidate')&&args.includes('--data-only')));
+  assert.ok(calls.every(args=>!args.some(arg=>['lodestone-audit','build-lodestone-candidate','lodestone-candidate-icons'].includes(arg)||/wasm|cargo/.test(arg))));
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(f.root,'pipeline/state/auto-publish.json'))).qualityRecipeKeys,['abc']);
+});
+
+test('a pending quality publication restores its exact recipe keys for crash recovery', async t => {
+  const f=appliedFixture(t);
+  fs.writeFileSync(path.join(f.root,'pipeline/state/auto-publish.json'),JSON.stringify({status:'generating',targetVersion:'7.56',targetSource:f.current,acquisitionRefreshId:'quality',qualityRecipeKeys:['abc']}));
+  const current=await readLodestoneMonitorState({root:f.root,fetchImpl:async()=>{throw new Error('network forbidden');}});
+  assert.deepEqual(current.QualityRecipeKeys,['abc']); assert.equal(current.AcquisitionRefreshId,'quality');
+});
+
+test('unchanged recipe-list pages still detect a quality-only detail change before unrelated shop requests', async t => {
+  const f=recipeFixture(t);
+  const data={Difficulty:10,Durability:40,MaxQuality:100,MaterialQualityPercent:0,RequiredCraftsmanship:0,RequiredControl:0,HqAvailable:false,Expert:false,RequiredQuality:10};
+  f.recordOptions.candidate.Items=[{Name:'素材',Recipe:{RecipeKey:'abc',CraftingData:data}}];
+  fs.writeFileSync(f.itemJsonPath,JSON.stringify({Version:'7.56',DataGeneration:'c'.repeat(64),Items:f.recordOptions.candidate.Items}));
+  recordAppliedLodestoneState(f.recordOptions);
+  const response='<p class="db-content__title--version">Version:Patch 7.56</p><ul class="db-view__recipe__craftdata"><li><span>必要工数</span>10</li><li><span>耐久</span>40</li><li><span>品質最大値</span>100</li><li><span>初期品質値</span>上限0％</li></ul><dl class="db-view__recipe__crafting_conditions"><dd>HQ製作不可</dd><dd>完成に必要な品質：20以上</dd></dl>';
+  const current=await readLodestoneMonitorState({...f.comparison,fetchImpl:async url=>{
+    if(url.endsWith('/recipe/abc/'))return{ok:true,text:async()=>response};
+    assert.ok(!url.includes('/shop/'));return f.comparison.fetchImpl(url);
+  }});
+  assert.equal(current.RecipeListChanged,false);assert.equal(current.AcquisitionChanged,true);assert.deepEqual(current.QualityRecipeKeys,['abc']);
+});
+
 test('acquisition-only changes trigger publication at the same source version and counts', async t => {
   const f = appliedFixture(t);
   let publications = 0;

@@ -557,11 +557,11 @@ export function readLodestoneShopCacheEntry(store, key) {
   return decompressLodestoneHtml(store.get.get(key));
 }
 
-export function writeLodestoneShopCacheEntry(store, key, text, { url = null } = {}) {
+export function writeLodestoneShopCacheEntry(store, key, text, { url = null, fetchedAt = Date.now() } = {}) {
   const entry = compressLodestoneHtml(text);
   store.db.exec('BEGIN IMMEDIATE');
   try {
-    store.put.run(key, url, entry.body, entry.rawBytes, entry.sha256, Date.now());
+    store.put.run(key, url, entry.body, entry.rawBytes, entry.sha256, fetchedAt);
     store.db.exec('COMMIT');
   } catch (error) {
     store.db.exec('ROLLBACK');
@@ -588,6 +588,11 @@ export function createLodestoneHtmlReader({ root = repositoryRoot, version, dela
     else if (pathname.endsWith('/db/shop/')) extractLodestoneListMeta(html);
     else if (pathname.includes('/db/shop/')) extractLodestoneShopInventory(html);
     else if (pathname.includes('/db/gathering/')) extractLodestoneGatheringInfo(html);
+    else if (pathname.includes('/db/recipe/')) {
+      if (!/<dl\b[^>]*\bdb-view__recipe__crafting_conditions\b[^>]*>[\s\S]*?<\/dl>/u.test(html)) throw new Error('レシピの製作条件が不完全です');
+      extractLodestoneRecipeCraftingData(html);
+      if (!sourceVersion(html)) throw new Error('レシピHTMLのLodestone版がありません');
+    }
     else if (!html.includes('db-view__item__text__name')) throw new Error('Lodestoneのアイテム詳細ページが不正です');
     const actual = sourceVersion(html);
     if (version && actual && actual !== version) throw new Error('取得HTMLのLodestone版が一致しません');
@@ -598,16 +603,15 @@ export function createLodestoneHtmlReader({ root = repositoryRoot, version, dela
     const html = await response.text();
     validate(url, html);
     // Only pages carrying source metadata are eligible for persistent reuse.
-    if (sourceVersion(html) || (isShopCategory(url) && version)) writeLodestoneShopCacheEntry(store, cacheKey(url), html, { url });
+    if (sourceVersion(html) || (isShopCategory(url) && version)) writeLodestoneShopCacheEntry(store, cacheKey(url), html, { url, fetchedAt: now() });
     return html;
   } });
   const cacheKey = url => lodestoneCacheKey(isShopCategory(url) ? `${url}#source-version=${version}` : url);
-  return {
-    async request(url) {
+  const read = (url, { ageLimit = maxAgeMs, minFetchedAt = 0 } = {}) => {
       const key = cacheKey(url);
       const cached = store.get.get(key);
       const age = cached ? now() - cached.updated_at : Infinity;
-      if (cached && age >= 0 && age < maxAgeMs) {
+      if (cached && cached.updated_at >= minFetchedAt && age >= 0 && age < ageLimit) {
         try {
           const html = decompressLodestoneHtml(cached);
           if ((isShopCategory(url) && version) || (sourceVersion(html) && (!version || sourceVersion(html) === version))) {
@@ -616,8 +620,15 @@ export function createLodestoneHtmlReader({ root = repositoryRoot, version, dela
           }
         } catch { store.remove.run(key); }
       }
-      return network(url);
+      return null;
+  };
+  return {
+    read,
+    seed(url, html, fetchedAt) {
+      validate(url, html);
+      writeLodestoneShopCacheEntry(store, cacheKey(url), html, { url, fetchedAt });
     },
+    async request(url) { return read(url) ?? network(url); },
     close: () => store.close()
   };
 }
@@ -2811,6 +2822,8 @@ export async function refreshLodestoneAuditSnapshot({
   clearCancelRequest();
   cancellationEnabled = true;
   const store = openLodestoneAuditStore(databasePath);
+  let auditReuseReader;
+  let auditReuseVersion;
   try {
     let initialBaseline = null;
     let initialPublishedDocument = null;
@@ -2832,6 +2845,14 @@ export async function refreshLodestoneAuditSnapshot({
     }
     log(`Lodestone完全監査を開始します: 間隔 ${Math.max(0, Number(delayMs) || 0)}ms`);
     const result = await runLodestoneFullAudit({
+      reuseRecipeHtml: ({ url, version }) => {
+        if (auditReuseVersion !== version) {
+          auditReuseReader?.close();
+          auditReuseReader = createLodestoneHtmlReader({ root: path.resolve(path.dirname(databasePath), '../..'), version });
+          auditReuseVersion = version;
+        }
+        return auditReuseReader.read(url);
+      },
       fresh,
       store,
       artifactRoot,
@@ -2893,6 +2914,7 @@ export async function refreshLodestoneAuditSnapshot({
     log(`Lodestone完全監査を昇格しました: audit=${result.auditId} item=${result.snapshot.ItemCount} recipe=${result.snapshot.RecipeCount}${result.resumed ? '（再開）' : ''}`);
     return result;
   } finally {
+    auditReuseReader?.close();
     cancellationEnabled = false;
     store.close();
   }
@@ -4870,6 +4892,7 @@ export async function buildLodestoneCandidate({
   cancellationEnabled = true;
   let auditStore = null;
   let acquisitionHtmlReader = null;
+  let qualityHtmlReader = null;
   try {
   const snapshot = readJson(snapshotPath, null);
   if (!snapshot || !Array.isArray(snapshot.Items) || !Array.isArray(snapshot.Recipes)) {
@@ -4877,6 +4900,7 @@ export async function buildLodestoneCandidate({
   }
   auditStore = openLodestoneAuditStore(databasePath);
   validatePromotedLodestoneAuditInput({ snapshot, store: auditStore });
+  qualityHtmlReader = createLodestoneHtmlReader({ version: snapshot.Version, delayMs });
   const readSnapshotRecipeHtml = entry => {
     const resource = getLodestoneAuditResource(auditStore, snapshot.AuditId, 'recipe-detail', entry.AuditResourceKey);
     if (!resource?.completed) throw new Error(`昇格済み監査のレシピ成果物がありません: ${entry.AuditResourceKey}`);
@@ -4927,6 +4951,13 @@ export async function buildLodestoneCandidate({
     assertNotCancelled();
     if (!listedByName.has(entry.Name)) throw new Error(`製作手帳の完成品がアイテム一覧にありません: ${entry.Name}`);
     const parsed = extractLodestoneRecipeData(entry.DetailPath, readSnapshotRecipeHtml(entry), { craftTypeByJob });
+    const auditedResource = getLodestoneAuditResource(auditStore, snapshot.AuditId, 'recipe-detail', entry.AuditResourceKey);
+    const recipeUrl = `${LODESTONE_BASE_URL}${entry.DetailPath}`;
+    const previousRecipe = [existingByCurrentName.get(entry.Name)?.Recipe, ...(existingByCurrentName.get(entry.Name)?.Recipes || [])]
+      .find(recipe => recipe?.RecipeKey === entry.RecipeKey);
+    parsed.CraftingData.RequiredQuality = await resolveLodestoneRequiredQuality({ reader: qualityHtmlReader, url: recipeUrl,
+      auditedValue: parsed.CraftingData.RequiredQuality, auditedFetchedAt: auditedResource.fetchedAt,
+      publishedValue: previousRecipe?.CraftingData?.RequiredQuality });
     parsed.CraftingData.RecipeLevel = resolveCraftingMechanics({
       jobLevel: parsed.CraftInfo.level,
       difficulty: parsed.CraftingData.Difficulty,
@@ -5139,6 +5170,7 @@ export async function buildLodestoneCandidate({
   log(`Lodestone候補を保存しました: 通常 ${regularNames.size}件、補助 ${items.length - regularNames.size}件、旧ID ${Object.keys(legacyIds).length}件`);
   return { version: snapshot.Version, items: items.length, regularItems: regularNames.size, legacyIds: Object.keys(legacyIds).length };
   } finally {
+    qualityHtmlReader?.close();
     cancellationEnabled = false;
     if (lodestoneShopCacheStore) {
       try {
@@ -5150,6 +5182,56 @@ export async function buildLodestoneCandidate({
     if (acquisitionHtmlReader) acquisitionHtmlReader.close();
     if (auditStore) auditStore.close();
   }
+}
+
+export async function resolveLodestoneRequiredQuality({ reader, url, auditedValue, auditedFetchedAt, publishedValue, now = Date.now }) {
+  let html = reader.read(url, { minFetchedAt: auditedFetchedAt + 1 });
+  const auditAge = now() - auditedFetchedAt;
+  if (!html && publishedValue != null && publishedValue !== auditedValue
+    && !(auditAge >= 0 && auditAge < LODESTONE_ACQUISITION_CACHE_MAX_AGE_MS)) html = await reader.request(url);
+  return html ? extractLodestoneRecipeCraftingData(html).RequiredQuality : auditedValue;
+}
+
+export async function buildLodestoneQualityCandidate({ root = repositoryRoot, recipeKeys = [], delayMs = 100,
+  fetchImpl = fetch } = {}) {
+  const keys = [...new Set(recipeKeys)];
+  if (!keys.length || keys.some(key => !/^[a-z0-9]+$/u.test(key))) throw new Error('必要品質の更新対象が不正です');
+  const document = readJson(path.join(root, 'site/data/Item.json'), null);
+  const snapshot = readJson(path.join(root, 'pipeline/state/lodestone-source-snapshot.json'), null);
+  const store = openLodestoneAuditStore(path.join(root, 'pipeline/cache/lodestone-audits.sqlite'));
+  const reader = createLodestoneHtmlReader({ root, version: document.Version, delayMs, fetchImpl });
+  try {
+    validatePromotedLodestoneAuditInput({ snapshot, store });
+    if (snapshot.Version !== document.Version) throw new Error('必要品質と監査のLodestone版が一致しません');
+    const sourceKeys = new Set(snapshot.Recipes.map(recipe => recipe.RecipeKey));
+    const remaining = new Set(keys);
+    const valuesByKey = new Map();
+    for (const item of document.Items) for (const recipe of [item.Recipe, ...(item.Recipes || [])]) {
+      if (!recipe || !keys.includes(recipe.RecipeKey)) continue;
+      if (!sourceKeys.has(recipe.RecipeKey) || !recipe.CraftingData) throw new Error('更新対象の監査済みレシピがありません');
+      if (!valuesByKey.has(recipe.RecipeKey)) valuesByKey.set(recipe.RecipeKey, extractLodestoneRecipeCraftingData(
+        await reader.request(`${LODESTONE_BASE_URL}/lodestone/playguide/db/recipe/${recipe.RecipeKey}/`)));
+      const values = valuesByKey.get(recipe.RecipeKey);
+      if (Object.entries(values).some(([field,value]) => field !== 'RequiredQuality' && recipe.CraftingData[field] !== value)) {
+        throw new Error('必要品質以外の製作条件も変更されています。完全監査が必要です');
+      }
+      recipe.CraftingData.RequiredQuality = values.RequiredQuality;
+      remaining.delete(recipe.RecipeKey);
+    }
+    if (remaining.size) throw new Error('必要品質の更新対象が公開データにありません');
+    const projection = document.Items.map(item => ({ Name: item.Name, ItemLevel: item.ItemLevel,
+      CraftingEffects: item.CraftingEffects, Recipes: [item.Recipe, ...(item.Recipes || [])].filter(Boolean)
+        .map(recipe => ({ RecipeKey: recipe.RecipeKey, CraftingData: recipe.CraftingData })) }));
+    const generation = crypto.createHash('sha256').update(snapshot.DataGeneration).update(JSON.stringify(projection)).digest('hex');
+    const lineage = { SchemaVersion: 3, AuditId: snapshot.AuditId, AuditDataGeneration: snapshot.DataGeneration, DataGeneration: generation };
+    const legacy = readJson(path.join(root, 'site/data/legacy-item-ids.json'), null);
+    if (!legacy?.Items) throw new Error('旧ID互換情報がありません');
+    writeJsonAtomic(path.join(root, 'pipeline/intermediate/06-public-items.json'), { ...lineage,
+      PublicMetadata: publicItemMetadata(document), Version: document.Version,
+      ...(document.ItemNameAliases ? { ItemNameAliases: document.ItemNameAliases } : {}), Items: document.Items });
+    writeJsonAtomic(path.join(root, 'pipeline/intermediate/legacy-item-ids.json'), { ...lineage, Items: legacy.Items });
+    return { recipes: keys.length, DataGeneration: generation };
+  } finally { reader.close(); store.close(); }
 }
 
 export function validatePromotedLodestoneAuditInput({ snapshot, store }) {
@@ -5425,6 +5507,7 @@ function printHelp() {
   lodestone-audit [--delay 100]
                              全一覧・全レシピ詳細をfresh取得し、再開可能な完全監査として昇格（--freshで最初から開始）
   build-lodestone-candidate  Lodestoneの製作・入手情報から名前キーの公開候補を生成
+  build-lodestone-quality-candidate --recipe-keys <keys>  必要品質だけの候補を取得済みHTMLから生成
   lodestone-candidate-icons [--delay 100] [--quality 80] [--size 80]
                              名前キー候補の不足画像をLodestone優先で逐次取得・生成
   tmp-quality-preview [--delay 100] [--quality 80] [--size 80]
@@ -5489,6 +5572,8 @@ export async function main(argv = process.argv.slice(2)) {
       size: Number(args.size || 80)
     });
   }
+  if (command === 'build-lodestone-quality-candidate') return buildLodestoneQualityCandidate({
+    recipeKeys: String(args['recipe-keys'] || '').split(',').filter(Boolean), delayMs: Number(args.delay ?? 100) });
   if (command === 'publish-lodestone-candidate') return publishLodestoneCandidate({ dataOnly: Boolean(args['data-only']) });
   if (command === 'item-icon-cache') return prepareItemIconCache();
   if (command === 'item-icon-pack') {
