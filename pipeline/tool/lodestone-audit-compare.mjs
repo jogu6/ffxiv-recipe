@@ -86,6 +86,9 @@ export function canonicalLodestoneRecipeContent(html) {
   )].flatMap(block => [...block[1].matchAll(/<dd\b[^>]*>([\s\S]*?)<\/dd>/gi)].map(match => normalizeText(match[1])));
   const conditionText = conditions.join(' ');
   const optionalCondition = label => integer(conditionText.match(new RegExp(`${label}[^0-9]*([0-9,]+)`))?.[1]) || 0;
+  const qualityCondition = conditions.find(value => value.includes('完成に必要な品質'));
+  const requiredQuality = qualityCondition == null ? 0 : integer(
+    qualityCondition.match(/完成に必要な品質\s*[:：]\s*([0-9,]+)\s*以上/u)?.[1]);
   const craftingData = {
     Difficulty: integer(craftValues.get('必要工数')),
     Durability: integer(craftValues.get('耐久')),
@@ -93,6 +96,7 @@ export function canonicalLodestoneRecipeContent(html) {
     MaterialQualityPercent: integer(craftValues.get('初期品質値')?.match(/上限\s*([0-9,]+)\s*％/)?.[1]),
     RequiredCraftsmanship: optionalCondition('作業精度'),
     RequiredControl: optionalCondition('加工精度'),
+    RequiredQuality: requiredQuality,
     HqAvailable: !conditions.some(value => /HQ(?:アイテム)?製作不可/i.test(value)),
     Expert: conditions.some(value => /高難易度|エキスパート/.test(value))
   };
@@ -105,7 +109,8 @@ export function canonicalLodestoneRecipeContent(html) {
       !Number.isInteger(craftingData.Durability) || craftingData.Durability <= 0 ||
       !Number.isInteger(craftingData.MaxQuality) || craftingData.MaxQuality < 0 ||
       !Number.isInteger(craftingData.MaterialQualityPercent) || craftingData.MaterialQualityPercent < 0 ||
-      craftingData.MaterialQualityPercent > 100) {
+      craftingData.MaterialQualityPercent > 100 || !Number.isInteger(requiredQuality)
+      || requiredQuality < 0 || requiredQuality > craftingData.MaxQuality) {
     throw new Error('Lodestoneレシピ詳細を比較用に正規化できません');
   }
   return {

@@ -57,9 +57,13 @@ export function extractLodestoneCraftingConditions(html) {
     const match = joined.match(new RegExp(`${label}[^0-9]*([0-9,]+)`));
     return match ? integer(match[1], label) : 0;
   };
+  const qualityCondition = conditions.find(value => value.includes('完成に必要な品質'));
+  const requiredQuality = qualityCondition == null ? 0 : integer(
+    qualityCondition.match(/完成に必要な品質\s*[:：]\s*([0-9,]+)\s*以上/u)?.[1], '完成に必要な品質');
   return {
     requiredCraftsmanship: numberAfter('作業精度'),
     requiredControl: numberAfter('加工精度'),
+    requiredQuality,
     hqAvailable: !conditions.some(value => /HQ(?:アイテム)?製作不可/i.test(value)),
     expert: conditions.some(value => /高難易度|エキスパート/.test(value)),
     conditions

@@ -23,6 +23,16 @@ test('Lodestone専用成果物の必須構造を検証する', () => {
   assert.throws(() => validateMacroData({ ...fixture, dataVersion: '' }), /形式が不正/);
 });
 
+test('完成に必要な品質の明示的な0と未確認の値を区別してマクロデータへ渡す', () => {
+  for (const value of [31500, 0, null, undefined]) {
+    const document = { Version: '7.57', Items: [{ Name: '部材', Recipe: {
+      RecipeKey: 'required-quality', CraftInfo: { job: '木工師', level: 100 }, Ingredients: [],
+      CraftingData: { HqAvailable: false, MaxQuality: 31520, RequiredQuality: value }
+    } }] };
+    assert.equal(macroDataFromItemDocument(document).recipes[0].requiredQuality, value ?? null);
+  }
+});
+
 test('URLのレシピIDだけで対象レシピを選ぶ', () => {
   assert.equal(recipeFromLocation(fixture, { search: '?recipe=recipe-a' })?.name, 'テスト完成品');
   assert.equal(recipeFromLocation(fixture, { search: '?recipe=unknown' }), null);

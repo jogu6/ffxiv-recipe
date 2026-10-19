@@ -64,7 +64,7 @@ export function buildSearchInput(recipe, status, selection = {}) {
       amount: item.amount,
       hq: hqIds.has(String(item.id))
     })),
-    targetQuality: recipe.hqAvailable === false ? (recipe.requiredQuality || 0) : recipe.maxQuality,
+    targetQuality: recipe.hqAvailable === false ? recipe.requiredQuality : recipe.maxQuality,
     manipulationAvailable: status.manipulation,
     heartAndSoulAvailable: status.heartAndSoul,
     quickInnovationAvailable: status.quickInnovation,
@@ -88,6 +88,11 @@ export function recipeParameterFailure(recipe, selection = {}) {
     || !Number.isInteger(recipeLevel.progressModifier)
     || !Number.isInteger(recipeLevel.qualityModifier)
   ) return 'レシピの製作パラメーターが不足しています';
+  if ((recipe.hqAvailable === false && !Number.isInteger(recipe.requiredQuality))
+    || (recipe.requiredQuality != null && (!Number.isInteger(recipe.requiredQuality)
+      || recipe.requiredQuality < 0 || recipe.requiredQuality > recipe.maxQuality))) {
+    return 'レシピの完成に必要な品質を確認できません';
+  }
   if ([selection.food, selection.medicine].some(item => item && item.effectsAvailable !== true)) {
     return '選択した食事または薬品の製作パラメーターが不足しています';
   }

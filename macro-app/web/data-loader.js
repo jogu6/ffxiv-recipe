@@ -129,7 +129,7 @@ export function macroDataFromItemDocument(document, preparedConsumables = null) 
       requiredControl: Number.isInteger(Number(data.RequiredControl)) ? Number(data.RequiredControl) : null,
       hqAvailable: data.HqAvailable !== false,
       expert: data.Expert === true,
-      requiredQuality: Number.isInteger(Number(data.RequiredQuality)) ? Number(data.RequiredQuality) : null,
+      requiredQuality: data.RequiredQuality != null && Number.isInteger(Number(data.RequiredQuality)) ? Number(data.RequiredQuality) : null,
       stellarSteadyHandCharges: Number.isInteger(Number(data.StellarSteadyHandCharges)) ? Number(data.StellarSteadyHandCharges) : null,
       recipeLevel: recipeLevel && {
         jobLevel: Number(recipeLevel.JobLevel),

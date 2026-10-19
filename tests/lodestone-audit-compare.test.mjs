@@ -68,6 +68,18 @@ function resource(key, html) {
   return { key, completed: true, html };
 }
 
+test('automatic recipe audit detects minimum quality changes independently of HQ availability', () => {
+  const html = detail().replace('</dl>', '<dd>HQ製作不可</dd><dd>完成に必要な品質：10,000以上</dd></dl>');
+  const before = canonicalLodestoneRecipeContent(html);
+  const after = canonicalLodestoneRecipeContent(html.replace('10,000以上', '11,000以上'));
+  assert.equal(before.CraftingData.HqAvailable, false);
+  assert.equal(before.CraftingData.RequiredQuality, 10000);
+  assert.equal(after.CraftingData.RequiredQuality, 11000);
+  assert.notDeepEqual(before, after);
+  assert.equal(canonicalLodestoneRecipeContent(detail()).CraftingData.RequiredQuality, 0);
+  assert.throws(() => canonicalLodestoneRecipeContent(html.replace('10,000以上', '不明')), /正規化/);
+});
+
 test('recipe comparison canonicalizes craft content and ignores unrelated page text', () => {
   assert.deepEqual(
     canonicalLodestoneRecipeContent(detail().replace('監査対象外の共通表示', '変更された共通表示')),

@@ -87,6 +87,21 @@ test('同じデータ版での再表示では保存マクロの全件比較と�
   reconcileSavedMacros(storage, data);
 });
 
+test('HQ不可の最低品質が変わった保存マクロだけを初期化する', () => {
+  for (const changed of [false, true]) {
+    const { data, result, storage } = updateFixture();
+    Object.assign(data.recipes[0], { hqAvailable: false, requiredQuality: 0 });
+    result.calculationInputs = resultCalculationInputs(data, 'r', crafter, result.selection);
+    saveGeneratedResult(storage, result);
+    data.dataVersion = 'new';
+    if (changed) data.recipes[0].requiredQuality = 900;
+    reconcileSavedMacros(storage, data);
+    const restored = loadRestorableResult(storage, { recipeId: 'r', dataVersion: 'new', crafter });
+    if (changed) assert.equal(restored, null);
+    else assert.equal(restored.macro, result.macro);
+  }
+});
+
 test('旧形式は同じデータ版で比較条件を補い、比較できない更新済みデータでは削除する', () => {
   for (const sameVersion of [true, false]) {
     const { data, result, storage } = updateFixture();

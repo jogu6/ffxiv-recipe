@@ -543,7 +543,8 @@ function renderRecipe(recipe) {
   details.append(values);
   const requirements = [
     recipe.requiredCraftsmanship > 0 ? `必要作業精度 ${recipe.requiredCraftsmanship}` : '',
-    recipe.requiredControl > 0 ? `必要加工精度 ${recipe.requiredControl}` : ''
+    recipe.requiredControl > 0 ? `必要加工精度 ${recipe.requiredControl}` : '',
+    recipe.requiredQuality > 0 ? `完成に必要な品質 ${displayNumber(recipe.requiredQuality)}以上` : ''
   ].filter(Boolean);
   if (requirements.length) {
     const badges = createText('span', 'recipe-requirements', '');

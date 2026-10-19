@@ -12,6 +12,33 @@ const result = {
     hqIngredientIds: ['高山食塩', 'ペリラオイル'] },
   generatedAt: '2026-09-09T10:20:30.000Z', macro: '/ac "確信" <wait.3>\n/ac "下地作業" <wait.3>'
 };
+
+test('HQ不可でも公式の最低品質を探索へ渡し、条件のない庭具は品質0で生成する', async ({ page }) => {
+  await page.addInitScript(() => {
+    const status = { level: 100, craftsmanship: 6000, control: 6000, cp: 700,
+      manipulation: true, heartAndSoul: false, quickInnovation: false };
+    localStorage.setItem('xivca.macro.crafter-status.v1', JSON.stringify({ 木工師: status, 彫金師: status }));
+    const RealWorker = window.Worker;
+    window.Worker = class extends RealWorker {
+      constructor(url, options) { super(url, options); this.captureSolver = String(url).includes('solver-host.js'); }
+      postMessage(message, ...args) {
+        if (this.captureSolver && message.type === 'solve') { window.__requiredQualityInput = message.input; return; }
+        super.postMessage(message, ...args);
+      }
+    };
+  });
+  for (const [recipeId, requiredQuality] of [['afef98602e6', 31500], ['024827632ad', 0]]) {
+    await page.goto(`/macro-app/web/index.html?siteRoot=../..&recipe=${recipeId}`);
+    await expect(page.locator('#recipeInfo')).toContainText('製作不可');
+    if (requiredQuality) await expect(page.locator('#recipeInfo')).toContainText('完成に必要な品質 31500以上');
+    else await expect(page.locator('#recipeInfo')).not.toContainText('完成に必要な品質');
+    await expect(page.locator('#generateButton')).toBeEnabled();
+    await page.locator('#generateButton').click();
+    await expect.poll(() => page.evaluate(() => window.__requiredQualityInput?.targetQuality)).toBe(requiredQuality);
+    await page.locator('#cancelButton').click();
+  }
+});
+
 async function snapshot(macro) {
   return macro.locator('body').evaluate(() => ({
     food: document.querySelector('#foodCurrent').textContent,

@@ -1,6 +1,20 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildSearchInput, effectiveCrafterStats, formatMacro, generationFingerprint, isCompleteCrafterStatus, recipeStartFailure, sortConsumables } from '../web/model.js';
+import { buildSearchInput, effectiveCrafterStats, formatMacro, generationFingerprint, isCompleteCrafterStatus, recipeStartFailure, recipeParameterFailure, sortConsumables } from '../web/model.js';
+
+test('HQ不可の最低品質を目標にし、未確認の品質条件では生成を開始させない', () => {
+  const recipe = { level: 100, durability: 60, difficulty: 11250, maxQuality: 31520, hqAvailable: false,
+    requiredQuality: 31500, materialQualityPercent: 0, expert: true, ingredients: [],
+    recipeLevel: { jobLevel: 100, progressDivisor: 180, qualityDivisor: 180, progressModifier: 100, qualityModifier: 100 } };
+  const status = { level: 100, craftsmanship: 5700, control: 5500, cp: 700 };
+  assert.equal(buildSearchInput(recipe, status).targetQuality, 31500);
+  assert.equal(recipeParameterFailure(recipe), '');
+  assert.equal(buildSearchInput({ ...recipe, requiredQuality: 0 }, status).targetQuality, 0);
+  assert.equal(buildSearchInput({ ...recipe, hqAvailable: true }, status).targetQuality, 31520);
+  for (const requiredQuality of [undefined, null, -1, 31521, 1.5]) {
+    assert.match(recipeParameterFailure({ ...recipe, requiredQuality }), /完成に必要な品質/);
+  }
+});
 
 test('必須の製作ステータスを判定する', () => {
   assert.equal(isCompleteCrafterStatus({ level: 100, craftsmanship: 5000, control: 4800, cp: 600, manipulation: true, heartAndSoul: false, quickInnovation: false }, 100), true);

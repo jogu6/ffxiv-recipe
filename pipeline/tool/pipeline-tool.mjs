@@ -2956,14 +2956,20 @@ export function extractLodestoneRecipeCraftingData(recipeHtml) {
     const match = conditionText.match(new RegExp(`${label}[^0-9]*([0-9,]+)`));
     return match ? requiredLodestoneInteger(match[1], label, '製作条件') : 0;
   };
+  const qualityCondition = conditions.find(value => value.includes('完成に必要な品質'));
+  const requiredQuality = qualityCondition == null ? 0 : requiredLodestoneInteger(
+    qualityCondition.match(/完成に必要な品質\s*[:：]\s*([0-9,]+)\s*以上/u)?.[1], '完成に必要な品質', '製作条件');
+  const maxQuality = requiredLodestoneInteger(values.get('品質最大値'), '品質最大値');
+  if (requiredQuality > maxQuality) throw new Error('完成に必要な品質が品質最大値を超えています');
 
   return {
     Difficulty: requiredLodestoneInteger(values.get('必要工数'), '必要工数'),
     Durability: requiredLodestoneInteger(values.get('耐久'), '耐久'),
-    MaxQuality: requiredLodestoneInteger(values.get('品質最大値'), '品質最大値'),
+    MaxQuality: maxQuality,
     MaterialQualityPercent: materialQualityPercent,
     RequiredCraftsmanship: optionalConditionNumber('作業精度'),
     RequiredControl: optionalConditionNumber('加工精度'),
+    RequiredQuality: requiredQuality,
     HqAvailable: !conditions.some(value => /HQ(?:アイテム)?製作不可/i.test(value)),
     Expert: conditions.some(value => /高難易度|エキスパート/.test(value))
   };

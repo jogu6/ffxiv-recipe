@@ -24,10 +24,19 @@ test('Lodestone製作情報からソルバー固有値を取得する', () => {
 
   assert.deepEqual(extractLodestoneMacroRecipe(html), {
     amountResult: 3, difficulty: 6300, durability: 80, maxQuality: 11400,
-    materialQualityPercent: 50, requiredCraftsmanship: 4131, requiredControl: 3950,
+    materialQualityPercent: 50, requiredCraftsmanship: 4131, requiredControl: 3950, requiredQuality: 0,
     hqAvailable: false, expert: true,
     conditions: ['製作成功目安：作業精度4,131', '製作成功目安：加工精度3,950', '高難易度レシピ', 'HQ製作不可']
   });
+});
+
+test('HQ不可でも完成に必要な品質を公式の製作条件から取得する', () => {
+  const html = '<ul class="db-view__recipe__craftdata"><li><span>完成個数</span>1</li><li><span>必要工数</span>11250</li><li><span>耐久</span>60</li><li><span>品質最大値</span>31520</li><li><span>初期品質値</span>上限0％</li></ul>' +
+    '<dl class="db-view__recipe__crafting_conditions"><dd>完成に必要な品質：31,500以上</dd><dd>高難易度レシピ</dd><dd>HQ製作不可</dd></dl>';
+  const recipe = extractLodestoneMacroRecipe(html);
+  assert.equal(recipe.hqAvailable, false);
+  assert.equal(recipe.requiredQuality, 31500);
+  assert.throws(() => extractLodestoneMacroRecipe(html.replace('31,500以上', '不明')), /完成に必要な品質/);
 });
 
 test('不足したLodestone製作情報を推測で補完しない', () => {

@@ -1076,6 +1076,7 @@ test('extractLodestoneRecipeCraftingData reads solver values and conditions', ()
     MaterialQualityPercent: 50,
     RequiredCraftsmanship: 4200,
     RequiredControl: 4100,
+    RequiredQuality: 0,
     HqAvailable: true,
     Expert: true
   });
@@ -1089,6 +1090,12 @@ test('extractLodestoneRecipeCraftingData records recipes that cannot be HQ', () 
     </ul>
     <dl class="db-view__recipe__crafting_conditions"><dd>HQアイテム製作不可</dd></dl>`;
   assert.equal(extractLodestoneRecipeCraftingData(html).HqAvailable, false);
+  assert.equal(extractLodestoneRecipeCraftingData(html).RequiredQuality, 0);
+  const required = html.replace('<span>品質最大値</span>0', '<span>品質最大値</span>31,520')
+    .replace('<dd>HQアイテム製作不可</dd>', '<dd>完成に必要な品質：31,500以上</dd><dd>HQアイテム製作不可</dd>');
+  assert.equal(extractLodestoneRecipeCraftingData(required).RequiredQuality, 31500);
+  assert.throws(() => extractLodestoneRecipeCraftingData(required.replace('31,500以上', '不明')), /完成に必要な品質/);
+  assert.throws(() => extractLodestoneRecipeCraftingData(required.replace('31,500以上', '40,000以上')), /品質最大値/);
 });
 
 test('Lodestone item detail reads item level and NQ/HQ crafting effects', () => {
@@ -1140,6 +1147,7 @@ test('extractLodestoneRecipeData reads a Lodestone recipe variant and resolves i
         MaterialQualityPercent: 50,
         RequiredCraftsmanship: 0,
         RequiredControl: 0,
+        RequiredQuality: 0,
         HqAvailable: true,
         Expert: false
       },
