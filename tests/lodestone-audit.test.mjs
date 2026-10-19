@@ -83,6 +83,28 @@ test('full audit reuses recently validated recipe HTML while list pages remain f
   });
 });
 
+test('an update audit detects added, changed and removed NQ quality requirements from recipe HTML', async () => {
+  await withAudit(async ({store,artifactRoot})=>{
+    let quality=0;
+    const request=async url=>{
+      if(url===RECIPE_LIST_URL)return listHtml([recipeRow('完成品')]);
+      if(url===ITEM_LIST_URL)return listHtml([itemRow('完成品')]);
+      if(url===RECIPE_DETAIL_URL)return recipeDetailHtml().replace('</dl>', `<dd>HQ製作不可</dd>${quality ? `<dd>完成に必要な品質：${quality}以上</dd>` : ''}</dl>`);
+      throw new Error(`unexpected URL: ${url}`);
+    };
+    let previous;
+    for(const [index,value] of [0,100,200,0].entries()){
+      quality=value;
+      const result=await runAudit({store,artifactRoot,request,delayMs:0,fresh:true,createAuditId:()=>`quality-${index}`});
+      if(previous){
+        assert.notEqual(result.snapshot.DataGeneration,previous.snapshot.DataGeneration);
+        assert.deepEqual(result.comparison.RecipeChanges.ContentChanged.map(entry=>entry.RecipeKey),['aaa']);
+      }
+      previous=result;
+    }
+  });
+});
+
 test('full Lodestone audit fetches every source fresh in one sequential queue and promotes it', async () => {
   await withAudit(async ({ store, artifactRoot }) => {
     const calls = [];

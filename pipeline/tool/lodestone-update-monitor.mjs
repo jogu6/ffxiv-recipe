@@ -4,8 +4,6 @@ import path from 'node:path';
 import process from 'node:process';
 import { DEFAULT_LODESTONE_DELAY_MS } from './lodestone-source.mjs';
 import { compareRecipeList, saveRecipeMonitorBaseline } from './lodestone-recipe-monitor.mjs';
-import { compareLodestoneAcquisition } from './lodestone-acquisition-monitor.mjs';
-import { compareLodestoneQuality } from './lodestone-quality-monitor.mjs';
 import { archivePipelineLogs } from './log-archive.mjs';
 import { applyBackgroundCpuPriority, notifyMonitorFailure, runAutomaticPublication } from './auto-publish.mjs';
 import { matchesAppliedSource, readAppliedLodestoneState } from './lodestone-applied-state.mjs';
@@ -95,11 +93,9 @@ function readConfig() {
 }
 
 export async function readLodestoneMonitorState(options = {}) {
-  const current = await compareRecipeList(options);
-  if (current.RecipeListChanged || current.ResumePublication) return current;
-  const quality = await compareLodestoneQuality(options);
-  if (quality.RecipeListChanged || quality.AcquisitionChanged) return { ...current, ...quality };
-  return { ...current, ...quality, ...await compareLodestoneAcquisition(options) };
+  // A scheduled run only detects source updates. Detail acquisition belongs to
+  // the update pipeline after a list difference, or to a saved publication retry.
+  return compareRecipeList(options);
 }
 
 export async function runMonitor({
@@ -132,15 +128,8 @@ export async function runMonitor({
           logger(`製作手帳の比較 ${page}/${pages}${reason ? `: ${reason}の差分を検出` : ''}`);
         }
       },
-      onAcquisitionProgress: ({ completed, total, item }) => {
-        if (completed === 1 || completed === total || completed % 250 === 0) logger(`入手情報の比較 ${completed}/${total}: ${item}`);
-      },
       appliedState: readAppliedLodestoneState({ repositoryRoot: root }),
-      delayMs: Math.max(0, Number(config.delayMs ?? DEFAULT_LODESTONE_DELAY_MS) || 0),
-      qualityBatchSize: config.qualityBatchSize,
-      onQualityProgress: ({ completed, total }) => {
-        if (completed === 1 || completed === total) logger(`必要品質の比較 ${completed}/${total}`);
-      }
+      delayMs: Math.max(0, Number(config.delayMs ?? DEFAULT_LODESTONE_DELAY_MS) || 0)
     });
   } catch (error) {
     return notifyFailure({ config, error });
@@ -187,7 +176,7 @@ export async function runMonitor({
     lastOutcome: outcome
   }, null, 2)}\n`);
   logger(current.RecipeComparisonMode && !changes.length && !pendingPublication
-    ? `製作手帳一覧の全${current.CheckedRecipePages}ページ、入手情報${current.CheckedAcquisitionItems || 0}件、必要品質${current.CheckedQualityRecipes || 0}/${current.QualityScanTotal || 0}件に差分はありません。条件なしNQの巡回残り${current.QualityScanRemaining || 0}件は次回以降に確認します`
+    ? `製作手帳一覧の全${current.CheckedRecipePages}ページに差分はありません。詳細の再取得・更新処理は省略しました`
     : outcome === 'already-applied'
     ? 'Item.jsonに反映済みのため、全更新を省略して監視基準を同期しました'
     : previousState.initialized ? (changes.length ? `更新を処理しました: ${changes.map(change => change.label).join('、')}` : '更新はありません') : '初回基準状態を保存しました');

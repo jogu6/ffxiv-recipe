@@ -3,11 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { compareLodestoneQuality } from '../pipeline/tool/lodestone-quality-monitor.mjs';
 import { buildLodestoneQualityCandidate, extractLodestoneRecipeCraftingData, createLodestoneHtmlReader, resolveLodestoneRequiredQuality, openLodestoneShopCacheStore } from '../pipeline/tool/pipeline-tool.mjs';
 import { createLodestoneAudit, openLodestoneAuditStore, planLodestoneAuditResources, completeLodestoneAuditResource, promoteCompletedLodestoneAudit } from '../pipeline/tool/lodestone-audit-store.mjs';
 import { writeLodestoneAuditArtifact } from '../pipeline/tool/lodestone-audit.mjs';
-import { publicLodestoneDocument } from '../pipeline/tool/lodestone-preservation.mjs';
 
 function html(quality = 0, version = '7.57', difficulty = 10) {
   return `<p class="db-content__title--version">Version:Patch ${version}</p><h2 class="db-view__item__text__name">素材</h2>` +
@@ -42,60 +40,32 @@ function fixture(t, qualities = [10], age = 7200000) {
   return { root, file, document, save, current, options, calls: () => calls };
 }
 
-test('quality-only changes, removal and failed-publication retries use the published baseline and reuse HTML for generation', async t => {
-  const f = fixture(t);
-  f.current[0] = 20;
-  const first = await compareLodestoneQuality(f.options);
-  assert.deepEqual(first.QualityRecipeKeys, ['r0']); assert.equal(f.calls(), 1);
-  assert.equal((await compareLodestoneQuality(f.options)).AcquisitionChanged, true);
-  assert.equal(f.calls(), 1); // failed/disabled publication did not consume the change
-  await buildLodestoneQualityCandidate({ ...f.options, recipeKeys: first.QualityRecipeKeys });
-  assert.equal(f.calls(), 1); // generation reads the same HTML, not the network
-  const candidate = JSON.parse(fs.readFileSync(path.join(f.root,'pipeline/intermediate/06-public-items.json')));
-  assert.equal(candidate.Items[0].Recipe.CraftingData.RequiredQuality, 20);
-  assert.deepEqual(candidate.Items[0].Extension, { keep: true });
-  assert.notEqual(candidate.DataGeneration, 'old');
-  fs.writeFileSync(f.file, JSON.stringify(publicLodestoneDocument(candidate)));
-  assert.equal((await compareLodestoneQuality(f.options)).AcquisitionChanged, undefined);
-  f.current[0] = 0;
-  assert.equal((await compareLodestoneQuality({ ...f.options, maxAgeMs: 0 })).QualityChanges[0].after, 0);
+test('quality candidate generation reuses HTML across retries, preserves opaque fields and does not alter public data', async t => {
+  const f=fixture(t); f.current[0]=20;
+  const before=fs.readFileSync(f.file);
+  await buildLodestoneQualityCandidate({...f.options,recipeKeys:['r0']});
+  await buildLodestoneQualityCandidate({...f.options,recipeKeys:['r0']});
+  assert.equal(f.calls(),1);
+  const candidate=JSON.parse(fs.readFileSync(path.join(f.root,'pipeline/intermediate/06-public-items.json')));
+  assert.equal(candidate.Items[0].Recipe.CraftingData.RequiredQuality,20);
+  assert.deepEqual(candidate.Items[0].Extension,{keep:true});
+  assert.notEqual(candidate.DataGeneration,'old');
+  assert.deepEqual(fs.readFileSync(f.file),before);
 });
 
-test('ordinary NQ recipes rotate within a bounded batch and detect a newly introduced quality condition', async t => {
-  const f = fixture(t, [10,0,0,0,0]); f.current[4] = 30;
-  const options = { ...f.options, qualityBatchSize: 2 };
-  let detected;
-  for (let i=0;i<4;i++) { const result=await compareLodestoneQuality(options); assert.ok(result.CheckedQualityRecipes<=2); if(result.QualityRecipeKeys) detected=result; }
-  assert.deepEqual(detected.QualityRecipeKeys, ['r4']);
-  assert.equal((await compareLodestoneQuality(options)).AcquisitionChanged, true); // pending remains prioritized
-  assert.equal(f.calls(), 5);
-});
-
-test('recent audit HTML seeds the shared cache with its original age and expired HTML is refreshed', async t => {
-  const f = fixture(t, [10], 500);
-  await compareLodestoneQuality(f.options); assert.equal(f.calls(),0);
-  f.current[0]=20;
-  const result=await compareLodestoneQuality({ ...f.options, maxAgeMs: 100 });
-  assert.equal(result.AcquisitionChanged,true); assert.equal(f.calls(),1);
-});
-
-for (const scenario of ['http','maintenance','malformed','version']) test(`quality ${scenario} failure preserves public data and scan position`, async t => {
-  const f=fixture(t); await compareLodestoneQuality(f.options);
-  const cursor=fs.readFileSync(path.join(f.root,'pipeline/state/lodestone-quality-scan.json'),'utf8'); const before=fs.readFileSync(f.file);
-  await assert.rejects(compareLodestoneQuality({ ...f.options, maxAgeMs:0, fetchImpl:async()=>({ok:scenario!=='http',status:503,text:async()=>scenario==='maintenance'?'<html>maintenance</html>':scenario==='version'?html(20,'7.58'):html(20).replace('20以上','不明')}) }));
-  assert.equal(fs.readFileSync(path.join(f.root,'pipeline/state/lodestone-quality-scan.json'),'utf8'),cursor);
+for (const scenario of ['http','maintenance','malformed','version']) test(`quality candidate ${scenario} failure preserves public data`, async t => {
+  const f=fixture(t); const before=fs.readFileSync(f.file);
+  await assert.rejects(buildLodestoneQualityCandidate({ ...f.options, recipeKeys:['r0'], fetchImpl:async()=>({ok:scenario!=='http',status:503,text:async()=>scenario==='maintenance'?'<html>maintenance</html>':scenario==='version'?html(20,'7.58'):html(20).replace('20以上','不明')}) }));
   assert.deepEqual(fs.readFileSync(f.file),before);
 });
 
 test('other simultaneous crafting changes require the full audit instead of a quality-only publication', async t => {
   const f=fixture(t);
-  const result=await compareLodestoneQuality({ ...f.options,fetchImpl:async()=>({ok:true,text:async()=>html(20,'7.57',11)}) });
-  assert.equal(result.RecipeListChanged,true); assert.ok(result.RecipeRefreshId); assert.equal(result.QualityRecipeKeys,undefined);
-  await assert.rejects(buildLodestoneQualityCandidate({ ...f.options,recipeKeys:['r0'] }),/完全監査/);
+  await assert.rejects(buildLodestoneQualityCandidate({...f.options,recipeKeys:['r0'],fetchImpl:async()=>({ok:true,text:async()=>html(20,'7.57',11)})}),/完全監査/);
 });
 
 test('later candidate generation keeps refreshed quality, refreshes expired HTML and prefers a newer audit', async t=>{
-  const f=fixture(t);f.current[0]=20;await compareLodestoneQuality(f.options);
+  const f=fixture(t);f.current[0]=20;await buildLodestoneQualityCandidate({...f.options,recipeKeys:['r0']});
   const reader=createLodestoneHtmlReader({...f.options,version:'7.57'});
   try {
     const args={reader,url:'https://jp.finalfantasyxiv.com/lodestone/playguide/db/recipe/r0/',auditedValue:10,auditedFetchedAt:Date.now()-7200000,publishedValue:20};

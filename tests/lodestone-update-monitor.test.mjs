@@ -36,18 +36,21 @@ test('a pending quality publication restores its exact recipe keys for crash rec
   assert.deepEqual(current.QualityRecipeKeys,['abc']); assert.equal(current.AcquisitionRefreshId,'quality');
 });
 
-test('unchanged recipe-list pages still detect a quality-only detail change before unrelated shop requests', async t => {
+test('unchanged recipe lists stop scheduled checks before recipe, shop or gathering details', async t => {
   const f=recipeFixture(t);
   const data={Difficulty:10,Durability:40,MaxQuality:100,MaterialQualityPercent:0,RequiredCraftsmanship:0,RequiredControl:0,HqAvailable:false,Expert:false,RequiredQuality:10};
-  f.recordOptions.candidate.Items=[{Name:'素材',Recipe:{RecipeKey:'abc',CraftingData:data}}];
+  f.recordOptions.candidate.Items=[{Name:'素材',Recipe:{RecipeKey:'abc',CraftingData:data},ShopInfo:{price:25},GatheringLevels:[{method:'採掘',level:10}]}];
   fs.writeFileSync(f.itemJsonPath,JSON.stringify({Version:'7.56',DataGeneration:'c'.repeat(64),Items:f.recordOptions.candidate.Items}));
   recordAppliedLodestoneState(f.recordOptions);
-  const response='<p class="db-content__title--version">Version:Patch 7.56</p><ul class="db-view__recipe__craftdata"><li><span>必要工数</span>10</li><li><span>耐久</span>40</li><li><span>品質最大値</span>100</li><li><span>初期品質値</span>上限0％</li></ul><dl class="db-view__recipe__crafting_conditions"><dd>HQ製作不可</dd><dd>完成に必要な品質：20以上</dd></dl>';
+  let requests=0;
   const current=await readLodestoneMonitorState({...f.comparison,fetchImpl:async url=>{
-    if(url.endsWith('/recipe/abc/'))return{ok:true,text:async()=>response};
-    assert.ok(!url.includes('/shop/'));return f.comparison.fetchImpl(url);
+    assert.match(url,/\/db\/recipe\/(?:\?page=\d+)?$/);
+    requests++;
+    return f.comparison.fetchImpl(url);
   }});
-  assert.equal(current.RecipeListChanged,false);assert.equal(current.AcquisitionChanged,true);assert.deepEqual(current.QualityRecipeKeys,['abc']);
+  assert.equal(current.RecipeListChanged,false);
+  assert.equal(current.AcquisitionChanged,undefined);
+  assert.equal(requests,current.CheckedRecipePages);
 });
 
 test('acquisition-only changes trigger publication at the same source version and counts', async t => {
@@ -460,7 +463,7 @@ function saveFixtureAudit(fixture, change = '') {
   store.close();
 }
 
-test('scheduled source reading compares acquisition details after identical recipe-list pages', async t => {
+test('scheduled source reading skips changed gathering details when the recipe list is identical', async t => {
   const f = recipeFixture(t);
   const item = f.recordOptions.candidate.Items[0];
   item.MaterialSortOrder = 1;
@@ -481,9 +484,9 @@ test('scheduled source reading compares acquisition details after identical reci
       '<h3>このアイテムの採集手帳</h3><table><tr><td>採掘</td><td>15</td></tr></table>' };
   } });
   assert.equal(result.RecipeListChanged, false);
-  assert.equal(result.AcquisitionChanged, true);
+  assert.equal(result.AcquisitionChanged, undefined);
   assert.equal(result.CheckedRecipePages, 3);
-  assert.equal(detailReads, 1);
+  assert.equal(detailReads, 0);
 });
 
 test('recipe monitoring seeds HTML from the applied audit and compares every list page only', async t => {
