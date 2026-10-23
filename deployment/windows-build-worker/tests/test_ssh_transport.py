@@ -13,6 +13,8 @@ class SshTransportTests(Fixture):
         (self.root/'dist/build-worker-windows.zip').write_bytes(b'fixed test package')
         with self.q() as q:pending=self.submit(q)
         with LoopbackSsh(self.base/'ssh',self.root,'win1') as ssh:
+            ready,_=ssh.rpc('ping');self.assertTrue(ready['result']['ready'])
+            with self.q() as q:self.assertEqual(q.status(pending['id'])['state'],'queued')
             info,_=ssh.rpc('package-info');self.assertTrue(info['ok'])
             package,data=ssh.rpc('download-package',offset=0,length=1024)
             self.assertEqual(data,b'fixed test package')

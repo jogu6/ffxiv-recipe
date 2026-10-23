@@ -13,6 +13,7 @@ from . import job_logs, package_download
 
 HEADER_LIMIT = 64 * 1024
 OPS = {
+    'ping': (),
     'claim': ('profiles',),
     'package-info': (),
     'download-package': ('offset', 'length'),
@@ -69,6 +70,9 @@ def respond(stream, header, data=b''):
 
 def dispatch(queue, worker, request, data):
     op = request['op']
+    if op == 'ping':
+        queue.policy.worker(worker)
+        return {'ready': True}, b''
     if op == 'package-info':
         return package_download.download(queue.root)
     if op == 'download-package':

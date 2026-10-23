@@ -398,6 +398,10 @@ function Invoke-WCycle([string]$Root, $Config) {
     $state = Read-WState $Root
     if ($state.phase -ceq 'idle') {
         Assert-WCapacity $Root $Config $Config.storage.startReservationBytes
+        # Known outages must leave the idle state intact. A lost claim response
+        # remains an uncertain ownership boundary and still requires review.
+        $ready=Send-WRpc $Config @{op='ping'} -NoRetry
+        Assert-W ($ready.Result.ready -eq $true) 'broker_unavailable'
         $state = @{version = 1; phase = 'claiming'; job = $null}; Save-WState $Root $state
         $reply = Send-WRpc $Config @{op = 'claim'; profiles = (Get-WCapabilities $Config)} -NoRetry
         if ($null -eq $reply.Result) { Save-WState $Root @{version = 1; phase = 'idle'; job = $null}; return }

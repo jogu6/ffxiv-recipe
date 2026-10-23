@@ -428,5 +428,23 @@ if ($IsWindows) {
     $script:Skipped += 8
     Write-Output 'SKIP four Windows ACL, one Mutex and three Job Object native tests (requires Windows)'
 }
+Case 'Offline polling stays idle and reconnects without a build claim' {
+    $offlineRoot=Join-Path $FixtureRoot 'offline-poll'
+    [void][IO.Directory]::CreateDirectory((Join-Path $offlineRoot 'control'))
+    [void][IO.Directory]::CreateDirectory((Join-Path $offlineRoot 'data'))
+    [BuildWorker.Paths]::AtomicText($offlineRoot,'control/state.json','{"version":1,"phase":"idle","job":null}')
+    & $module {
+        param($root,$config)
+        $old=Get-Variable -Name Rpc -Scope Script -ErrorAction SilentlyContinue
+        try {
+            $script:Rpc={param($request,$data) if($request.op -cne 'ping'){throw 'offline_claim_attempted'};throw [BuildWorker.TransportFailure]::new()}
+            try{Invoke-WCycle $root $config;throw 'offline_failure_expected'}catch [BuildWorker.TransportFailure]{}
+            if((Read-WState $root).phase -cne 'idle'){throw 'offline_state_changed'}
+            $script:Rpc={param($request,$data) if($request.op -ceq 'ping'){return @{Result=@{ready=$true};Data=@()}};if($request.op -ceq 'claim'){return @{Result=$null;Data=@()}};throw 'unexpected_poll_operation'}
+            Invoke-WCycle $root $config
+            if((Read-WState $root).phase -cne 'idle'){throw 'reconnect_not_idle'}
+        }finally{if($null -ne $old){$script:Rpc=$old.Value}else{Remove-Variable -Name Rpc -Scope Script -ErrorAction SilentlyContinue}}
+    } $offlineRoot $fixtures.config
+}
 Write-Output ("RESULT passed={0} failed={1} skipped={2}" -f $script:Passed, $script:Failed, $script:Skipped)
 if ($script:Failed -gt 0) { exit 1 }
