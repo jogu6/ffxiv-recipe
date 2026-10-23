@@ -40,8 +40,8 @@ test("archives completed months, keeps the current month, and rebuilds latest.lo
   });
 
   assert.deepEqual(result.monthlyArchives, [
-    "archive\\monthly\\2026-07.zip",
-    "archive\\monthly\\2026-08.zip",
+    path.join("archive", "monthly", "2026-07.zip"),
+    path.join("archive", "monthly", "2026-08.zip"),
   ]);
   assert.equal(result.archivedRunFiles, 2);
   assert.equal(result.archivedMonitorLines, 2);
@@ -92,7 +92,7 @@ test("collects completed-year monthly archives into one yearly archive", (t) => 
     now: new Date("2026-01-02T00:00:00Z"),
   });
 
-  assert.deepEqual(result.yearlyArchives, ["archive\\yearly\\2025.zip"]);
+  assert.deepEqual(result.yearlyArchives, [path.join("archive", "yearly", "2025.zip")]);
   assert.equal(
     fs.existsSync(path.join(root, "archive", "monthly", "2025-12.zip")),
     false,

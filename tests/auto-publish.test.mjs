@@ -293,18 +293,15 @@ test("authentication failures include fixed Japanese reauthentication advice", (
   assert.match(explanation.reason, /認証情報/);
   assert.match(explanation.advice, /gh auth login/);
   assert.match(explanation.advice, /gh auth setup-git/);
+  const logPath = path.join(os.tmpdir(), "ffxiv-recipe", "pipeline", "logs", "runs", "test.log");
   const notification = buildFailureNotification({
     error: { detail: "HTTP 401" },
     phase: "push",
     version: "7.6",
-    logPath:
-      "C:\\FF14_RecipeTree\\ffxiv-recipe\\pipeline\\logs\\runs\\test.log",
+    logPath,
   });
   assert.match(notification, /対象Lodestone版: 7\.6/);
-  assert.match(
-    notification,
-    /確認ログ: C:\\FF14_RecipeTree\\ffxiv-recipe\\pipeline\\logs\\runs\\test\.log/,
-  );
+  assert.ok(notification.includes(`確認ログ: ${path.resolve(logPath)}`));
   assert.match(notification, /\+09:00/);
 });
 

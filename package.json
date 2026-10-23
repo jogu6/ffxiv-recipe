@@ -10,7 +10,7 @@
     "doc": "docs"
   },
   "scripts": {
-    "dev": "py -m http.server 4173 --bind 0.0.0.0 --directory site",
+    "dev": "node tools/run-dev-server.mjs",
     "cache:app": "node tools/app-cache-version.mjs",
     "pipeline:gui": "node tools/run-tauri-build.mjs dev",
     "pipeline:gui:check": "node tools/run-tauri-build.mjs check",
