@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo><Description>Generic build worker. Template only; disabled pending explicit startup approval.</Description></RegistrationInfo>
+  <Triggers><LogonTrigger><Enabled>true</Enabled><UserId>ladmin</UserId></LogonTrigger></Triggers>
+  <Principals><Principal id="Worker"><UserId>ladmin</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
+  <Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><DisallowStartIfOnBatteries>true</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>true</StopIfGoingOnBatteries><ExecutionTimeLimit>PT0S</ExecutionTimeLimit><Enabled>false</Enabled></Settings>
+  <Actions Context="Worker"><Exec><Command>C:\Windows\System32\cmd.exe</Command><Arguments>/d /c "C:\BuildWorker-Production\windows\Start-Worker.cmd"</Arguments><WorkingDirectory>C:\BuildWorker-Production</WorkingDirectory></Exec></Actions>
+</Task>

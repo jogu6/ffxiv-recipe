@@ -9,6 +9,8 @@ import { AUTO_PUBLISH_FILES, snapshotPublicFiles, restorePublicFiles, preparePub
 export { AUTO_PUBLISH_FILES } from './auto-publish-files.mjs';
 import { matchesAppliedSource, readAppliedLodestoneState } from "./lodestone-applied-state.mjs";
 
+import { portablePath, resolvePublicationPath } from './publication-paths.mjs';
+
 const defaultRepositoryRoot = path.resolve(import.meta.dirname, "..", "..");
 const defaultLogsRoot = path.join(defaultRepositoryRoot, "pipeline", "logs");
 const discordLimit = 1900;
@@ -281,18 +283,19 @@ export function explainAutomationFailure(
   const detail = String(
     error?.detail || error?.message || error || "不明なエラー",
   );
+  const terminal = process.platform === "win32" ? "PowerShell" : "ターミナル";
   if (looksLikeAuthenticationFailure(detail)) {
     return {
       reason: "GitHubの認証情報が期限切れ、無効、または未設定です。",
       advice:
-        "PowerShellで `gh auth login --hostname github.com --git-protocol https --web` を実行し、続けて `gh auth setup-git` と `gh auth status` で確認してください。再認証後は次回の定期実行で未完了工程から再開します。",
+        terminal + "で `gh auth login --hostname github.com --git-protocol https --web` を実行し、続けて `gh auth setup-git` と `gh auth status` で確認してください。再認証後は次回の定期実行で未完了工程から再開します。",
     };
   }
   if (error?.code === "COMMAND_NOT_FOUND" && /gh(?:\.exe)?/iu.test(detail)) {
     return {
       reason: "GitHub CLI（gh）が見つかりません。",
       advice:
-        "GitHub CLIを再インストールし、PowerShellで `gh --version` と `gh auth status` を確認してください。",
+        "GitHub CLIを再インストールし、" + terminal + "で `gh --version` と `gh auth status` を確認してください。",
     };
   }
   if (phase === "source") {
@@ -489,7 +492,7 @@ function assertAllowedChanges(files) {
   }
 }
 
-function pipelineCommands(settings) {
+export function pipelineCommands(settings) {
   const delay = String(settings.delayMs);
   if (settings.qualityOnly) return [
     ['build-lodestone-quality-candidate', '--recipe-keys', settings.qualityRecipeKeys.join(','), '--delay', delay],
@@ -675,7 +678,11 @@ export async function runAutomaticPublication({
   }
   let phase = "preflight";
   let generated = false;
-  let snapshotRoot = state.snapshotRoot || null;
+  const legacyRepositoryRoots = config?.migration?.legacyRepositoryRoots || [];
+  // Completed journals never trigger path resolution or recovery. Only generating
+  // needs its old backup; committed/pushed resume the saved SHA without restoring.
+  let snapshotRoot = state.status === "generating"
+    ? resolvePublicationPath(repositoryRoot, state.snapshotRoot, 'snapshot', { legacyRepositoryRoots }) : null;
   try {
     if (state.status === "published" && state.targetKey === targetKey) {
       return {
@@ -781,7 +788,7 @@ export async function runAutomaticPublication({
         { phase, code: "WRONG_BRANCH" },
       );
     if (state.status === "generating") {
-      const recoveredCommit = snapshotRoot && await recoverPublicationCommit({ repositoryRoot, snapshotRoot, run, logger });
+      const recoveredCommit = snapshotRoot && await recoverPublicationCommit({ repositoryRoot, snapshotRoot, run, logger, legacyRepositoryRoots });
       if (recoveredCommit) {
         state = savePublicationState(statePath, state, { status: "committed", commitSha: recoveredCommit });
         return runAutomaticPublication({ config, current, repositoryRoot, statePath, logger, run, delay, fetchImpl, lockPath, lockHeld: true, prepareFiles, commitFiles });
@@ -836,7 +843,8 @@ export async function runAutomaticPublication({
     generated = true;
     state = savePublicationState(statePath, state, {
       status: "generating",
-      snapshotRoot,
+      snapshotRoot: portablePath(repositoryRoot, snapshotRoot),
+      pathFormat: "repository-relative-v1",
       targetVersion: version,
       targetKey,
       recipeRefreshId: current?.RecipeRefreshId || null,
@@ -963,7 +971,7 @@ export async function runAutomaticPublication({
           });
     error.phase = error.phase === "command" ? phase : error.phase || phase;
     if (generated && !["committed", "pushed"].includes(state.status)) {
-      const committed = snapshotRoot && await recoverPublicationCommit({ repositoryRoot, snapshotRoot, run, logger });
+      const committed = snapshotRoot && await recoverPublicationCommit({ repositoryRoot, snapshotRoot, run, logger, legacyRepositoryRoots });
       if (committed) state = { ...state, status: "committed", commitSha: committed };
       else if (snapshotRoot) restorePublicFiles(repositoryRoot, snapshotRoot);
     }

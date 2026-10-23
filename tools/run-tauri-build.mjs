@@ -11,12 +11,14 @@ const repositoryRoot = path.resolve(
   "..",
 );
 
-export function rustToolchainBin(sysroot, host) {
-  return path.join(sysroot, "lib", "rustlib", host, "bin");
+export function rustToolchainBin(sysroot, host, platform = process.platform) {
+  const paths = platform === "win32" ? path.win32 : path.posix;
+  return paths.join(sysroot, "lib", "rustlib", host, "bin");
 }
 
 export function createTauriBuildEnvironment({
   baseEnv = process.env,
+  platform = process.platform,
   mode = "check",
   sysroot,
   host,
@@ -26,9 +28,19 @@ export function createTauriBuildEnvironment({
 }) {
   const useSccache = hasSccache && ["exe", "bundle", "timings"].includes(mode);
   const env = { ...baseEnv };
+  let pathKey = "PATH";
+  if (platform === "win32") {
+    const pathKeys = Object.keys(env).filter(key => key.toUpperCase() === "PATH");
+    // Preserve Windows' existing Path value when an uppercase duplicate exists.
+    pathKey = pathKeys.includes("Path") ? "Path" : (pathKeys[0] ?? "Path");
+    for (const key of pathKeys) {
+      if (key !== pathKey) delete env[key];
+    }
+  }
   if (hasRustLld) {
-    const bin = rustToolchainBin(sysroot, host);
-    env.PATH = `${bin}${path.delimiter}${env.PATH || ""}`;
+    const bin = rustToolchainBin(sysroot, host, platform);
+    const delimiter = platform === "win32" ? path.win32.delimiter : path.posix.delimiter;
+    env[pathKey] = `${bin}${delimiter}${env[pathKey] || ""}`;
     env.RUSTFLAGS = [env.RUSTFLAGS, "-C linker=rust-lld.exe"]
       .filter(Boolean)
       .join(" ");

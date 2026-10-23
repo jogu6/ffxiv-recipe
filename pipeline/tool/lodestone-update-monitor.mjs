@@ -8,11 +8,9 @@ import { archivePipelineLogs } from './log-archive.mjs';
 import { applyBackgroundCpuPriority, notifyMonitorFailure, runAutomaticPublication } from './auto-publish.mjs';
 import { matchesAppliedSource, readAppliedLodestoneState } from './lodestone-applied-state.mjs';
 
+import { acquireMonitorLock } from './monitor-lock.mjs';
+
 const repositoryRoot = path.resolve(import.meta.dirname, '..', '..');
-const pipelineRoot = path.join(repositoryRoot, 'pipeline');
-const configPath = path.join(pipelineRoot, 'config', 'lodestone-monitor.local.json');
-const legacyConfigPath = path.join(pipelineRoot, 'config', 'xivapi-monitor.local.json');
-const logPath = path.join(pipelineRoot, 'logs', 'lodestone-monitor.txt');
 const discordLimit = 2000;
 
 function ensureDir(directory) {
@@ -40,7 +38,8 @@ export function formatJstTimestamp(date = new Date()) {
   return `${shifted.toISOString().slice(0, -1)}+09:00`;
 }
 
-function log(message) {
+function log(message, root = repositoryRoot) {
+  const logPath = path.join(root, 'pipeline', 'logs', 'lodestone-monitor.txt');
   ensureDir(path.dirname(logPath));
   fs.appendFileSync(logPath, `[${formatJstTimestamp()}] ${message}\n`, 'utf8');
 }
@@ -88,7 +87,9 @@ function validateWebhookUrl(value) {
   }
 }
 
-function readConfig() {
+function readConfig(root = repositoryRoot) {
+  const configPath = path.join(root, 'pipeline/config/lodestone-monitor.local.json');
+  const legacyConfigPath = path.join(root, 'pipeline/config/xivapi-monitor.local.json');
   return fs.existsSync(configPath) ? readJson(configPath) : readJson(legacyConfigPath);
 }
 
@@ -98,23 +99,33 @@ export async function readLodestoneMonitorState(options = {}) {
   return compareRecipeList(options);
 }
 
-export async function runMonitor({
+export async function runMonitor(options = {}) {
+  const root = options.root ?? repositoryRoot;
+  const release = acquireMonitorLock(path.join(root, 'pipeline', 'state', 'lodestone-monitor.lock'));
+  try { return await runMonitorLocked(options); }
+  finally { release(); }
+}
+
+async function runMonitorLocked({
   root = repositoryRoot,
   monitorStatePath = path.join(root, 'pipeline', 'state', 'lodestone-monitor.json'),
-  config = readConfig(),
+  config = readConfig(root),
   readCurrent = readLodestoneMonitorState,
   publish = runAutomaticPublication,
   saveBaseline = saveRecipeMonitorBaseline,
-  archive = archivePipelineLogs,
-  logger = log,
-  notifyFailure = notifyMonitorFailure
+  archive = () => archivePipelineLogs({ logsRoot: path.join(root, 'pipeline', 'logs') }),
+  logger = message => log(message, root),
+  preflight = () => {},
+  notifyFailure = notifyMonitorFailure,
+  notificationsEnabled = true
 } = {}) {
+  preflight();
   try {
     archive();
   } catch (error) {
     logger(`ログアーカイブエラー: ${String(error.message || error)}`);
   }
-  validateWebhookUrl(config.discordWebhookUrl);
+  if (notificationsEnabled) validateWebhookUrl(config.discordWebhookUrl);
   const previousState = readJson(monitorStatePath, { initialized: false, consecutiveFailures: 0 });
   const checkedAt = formatJstTimestamp();
   let current;
@@ -152,7 +163,7 @@ export async function runMonitor({
   if (pendingPublication || (changes.length && !alreadyApplied)) {
     const result = await publish({ config, current, repositoryRoot: root });
     outcome = result.status;
-    if (outcome !== 'published' && outcome !== 'already-applied') return { initialized: previousState.initialized, changes, current, outcome };
+    if (!['published','already-applied','generated'].includes(outcome)) return { initialized: previousState.initialized, changes, current, outcome };
     if (current.RecipeComparisonMode) {
       const baseline = saveBaseline({ root });
       Object.assign(current, baseline.source);

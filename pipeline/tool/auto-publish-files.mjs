@@ -6,6 +6,8 @@ export const AUTO_PUBLISH_FILES = Object.freeze([
   'site/app.js', 'site/data/Item.json', 'site/data/item-icons.pack.gz',
   'site/data/legacy-item-ids.json', 'site/item-icon-pack.js', 'site/sw.js',
 ]);
+import { portablePath, resolvePublicationPath } from './publication-paths.mjs';
+
 const constants = {
   'site/app.js': ['DATA_CACHE_VERSION'],
   'site/item-icon-pack.js': ['PACK_VERSION'],
@@ -112,7 +114,7 @@ export async function commitPublicationFiles({ repositoryRoot, snapshotRoot, bas
     const commitSha = (await run('git', ['commit-tree', tree, '-p', baseCommit, '-m', message], commitOptions)).stdout.trim();
     // Durable journal also covers interruption between the ref and index updates.
     fs.writeFileSync(path.join(snapshotRoot, 'original.index'), originalIndex);
-    fs.writeFileSync(path.join(snapshotRoot, 'commit.json'), JSON.stringify({ commitSha, baseCommit, branch, indexPath }));
+    fs.writeFileSync(path.join(snapshotRoot, 'commit.json'), JSON.stringify({ commitSha, baseCommit, branch, indexPath: portablePath(repositoryRoot, indexPath), pathFormat: 'repository-relative-v1' }));
     await run('git', ['update-ref', '-m', message, `refs/heads/${branch}`, commitSha, baseCommit], options);
     fs.writeFileSync(lock, fs.readFileSync(reconciledIndex));
     fs.closeSync(lock);
@@ -126,26 +128,29 @@ export async function commitPublicationFiles({ repositoryRoot, snapshotRoot, bas
   }
 }
 
-export async function recoverPublicationCommit({ repositoryRoot, snapshotRoot, run, logger }) {
+export async function recoverPublicationCommit({ repositoryRoot, snapshotRoot, run, logger, legacyRepositoryRoots = [] }) {
   const journalPath = path.join(snapshotRoot, 'commit.json');
   if (!fs.existsSync(journalPath)) return null;
   const journal = JSON.parse(fs.readFileSync(journalPath, 'utf8'));
+  const indexPath = resolvePublicationPath(repositoryRoot, journal.indexPath, 'index', { legacyRepositoryRoots });
+  const actualIndex = path.resolve(repositoryRoot, (await run('git', ['rev-parse', '--git-path', 'index'], { cwd: repositoryRoot, logger })).stdout.trim());
+  if (fs.realpathSync(actualIndex) !== fs.realpathSync(indexPath)) throw new Error('復旧対象のGit indexが一致しません');
   const head = (await run('git', ['rev-parse', `refs/heads/${journal.branch}`], { cwd: repositoryRoot, logger })).stdout.trim();
   if (head !== journal.commitSha) return null;
-  const index = fs.readFileSync(journal.indexPath);
+  const index = fs.readFileSync(indexPath);
   const original = fs.readFileSync(path.join(snapshotRoot, 'original.index'));
   const reconciled = fs.readFileSync(path.join(snapshotRoot, 'reconciled.index'));
   if (index.equals(original)) {
-    const lockPath = `${journal.indexPath}.lock`;
+    const lockPath = `${indexPath}.lock`;
     const lock = fs.openSync(lockPath, 'wx');
     let lockOwned = true;
     let lockOpen = true;
     try {
-      if (!fs.readFileSync(journal.indexPath).equals(original)) throw new Error('公開復旧中にステージ内容が変更されました。');
+      if (!fs.readFileSync(indexPath).equals(original)) throw new Error('公開復旧中にステージ内容が変更されました。');
       fs.writeFileSync(lock, reconciled);
       fs.closeSync(lock);
       lockOpen = false;
-      fs.renameSync(lockPath, journal.indexPath);
+      fs.renameSync(lockPath, indexPath);
       lockOwned = false;
     } finally {
       if (lockOpen) fs.closeSync(lock);

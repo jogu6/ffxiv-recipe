@@ -64,9 +64,9 @@ function readPage(root, resource, page) {
 
 // Keep references to immutable, page-by-page HTML already saved by the full
 // audit. Only this small manifest is replaced, after successful publication.
-export function saveRecipeMonitorBaseline({ root = defaultRoot, applied = readAppliedLodestoneState({ repositoryRoot: root }) } = {}) {
+export function buildRecipeMonitorBaseline({ root = defaultRoot, applied = readAppliedLodestoneState({ repositoryRoot: root }), databasePath = path.join(root, 'pipeline/cache/lodestone-audits.sqlite') } = {}) {
   if (!applied) throw new Error('比較元の作成には検証済みの反映完了記録が必要です');
-  const db = new DatabaseSync(path.join(root, 'pipeline/cache/lodestone-audits.sqlite'), { readOnly: true });
+  const db = new DatabaseSync(databasePath, { readOnly: true });
   let resources;
   try {
     const audit = db.prepare('SELECT status FROM audits WHERE id = ?').get(applied.AuditId);
@@ -92,6 +92,11 @@ export function saveRecipeMonitorBaseline({ root = defaultRoot, applied = readAp
   }
   const baseline = { schemaVersion: 1, auditId: applied.AuditId,
     source: Object.fromEntries(sourceKeys.map(key => [key, applied[key]])), pages: resources };
+  return baseline;
+}
+
+export function saveRecipeMonitorBaseline({ root = defaultRoot, applied = readAppliedLodestoneState({ repositoryRoot: root }) } = {}) {
+  const baseline = buildRecipeMonitorBaseline({ root, applied });
   const file = recipeMonitorCachePath(root);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const temporary = `${file}.${crypto.randomUUID()}.tmp`;

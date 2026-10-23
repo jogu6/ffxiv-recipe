@@ -124,6 +124,12 @@ test('data publication validates without macro artifacts and never builds or cha
   };
   const result = await publish(f.options);
   assert.equal(result.status, 'published');
+  const journal = JSON.parse(fs.readFileSync(f.options.statePath, 'utf8'));
+  assert.equal(journal.pathFormat, 'repository-relative-v1');
+  assert.match(journal.snapshotRoot, /^pipeline\/state\/auto-publish-files-[A-Za-z0-9_-]+$/);
+  const commitJournal = JSON.parse(fs.readFileSync(path.join(f.root, journal.snapshotRoot, 'commit.json'), 'utf8'));
+  assert.equal(commitJournal.pathFormat, 'repository-relative-v1');
+  assert.equal(commitJournal.indexPath, '.git/index');
   assert.equal(fs.existsSync(path.join(f.root, 'site/macro-app')), false);
   assert.equal(gitAt(f.root, 'ls-tree', '-r', '--name-only', 'HEAD', '--', 'site/macro-app'), '');
 });
@@ -293,18 +299,15 @@ test("authentication failures include fixed Japanese reauthentication advice", (
   assert.match(explanation.reason, /認証情報/);
   assert.match(explanation.advice, /gh auth login/);
   assert.match(explanation.advice, /gh auth setup-git/);
+  const logPath = path.join(os.tmpdir(), "ffxiv-recipe", "pipeline", "logs", "runs", "test.log");
   const notification = buildFailureNotification({
     error: { detail: "HTTP 401" },
     phase: "push",
     version: "7.6",
-    logPath:
-      "C:\\FF14_RecipeTree\\ffxiv-recipe\\pipeline\\logs\\runs\\test.log",
+    logPath,
   });
   assert.match(notification, /対象Lodestone版: 7\.6/);
-  assert.match(
-    notification,
-    /確認ログ: C:\\FF14_RecipeTree\\ffxiv-recipe\\pipeline\\logs\\runs\\test\.log/,
-  );
+  assert.ok(notification.includes(`確認ログ: ${path.resolve(logPath)}`));
   assert.match(notification, /\+09:00/);
 });
 

@@ -1,0 +1,11 @@
+[Unit]
+Description=ffxiv-recipe Lodestone scheduled checks (install disabled)
+
+[Timer]
+OnStartupSec=5min
+OnUnitInactiveSec=15min
+AccuracySec=1min
+Unit=ffxiv-lodestone-monitor.service
+
+[Install]
+WantedBy=timers.target

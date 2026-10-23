@@ -59,3 +59,154 @@ The monitor invokes the shared log-archive routine at startup. Logs from a compl
 The monitor maintains a comparison manifest, immutable compressed source artifacts, an applied-data record, publication checkpoints, recovery backups, and execution logs. These records support integrity checks and interrupted-run recovery.
 
 All persisted and displayed timestamps use JST in `YYYY-MM-DDTHH:mm:ss.sss+09:00` format.
+
+## Ubuntu VPS migration and offline verification
+
+The Windows task must remain disabled during migration. The Ubuntu entrypoint is
+`tools/run-lodestone-monitor.mjs`. With no arguments, or with `--offline`, it only
+validates local data. It never imports the live monitor, reads credentials, invokes
+notification delivery, archives logs, regenerates a baseline, or contacts a server.
+
+```bash
+node tools/run-lodestone-monitor.mjs --offline
+```
+
+Run with Node 24 and the existing CPU/memory limits. The check reads `Item.json`,
+the applied receipt, the publication journal, and the comparison manifest. It copies
+the audit SQLite file and any WAL/SHM files into an OS temporary directory and opens
+only that copy. It checks database integrity, the completed applied audit, every
+baseline recipe-list artifact and parsed row, and equality with the saved manifest.
+Temporary copies are removed afterward. It does not open or migrate the source DB.
+It requires the existing applied baseline; it does not silently seed missing data.
+Do not run this check concurrently with a manual cache writer or during a data copy.
+
+A result with `status: published` and `recovery: false` does not resolve, restore,
+or delete an obsolete snapshot. For `committed` or `pushed`, it verifies the saved
+commit objects locally without pushing or consulting GitHub. For `generating`, it
+also verifies the snapshot, backup files, and any commit/index recovery journal.
+During a pending publication, the previous comparison baseline is validated against
+its own completed audit, separately from the newer applied audit. It is not promoted
+by the check. If generation has changed `Item.json` before updating the applied
+receipt, a hash-matching snapshot backup may supply the applied-data verification;
+the offline check never copies that backup over the working file.
+
+Missing/corrupt data fails verification and must be recovered from a verified backup;
+do not delete state, reset a branch, or change a status to force the check to pass.
+
+### Portable journals and legacy Windows paths
+
+New publication journals store `snapshotRoot` relative to the repository, using `/`,
+and mark `pathFormat: repository-relative-v1`. New commit journals store `.git/index`
+in the same format. Current-root absolute paths from previous versions are readable.
+Linked worktrees with an index outside this repository are not supported by this
+migration path: verification fails rather than redirecting index writes.
+
+An old Windows absolute path is accepted only when its old repository root is
+explicitly configured. No drive translation, suffix search, or basename guessing is
+performed. Only `pipeline/state/auto-publish-files-*` and `.git/index` are supported.
+Traversal, missing files, ambiguous old roots, and symlinks escaping the current
+repository are rejected. The resolved recovery index must match Git's actual index.
+The legacy configuration is for reading old records; the old JSON files are not
+rewritten just to translate a path.
+
+```bash
+node tools/run-lodestone-monitor.mjs --offline --legacy-root 'C:\exact\old\ffxiv-recipe'
+```
+
+Specify the actual old root, not the example. The normal Ubuntu runner also accepts
+`migration.legacyRepositoryRoots` in its private configuration. Windows entrypoints
+read the same setting from their existing local monitor configuration. Retain the
+original cache, reports, state, backup indexes, and Git objects needed by pending
+journals. Never copy a live SQLite file without its WAL or a consistent backup.
+
+### Private configuration and GitHub authentication
+
+No private configuration or credential is installed by the repository templates.
+Prepare these files for `ffxivdev` only after offline verification:
+
+- `~/.config/ffxiv-recipe/lodestone-monitor.json`: copy the shape of
+  `pipeline/config/lodestone-monitor.ubuntu.example.json`, then supply the webhook
+  privately and any verified legacy roots.
+- `~/.config/ffxiv-recipe/github-token`: a GitHub token with the minimum repository
+  permissions needed to push the allowed data and read Actions workflow results.
+
+The directory should have mode 700; both files must be owned by `ffxivdev` and have
+mode 600. The runner checks file ownership/permissions, loads the token into
+`GH_TOKEN` only for the monitored operation and its children, and restores the
+previous process environment on completion or failure. It does not print credentials.
+Never put the token in a unit, an argument, a tracked file, shell history, or a log.
+
+Install GitHub CLI for this user or into a shared executable location and verify
+its actual path. Configure Git's credential helper **in this repository only** to
+use `gh auth git-credential` for HTTPS. Do not reuse Windows Credential Manager or
+change global Git configuration. Check Git author identity and the `origin` URL
+without printing embedded credentials. The service's PATH must include both Node
+and `gh`; it does not source NVM or interactive shell initialization. Inherited Git
+prompt suppression remains enabled. Authentication testing involving GitHub requires
+separate authorization; offline verification does not validate token permissions.
+
+### systemd user templates (not installed or enabled automatically)
+
+Templates live in `deployment/systemd/user/`. They are user units, run as the owner
+of the user manager, and remain under `user-1003.slice` for `ffxivdev`. They do not
+modify another user's services or limits. Confirm that this parent slice retains
+CPUQuota 200% and MemoryMax 2GiB. The service additionally sets CPUQuota 200%,
+MemoryHigh 1536MiB, MemoryMax 2GiB and Nice 10. Its parent Node heap is 256MiB;
+generation children retain the configured 1024MiB heap. Native allocations and all
+children remain subject to the cgroup limit. Avoid simultaneous heavy development
+work under the same user's 2GiB budget.
+
+Review the absolute Node version and repository path in the template before
+installation. The service contains `--run`: **starting it permits real Lodestone
+reads, Discord messages, Git commits/pushes and deployment polling**. Static
+verification does not execute this command:
+
+```bash
+systemd-analyze --user verify deployment/systemd/user/ffxiv-lodestone-monitor.service deployment/systemd/user/ffxiv-lodestone-monitor.timer
+```
+
+The timer proposes five minutes after user-manager startup and fifteen minutes
+between completed runs. Match the former Windows schedule before deployment.
+It does not queue a backlog of missed calendar runs. The service is oneshot, does
+not restart on failure, has no overall update timeout, and waits up to 120 seconds
+when explicitly stopped before systemd terminates its own cgroup. Do not stop it
+in the middle of a normal publication; a forced stop can leave a recovery journal
+and a reservation lock that require inspection. No other project's PID is killed.
+
+Only after an approved online trial: install the two reviewed user unit files,
+reload the user manager, and explicitly enable/start the timer. Verify linger for
+`ffxivdev` if scheduling must survive logout. Do not enable the Windows task as well.
+Repository updates never perform these installation/activation operations.
+
+### Exclusion and crash recovery
+
+All Windows-compatible and Ubuntu monitor entrypoints acquire
+`pipeline/state/lodestone-monitor.lock` before configuration-dependent work,
+preflight, log archiving, source comparison, publication, or baseline/state updates.
+A second invocation fails before doing those operations. The separate existing
+`auto-publish.lock` continues to protect publication. Manual data writers outside
+these entrypoints must not run concurrently with the monitor. Local locks cannot
+coordinate two VPSs or Windows hosts; keep the Windows task disabled.
+
+The monitor lock is an exclusive reservation with an owner token. It is released
+on normal completion or exceptions only if the token still matches. Empty,
+malformed, stale, and PID-reused reservations are never automatically deleted.
+After a crash, leave the timer inactive, inspect the lock's host/PID and all child
+processes, and establish that no writer remains. Do not signal a process based
+only on a saved PID. Preserve the lock and journal as evidence; removing a verified
+stale reservation is a deliberate operator recovery action, never an offline-check
+side effect. The offline command reports both monitor and publication lock presence.
+
+Run offline verification again before resuming. A `generating` journal may recover
+a completed commit/index transition or restore verified backups; a `committed`
+journal resumes the exact saved SHA; `pushed` resumes deployment confirmation.
+`published` never initiates recovery from its obsolete backup. Unknown paths and
+missing commit objects must be resolved before resumption, without resetting Git
+history or initializing a new baseline. Retain the baseline until publication and
+deployment confirmation complete successfully.
+
+Before live deployment, run the migration and existing monitor/publication unit
+tests sequentially in the resource-limited scope. They use temporary fixtures,
+local Git repositories/mocks, and fake HTTP responses. Test Windows separately;
+Windows-style path fixtures on Ubuntu do not replace Windows execution. Browser
+E2E, WASM/Tauri builds and a full Lodestone crawl are not required for offline checks.

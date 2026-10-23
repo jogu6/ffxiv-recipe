@@ -1,0 +1,12 @@
+[Unit]
+Description=ffxiv-recipe VPS-local update schedule
+
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=15min
+AccuracySec=1min
+Unit=ffxiv-lodestone-local.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

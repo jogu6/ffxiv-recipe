@@ -1,0 +1,28 @@
+[Unit]
+Description=ffxiv-recipe VPS-local Lodestone monitor and generation
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ffxivdev
+Group=ffxivdev
+WorkingDirectory=/home/ffxivdev/workspace/ffxiv-recipe
+Environment=HOME=/home/ffxivdev/workspace/ffxiv-recipe/.runtime
+Environment=TMPDIR=/home/ffxivdev/build-worker/audit/full-migration-20261023/tmp
+Environment=NODE_OPTIONS=--max-old-space-size=256
+ExecStart=/home/ffxivdev/.nvm/versions/node/v24.22.1/bin/node tools/run-lodestone-monitor.mjs --run-local
+CPUQuota=200%
+MemoryHigh=1536M
+MemoryMax=2G
+Nice=10
+KillMode=control-group
+TimeoutStartSec=infinity
+TimeoutStopSec=120
+Restart=no
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/ffxivdev/workspace/ffxiv-recipe /home/ffxivdev/build-worker
+StandardOutput=journal
+StandardError=journal

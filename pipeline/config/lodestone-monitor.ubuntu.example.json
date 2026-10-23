@@ -1,0 +1,18 @@
+{
+  "discordWebhookUrl": "REPLACE_IN_PRIVATE_CONFIG",
+  "delayMs": 100,
+  "migration": {
+    "legacyRepositoryRoots": []
+  },
+  "autoPublish": {
+    "enabled": true,
+    "remote": "origin",
+    "branch": "main",
+    "deployWorkflow": "deploy-pages.yml",
+    "deployTimeoutMinutes": 20,
+    "deployPollSeconds": 15,
+    "iconQuality": 80,
+    "iconSize": 80,
+    "nodeHeapMb": 1024
+  }
+}

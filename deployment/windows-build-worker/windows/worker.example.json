@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "enabled": false,
+  "workerId": "windows-main",
+  "ssh": {
+    "executable": "C:\\Windows\\System32\\OpenSSH\\ssh.exe",
+    "host": "vps.example.invalid",
+    "user": "ffxivdev",
+    "port": 22,
+    "knownHosts": "control/known_hosts",
+    "identityPublicKey": "control/worker-key.pub",
+    "timeoutSeconds": 20
+  },
+  "storage": {
+    "minimumFreeBytes": 10737418240,
+    "maxWorkspaceBytes": 42949672960,
+    "startReservationBytes": 5368709120
+  },
+  "tools": {},
+  "profiles": [],
+  "environment": {},
+  "pathEntries": []
+}

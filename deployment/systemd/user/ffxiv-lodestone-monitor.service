@@ -1,0 +1,22 @@
+[Unit]
+Description=ffxiv-recipe Lodestone update monitor (explicit online execution)
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/workspace/ffxiv-recipe
+Environment="HOME=%h"
+Environment="PATH=%h/.nvm/versions/node/v24.22.1/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="NODE_OPTIONS=--max-old-space-size=256"
+Environment="GIT_TERMINAL_PROMPT=0" "GH_PROMPT_DISABLED=1" "GCM_INTERACTIVE=Never"
+ExecStart=%h/.nvm/versions/node/v24.22.1/bin/node tools/run-lodestone-monitor.mjs --run
+CPUQuota=200%
+MemoryHigh=1536M
+MemoryMax=2G
+Nice=10
+KillMode=control-group
+TimeoutStartSec=infinity
+TimeoutStopSec=120
+Restart=no
+UMask=0077
+StandardOutput=journal
+StandardError=journal
