@@ -135,15 +135,19 @@ function ownedLinuxFixture() {
 
 test('Linux termination refuses foreign, unverified, and other-project processes', async () => {
   const { state, identity } = ownedLinuxFixture();
+  // Replace the --directory value by position: Windows paths end in \site, not /site.
+  const directoryIndex = identity.args.indexOf('--directory') + 1;
+  const otherProjectArgs = identity.args.with(directoryIndex, '/other/site');
+  assert.notEqual(otherProjectArgs[directoryIndex], identity.args[directoryIndex]);
   for (const candidate of [null, { ...identity, pid: 999 },
     { ...identity, executablePath: '/other/python3' },
     { ...identity, startedAt: undefined },
     { ...identity, args: ['python3', '/other/serve-local-app.py', '--owner-token', state.ownerToken] },
     { ...identity, args: identity.args.map(arg => arg === state.ownerToken ? 'other-token' : arg) },
-    { ...identity, args: identity.args.map(arg => arg.endsWith('/site') ? '/other/site' : arg) },
+    { ...identity, args: otherProjectArgs },
   ]) {
     const signals = [];
-    assert.equal(await stopLinuxOwnedProcess(state, { query: () => candidate, kill: (...args) => signals.push(args) }), false);
+    assert.equal(await stopLinuxOwnedProcess(state, { query: () => candidate, kill: (...args) => signals.push(args), delay: async () => {}, attempts: 1 }), false);
     assert.deepEqual(signals, []);
   }
 });
